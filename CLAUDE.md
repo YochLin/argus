@@ -1,0 +1,166 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project
+
+**Argus** is a personal (single-user) US stock monitoring bot that talks over Telegram. Built in Go, runs
+in Docker, persists to SQLite. There is no multi-tenant/multi-user design anywhere — `chatID` is a single
+fixed value from env, not a per-user table. The name (and the Go module path, `argus`) reflects an intent
+to grow this beyond stocks into a broader personal assistant — the free-form `Chat` mode in `internal/llm`
+is the first step in that direction; don't assume every feature here is stock-specific when extending it.
+Two other things are today's implementation choices, not permanent constraints (see the README's "Vision"
+section for the user-facing version of this): **Telegram** is currently the only messaging channel
+(`internal/bot`) — a second channel should get its own package behind a shared interface, not be bolted
+onto `bot.Bot`. **Claude via ACP** is currently the only LLM provider (`internal/llm`) — supporting another
+provider is a real future direction, but ACP's session model (one-shot `prompt` calls vs. the persistent
+`Chat` session) won't map 1:1 onto every provider's API, so that'll need a proper interface boundary
+rather than a quick swap.
+
+## Commands
+
+```bash
+go build ./...              # build everything
+go run ./cmd/bot             # run locally (reads .env via godotenv)
+go vet ./...                 # static checks
+docker compose up --build    # build + run in Docker (uses .env, mounts ./data -> /app/data)
+```
+
+There's no broad test suite; `internal/i18n` has the one exception (`go test ./internal/i18n/...`), which
+checks the zh/en message tables stay in sync — see that package's entry below. Setup: copy `.env.example`
+to `.env` and fill in `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` (required) and `FINNHUB_API_KEY`
+(optional). The LLM needs no API key — run `claude` once on this machine and log in with your Claude
+Pro/Max account first (see `internal/llm` below); Node.js (`npx`) must also be installed since the bot
+shells out to an ACP agent process.
+
+## Architecture
+
+Flow: `cmd/bot/main.go` wires everything together — loads env, opens SQLite, builds the data provider
+chain, constructs the LLM client, constructs the Telegram `bot.Bot`, registers the daily cron job, then
+runs the Telegram long-poll loop until SIGINT/SIGTERM.
+
+- `internal/data` — `Provider` interface (`GetQuote`, `GetNews`, `GetMarketMovers`). `finnhub.go` and
+  `yahoo.go` each implement it independently. `provider.go`'s `Multi` wraps an ordered list of providers
+  and tries each in sequence, falling back to the next on error — Finnhub is primary (if
+  `FINNHUB_API_KEY` is set), Yahoo is the fallback. Any new data source should implement `Provider` and
+  get appended to the list in `main.go`, not special-cased elsewhere. `FINNHUB_API_KEY` truthiness is
+  checked by non-empty string, so a placeholder value left in `.env` silently enables Finnhub with a
+  bad key (every quote wastes a doomed 401 request before falling back to Yahoo) — blank it out
+  entirely if you don't have a real key.
+  Yahoo-specific gotchas (found by testing against the live endpoint, not just reading the code):
+  Yahoo's chart API `meta` object has no `regularMarketOpen` field despite what its name suggests — Open
+  must be read from `indicators.quote[0].open` the same way High/Low already are, or it silently comes
+  back as 0. An invalid/delisted ticker doesn't error either; it returns HTTP 200 with a real-looking but
+  all-zero `meta` (`GetQuote` treats `RegularMarketPrice == 0` as "no data" to catch this — same pattern
+  Finnhub already used for `result.C == 0`). `GetMarketMovers`'s `/trending/US` endpoint returns crypto
+  pairs (`BTC-USD`) and foreign listings (`SHOP.TO`) mixed in with US equities and carries no
+  asset-class field to filter on properly — `isUSEquitySymbol` filters by symbol shape (plain 1-5
+  uppercase letters) as a heuristic; it's not perfect (e.g. `USDE`, a stablecoin ticker, slips through)
+  but removes the two biggest offenders. Finnhub's `/quote` endpoint has no volume field at all (only
+  `c/h/l/o/pc/t`), so `Finnhub.GetQuote`'s `Quote.Volume` is always 0 — this is a real API limitation,
+  not a parsing bug; Claude has been observed calling this out unprompted in `/check` output.
+  `internal/data/fundamentals.go` adds `Fundamentals` (ratios, from `/stock/metric`) and
+  `FinancialStatement` (10-K/10-Q line items, from `/stock/financials-reported`) — both **Finnhub-only**,
+  exposed via a separate `FundamentalsProvider` interface rather than folded into `Provider`/`Multi`,
+  because Yahoo's equivalent (`quoteSummary`) now requires a crumb/cookie handshake (confirmed via live
+  testing: returns 401 `Invalid Crumb` unauthenticated) that we deliberately don't implement. Finnhub's
+  free tier also blocks `/stock/candle` entirely (`"You don't have access to this resource"`), so
+  `Quote.Volume` can't be backfilled that way either without a paid plan. Statement line items are
+  extracted from raw XBRL by matching a short list of known `concept` name aliases per field (see `find`
+  in `GetFinancialStatements`) since filers don't all tag the same line item with the same XBRL concept —
+  add more aliases if a ticker comes back with an unexpectedly-zero field rather than assuming the data
+  doesn't exist. Finnhub's free tier is rate-limited to 60 req/min, so fundamentals are only fetched for
+  watchlist tickers (`fetchStockData(..., includeFundamentals: true)`), never for the broad market-mover
+  candidate list, which can be 15+ tickers. `HistoryProvider` (`GetHistory`, daily closes for RSI/MACD) is
+  the mirror image of `FundamentalsProvider`: Yahoo-only, no `Multi` wrapper, because Finnhub's free tier
+  blocks `/stock/candle` entirely — same constraint as the `Quote.Volume` gap above, just hitting a
+  different feature this time.
+- `internal/db` — thin wrapper around `database/sql` + `modernc.org/sqlite` (pure-Go, no cgo). Owns three
+  tables: `watchlist`, `daily_snapshots`, `recommendations`. Migrations are just `CREATE TABLE IF NOT
+  EXISTS` run on every startup in `migrate()` — no migration framework/versioning.
+- `internal/i18n` — every user/LLM-facing string in the project, split into exactly two files by design:
+  `zh.go` (Traditional Chinese, the original default) and `en.go` (English), both keyed by the `Key`
+  constants declared in `i18n.go`. `T(lang, key, args...)` does the lookup + `fmt.Sprintf`. This covers two
+  different kinds of text that are easy to conflate: `internal/bot`'s UI copy (fixed strings/templates),
+  and `internal/llm`'s system prompts + prompt-template text that Claude is instructed to follow — the
+  latter isn't just cosmetic, since `KeyReasonMarker` ("原因:" / "Reason:") is both what the prompt asks
+  Claude to emit *and* what `parseRecommendations` matches on to parse the reply; change one without the
+  other and `/recommend`/`RunDailyReport` silently return zero recommendations. Every `Key` must have an
+  entry in both `zh.go` and `en.go` with the same number of `fmt.Sprintf` verbs in the same order — call
+  sites pass one set of positional args and reuse it for whichever table `T` picks. `i18n_test.go`
+  (`TestTablesMatch`) enforces this automatically; run it after adding or editing any key. Language is
+  selected once at startup via `BOT_LANGUAGE` (`zh`/`en`, default `zh`), threaded through
+  `signals.NewDetector`, `llm.NewClient`, and `bot.New` — there's no per-message or per-user override, by
+  the same single-user-bot design as `chatID`.
+- `internal/llm` — talks to Claude through the **Agent Client Protocol (ACP)**, not the Anthropic API SDK
+  (`internal/llm/acp` implements the minimal JSON-RPC-over-stdio client: `initialize` → `session/new` →
+  `session/prompt`, accumulating `session/update` text chunks). `Client` runs two different session
+  lifecycles side by side: `GenerateRecommendations`/`CheckStock` spawn a fresh `claude-agent-acp`
+  subprocess per call and close it once the reply arrives (`c.prompt`, one-shot, nothing to remember
+  between calls), while `Chat` keeps a single ACP session open across calls (`c.chatSession`, lazily
+  started, guarded by `c.chatMu`) so the agent retains conversation history for free-form back-and-forth —
+  `ResetChat` closes it early, and `Client.Close` (called once on bot shutdown in `main.go`) closes
+  whatever's still open so the subprocess doesn't get orphaned when the bot exits. Both paths authenticate
+  via the operator's local `claude` CLI login (Claude Pro/Max subscription) instead of a metered
+  `ANTHROPIC_API_KEY` — do not reintroduce an API key path without an explicit reason, that was a
+  deliberate choice to avoid API billing. Every session sets `_meta.disableBuiltInTools: true` and runs
+  from `os.TempDir()` with a custom `_meta.systemPrompt` (a different one for chat vs. analysis — see
+  `chatSystemPrompt`), so the agent never gets tool access and never picks up this repo's own
+  CLAUDE.md/skills — keep both of those in place if you touch `acp.StartSession`. Model per call is
+  configurable (`CLAUDE_RECOMMEND_MODEL` / `CLAUDE_CHECK_MODEL` / `CLAUDE_CHAT_MODEL` env vars, default
+  `opus` / `sonnet` / `sonnet`). `GenerateRecommendations`'s output is plain text following a
+  hand-specified format (`[TICKER: X]` / `<reason marker>: ...` blocks) that `parseRecommendations` parses
+  with string matching, not JSON — if you change that prompt's expected output shape, update the parser in
+  lockstep (and see `internal/i18n`'s entry above for why the reason marker specifically must stay wired
+  through `i18n.KeyReasonMarker` rather than a hardcoded literal). `Chat` has no such format to parse; its
+  reply is sent to the user verbatim. All LLM-facing prompts and bot-facing copy go through
+  `internal/i18n` now — don't add a new hardcoded zh or en string in this package, add a `Key` instead.
+- `internal/signals` — pure functions/struct for rule-based technical signals (price % threshold, RSI,
+  MACD) independent of Telegram/LLM/DB. `Detector.CheckQuote`, `CheckRSI`, and `CheckMACD` are all wired
+  into `RunDailyReport` now, fed by `HistoryProvider.GetHistory` (see `internal/data` above). `MACD`'s
+  signal line is a genuine EMA9 over the MACD series (needs 26+9 closes to warm up, returns all-zero
+  before that) — don't collapse it back to the single-point approximation this used to be (signal line
+  hardcoded to 0), that gave wrong bullish/bearish reads. `CheckMACD` reflects the latest bar's trend
+  state, not a fresh crossover event — it fires every call while the trend holds, not just the day it
+  flips; detecting an actual crossover would need persisting the previous day's histogram sign somewhere
+  (e.g. `daily_snapshots`) to diff against, which nothing does today. `Signal.Message` text goes through
+  `internal/i18n` (`NewDetector(lang)`), same as everything in `internal/bot` — don't hardcode a new
+  message string here either.
+- `internal/scheduler` — thin wrapper around `robfig/cron` fixed to `time.FixedZone("CST", 8*3600)`
+  (Taiwan time) rather than a loaded `time.Location`, specifically so it works in the `alpine` Docker
+  image without needing the `tzdata` package installed.
+- `internal/bot` — Telegram command dispatch (`/add`, `/remove`, `/list`, `/status`, `/recommend`,
+  `/check`, `/dailyreport`, `/fundamentals`, `/reset`) plus `RunDailyReport`, which the scheduler invokes
+  once a day. `Run`'s `dispatch` splits incoming messages two ways: commands each get their own goroutine
+  (`go b.handleMessage(...)`) so a slow one like `/recommend` can't block a quick one like `/status` sent
+  right after — but plain-text chat messages go on `chatQueue` instead, drained one at a time by the single
+  `chatWorker` goroutine, so replies come back in the order the user actually sent them. That ordering
+  guarantee is the reason chat isn't just `go b.handleChat(...)` too: it shares one persistent LLM session,
+  and answering two chat messages concurrently could let the second reach that session before the first.
+  `handleChat` (used only by `chatWorker`) is the bot's free-form chat mode, backed by `llm.Client`'s
+  persistent session (see `internal/llm` below) — separate from the one-shot analysis commands. `/reset`
+  clears that persistent session's memory via `llm.Client.ResetChat`. `RunDailyReport` and `/recommend`
+  share almost identical logic (fetch watchlist +
+  market-mover candidates, run signal detection, call the LLM, send results, persist to `recommendations`
+  table) — when changing one, check whether the other needs the same change. `Bot.fundamentals` is a
+  `data.FundamentalsProvider` that's `nil` whenever `FINNHUB_API_KEY` isn't set — every fundamentals
+  code path (`/fundamentals`, and the fundamentals branch in `handleCheck`/`fetchStockData`) must nil-check
+  it and degrade gracefully rather than erroring, since this data source is optional by design.
+
+## Key behaviors to preserve
+
+- LLM-backed commands (`/recommend`, `/check`) must reply immediately with an `i18n.KeyAnalyzing`/
+  `KeyAnalyzingTicker` placeholder before the (slow) LLM call, since Telegram requests otherwise appear to
+  hang. `handleChat` does the same with `KeyThinking`.
+- `main.go` must call `llmClient.Close()` on shutdown (currently a `defer` right after construction) —
+  the persistent chat session's `claude-agent-acp` subprocess has no other way to get cleaned up if the
+  bot exits mid-conversation.
+- The daily report is scheduled for 21:00 CST/Taiwan time — before US market open — via cron spec
+  `"0 0 21 * * *"` in `scheduler.go`.
+- `Multi` provider fallback depends on provider order in `main.go` (Finnhub before Yahoo); don't reorder
+  without reason since Finnhub is considered the more reliable/richer source.
+- The Dockerfile/docker-compose setup predates the ACP-based LLM client and has **not** been updated for
+  it: the `alpine` image has no Node.js, and the Pro/Max login (macOS Keychain locally) has no equivalent
+  credential path solved for a Linux container yet. Running the bot in Docker currently only works for the
+  Telegram/data/DB parts, not `/recommend` or `/check`. Treat this as an open problem, not an oversight, if
+  asked to containerize this.
