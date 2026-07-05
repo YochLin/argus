@@ -51,11 +51,15 @@ func (d *Detector) CheckQuote(q *data.Quote) []Signal {
 	return signals
 }
 
-// RSI calculates the Relative Strength Index for a slice of closing prices.
+// RSI calculates the Relative Strength Index over the most recent period+1
+// closes in the slice (closes is oldest-first, as returned by
+// HistoryProvider.GetHistory) — not the oldest period+1, so a longer history
+// slice still yields today's RSI rather than one from months ago.
 func RSI(closes []float64, period int) float64 {
 	if len(closes) < period+1 {
 		return 50
 	}
+	closes = closes[len(closes)-period-1:]
 
 	var gains, losses float64
 	for i := 1; i <= period; i++ {
