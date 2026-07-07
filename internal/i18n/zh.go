@@ -6,7 +6,7 @@ package i18n
 // sites pass positional args once and reuse them for whichever table T
 // picks.
 var zhMessages = map[Key]string{
-	KeyUnknownCommand:        "未知指令。可用指令：\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/dailyreport\n/fundamentals <ticker>\n/reset\n\n直接傳一般訊息（不加 / 開頭）則會跟我自由對話。",
+	KeyUnknownCommand:        "未知指令。可用指令：\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [天數]\n/dailyreport\n/fundamentals <ticker>\n/reset\n\n直接傳一般訊息（不加 / 開頭）則會跟我自由對話。",
 	KeyAddUsage:              "用法：/add <ticker>，例如 /add AAPL",
 	KeyAddFailed:             "新增失敗：%v",
 	KeyAddSuccess:            "已將 *%s* 加入自選股。",
@@ -38,6 +38,12 @@ var zhMessages = map[Key]string{
 	KeySignalAlertTitle:      "🚨 *市場訊號提醒*\n\n",
 	KeyDailyReportStart:      "📅 *每日報告開始生成...*",
 	KeyNoRecommendationsToday: "今日無特別推薦標的。",
+	KeyTrackUsage:            "用法：/track [天數]，例如 /track 14（預設 7 天，最多 90 天）",
+	KeyTrackTitle:            "📊 *推薦成效回顧（過去 %d 天）*\n\n",
+	KeyTrackEmpty:            "過去 %d 天內沒有推薦記錄。",
+	KeyTrackLine:             "• %s *%s* %s  $%.2f → $%.2f (%+.2f%%) %s\n",
+	KeyTrackLineNoPrice:      "• %s *%s* %s — 無推薦時價格可比對\n",
+	KeyTrackSummary:          "\n命中率：%d/%d (%.0f%%)\n（BUY 上漲算命中、SELL 下跌算命中；HOLD 與無價格資料者不計入）",
 
 	KeyQuoteLine: "*%s*  $%.2f  %s%.2f%%\n開: $%.2f　高: $%.2f　低: $%.2f",
 
@@ -88,6 +94,8 @@ var zhMessages = map[Key]string{
 	KeyRSIOversold:   "%s RSI 超賣 (%.1f)，可能反彈",
 	KeyMACDBullish:   "%s MACD 呈多頭動能 (MACD %.2f > 訊號線 %.2f)",
 	KeyMACDBearish:   "%s MACD 呈空頭動能 (MACD %.2f < 訊號線 %.2f)",
+	KeyMACDGoldenCross: "%s MACD 黃金交叉 (MACD %.2f 上穿訊號線 %.2f)，趨勢轉多",
+	KeyMACDDeathCross:  "%s MACD 死亡交叉 (MACD %.2f 下穿訊號線 %.2f)，趨勢轉空",
 
 	KeySystemPromptAnalyst: "你是一位專業的美股分析師，只負責針對使用者提供的市場數據給出文字分析。你沒有任何工具可用，也不需要使用工具；請直接依照使用者訊息中的格式要求回覆，不要輸出與分析無關的內容。",
 	KeySystemPromptChat:    "你是使用者的個人助理，請用繁體中文自然對話，記住這段對話中先前提到的內容。你沒有任何工具可用，也不需要使用工具。",
@@ -100,19 +108,23 @@ var zhMessages = map[Key]string{
 	KeyRecTaskBlock: `
 ## 任務
 
-從上述所有標的中挑選 3–5 檔，給出今日操作建議。
+自選股的每一檔都必須給出明確操作建議，動作只能是 BUY、SELL、HOLD 三者之一；
+大盤熱門標的則只挑出你看好、值得買進的（最多 3 檔，動作為 BUY），沒有就不列。
 
 輸出格式請嚴格遵守以下結構，每檔一個區塊，不要有額外文字：
 
 [TICKER: AAPL]
+%s BUY
 %s （200字以內的中文說明，包含技術面、基本面或新聞面理由）
 
 [TICKER: MSFT]
+%s HOLD
 %s ...
 
-請依照你最看好的順序排列，信心最高的排第一。
+自選股排在前面；同組內依照你最看好的順序排列，信心最高的排第一。
 `,
 	KeyReasonMarker: "原因:",
+	KeyActionMarker: "動作:",
 
 	KeyCheckPromptIntro: "你是一位美股分析師，請針對以下標的給出即時市場分析。\n\n",
 	KeyCheckPromptTask: `

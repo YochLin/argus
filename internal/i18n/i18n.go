@@ -83,6 +83,12 @@ const (
 	KeySignalAlertTitle      Key = "signal_alert_title"
 	KeyDailyReportStart      Key = "daily_report_start"
 	KeyNoRecommendationsToday Key = "no_recommendations_today"
+	KeyTrackUsage            Key = "track_usage"
+	KeyTrackTitle            Key = "track_title"
+	KeyTrackEmpty            Key = "track_empty"
+	KeyTrackLine             Key = "track_line"
+	KeyTrackLineNoPrice      Key = "track_line_no_price"
+	KeyTrackSummary          Key = "track_summary"
 
 	KeyQuoteLine Key = "quote_line"
 
@@ -136,6 +142,8 @@ const (
 	KeyRSIOversold  Key = "rsi_oversold"
 	KeyMACDBullish  Key = "macd_bullish"
 	KeyMACDBearish  Key = "macd_bearish"
+	KeyMACDGoldenCross Key = "macd_golden_cross"
+	KeyMACDDeathCross  Key = "macd_death_cross"
 )
 
 // Keys used by internal/llm (system prompts and prompt-template text sent
@@ -152,6 +160,7 @@ const (
 	KeyRecNoCandidates    Key = "rec_no_candidates"
 	KeyRecTaskBlock       Key = "rec_task_block"
 	KeyReasonMarker       Key = "reason_marker"
+	KeyActionMarker       Key = "action_marker"
 
 	KeyCheckPromptIntro Key = "check_prompt_intro"
 	KeyCheckPromptTask  Key = "check_prompt_task"

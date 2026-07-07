@@ -3,7 +3,7 @@ package i18n
 // enMessages is the English message table. Every format verb here must
 // appear in the same order as its zh.go counterpart — see the note there.
 var enMessages = map[Key]string{
-	KeyUnknownCommand:        "Unknown command. Available commands:\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/dailyreport\n/fundamentals <ticker>\n/reset\n\nSend a plain message (no leading /) to chat freely.",
+	KeyUnknownCommand:        "Unknown command. Available commands:\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [days]\n/dailyreport\n/fundamentals <ticker>\n/reset\n\nSend a plain message (no leading /) to chat freely.",
 	KeyAddUsage:              "Usage: /add <ticker>, e.g. /add AAPL",
 	KeyAddFailed:             "Failed to add: %v",
 	KeyAddSuccess:            "Added *%s* to your watchlist.",
@@ -35,6 +35,12 @@ var enMessages = map[Key]string{
 	KeySignalAlertTitle:      "🚨 *Market Signal Alert*\n\n",
 	KeyDailyReportStart:      "📅 *Generating daily report...*",
 	KeyNoRecommendationsToday: "No notable recommendations today.",
+	KeyTrackUsage:            "Usage: /track [days], e.g. /track 14 (default 7 days, max 90)",
+	KeyTrackTitle:            "📊 *Recommendation Review (past %d days)*\n\n",
+	KeyTrackEmpty:            "No recommendations recorded in the past %d days.",
+	KeyTrackLine:             "• %s *%s* %s  $%.2f → $%.2f (%+.2f%%) %s\n",
+	KeyTrackLineNoPrice:      "• %s *%s* %s — no price recorded to compare against\n",
+	KeyTrackSummary:          "\nHit rate: %d/%d (%.0f%%)\n(BUY counts as a hit if the price rose, SELL if it fell; HOLD and rows without price data are excluded)",
 
 	KeyQuoteLine: "*%s*  $%.2f  %s%.2f%%\nOpen: $%.2f  High: $%.2f  Low: $%.2f",
 
@@ -85,6 +91,8 @@ var enMessages = map[Key]string{
 	KeyRSIOversold:   "%s RSI oversold (%.1f) — a bounce is possible",
 	KeyMACDBullish:   "%s MACD showing bullish momentum (MACD %.2f > signal %.2f)",
 	KeyMACDBearish:   "%s MACD showing bearish momentum (MACD %.2f < signal %.2f)",
+	KeyMACDGoldenCross: "%s MACD golden cross (MACD %.2f crossed above signal %.2f) — trend turning bullish",
+	KeyMACDDeathCross:  "%s MACD death cross (MACD %.2f crossed below signal %.2f) — trend turning bearish",
 
 	KeySystemPromptAnalyst: "You are a professional US equities analyst whose only job is to give a written analysis based on the market data the user provides. You have no tools available and need none; reply strictly according to the format the user's message requests, with no content unrelated to the analysis.",
 	KeySystemPromptChat:    "You are the user's personal assistant. Talk naturally in English and remember what was said earlier in this conversation. You have no tools available and need none.",
@@ -97,19 +105,23 @@ var enMessages = map[Key]string{
 	KeyRecTaskBlock: `
 ## Task
 
-Pick 3–5 tickers from everything above and give today's action recommendations.
+Every watchlist ticker must get an explicit call, and the action must be exactly one of BUY, SELL, or HOLD;
+from the broad market movers, only list the ones you actually like as buys (at most 3, action BUY) — none is fine.
 
 Strictly follow this output structure, one block per ticker, with no extra text:
 
 [TICKER: AAPL]
+%s BUY
 %s (Under 200 words, covering technical, fundamental, or news-driven reasoning)
 
 [TICKER: MSFT]
+%s HOLD
 %s ...
 
-List them in order of conviction, with your highest-confidence pick first.
+Watchlist tickers come first; within each group, order by conviction with your highest-confidence pick first.
 `,
 	KeyReasonMarker: "Reason:",
+	KeyActionMarker: "Action:",
 
 	KeyCheckPromptIntro: "You are a US equities analyst. Give an instant market read on the ticker below.\n\n",
 	KeyCheckPromptTask: `
