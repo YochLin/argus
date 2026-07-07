@@ -37,6 +37,23 @@ func (s *Scheduler) AddDailyReport(ctx context.Context, fn JobFunc) {
 	log.Println("scheduler: daily report registered at 21:00 CST")
 }
 
+// AddClosingSnapshot schedules the post-close snapshot job at 05:30 CST,
+// Tuesday–Saturday (a US trading day Mon–Fri ends at 04:00 CST the next
+// morning during daylight saving, 05:00 on standard time — 05:30 is past the
+// close in both). Sunday/Monday mornings follow no US session, so they're
+// excluded outright; US market holidays still fire but the job skips stale
+// quotes itself.
+func (s *Scheduler) AddClosingSnapshot(ctx context.Context, fn JobFunc) {
+	_, err := s.c.AddFunc("0 30 5 * * 2-6", func() {
+		log.Println("scheduler: running closing snapshot")
+		fn(ctx)
+	})
+	if err != nil {
+		log.Fatalf("scheduler: add closing snapshot: %v", err)
+	}
+	log.Println("scheduler: closing snapshot registered at 05:30 CST (Tue–Sat)")
+}
+
 func (s *Scheduler) Start() {
 	s.c.Start()
 	log.Println("scheduler: started")

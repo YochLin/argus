@@ -140,6 +140,8 @@ func (b *Bot) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 		b.handleRecommend(ctx)
 	case "check":
 		b.handleCheck(ctx, args)
+	case "track":
+		b.handleTrack(args)
 	case "dailyreport":
 		b.RunDailyReport(ctx)
 	case "fundamentals":
@@ -253,16 +255,43 @@ func (b *Bot) handleRecommend(ctx context.Context) {
 		return
 	}
 
+	b.sendAndSaveRecommendations(recs, watchlist, candidates)
+}
+
+// sendAndSaveRecommendations formats LLM recommendations for Telegram and
+// persists them dated today, each with its ticker's current price looked up
+// from the already-fetched stock data — /track later compares that stored
+// price against the price on review day. Shared by /recommend and
+// RunDailyReport, which otherwise mirror each other.
+func (b *Bot) sendAndSaveRecommendations(recs []llm.Recommendation, stockLists ...[]llm.StockData) {
+	prices := make(map[string]float64)
+	for _, list := range stockLists {
+		for _, s := range list {
+			if s.Quote != nil {
+				prices[s.Quote.Ticker] = s.Quote.Price
+			}
+		}
+	}
+
 	var sb strings.Builder
 	sb.WriteString(i18n.T(b.lang, i18n.KeyRecommendationsTitle))
 	for i, r := range recs {
-		fmt.Fprintf(&sb, "%d. *%s*\n%s\n\n", i+1, r.Ticker, r.Reason)
+		if r.Action != "" {
+			fmt.Fprintf(&sb, "%d. *%s* — %s\n%s\n\n", i+1, r.Ticker, r.Action, r.Reason)
+		} else {
+			fmt.Fprintf(&sb, "%d. *%s*\n%s\n\n", i+1, r.Ticker, r.Reason)
+		}
 	}
 	b.Send(sb.String())
 
 	var dbRecs []db.Recommendation
 	for _, r := range recs {
-		dbRecs = append(dbRecs, db.Recommendation{Ticker: r.Ticker, Reason: r.Reason})
+		dbRecs = append(dbRecs, db.Recommendation{
+			Ticker: r.Ticker,
+			Action: r.Action,
+			Reason: r.Reason,
+			Price:  prices[r.Ticker],
+		})
 	}
 	if err := b.db.SaveRecommendations(todayDate(), dbRecs); err != nil {
 		log.Printf("save recommendations: %v", err)
@@ -306,6 +335,100 @@ func (b *Bot) handleCheck(ctx context.Context, ticker string) {
 	}
 
 	b.Send(i18n.T(b.lang, i18n.KeyCheckResultTitle, ticker, result))
+}
+
+// handleTrack reviews recommendations from the past N days (default 7)
+// against today's prices, so recommendation quality is verifiable instead of
+// write-only. A BUY counts as a hit if the price rose since the
+// recommendation, a SELL if it fell; HOLDs are listed but excluded from the
+// hit rate. The baseline price is the one stored at recommendation time;
+// rows from before that column existed fall back to the ticker's
+// daily_snapshots close on the recommendation date, if the post-close job
+// captured one.
+func (b *Bot) handleTrack(daysArg string) {
+	days := 7
+	if daysArg != "" {
+		n, err := strconv.Atoi(daysArg)
+		if err != nil || n < 1 || n > 90 {
+			b.Send(i18n.T(b.lang, i18n.KeyTrackUsage))
+			return
+		}
+		days = n
+	}
+
+	fromDate := time.Now().In(cst).AddDate(0, 0, -days).Format("2006-01-02")
+	recs, err := b.db.GetRecommendationsSince(fromDate)
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
+		return
+	}
+	if len(recs) == 0 {
+		b.Send(i18n.T(b.lang, i18n.KeyTrackEmpty, days))
+		return
+	}
+
+	// One quote per distinct ticker, however often it was recommended.
+	quotes := make(map[string]*data.Quote)
+
+	var sb strings.Builder
+	sb.WriteString(i18n.T(b.lang, i18n.KeyTrackTitle, days))
+	hits, evaluated := 0, 0
+	for _, r := range recs {
+		action := r.Action
+		if action == "" {
+			action = "—"
+		}
+
+		base := r.Price
+		if base == 0 {
+			if c, ok, err := b.db.GetSnapshotClose(r.Ticker, r.Date); err == nil && ok {
+				base = c
+			}
+		}
+		if base == 0 {
+			sb.WriteString(i18n.T(b.lang, i18n.KeyTrackLineNoPrice, r.Date, r.Ticker, action))
+			continue
+		}
+
+		q, seen := quotes[r.Ticker]
+		if !seen {
+			var err error
+			q, err = b.provider.GetQuote(r.Ticker)
+			if err != nil {
+				log.Printf("track: quote %s: %v", r.Ticker, err)
+				q = nil
+			}
+			quotes[r.Ticker] = q
+		}
+		if q == nil {
+			sb.WriteString(i18n.T(b.lang, i18n.KeyQuoteUnavailable, r.Ticker))
+			continue
+		}
+
+		changePct := (q.Price - base) / base * 100
+		verdict := ""
+		switch r.Action {
+		case "BUY":
+			evaluated++
+			verdict = "❌"
+			if changePct > 0 {
+				hits++
+				verdict = "✅"
+			}
+		case "SELL":
+			evaluated++
+			verdict = "❌"
+			if changePct < 0 {
+				hits++
+				verdict = "✅"
+			}
+		}
+		sb.WriteString(i18n.T(b.lang, i18n.KeyTrackLine, r.Date, r.Ticker, action, base, q.Price, changePct, verdict))
+	}
+	if evaluated > 0 {
+		sb.WriteString(i18n.T(b.lang, i18n.KeyTrackSummary, hits, evaluated, float64(hits)/float64(evaluated)*100))
+	}
+	b.Send(sb.String())
 }
 
 // handleFundamentals shows raw fundamentals/financial-statement data
@@ -375,6 +498,51 @@ func (b *Bot) SendSignalAlert(sigs []signals.Signal) {
 	b.Send(sb.String())
 }
 
+// RunClosingSnapshot records the just-closed US session's OHLCV for every
+// watchlist ticker into daily_snapshots. Called by the scheduler at 05:30
+// CST — after the US close — so unlike the pre-open daily report this
+// captures genuine closing data. At that hour the US trading date is
+// Taiwan's "yesterday", which is why the snapshot is dated one day back.
+// It's a silent background job: results go to the DB and errors to the log,
+// not to Telegram.
+func (b *Bot) RunClosingSnapshot(ctx context.Context) {
+	tickers, err := b.db.GetWatchlist()
+	if err != nil {
+		log.Printf("closing snapshot: watchlist: %v", err)
+		return
+	}
+
+	date := time.Now().In(cst).AddDate(0, 0, -1).Format("2006-01-02")
+	for _, t := range tickers {
+		q, err := b.provider.GetQuote(t)
+		if err != nil {
+			log.Printf("closing snapshot: quote %s: %v", t, err)
+			continue
+		}
+		// On a US market holiday the cron still fires but providers return
+		// the previous session's quote; its timestamp is then a full day
+		// old, and saving it would file old data under the wrong date.
+		if time.Since(q.Timestamp) > 12*time.Hour {
+			log.Printf("closing snapshot: %s quote is stale (%s), skipping (US holiday?)", t, q.Timestamp.Format(time.RFC3339))
+			continue
+		}
+		snap := db.DailySnapshot{
+			Ticker:        t,
+			Date:          date,
+			Open:          q.Open,
+			Close:         q.Price,
+			High:          q.High,
+			Low:           q.Low,
+			Volume:        q.Volume,
+			ChangePercent: q.ChangePercent,
+		}
+		if err := b.db.SaveSnapshot(snap); err != nil {
+			log.Printf("closing snapshot: save %s: %v", t, err)
+		}
+	}
+	log.Printf("closing snapshot: done for %s (%d tickers)", date, len(tickers))
+}
+
 // RunDailyReport fetches data, detects signals, generates LLM recommendations,
 // and sends the daily report. Called by the scheduler.
 func (b *Bot) RunDailyReport(ctx context.Context) {
@@ -400,12 +568,7 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 			log.Printf("history %s: %v", t, err)
 			continue
 		}
-		if sig := b.detector.CheckRSI(t, closes); sig != nil {
-			allSignals = append(allSignals, *sig)
-		}
-		if sig := b.detector.CheckMACD(t, closes); sig != nil {
-			allSignals = append(allSignals, *sig)
-		}
+		allSignals = append(allSignals, b.checkStatefulSignals(t, closes)...)
 	}
 	if len(allSignals) > 0 {
 		b.SendSignalAlert(allSignals)
@@ -428,20 +591,47 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 		return
 	}
 
-	var sb strings.Builder
-	sb.WriteString(i18n.T(b.lang, i18n.KeyRecommendationsTitle))
-	for i, r := range recs {
-		fmt.Fprintf(&sb, "%d. *%s*\n%s\n\n", i+1, r.Ticker, r.Reason)
-	}
-	b.Send(sb.String())
+	b.sendAndSaveRecommendations(recs, watchlist, candidates)
+}
 
-	var dbRecs []db.Recommendation
-	for _, r := range recs {
-		dbRecs = append(dbRecs, db.Recommendation{Ticker: r.Ticker, Reason: r.Reason})
+// checkStatefulSignals runs the RSI/MACD checks that diff against the last
+// state persisted in signal_states: RSI only alerts when it newly enters an
+// extreme zone (no repeat alert while it stays there on consecutive days),
+// and MACD only alerts on an actual golden/death cross rather than every day
+// a trend holds. A failed state read falls back to "" — worst case one
+// duplicate alert, better than dropping the check entirely.
+func (b *Bot) checkStatefulSignals(ticker string, closes []float64) []signals.Signal {
+	var out []signals.Signal
+
+	prevRSI, err := b.db.GetSignalState(ticker, signals.FamilyRSI)
+	if err != nil {
+		log.Printf("signal state %s/%s: %v", ticker, signals.FamilyRSI, err)
 	}
-	if err := b.db.SaveRecommendations(todayDate(), dbRecs); err != nil {
-		log.Printf("save recommendations: %v", err)
+	sig, newRSI := b.detector.CheckRSIState(ticker, closes, prevRSI)
+	if sig != nil {
+		out = append(out, *sig)
 	}
+	if newRSI != prevRSI {
+		if err := b.db.SetSignalState(ticker, signals.FamilyRSI, newRSI); err != nil {
+			log.Printf("signal state %s/%s: %v", ticker, signals.FamilyRSI, err)
+		}
+	}
+
+	prevMACD, err := b.db.GetSignalState(ticker, signals.FamilyMACD)
+	if err != nil {
+		log.Printf("signal state %s/%s: %v", ticker, signals.FamilyMACD, err)
+	}
+	sig, newMACD := b.detector.CheckMACDCross(ticker, closes, prevMACD)
+	if sig != nil {
+		out = append(out, *sig)
+	}
+	if newMACD != prevMACD {
+		if err := b.db.SetSignalState(ticker, signals.FamilyMACD, newMACD); err != nil {
+			log.Printf("signal state %s/%s: %v", ticker, signals.FamilyMACD, err)
+		}
+	}
+
+	return out
 }
 
 // fetchStockData fetches quote+news for each ticker. Fundamentals are only

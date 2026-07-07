@@ -79,6 +79,9 @@ func main() {
 	sched.AddDailyReport(ctx, func(ctx context.Context) {
 		telegramBot.RunDailyReport(ctx)
 	})
+	sched.AddClosingSnapshot(ctx, func(ctx context.Context) {
+		telegramBot.RunClosingSnapshot(ctx)
+	})
 	sched.Start()
 	defer sched.Stop()
 
