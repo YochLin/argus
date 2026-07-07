@@ -208,3 +208,89 @@ func TestDetectorCheckMACD(t *testing.T) {
 		}
 	})
 }
+
+func TestDetectorCheckRSIState(t *testing.T) {
+	d := NewDetector(i18n.EN)
+
+	overbought := make([]float64, 15)
+	oversold := make([]float64, 15)
+	for i := range overbought {
+		overbought[i] = 100 + float64(i)
+		oversold[i] = 100 - float64(i)
+	}
+
+	t.Run("first entry into overbought signals", func(t *testing.T) {
+		sig, state := d.CheckRSIState("AAPL", overbought, "")
+		if sig == nil || sig.Type != "rsi_overbought" || state != StateOverbought {
+			t.Fatalf("CheckRSIState() = %v, %q; want rsi_overbought signal, state overbought", sig, state)
+		}
+	})
+
+	t.Run("staying overbought does not repeat the signal", func(t *testing.T) {
+		sig, state := d.CheckRSIState("AAPL", overbought, StateOverbought)
+		if sig != nil || state != StateOverbought {
+			t.Fatalf("CheckRSIState() = %v, %q; want nil signal, state unchanged", sig, state)
+		}
+	})
+
+	t.Run("flipping to oversold signals again", func(t *testing.T) {
+		sig, state := d.CheckRSIState("AAPL", oversold, StateOverbought)
+		if sig == nil || sig.Type != "rsi_oversold" || state != StateOversold {
+			t.Fatalf("CheckRSIState() = %v, %q; want rsi_oversold signal, state oversold", sig, state)
+		}
+	})
+
+	t.Run("returning to normal is silent but recorded", func(t *testing.T) {
+		closes := []float64{44, 45, 44, 46, 45}
+		sig, state := d.CheckRSIState("AAPL", closes, StateOverbought)
+		if sig != nil || state != StateNormal {
+			t.Fatalf("CheckRSIState() = %v, %q; want nil signal, state normal", sig, state)
+		}
+	})
+}
+
+func TestDetectorCheckMACDCross(t *testing.T) {
+	d := NewDetector(i18n.EN)
+
+	uptrend := make([]float64, 40)
+	downtrend := make([]float64, 40)
+	for i := range uptrend {
+		uptrend[i] = 100 + float64(i)
+		downtrend[i] = 200 - float64(i)
+	}
+
+	t.Run("first observation records baseline without signaling", func(t *testing.T) {
+		sig, state := d.CheckMACDCross("AAPL", uptrend, "")
+		if sig != nil || state != StateBullish {
+			t.Fatalf("CheckMACDCross() = %v, %q; want nil signal, state bullish", sig, state)
+		}
+	})
+
+	t.Run("holding trend does not repeat the signal", func(t *testing.T) {
+		sig, state := d.CheckMACDCross("AAPL", uptrend, StateBullish)
+		if sig != nil || state != StateBullish {
+			t.Fatalf("CheckMACDCross() = %v, %q; want nil signal, state unchanged", sig, state)
+		}
+	})
+
+	t.Run("bearish to bullish flip is a golden cross", func(t *testing.T) {
+		sig, state := d.CheckMACDCross("AAPL", uptrend, StateBearish)
+		if sig == nil || sig.Type != "macd_golden_cross" || state != StateBullish {
+			t.Fatalf("CheckMACDCross() = %v, %q; want macd_golden_cross, state bullish", sig, state)
+		}
+	})
+
+	t.Run("bullish to bearish flip is a death cross", func(t *testing.T) {
+		sig, state := d.CheckMACDCross("AAPL", downtrend, StateBullish)
+		if sig == nil || sig.Type != "macd_death_cross" || state != StateBearish {
+			t.Fatalf("CheckMACDCross() = %v, %q; want macd_death_cross, state bearish", sig, state)
+		}
+	})
+
+	t.Run("insufficient data keeps the previous state", func(t *testing.T) {
+		sig, state := d.CheckMACDCross("AAPL", []float64{1, 2, 3}, StateBullish)
+		if sig != nil || state != StateBullish {
+			t.Fatalf("CheckMACDCross() = %v, %q; want nil signal, state preserved", sig, state)
+		}
+	})
+}

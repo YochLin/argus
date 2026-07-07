@@ -60,6 +60,39 @@ func TestParseRecommendations(t *testing.T) {
 		}
 	})
 
+	t.Run("action line is parsed and normalized", func(t *testing.T) {
+		raw := "[TICKER: AAPL]\nAction: buy\nReason: strong earnings.\n[TICKER: MSFT]\nAction: HOLD\nReason: fairly valued.\n"
+		got := parseRecommendations(i18n.EN, raw)
+		want := []Recommendation{
+			{Ticker: "AAPL", Action: "BUY", Reason: "strong earnings."},
+			{Ticker: "MSFT", Action: "HOLD", Reason: "fairly valued."},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("parseRecommendations() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("chinese action marker", func(t *testing.T) {
+		raw := "[TICKER: AAPL]\n動作: SELL\n原因: 估值過高。\n"
+		got := parseRecommendations(i18n.ZH, raw)
+		want := []Recommendation{{Ticker: "AAPL", Action: "SELL", Reason: "估值過高。"}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("parseRecommendations() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("missing or invalid action leaves Action empty", func(t *testing.T) {
+		raw := "[TICKER: AAPL]\nReason: no action line.\n[TICKER: MSFT]\nAction: MAYBE\nReason: made-up action word.\n"
+		got := parseRecommendations(i18n.EN, raw)
+		want := []Recommendation{
+			{Ticker: "AAPL", Action: "", Reason: "no action line."},
+			{Ticker: "MSFT", Action: "", Reason: "made-up action word."},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("parseRecommendations() = %+v, want %+v", got, want)
+		}
+	})
+
 	t.Run("no ticker blocks yields no recommendations", func(t *testing.T) {
 		got := parseRecommendations(i18n.EN, "just some prose with no structure")
 		if len(got) != 0 {
