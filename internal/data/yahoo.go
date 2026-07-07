@@ -45,6 +45,7 @@ func (y *Yahoo) GetQuote(ticker string) (*Quote, error) {
 					RegularMarketPrice  float64 `json:"regularMarketPrice"`
 					ChartPreviousClose  float64 `json:"chartPreviousClose"`
 					RegularMarketVolume int64   `json:"regularMarketVolume"`
+					RegularMarketTime   int64   `json:"regularMarketTime"`
 				} `json:"meta"`
 				Indicators struct {
 					Quote []struct {
@@ -75,13 +76,21 @@ func (y *Yahoo) GetQuote(ticker string) (*Quote, error) {
 		changePercent = (meta.RegularMarketPrice - meta.ChartPreviousClose) / meta.ChartPreviousClose * 100
 	}
 
+	// Prefer the exchange's own quote time over time.Now() — consumers use
+	// it to tell a live quote from a stale one (e.g. the post-close snapshot
+	// job skipping US market holidays).
+	ts := time.Now()
+	if meta.RegularMarketTime > 0 {
+		ts = time.Unix(meta.RegularMarketTime, 0)
+	}
+
 	q := &Quote{
 		Ticker:        ticker,
 		Price:         meta.RegularMarketPrice,
 		PrevClose:     meta.ChartPreviousClose,
 		Volume:        meta.RegularMarketVolume,
 		ChangePercent: changePercent,
-		Timestamp:     time.Now(),
+		Timestamp:     ts,
 	}
 
 	if quotes := result.Chart.Result[0].Indicators.Quote; len(quotes) > 0 {
