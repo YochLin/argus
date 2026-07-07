@@ -13,6 +13,22 @@ type Signal struct {
 	Message string
 }
 
+// Signal-state vocabulary shared with the caller's persistence layer
+// (db.signal_states rows are keyed by ticker + family and hold one of the
+// state values). The stateful checks below take the previously persisted
+// state and return the new one, so this package stays free of any DB
+// dependency.
+const (
+	FamilyRSI  = "rsi"
+	FamilyMACD = "macd"
+
+	StateBullish    = "bullish"
+	StateBearish    = "bearish"
+	StateOverbought = "overbought"
+	StateOversold   = "oversold"
+	StateNormal     = "normal"
+)
+
 type Detector struct {
 	priceThresholdPct float64 // alert if abs(changePercent) >= this
 	volumeMultiplier  float64 // alert if volume >= avgVolume * this
@@ -81,6 +97,36 @@ func RSI(closes []float64, period int) float64 {
 	return 100 - (100 / (1 + rs))
 }
 
+// CheckRSIState is the deduplicated version of CheckRSI: it only returns a
+// signal when RSI newly enters overbought/oversold territory relative to
+// prevState (the state persisted after the previous check; "" reads as
+// normal). While RSI stays in the same zone on consecutive days, no repeat
+// signal fires. newState is what the caller should persist for next time.
+func (d *Detector) CheckRSIState(ticker string, closes []float64, prevState string) (sig *Signal, newState string) {
+	rsi := RSI(closes, 14)
+	newState = StateNormal
+	if rsi >= d.rsiOverbought {
+		newState = StateOverbought
+	} else if rsi <= d.rsiOversold {
+		newState = StateOversold
+	}
+	if newState == prevState || newState == StateNormal {
+		return nil, newState
+	}
+	if newState == StateOverbought {
+		return &Signal{
+			Ticker:  ticker,
+			Type:    "rsi_overbought",
+			Message: i18n.T(d.lang, i18n.KeyRSIOverbought, ticker, rsi),
+		}, newState
+	}
+	return &Signal{
+		Ticker:  ticker,
+		Type:    "rsi_oversold",
+		Message: i18n.T(d.lang, i18n.KeyRSIOversold, ticker, rsi),
+	}, newState
+}
+
 // CheckRSI returns a signal if RSI is overbought or oversold.
 func (d *Detector) CheckRSI(ticker string, closes []float64) *Signal {
 	rsi := RSI(closes, 14)
@@ -143,6 +189,56 @@ func emaSeries(values []float64, period int) []float64 {
 		series[i] = values[i]*k + series[i-1]*(1-k)
 	}
 	return series
+}
+
+// MACDTrend reduces the latest MACD reading to a trend state: StateBullish
+// when the MACD line is above its signal line, StateBearish when below, and
+// "" when there isn't enough history to compute MACD (or the two lines are
+// exactly equal).
+func MACDTrend(closes []float64) string {
+	macdLine, signalLine, histogram := MACD(closes)
+	if macdLine == 0 && signalLine == 0 && histogram == 0 {
+		return ""
+	}
+	if histogram > 0 {
+		return StateBullish
+	}
+	if histogram < 0 {
+		return StateBearish
+	}
+	return ""
+}
+
+// CheckMACDCross detects an actual golden/death cross by comparing today's
+// MACD trend against prevState (the trend persisted after the previous
+// check). Unlike CheckMACD — which reflects the standing trend and fires
+// every call while it holds — this only signals on the day the trend flips:
+// bearish→bullish is a golden cross, bullish→bearish a death cross. A first
+// observation (prevState == "") just establishes the baseline without
+// signaling, since no flip can be seen yet. newState is what the caller
+// should persist for next time; when there's no data it stays prevState so
+// a transient history outage doesn't erase the baseline.
+func (d *Detector) CheckMACDCross(ticker string, closes []float64, prevState string) (sig *Signal, newState string) {
+	trend := MACDTrend(closes)
+	if trend == "" {
+		return nil, prevState
+	}
+	if prevState == "" || trend == prevState {
+		return nil, trend
+	}
+	macdLine, signalLine, _ := MACD(closes)
+	if trend == StateBullish {
+		return &Signal{
+			Ticker:  ticker,
+			Type:    "macd_golden_cross",
+			Message: i18n.T(d.lang, i18n.KeyMACDGoldenCross, ticker, macdLine, signalLine),
+		}, trend
+	}
+	return &Signal{
+		Ticker:  ticker,
+		Type:    "macd_death_cross",
+		Message: i18n.T(d.lang, i18n.KeyMACDDeathCross, ticker, macdLine, signalLine),
+	}, trend
 }
 
 // CheckMACD returns a signal when the MACD line and its signal line disagree
