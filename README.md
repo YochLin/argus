@@ -30,10 +30,14 @@ Three things about today's implementation are conveniences, not commitments:
 ## What it does today
 
 - **Watchlist tracking** — add/remove tickers, check live quotes on demand
-- **Rule-based alerts** — price-move thresholds, RSI (overbought/oversold), and MACD (trend
-  momentum), checked daily against your watchlist
-- **LLM-powered analysis** — ask for an instant read on any ticker, or a daily set of 3–5
-  recommendations drawn from your watchlist plus the day's broad market movers
+- **Rule-based alerts** — price-move thresholds, RSI (overbought/oversold), and MACD golden/death
+  crosses, checked daily against your watchlist. Alerts are deduplicated: RSI only fires when it
+  newly enters an extreme zone, and MACD only on an actual cross, not every day a trend holds
+- **LLM-powered analysis** — ask for an instant read on any ticker, or daily recommendations with an
+  explicit BUY / SELL / HOLD call for every watchlist ticker plus picks from the day's broad market
+  movers
+- **Recommendation tracking** — `/track` reviews past recommendations against today's prices and
+  reports the hit rate, so recommendation quality is verifiable
 - **Bilingual (zh/en)** — every bot reply and LLM prompt is available in Traditional Chinese (default) or
   English, switched with one env var — see Getting Started
 - **Fundamentals** — P/E, margins, growth, and key 10-K/10-Q line items, when a Finnhub API key is
@@ -41,6 +45,8 @@ Three things about today's implementation are conveniences, not commitments:
 - **Free-form chat** — message the bot without a command and it remembers the conversation, separate
   from the one-shot analysis commands
 - **Daily report** — an automatic summary pushed every day before US market open (21:00 Taiwan time)
+- **Post-close snapshots** — after each US session closes (05:30 Taiwan time), the watchlist's OHLCV
+  is recorded to SQLite, building the price history behind `/track` and future analysis
 
 This is single-user by design: one Telegram chat ID, no accounts, no multi-tenant data model.
 
@@ -96,7 +102,8 @@ Talk to it in Telegram:
 | `/list` | Show your watchlist |
 | `/status [ticker]` | Live quote(s) — all watchlist tickers, or just one |
 | `/check <ticker>` | Instant LLM analysis of one ticker |
-| `/recommend` | LLM picks 3–5 tickers to look at today, from your watchlist + market movers |
+| `/recommend` | LLM gives a BUY/SELL/HOLD call on every watchlist ticker, plus buy ideas from market movers |
+| `/track [days]` | Review past recommendations vs. today's prices and the resulting hit rate (default 7 days) |
 | `/fundamentals <ticker>` | Raw valuation/profitability/financial-statement data (requires Finnhub key) |
 | `/dailyreport` | Manually trigger the daily report (normally runs automatically at 21:00 Taiwan time) |
 | `/reset` | Clear the chat mode's conversation memory |
