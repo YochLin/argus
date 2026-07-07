@@ -26,6 +26,7 @@ type StockData struct {
 
 type Recommendation struct {
 	Ticker string
+	Action string // BUY / SELL / HOLD ("" if the model omitted the action line)
 	Reason string
 }
 
@@ -163,8 +164,9 @@ func buildRecommendationPrompt(lang i18n.Lang, watchlist []StockData, candidates
 		}
 	}
 
-	marker := i18n.T(lang, i18n.KeyReasonMarker)
-	sb.WriteString(i18n.T(lang, i18n.KeyRecTaskBlock, marker, marker))
+	action := i18n.T(lang, i18n.KeyActionMarker)
+	reason := i18n.T(lang, i18n.KeyReasonMarker)
+	sb.WriteString(i18n.T(lang, i18n.KeyRecTaskBlock, action, reason, action, reason))
 	return sb.String()
 }
 
@@ -217,23 +219,31 @@ func buildCheckPrompt(lang i18n.Lang, s StockData) string {
 // slices. Expected format:
 //
 //	[TICKER: AAPL]
+//	<action marker> BUY|SELL|HOLD
 //	<reason marker>: ...
 //
-// The reason-line marker is language-dependent (i18n.KeyReasonMarker — "原因:"
-// for zh, "Reason:" for en) because buildRecommendationPrompt asks Claude to
-// use that same marker in its reply; the two must stay in lockstep, which is
-// why both read from the same i18n key instead of each hardcoding a prefix.
+// The action/reason line markers are language-dependent (i18n.KeyActionMarker
+// / KeyReasonMarker — "動作:"/"原因:" for zh, "Action:"/"Reason:" for en)
+// because buildRecommendationPrompt asks Claude to use those same markers in
+// its reply; they must stay in lockstep, which is why both sides read from
+// the same i18n keys instead of each hardcoding a prefix. A missing or
+// unrecognized action line leaves Action empty rather than dropping the
+// block, so replies from before the action format (or a model that ignores
+// it) still parse.
 func parseRecommendations(lang i18n.Lang, raw string) []Recommendation {
+	actionPrefix := i18n.T(lang, i18n.KeyActionMarker)
 	reasonPrefix := i18n.T(lang, i18n.KeyReasonMarker)
 	var recs []Recommendation
 	lines := strings.Split(raw, "\n")
 	var currentTicker string
+	var currentAction string
 	var reasonParts []string
 
 	flush := func() {
 		if currentTicker != "" {
 			recs = append(recs, Recommendation{
 				Ticker: currentTicker,
+				Action: currentAction,
 				Reason: strings.TrimSpace(strings.Join(reasonParts, " ")),
 			})
 		}
@@ -245,7 +255,12 @@ func parseRecommendations(lang i18n.Lang, raw string) []Recommendation {
 			flush()
 			ticker := strings.TrimSuffix(strings.TrimPrefix(line, "[TICKER:"), "]")
 			currentTicker = strings.TrimSpace(ticker)
+			currentAction = ""
 			reasonParts = nil
+			continue
+		}
+		if strings.HasPrefix(line, actionPrefix) {
+			currentAction = parseAction(strings.TrimPrefix(line, actionPrefix))
 			continue
 		}
 		if strings.HasPrefix(line, reasonPrefix) {
@@ -259,4 +274,19 @@ func parseRecommendations(lang i18n.Lang, raw string) []Recommendation {
 	}
 	flush()
 	return recs
+}
+
+// parseAction normalizes an action-line value to BUY/SELL/HOLD, returning ""
+// for anything else so downstream consumers (display, /track hit-rate) never
+// see a made-up action word.
+func parseAction(s string) string {
+	switch strings.ToUpper(strings.TrimSpace(s)) {
+	case "BUY":
+		return "BUY"
+	case "SELL":
+		return "SELL"
+	case "HOLD":
+		return "HOLD"
+	}
+	return ""
 }
