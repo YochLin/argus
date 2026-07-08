@@ -21,6 +21,21 @@ import (
 // something threaded through from a build flag.
 const Version = "0.1.0"
 
+const (
+	// rateLimiterCapacity is how many tool calls can burst through
+	// instantly (e.g. a model firing off get_quote for several watchlist
+	// tickers back to back) before throttling kicks in.
+	rateLimiterCapacity = 5
+	// rateLimiterRefillPerSecond throttles sustained tool-call cadence to
+	// this many calls/sec once the burst capacity is drained — well under
+	// Finnhub's free-tier 60 req/min ceiling (~1/sec) on purpose, to leave
+	// headroom for whatever the bot's own prefetch paths (RunDailyReport,
+	// /recommend, RunUniverseScan) are doing against the same Finnhub API
+	// key concurrently, since this MCP subprocess has no visibility into
+	// that usage. See PLAN.md's Phase 3.5 "API 防護" item.
+	rateLimiterRefillPerSecond = 0.5 // 30 req/min sustained
+)
+
 // NewServer builds the argus MCP server and registers every read-only data
 // tool this build has a provider for. Kept separate from Run so tests can
 // connect over an in-memory transport (mcp.NewInMemoryTransports) without
@@ -32,6 +47,13 @@ const Version = "0.1.0"
 // 階段就不註冊" decision. provider and history are never nil in practice
 // (Multi always wraps at least Yahoo, and history is Yahoo-only but always
 // constructed — see cmd/bot/main.go), so their tools are unconditional.
+//
+// Every tool handler is routed through a shared per-process TTL cache and
+// token-bucket rate limiter (tools.go's withCache) — once this server is
+// wired into a live chat session (a later Phase 3.5 checklist item), tool
+// call cadence is driven by the model, not bot-side prefetch logic, so this
+// process has to protect Finnhub's rate limit itself instead of relying on
+// callers to behave.
 func NewServer(lang i18n.Lang, provider data.Provider, history data.HistoryProvider, fundamentals data.FundamentalsProvider, earnings data.EarningsProvider) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "argus",
@@ -43,6 +65,8 @@ func NewServer(lang i18n.Lang, provider data.Provider, history data.HistoryProvi
 		history:      history,
 		fundamentals: fundamentals,
 		earnings:     earnings,
+		cache:        newTTLCache(),
+		limiter:      newTokenBucket(rateLimiterCapacity, rateLimiterRefillPerSecond),
 	})
 	return server
 }
