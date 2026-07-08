@@ -354,7 +354,17 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   like `"yahoo: no data for %s"` straight to the chat model regardless of `BOT_LANGUAGE`. An empty-but-
   no-error result (e.g. `get_news` finding zero headlines) is treated as an `IsError` result too, via the
   same helper — a chat model needs to be able to tell "no news" from "the tool call actually failed"
-  instead of silently getting an empty string either way.
+  instead of silently getting an empty string either way. Every provider-hitting handler routes through
+  `tools.go`'s `withCache(ctx, key, ttl, build)` — a cache hit returns immediately (no rate-limiter token
+  consumed, no provider call); a miss waits on `ratelimit.go`'s hand-rolled `tokenBucket` (capacity 5,
+  refill 0.5/sec — deliberately half of Finnhub's 60 req/min ceiling, since this subprocess can't see
+  what the bot's own prefetch paths are doing against the same API key concurrently) before calling
+  `build`, and only caches a successful result so a failed call stays retryable. TTL is tiered by how
+  often the underlying data actually changes (`quoteCacheTTL` 30s, `shortCacheTTL` 5min for
+  news/movers, `longCacheTTL` 1h for history/fundamentals/statements/earnings) — a new tool that hits a
+  provider should go through this same helper rather than calling the provider directly, or it bypasses
+  both the cache and the Finnhub rate-limit protection. See
+  [docs/phase-3.5-mcp-rate-limit.md](docs/phase-3.5-mcp-rate-limit.md) for the full rationale.
 
 ## Key behaviors to preserve
 

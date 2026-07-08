@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,18 +15,25 @@ import (
 )
 
 // fakeProvider is a minimal data.Provider double, mirroring
-// internal/data/provider_test.go's fakeProvider.
+// internal/data/provider_test.go's fakeProvider. quoteCalls counts
+// GetQuote invocations (atomically, since MCP call handling isn't
+// guaranteed single-goroutine) so cache-hit tests can assert the provider
+// was skipped rather than just that the result matched.
 type fakeProvider struct {
-	quote     *data.Quote
-	quoteErr  error
-	news      []data.NewsItem
-	newsErr   error
-	movers    []string
-	moversErr error
+	quote      *data.Quote
+	quoteErr   error
+	quoteCalls int32
+	news       []data.NewsItem
+	newsErr    error
+	movers     []string
+	moversErr  error
 }
 
-func (f *fakeProvider) Name() string                                 { return "fake" }
-func (f *fakeProvider) GetQuote(string) (*data.Quote, error)         { return f.quote, f.quoteErr }
+func (f *fakeProvider) Name() string { return "fake" }
+func (f *fakeProvider) GetQuote(string) (*data.Quote, error) {
+	atomic.AddInt32(&f.quoteCalls, 1)
+	return f.quote, f.quoteErr
+}
 func (f *fakeProvider) GetNews(string, int) ([]data.NewsItem, error) { return f.news, f.newsErr }
 func (f *fakeProvider) GetMarketMovers() ([]string, error)           { return f.movers, f.moversErr }
 
@@ -271,6 +279,93 @@ func TestGetUpcomingEarnings(t *testing.T) {
 	}
 	if strings.Contains(text, "MSFT") {
 		t.Errorf("get_upcoming_earnings should omit tickers with no scheduled earnings, got:\n%s", text)
+	}
+}
+
+func TestGetQuoteCacheHitSkipsProvider(t *testing.T) {
+	fp := &fakeProvider{quote: &data.Quote{
+		Ticker: "AAPL", Price: 200, ChangePercent: 1.5,
+		Timestamp: time.Date(2026, 1, 2, 21, 0, 0, 0, time.UTC),
+	}}
+	ts := &toolset{
+		lang:     i18n.EN,
+		provider: fp,
+		history:  &fakeHistory{},
+		cache:    newTTLCache(),
+		limiter:  newTokenBucket(10, 10),
+	}
+	session := connectTool(t, ts)
+
+	for i := 0; i < 3; i++ {
+		text, isError := callText(t, session, "get_quote", map[string]any{"ticker": "AAPL"})
+		if isError {
+			t.Fatalf("get_quote call #%d returned an error result: %s", i+1, text)
+		}
+	}
+
+	if calls := atomic.LoadInt32(&fp.quoteCalls); calls != 1 {
+		t.Errorf("expected the provider to be hit once and the rest served from cache, got %d calls", calls)
+	}
+}
+
+func TestGetQuoteDistinctTickersBothHitProvider(t *testing.T) {
+	fp := &fakeProvider{quote: &data.Quote{Ticker: "AAPL", Price: 200}}
+	ts := &toolset{
+		lang:     i18n.EN,
+		provider: fp,
+		history:  &fakeHistory{},
+		cache:    newTTLCache(),
+		limiter:  newTokenBucket(10, 10),
+	}
+	session := connectTool(t, ts)
+
+	callText(t, session, "get_quote", map[string]any{"ticker": "AAPL"})
+	callText(t, session, "get_quote", map[string]any{"ticker": "MSFT"})
+
+	if calls := atomic.LoadInt32(&fp.quoteCalls); calls != 2 {
+		t.Errorf("distinct tickers should each be a separate cache key and both hit the provider, got %d calls", calls)
+	}
+}
+
+func TestGetQuoteFailedCallIsNotCached(t *testing.T) {
+	fp := &fakeProvider{quoteErr: errors.New("yahoo: no data for AAPL")}
+	ts := &toolset{
+		lang:     i18n.EN,
+		provider: fp,
+		history:  &fakeHistory{},
+		cache:    newTTLCache(),
+		limiter:  newTokenBucket(10, 10),
+	}
+	session := connectTool(t, ts)
+
+	callText(t, session, "get_quote", map[string]any{"ticker": "AAPL"})
+	callText(t, session, "get_quote", map[string]any{"ticker": "AAPL"})
+
+	if calls := atomic.LoadInt32(&fp.quoteCalls); calls != 2 {
+		t.Errorf("a failed call should not be cached, so a retry should hit the provider again, got %d calls", calls)
+	}
+}
+
+func TestGetQuoteRateLimiterThrottlesCacheMisses(t *testing.T) {
+	fp := &fakeProvider{quote: &data.Quote{Ticker: "AAPL", Price: 200}}
+	ts := &toolset{
+		lang:     i18n.EN,
+		provider: fp,
+		history:  &fakeHistory{},
+		cache:    newTTLCache(),
+		limiter:  newTokenBucket(1, 50), // 1 burst, refills every 20ms
+	}
+	session := connectTool(t, ts)
+
+	start := time.Now()
+	// Two distinct tickers, both cache misses, so the second must wait on
+	// the rate limiter rather than hit the provider immediately.
+	callText(t, session, "get_quote", map[string]any{"ticker": "AAPL"})
+	callText(t, session, "get_quote", map[string]any{"ticker": "MSFT"})
+	elapsed := time.Since(start)
+
+	if elapsed < 10*time.Millisecond {
+		t.Errorf("second cache-miss call should have been throttled by the rate limiter, took only %v", elapsed)
 	}
 }
 
