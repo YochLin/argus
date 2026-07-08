@@ -90,6 +90,19 @@ const (
 	KeyTrackLineNoPrice      Key = "track_line_no_price"
 	KeyTrackSummary          Key = "track_summary"
 
+	KeyBuyUsage                Key = "buy_usage"
+	KeyBuyFailed               Key = "buy_failed"
+	KeyBuySuccess              Key = "buy_success"
+	KeySellUsage               Key = "sell_usage"
+	KeySellFailed              Key = "sell_failed"
+	KeySellSuccess             Key = "sell_success"
+	KeySellNoPosition          Key = "sell_no_position"
+	KeySellInsufficientShares  Key = "sell_insufficient_shares"
+	KeyPortfolioTitle          Key = "portfolio_title"
+	KeyPortfolioEmpty          Key = "portfolio_empty"
+	KeyPortfolioLine           Key = "portfolio_line"
+	KeyPortfolioSummary        Key = "portfolio_summary"
+
 	KeyQuoteLine Key = "quote_line"
 
 	KeyValuationHeader     Key = "valuation_header"
@@ -174,4 +187,5 @@ const (
 	KeyNewsItem                 Key = "news_item"
 	KeyFundamentalsSummaryLine  Key = "fundamentals_summary_line"
 	KeyStatementSummaryLine     Key = "statement_summary_line"
+	KeyPositionLine             Key = "position_line"
 )

@@ -115,6 +115,45 @@ func TestFormatFundamentals(t *testing.T) {
 	}
 }
 
+func TestParseTradeArgs(t *testing.T) {
+	t.Run("ticker shares price", func(t *testing.T) {
+		ticker, shares, price, fee, err := parseTradeArgs("aapl 10 205.5")
+		if err != nil {
+			t.Fatalf("parseTradeArgs() error = %v", err)
+		}
+		if ticker != "AAPL" || shares != 10 || price != 205.5 || fee != 0 {
+			t.Errorf("parseTradeArgs() = %q, %v, %v, %v; want AAPL, 10, 205.5, 0", ticker, shares, price, fee)
+		}
+	})
+
+	t.Run("with fee", func(t *testing.T) {
+		ticker, shares, price, fee, err := parseTradeArgs("MSFT 5 400 1.5")
+		if err != nil {
+			t.Fatalf("parseTradeArgs() error = %v", err)
+		}
+		if ticker != "MSFT" || shares != 5 || price != 400 || fee != 1.5 {
+			t.Errorf("parseTradeArgs() = %q, %v, %v, %v; want MSFT, 5, 400, 1.5", ticker, shares, price, fee)
+		}
+	})
+
+	for _, args := range []string{
+		"",
+		"AAPL",
+		"AAPL 10",
+		"AAPL 10 200 1 2",
+		"AAPL 0 200",
+		"AAPL -1 200",
+		"AAPL 10 0",
+		"AAPL 10 -5",
+		"AAPL 10 200 -1",
+		"AAPL abc 200",
+	} {
+		if _, _, _, _, err := parseTradeArgs(args); err == nil {
+			t.Errorf("parseTradeArgs(%q) error = nil, want error", args)
+		}
+	}
+}
+
 func TestFormatFinancialStatement(t *testing.T) {
 	st := &data.FinancialStatement{
 		Form:       "10-K",

@@ -78,14 +78,23 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   the mirror image of `FundamentalsProvider`: Yahoo-only, no `Multi` wrapper, because Finnhub's free tier
   blocks `/stock/candle` entirely — same constraint as the `Quote.Volume` gap above, just hitting a
   different feature this time.
-- `internal/db` — thin wrapper around `database/sql` + `modernc.org/sqlite` (pure-Go, no cgo). Owns four
+- `internal/db` — thin wrapper around `database/sql` + `modernc.org/sqlite` (pure-Go, no cgo). Owns seven
   tables: `watchlist`, `daily_snapshots`, `recommendations` (with `action` BUY/SELL/HOLD and `price` at
-  recommendation time, both read back by `/track`), and `signal_states` (last-notified state per
-  ticker+signal family, backing MACD cross detection and RSI dedup). Migrations are versioned via
+  recommendation time, both read back by `/track`), `signal_states` (last-notified state per
+  ticker+signal family, backing MACD cross detection and RSI dedup), `positions` (one row per ticker,
+  shares + weighted-average cost), `transactions` (the full buy/sell log, `realized_pnl` populated only
+  for SELL rows), and `net_worth_snapshots` (total position value by date). Migrations are versioned via
   `PRAGMA user_version`: `migrate()` applies each entry of the ordered `migrations` slice past the
   recorded version — append new steps at the end, never edit or reorder shipped ones (deployed DBs have
   already recorded them as applied). Step 1 (the base tables) stays `IF NOT EXISTS`-idempotent because
   databases created before versioning existed sit at user_version 0 with those tables already present.
+  `RecordBuy`/`RecordSell` are the only writers of `positions`/`transactions` and both wrap their
+  read-modify-write in a transaction: `RecordBuy` recomputes the weighted-average cost
+  (`(existingShares*existingCost + shares*price + fee) / totalShares`, so fees are folded into cost
+  basis), `RecordSell` computes `realizedPnL = (price-avgCost)*shares - fee` and deletes the `positions`
+  row outright once shares hits ~0 rather than leaving a zero-share row — it returns `ErrNoPosition` /
+  `ErrInsufficientShares` (sentinel errors, checked with `errors.Is` in `bot.handleSell`) rather than
+  ever going negative, since this project only tracks long positions.
 - `internal/i18n` — every user/LLM-facing string in the project, split into exactly two files by design:
   `zh.go` (Traditional Chinese, the original default) and `en.go` (English), both keyed by the `Key`
   constants declared in `i18n.go`. `T(lang, key, args...)` does the lookup + `fmt.Sprintf`. This covers two
@@ -123,6 +132,11 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   through `i18n.KeyReasonMarker` rather than a hardcoded literal). `Chat` has no such format to parse; its
   reply is sent to the user verbatim. All LLM-facing prompts and bot-facing copy go through
   `internal/i18n` now — don't add a new hardcoded zh or en string in this package, add a `Key` instead.
+  `StockData.Position` (a minimal `{Shares, AvgCost}` struct, deliberately not `db.Position` so this
+  package doesn't import `internal/db`) is optional and set by `internal/bot`'s `fetchStockData` for any
+  ticker the user holds — `writeStockSection` renders it as an unrealized-P&L line computed against the
+  quote already in the same section, so cost basis is available for both `/recommend` and daily-report
+  prompts wherever a position exists.
 - `internal/signals` — pure functions/struct for rule-based technical signals (price % threshold, RSI,
   MACD) independent of Telegram/LLM/DB. That purity is preserved for the stateful checks too:
   `CheckRSIState` and `CheckMACDCross` take the previously persisted state as a parameter and return the
@@ -145,14 +159,26 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   session and are excluded at the cron level, while US holidays are handled by the job itself skipping
   stale quotes).
 - `internal/bot` — Telegram command dispatch (`/add`, `/remove`, `/list`, `/status`, `/recommend`,
-  `/check`, `/track`, `/dailyreport`, `/fundamentals`, `/reset`) plus two scheduler-invoked jobs:
-  `RunDailyReport` (21:00 CST, pre-open) and `RunClosingSnapshot` (05:30 CST Tue–Sat, post-close), the
-  latter writing each watchlist ticker's completed-session OHLCV to `daily_snapshots` dated one day back
-  in Taiwan terms (that's the US trading date at that hour) and skipping quotes whose timestamp is >12h
-  old (US market holiday — the providers return the prior session, which would otherwise be filed under
-  the wrong date). `/track [days]` reads `recommendations` back (the only reader) and scores each
-  BUY/SELL against today's price for a hit rate; it prefers the `price` stored at recommendation time
-  and falls back to the `daily_snapshots` close for older rows. `Run`'s `dispatch` splits incoming messages two ways: commands each get their own goroutine
+  `/check`, `/track`, `/buy`, `/sell`, `/portfolio`, `/dailyreport`, `/fundamentals`, `/reset`) plus two
+  scheduler-invoked jobs: `RunDailyReport` (21:00 CST, pre-open) and `RunClosingSnapshot` (05:30 CST
+  Tue–Sat, post-close), the latter writing each watchlist ticker's completed-session OHLCV to
+  `daily_snapshots` dated one day back in Taiwan terms (that's the US trading date at that hour) and
+  skipping quotes whose timestamp is >12h old (US market holiday — the providers return the prior
+  session, which would otherwise be filed under the wrong date). `/track [days]` reads `recommendations`
+  back (the only reader) and scores each BUY/SELL against today's price for a hit rate; it prefers the
+  `price` stored at recommendation time and falls back to the `daily_snapshots` close for older rows.
+  `/buy`/`/sell` (`handleBuy`/`handleSell`, parsed by the shared `parseTradeArgs`) wrap
+  `db.RecordBuy`/`RecordSell`; `/buy` also calls `db.AddTicker` so a bought position is always on the
+  watchlist (positions are never auto-removed from it on a full sell — the user may still want to watch
+  it). `/portfolio` (`handlePortfolio`) lists every `db.GetPositions()` row against a live quote for
+  market value and unrealized P&L, plus `db.GetRealizedPnL()`'s all-time SELL total.
+  `RunClosingSnapshot` calls `recordNetWorthSnapshot` after its per-ticker loop, reusing the quotes it
+  already fetched for watchlist tickers (falling back to a direct quote fetch for any position ticker
+  that isn't on the watchlist) to total position value into `net_worth_snapshots`.
+  `loadPositions` (called once per `/recommend`/`RunDailyReport` run) builds a `ticker -> db.Position`
+  map that `fetchStockData` attaches to `llm.StockData.Position` — this is how a held ticker's cost
+  basis and unrealized P&L% reach the recommendation prompt (see `internal/llm`'s `KeyPositionLine`) so
+  a SELL/HOLD call has an actual P&L to reason against, not just price action. `Run`'s `dispatch` splits incoming messages two ways: commands each get their own goroutine
   (`go b.handleMessage(...)`) so a slow one like `/recommend` can't block a quick one like `/status` sent
   right after — but plain-text chat messages go on `chatQueue` instead, drained one at a time by the single
   `chatWorker` goroutine, so replies come back in the order the user actually sent them. That ordering

@@ -3,7 +3,7 @@ package i18n
 // enMessages is the English message table. Every format verb here must
 // appear in the same order as its zh.go counterpart — see the note there.
 var enMessages = map[Key]string{
-	KeyUnknownCommand:        "Unknown command. Available commands:\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [days]\n/dailyreport\n/fundamentals <ticker>\n/reset\n\nSend a plain message (no leading /) to chat freely.",
+	KeyUnknownCommand:        "Unknown command. Available commands:\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [days]\n/buy <ticker> <shares> <price> [fee]\n/sell <ticker> <shares> <price> [fee]\n/portfolio\n/dailyreport\n/fundamentals <ticker>\n/reset\n\nSend a plain message (no leading /) to chat freely.",
 	KeyAddUsage:              "Usage: /add <ticker>, e.g. /add AAPL",
 	KeyAddFailed:             "Failed to add: %v",
 	KeyAddSuccess:            "Added *%s* to your watchlist.",
@@ -41,6 +41,19 @@ var enMessages = map[Key]string{
 	KeyTrackLine:             "• %s *%s* %s  $%.2f → $%.2f (%+.2f%%) %s\n",
 	KeyTrackLineNoPrice:      "• %s *%s* %s — no price recorded to compare against\n",
 	KeyTrackSummary:          "\nHit rate: %d/%d (%.0f%%)\n(BUY counts as a hit if the price rose, SELL if it fell; HOLD and rows without price data are excluded)",
+
+	KeyBuyUsage:               "Usage: /buy <ticker> <shares> <price> [fee], e.g. /buy AAPL 10 205.5",
+	KeyBuyFailed:              "Failed to record buy: %v",
+	KeyBuySuccess:             "✅ Recorded BUY of *%s* %g shares @ $%.2f (fee $%.2f)\nPosition now: %g shares, avg cost $%.2f",
+	KeySellUsage:              "Usage: /sell <ticker> <shares> <price> [fee], e.g. /sell AAPL 5 210",
+	KeySellFailed:             "Failed to record sell: %v",
+	KeySellSuccess:            "✅ Recorded SELL of *%s* %g shares @ $%.2f (fee $%.2f)\nRealized P&L: %+.2f\nRemaining position: %g shares",
+	KeySellNoPosition:         "No position in *%s* to sell.",
+	KeySellInsufficientShares: "Not enough shares of *%s* to sell that many.",
+	KeyPortfolioTitle:         "💼 *Portfolio Overview*\n\n",
+	KeyPortfolioEmpty:         "No positions yet. Use /buy <ticker> <shares> <price> to record a purchase.",
+	KeyPortfolioLine:          "*%s*  %g shares @ avg $%.2f\nPrice $%.2f  Value $%.2f  Unrealized %+.2f (%+.2f%%)\n\n",
+	KeyPortfolioSummary:       "—\nTotal market value: $%.2f\nCumulative realized P&L: %+.2f",
 
 	KeyQuoteLine: "*%s*  $%.2f  %s%.2f%%\nOpen: $%.2f  High: $%.2f  Low: $%.2f",
 
@@ -143,4 +156,5 @@ Keep the reply concise — under 400 words total.
 	KeyNewsItem:                "  %d. [%s] %s\n",
 	KeyFundamentalsSummaryLine: "- Fundamentals: P/E %.1f | P/B %.1f | ROE %.1f%% | Gross Margin %.1f%% | Operating Margin %.1f%% | Net Margin %.1f%% | Debt/Equity %.2f | Revenue YoY %.1f%% | EPS YoY %.1f%% | Dividend Yield %.2f%% | Beta %.2f\n",
 	KeyStatementSummaryLine:    "- Latest Filing (%s, FY%d, as of %s): Revenue $%.0fM | Gross Profit $%.0fM | Operating Income $%.0fM | Net Income $%.0fM | Total Assets $%.0fM | Total Liabilities $%.0fM | Total Equity $%.0fM | Operating Cash Flow $%.0fM | Free Cash Flow $%.0fM\n",
+	KeyPositionLine:            "- Position: %g shares, avg cost $%.2f (unrealized %+.2f%%)\n",
 }

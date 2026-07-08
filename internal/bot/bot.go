@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -142,6 +143,12 @@ func (b *Bot) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 		b.handleCheck(ctx, args)
 	case "track":
 		b.handleTrack(args)
+	case "buy":
+		b.handleBuy(args)
+	case "sell":
+		b.handleSell(args)
+	case "portfolio":
+		b.handlePortfolio()
 	case "dailyreport":
 		b.RunDailyReport(ctx)
 	case "fundamentals":
@@ -236,13 +243,14 @@ func (b *Bot) handleRecommend(ctx context.Context) {
 		return
 	}
 
-	watchlist := b.fetchStockData(tickers, true)
+	positions := b.loadPositions()
+	watchlist := b.fetchStockData(tickers, true, positions)
 
 	candidateTickers, err := b.provider.GetMarketMovers()
 	if err != nil {
 		log.Printf("market movers: %v", err)
 	}
-	candidates := b.fetchStockData(dedup(candidateTickers, tickers), false)
+	candidates := b.fetchStockData(dedup(candidateTickers, tickers), false, positions)
 
 	recs, err := b.llm.GenerateRecommendations(ctx, watchlist, candidates)
 	if err != nil {
@@ -431,6 +439,113 @@ func (b *Bot) handleTrack(daysArg string) {
 	b.Send(sb.String())
 }
 
+// parseTradeArgs parses the "<ticker> <shares> <price> [fee]" arguments
+// shared by /buy and /sell. fee defaults to 0 when omitted.
+func parseTradeArgs(args string) (ticker string, shares, price, fee float64, err error) {
+	fields := strings.Fields(args)
+	if len(fields) < 3 || len(fields) > 4 {
+		return "", 0, 0, 0, fmt.Errorf("expected <ticker> <shares> <price> [fee]")
+	}
+	ticker = strings.ToUpper(fields[0])
+	if shares, err = strconv.ParseFloat(fields[1], 64); err != nil || shares <= 0 {
+		return "", 0, 0, 0, fmt.Errorf("invalid shares %q", fields[1])
+	}
+	if price, err = strconv.ParseFloat(fields[2], 64); err != nil || price <= 0 {
+		return "", 0, 0, 0, fmt.Errorf("invalid price %q", fields[2])
+	}
+	if len(fields) == 4 {
+		if fee, err = strconv.ParseFloat(fields[3], 64); err != nil || fee < 0 {
+			return "", 0, 0, 0, fmt.Errorf("invalid fee %q", fields[3])
+		}
+	}
+	return ticker, shares, price, fee, nil
+}
+
+// handleBuy records a purchase and folds it into the ticker's position
+// (weighted-average cost). The ticker is also added to the watchlist —
+// see the "持倉自動納入 watchlist" PLAN.md item — so a bought position is
+// never silently unmonitored.
+func (b *Bot) handleBuy(args string) {
+	ticker, shares, price, fee, err := parseTradeArgs(args)
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyBuyUsage))
+		return
+	}
+
+	pos, err := b.db.RecordBuy(ticker, shares, price, fee, todayDate())
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyBuyFailed, err))
+		return
+	}
+	if err := b.db.AddTicker(ticker); err != nil {
+		log.Printf("buy: add %s to watchlist: %v", ticker, err)
+	}
+	b.Send(i18n.T(b.lang, i18n.KeyBuySuccess, ticker, shares, price, fee, pos.Shares, pos.AvgCost))
+}
+
+// handleSell records a sale against an existing position and reports the
+// realized P&L. It does not remove the ticker from the watchlist even when
+// the position is fully closed out — the user may still want to watch it.
+func (b *Bot) handleSell(args string) {
+	ticker, shares, price, fee, err := parseTradeArgs(args)
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeySellUsage))
+		return
+	}
+
+	pos, realizedPnL, err := b.db.RecordSell(ticker, shares, price, fee, todayDate())
+	if err != nil {
+		switch {
+		case errors.Is(err, db.ErrNoPosition):
+			b.Send(i18n.T(b.lang, i18n.KeySellNoPosition, ticker))
+		case errors.Is(err, db.ErrInsufficientShares):
+			b.Send(i18n.T(b.lang, i18n.KeySellInsufficientShares, ticker))
+		default:
+			b.Send(i18n.T(b.lang, i18n.KeySellFailed, err))
+		}
+		return
+	}
+	b.Send(i18n.T(b.lang, i18n.KeySellSuccess, ticker, shares, price, fee, realizedPnL, pos.Shares))
+}
+
+// handlePortfolio shows every open position's current market value and
+// unrealized P&L against a live quote, plus cumulative realized P&L across
+// all past sells.
+func (b *Bot) handlePortfolio() {
+	positions, err := b.db.GetPositions()
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
+		return
+	}
+	if len(positions) == 0 {
+		b.Send(i18n.T(b.lang, i18n.KeyPortfolioEmpty))
+		return
+	}
+
+	realizedTotal, err := b.db.GetRealizedPnL()
+	if err != nil {
+		log.Printf("portfolio: realized pnl: %v", err)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(i18n.T(b.lang, i18n.KeyPortfolioTitle))
+	var totalValue float64
+	for _, p := range positions {
+		q, err := b.provider.GetQuote(p.Ticker)
+		if err != nil {
+			sb.WriteString(i18n.T(b.lang, i18n.KeyQuoteUnavailable, p.Ticker))
+			continue
+		}
+		marketValue := p.Shares * q.Price
+		unrealized := (q.Price - p.AvgCost) * p.Shares
+		unrealizedPct := (q.Price - p.AvgCost) / p.AvgCost * 100
+		totalValue += marketValue
+		sb.WriteString(i18n.T(b.lang, i18n.KeyPortfolioLine, p.Ticker, p.Shares, p.AvgCost, q.Price, marketValue, unrealized, unrealizedPct))
+	}
+	sb.WriteString(i18n.T(b.lang, i18n.KeyPortfolioSummary, totalValue, realizedTotal))
+	b.Send(sb.String())
+}
+
 // handleFundamentals shows raw fundamentals/financial-statement data
 // directly, without going through the LLM.
 func (b *Bot) handleFundamentals(ticker string) {
@@ -513,6 +628,7 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context) {
 	}
 
 	date := time.Now().In(cst).AddDate(0, 0, -1).Format("2006-01-02")
+	prices := make(map[string]float64, len(tickers))
 	for _, t := range tickers {
 		q, err := b.provider.GetQuote(t)
 		if err != nil {
@@ -526,6 +642,7 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context) {
 			log.Printf("closing snapshot: %s quote is stale (%s), skipping (US holiday?)", t, q.Timestamp.Format(time.RFC3339))
 			continue
 		}
+		prices[t] = q.Price
 		snap := db.DailySnapshot{
 			Ticker:        t,
 			Date:          date,
@@ -541,6 +658,42 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context) {
 		}
 	}
 	log.Printf("closing snapshot: done for %s (%d tickers)", date, len(tickers))
+
+	b.recordNetWorthSnapshot(date, prices)
+}
+
+// recordNetWorthSnapshot totals every open position's value as of the
+// closing snapshot and stores it dated the same day, so a net worth curve
+// can be drawn later. prices reuses the quotes RunClosingSnapshot already
+// fetched for watchlist tickers (positions are auto-added to the watchlist
+// on /buy, so this covers the common case); any position ticker missing
+// from it gets a direct quote fetch as a fallback.
+func (b *Bot) recordNetWorthSnapshot(date string, prices map[string]float64) {
+	positions, err := b.db.GetPositions()
+	if err != nil {
+		log.Printf("net worth snapshot: positions: %v", err)
+		return
+	}
+	if len(positions) == 0 {
+		return
+	}
+
+	var total float64
+	for _, p := range positions {
+		price, ok := prices[p.Ticker]
+		if !ok {
+			q, err := b.provider.GetQuote(p.Ticker)
+			if err != nil {
+				log.Printf("net worth snapshot: quote %s: %v", p.Ticker, err)
+				continue
+			}
+			price = q.Price
+		}
+		total += p.Shares * price
+	}
+	if err := b.db.SaveNetWorthSnapshot(date, total); err != nil {
+		log.Printf("net worth snapshot: save: %v", err)
+	}
 }
 
 // RunDailyReport fetches data, detects signals, generates LLM recommendations,
@@ -554,9 +707,11 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 		return
 	}
 
+	positions := b.loadPositions()
+
 	// Detect signals on watchlist
 	var allSignals []signals.Signal
-	watchlist := b.fetchStockData(tickers, true)
+	watchlist := b.fetchStockData(tickers, true, positions)
 	for _, s := range watchlist {
 		if s.Quote != nil {
 			allSignals = append(allSignals, b.detector.CheckQuote(s.Quote)...)
@@ -578,7 +733,7 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 	if err != nil {
 		log.Printf("market movers: %v", err)
 	}
-	candidates := b.fetchStockData(dedup(candidateTickers, tickers), false)
+	candidates := b.fetchStockData(dedup(candidateTickers, tickers), false, positions)
 
 	recs, err := b.llm.GenerateRecommendations(ctx, watchlist, candidates)
 	if err != nil {
@@ -638,7 +793,10 @@ func (b *Bot) checkStatefulSignals(ticker string, closes []float64) []signals.Si
 // attached when includeFundamentals is set (watchlist tickers, not the
 // broad market-mover candidate list) to stay well under Finnhub's free-tier
 // 60-requests/minute limit when a candidate list has a dozen-plus tickers.
-func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool) []llm.StockData {
+// positions (ticker -> open position) is looked up via loadPositions and
+// attaches cost-basis context for any ticker the user actually holds; pass
+// nil if there's nothing to attach.
+func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positions map[string]db.Position) []llm.StockData {
 	var result []llm.StockData
 	for _, t := range tickers {
 		q, err := b.provider.GetQuote(t)
@@ -655,9 +813,29 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool) []llm.S
 				stock.Fundamentals = fd
 			}
 		}
+		if p, ok := positions[t]; ok {
+			stock.Position = &llm.Position{Shares: p.Shares, AvgCost: p.AvgCost}
+		}
 		result = append(result, stock)
 	}
 	return result
+}
+
+// loadPositions returns every open position keyed by ticker, for attaching
+// cost-basis context to LLM prompts. A query failure logs and degrades to an
+// empty map rather than failing the caller — recommendations without cost
+// basis are still useful.
+func (b *Bot) loadPositions() map[string]db.Position {
+	positions, err := b.db.GetPositions()
+	if err != nil {
+		log.Printf("load positions: %v", err)
+		return nil
+	}
+	out := make(map[string]db.Position, len(positions))
+	for _, p := range positions {
+		out[p.Ticker] = p
+	}
+	return out
 }
 
 func formatQuote(lang i18n.Lang, q *data.Quote) string {

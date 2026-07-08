@@ -6,7 +6,7 @@ package i18n
 // sites pass positional args once and reuse them for whichever table T
 // picks.
 var zhMessages = map[Key]string{
-	KeyUnknownCommand:        "未知指令。可用指令：\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [天數]\n/dailyreport\n/fundamentals <ticker>\n/reset\n\n直接傳一般訊息（不加 / 開頭）則會跟我自由對話。",
+	KeyUnknownCommand:        "未知指令。可用指令：\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [天數]\n/buy <ticker> <股數> <價格> [手續費]\n/sell <ticker> <股數> <價格> [手續費]\n/portfolio\n/dailyreport\n/fundamentals <ticker>\n/reset\n\n直接傳一般訊息（不加 / 開頭）則會跟我自由對話。",
 	KeyAddUsage:              "用法：/add <ticker>，例如 /add AAPL",
 	KeyAddFailed:             "新增失敗：%v",
 	KeyAddSuccess:            "已將 *%s* 加入自選股。",
@@ -44,6 +44,19 @@ var zhMessages = map[Key]string{
 	KeyTrackLine:             "• %s *%s* %s  $%.2f → $%.2f (%+.2f%%) %s\n",
 	KeyTrackLineNoPrice:      "• %s *%s* %s — 無推薦時價格可比對\n",
 	KeyTrackSummary:          "\n命中率：%d/%d (%.0f%%)\n（BUY 上漲算命中、SELL 下跌算命中；HOLD 與無價格資料者不計入）",
+
+	KeyBuyUsage:               "用法：/buy <ticker> <股數> <價格> [手續費]，例如 /buy AAPL 10 205.5",
+	KeyBuyFailed:              "記錄買入失敗：%v",
+	KeyBuySuccess:             "✅ 已記錄買入 *%s* %g 股 @ $%.2f（手續費 $%.2f）\n目前持倉：%g 股，平均成本 $%.2f",
+	KeySellUsage:              "用法：/sell <ticker> <股數> <價格> [手續費]，例如 /sell AAPL 5 210",
+	KeySellFailed:             "記錄賣出失敗：%v",
+	KeySellSuccess:            "✅ 已記錄賣出 *%s* %g 股 @ $%.2f（手續費 $%.2f）\n已實現損益：%+.2f\n剩餘持倉：%g 股",
+	KeySellNoPosition:         "沒有 *%s* 的持倉可供賣出。",
+	KeySellInsufficientShares: "*%s* 持股不足，無法賣出這麼多股。",
+	KeyPortfolioTitle:         "💼 *資產總覽*\n\n",
+	KeyPortfolioEmpty:         "目前沒有持倉。使用 /buy <ticker> <股數> <價格> 記錄買入。",
+	KeyPortfolioLine:          "*%s*  %g 股 @ 均價 $%.2f\n現價 $%.2f　市值 $%.2f　未實現損益 %+.2f (%+.2f%%)\n\n",
+	KeyPortfolioSummary:       "—\n總市值：$%.2f\n累計已實現損益：%+.2f",
 
 	KeyQuoteLine: "*%s*  $%.2f  %s%.2f%%\n開: $%.2f　高: $%.2f　低: $%.2f",
 
@@ -146,4 +159,5 @@ var zhMessages = map[Key]string{
 	KeyNewsItem:                "  %d. [%s] %s\n",
 	KeyFundamentalsSummaryLine: "- 基本面：本益比 %.1f｜股價淨值比 %.1f｜ROE %.1f%%｜毛利率 %.1f%%｜營業利益率 %.1f%%｜淨利率 %.1f%%｜負債權益比 %.2f｜營收年增率 %.1f%%｜EPS年增率 %.1f%%｜股息殖利率 %.2f%%｜Beta %.2f\n",
 	KeyStatementSummaryLine:    "- 最新財報（%s，會計年度 %d，截至 %s）：營收 $%.0fM｜毛利 $%.0fM｜營業利益 $%.0fM｜淨利 $%.0fM｜總資產 $%.0fM｜總負債 $%.0fM｜股東權益 $%.0fM｜營運現金流 $%.0fM｜自由現金流 $%.0fM\n",
+	KeyPositionLine:            "- 持倉: %g 股　平均成本 $%.2f　未實現損益 %+.2f%%\n",
 }

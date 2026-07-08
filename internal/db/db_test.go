@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 )
@@ -192,6 +193,119 @@ func TestGetSnapshotClose(t *testing.T) {
 	_, ok, err = d.GetSnapshotClose("AAPL", "2026-07-06")
 	if err != nil || ok {
 		t.Errorf("GetSnapshotClose() for absent date: ok = %v, err = %v; want false, nil", ok, err)
+	}
+}
+
+func TestRecordBuyWeightedAverageCost(t *testing.T) {
+	d := newTestDB(t)
+
+	pos, err := d.RecordBuy("AAPL", 10, 200, 1, "2026-07-01")
+	if err != nil {
+		t.Fatalf("RecordBuy() error = %v", err)
+	}
+	// (10*200 + 1) / 10 = 200.1
+	if pos.Shares != 10 || pos.AvgCost != 200.1 {
+		t.Errorf("RecordBuy() = %+v, want Shares=10 AvgCost=200.1", pos)
+	}
+
+	// A second buy folds into a weighted average: (10*200.1 + 10*220) / 20 = 210.05
+	pos, err = d.RecordBuy("AAPL", 10, 220, 0, "2026-07-02")
+	if err != nil {
+		t.Fatalf("RecordBuy() (second) error = %v", err)
+	}
+	if pos.Shares != 20 || pos.AvgCost != 210.05 {
+		t.Errorf("RecordBuy() (second) = %+v, want Shares=20 AvgCost=210.05", pos)
+	}
+
+	got, ok, err := d.GetPosition("AAPL")
+	if err != nil || !ok {
+		t.Fatalf("GetPosition() = %+v, %v, %v", got, ok, err)
+	}
+	if got.Shares != 20 || got.AvgCost != 210.05 {
+		t.Errorf("GetPosition() = %+v, want Shares=20 AvgCost=210.05", got)
+	}
+}
+
+func TestRecordSellRealizedPnLAndPartialClose(t *testing.T) {
+	d := newTestDB(t)
+
+	if _, err := d.RecordBuy("AAPL", 10, 200, 0, "2026-07-01"); err != nil {
+		t.Fatalf("RecordBuy() error = %v", err)
+	}
+
+	// Sell 4 @ 220 with $1 fee: realized = (220-200)*4 - 1 = 79
+	pos, pnl, err := d.RecordSell("AAPL", 4, 220, 1, "2026-07-05")
+	if err != nil {
+		t.Fatalf("RecordSell() error = %v", err)
+	}
+	if pnl != 79 {
+		t.Errorf("RecordSell() realizedPnL = %v, want 79", pnl)
+	}
+	if pos.Shares != 6 || pos.AvgCost != 200 {
+		t.Errorf("RecordSell() remaining position = %+v, want Shares=6 AvgCost=200", pos)
+	}
+
+	total, err := d.GetRealizedPnL()
+	if err != nil || total != 79 {
+		t.Errorf("GetRealizedPnL() = %v, %v; want 79, nil", total, err)
+	}
+
+	// Selling the rest closes the position out entirely.
+	pos, _, err = d.RecordSell("AAPL", 6, 210, 0, "2026-07-06")
+	if err != nil {
+		t.Fatalf("RecordSell() (final) error = %v", err)
+	}
+	if pos.Shares != 0 {
+		t.Errorf("RecordSell() (final) remaining shares = %v, want 0", pos.Shares)
+	}
+	if _, ok, err := d.GetPosition("AAPL"); err != nil || ok {
+		t.Errorf("GetPosition() after full close: ok = %v, err = %v; want false, nil", ok, err)
+	}
+}
+
+func TestRecordSellErrors(t *testing.T) {
+	d := newTestDB(t)
+
+	if _, _, err := d.RecordSell("AAPL", 1, 100, 0, "2026-07-01"); !errors.Is(err, ErrNoPosition) {
+		t.Errorf("RecordSell() with no position error = %v, want ErrNoPosition", err)
+	}
+
+	if _, err := d.RecordBuy("AAPL", 5, 100, 0, "2026-07-01"); err != nil {
+		t.Fatalf("RecordBuy() error = %v", err)
+	}
+	if _, _, err := d.RecordSell("AAPL", 10, 100, 0, "2026-07-02"); !errors.Is(err, ErrInsufficientShares) {
+		t.Errorf("RecordSell() oversized error = %v, want ErrInsufficientShares", err)
+	}
+}
+
+func TestGetPositionsOrdering(t *testing.T) {
+	d := newTestDB(t)
+
+	if _, err := d.RecordBuy("MSFT", 1, 400, 0, "2026-07-01"); err != nil {
+		t.Fatalf("RecordBuy() error = %v", err)
+	}
+	if _, err := d.RecordBuy("AAPL", 1, 200, 0, "2026-07-01"); err != nil {
+		t.Fatalf("RecordBuy() error = %v", err)
+	}
+
+	got, err := d.GetPositions()
+	if err != nil {
+		t.Fatalf("GetPositions() error = %v", err)
+	}
+	if len(got) != 2 || got[0].Ticker != "AAPL" || got[1].Ticker != "MSFT" {
+		t.Errorf("GetPositions() = %+v, want [AAPL, MSFT]", got)
+	}
+}
+
+func TestSaveNetWorthSnapshotUpsert(t *testing.T) {
+	d := newTestDB(t)
+
+	if err := d.SaveNetWorthSnapshot("2026-07-05", 1000); err != nil {
+		t.Fatalf("SaveNetWorthSnapshot() error = %v", err)
+	}
+	// Same date should replace, not conflict.
+	if err := d.SaveNetWorthSnapshot("2026-07-05", 1200); err != nil {
+		t.Fatalf("SaveNetWorthSnapshot() (upsert) error = %v", err)
 	}
 }
 

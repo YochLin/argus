@@ -2,11 +2,22 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
+
+// ErrNoPosition is returned by RecordSell when there is no open position for
+// the ticker to sell from.
+var ErrNoPosition = errors.New("no position for ticker")
+
+// ErrInsufficientShares is returned by RecordSell when the sell size exceeds
+// the currently held shares — this project only tracks long positions, so
+// selling more than is held would go negative, which isn't representable.
+var ErrInsufficientShares = errors.New("insufficient shares for sell")
 
 type DB struct {
 	conn *sql.DB
@@ -38,6 +49,30 @@ type Recommendation struct {
 	Reason    string
 	Price     float64 // price at recommendation time (0 for rows saved before the column existed)
 	CreatedAt time.Time
+}
+
+// Position is the current open holding for a ticker: total shares and the
+// cost-basis-weighted average price paid across all buys, net of sells.
+type Position struct {
+	Ticker    string
+	Shares    float64
+	AvgCost   float64
+	UpdatedAt time.Time
+}
+
+// Transaction is one recorded buy or sell. RealizedPnL is only meaningful
+// for SELL rows (0 for BUY) — proceeds minus the shares' cost basis at
+// AvgCost, minus fee.
+type Transaction struct {
+	ID          int64
+	Ticker      string
+	Side        string // BUY / SELL
+	Shares      float64
+	Price       float64
+	Fee         float64
+	Date        string
+	RealizedPnL float64
+	CreatedAt   time.Time
 }
 
 func New(path string) (*DB, error) {
@@ -105,6 +140,38 @@ var migrations = []string{
 
 	ALTER TABLE recommendations ADD COLUMN action TEXT NOT NULL DEFAULT '';
 	ALTER TABLE recommendations ADD COLUMN price REAL NOT NULL DEFAULT 0;
+	`,
+	// 3: positions/transactions back Phase 2's asset tracking. positions
+	// holds one row per ticker with the cost-basis-weighted average price
+	// (RecordBuy/RecordSell keep it in sync); transactions is the full
+	// buy/sell log, including realized_pnl for sells. net_worth_snapshots
+	// records total position value once a day (RunClosingSnapshot) so a net
+	// worth curve can be drawn later.
+	`
+	CREATE TABLE IF NOT EXISTS positions (
+		ticker TEXT PRIMARY KEY,
+		shares REAL NOT NULL,
+		avg_cost REAL NOT NULL,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS transactions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		ticker TEXT NOT NULL,
+		side TEXT NOT NULL,
+		shares REAL NOT NULL,
+		price REAL NOT NULL,
+		fee REAL NOT NULL DEFAULT 0,
+		date TEXT NOT NULL,
+		realized_pnl REAL NOT NULL DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS net_worth_snapshots (
+		date TEXT PRIMARY KEY,
+		total_value REAL NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
 	`,
 }
 
@@ -246,6 +313,165 @@ func (d *DB) SetSignalState(ticker, signal, state string) error {
 			state = excluded.state,
 			updated_at = excluded.updated_at`,
 		ticker, signal, state,
+	)
+	return err
+}
+
+// RecordBuy records a BUY transaction and folds it into the ticker's
+// position, recomputing the weighted-average cost (existing cost basis plus
+// this purchase's shares*price+fee, divided by the new total shares). It
+// returns the position as it stands after the buy.
+func (d *DB) RecordBuy(ticker string, shares, price, fee float64, date string) (Position, error) {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return Position{}, err
+	}
+	defer tx.Rollback()
+
+	var existingShares, existingCost float64
+	err = tx.QueryRow(`SELECT shares, avg_cost FROM positions WHERE ticker = ?`, ticker).Scan(&existingShares, &existingCost)
+	if err != nil && err != sql.ErrNoRows {
+		return Position{}, err
+	}
+
+	totalShares := existingShares + shares
+	avgCost := (existingShares*existingCost + shares*price + fee) / totalShares
+
+	if _, err := tx.Exec(`
+		INSERT INTO positions (ticker, shares, avg_cost, updated_at)
+		VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(ticker) DO UPDATE SET
+			shares = excluded.shares,
+			avg_cost = excluded.avg_cost,
+			updated_at = excluded.updated_at`,
+		ticker, totalShares, avgCost,
+	); err != nil {
+		return Position{}, err
+	}
+
+	if _, err := tx.Exec(`
+		INSERT INTO transactions (ticker, side, shares, price, fee, date)
+		VALUES (?, 'BUY', ?, ?, ?, ?)`,
+		ticker, shares, price, fee, date,
+	); err != nil {
+		return Position{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Position{}, err
+	}
+	return Position{Ticker: ticker, Shares: totalShares, AvgCost: avgCost}, nil
+}
+
+// RecordSell records a SELL transaction against an existing position,
+// returning the realized P&L for this sale ((price - avgCost)*shares - fee)
+// and the position as it stands afterward. It returns ErrNoPosition if there
+// is nothing open for the ticker, or ErrInsufficientShares if shares exceeds
+// what's held — this project only tracks long positions, so short-selling
+// isn't representable. Selling the full position deletes the positions row
+// rather than leaving a zero-share one behind.
+func (d *DB) RecordSell(ticker string, shares, price, fee float64, date string) (Position, float64, error) {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return Position{}, 0, err
+	}
+	defer tx.Rollback()
+
+	var existingShares, existingCost float64
+	err = tx.QueryRow(`SELECT shares, avg_cost FROM positions WHERE ticker = ?`, ticker).Scan(&existingShares, &existingCost)
+	if err == sql.ErrNoRows {
+		return Position{}, 0, ErrNoPosition
+	}
+	if err != nil {
+		return Position{}, 0, err
+	}
+	if shares > existingShares {
+		return Position{}, 0, ErrInsufficientShares
+	}
+
+	realizedPnL := (price-existingCost)*shares - fee
+	remainingShares := existingShares - shares
+
+	if math.Abs(remainingShares) < 1e-9 {
+		remainingShares = 0
+		if _, err := tx.Exec(`DELETE FROM positions WHERE ticker = ?`, ticker); err != nil {
+			return Position{}, 0, err
+		}
+	} else {
+		if _, err := tx.Exec(`
+			UPDATE positions SET shares = ?, updated_at = CURRENT_TIMESTAMP WHERE ticker = ?`,
+			remainingShares, ticker,
+		); err != nil {
+			return Position{}, 0, err
+		}
+	}
+
+	if _, err := tx.Exec(`
+		INSERT INTO transactions (ticker, side, shares, price, fee, date, realized_pnl)
+		VALUES (?, 'SELL', ?, ?, ?, ?, ?)`,
+		ticker, shares, price, fee, date, realizedPnL,
+	); err != nil {
+		return Position{}, 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Position{}, 0, err
+	}
+	return Position{Ticker: ticker, Shares: remainingShares, AvgCost: existingCost}, realizedPnL, nil
+}
+
+// GetPosition returns the current position for ticker, or ok=false if
+// there's no open position.
+func (d *DB) GetPosition(ticker string) (Position, bool, error) {
+	p := Position{Ticker: ticker}
+	err := d.conn.QueryRow(
+		`SELECT shares, avg_cost, updated_at FROM positions WHERE ticker = ?`, ticker,
+	).Scan(&p.Shares, &p.AvgCost, &p.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return Position{}, false, nil
+	}
+	if err != nil {
+		return Position{}, false, err
+	}
+	return p, true, nil
+}
+
+// GetPositions returns every open position, ordered by ticker.
+func (d *DB) GetPositions() ([]Position, error) {
+	rows, err := d.conn.Query(`SELECT ticker, shares, avg_cost, updated_at FROM positions ORDER BY ticker`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var positions []Position
+	for rows.Next() {
+		var p Position
+		if err := rows.Scan(&p.Ticker, &p.Shares, &p.AvgCost, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		positions = append(positions, p)
+	}
+	return positions, rows.Err()
+}
+
+// GetRealizedPnL sums realized_pnl across every SELL transaction ever
+// recorded, for /portfolio's cumulative realized P&L line.
+func (d *DB) GetRealizedPnL() (float64, error) {
+	var total sql.NullFloat64
+	if err := d.conn.QueryRow(`SELECT SUM(realized_pnl) FROM transactions WHERE side = 'SELL'`).Scan(&total); err != nil {
+		return 0, err
+	}
+	return total.Float64, nil
+}
+
+// SaveNetWorthSnapshot upserts the total position value for date.
+func (d *DB) SaveNetWorthSnapshot(date string, total float64) error {
+	_, err := d.conn.Exec(`
+		INSERT INTO net_worth_snapshots (date, total_value)
+		VALUES (?, ?)
+		ON CONFLICT(date) DO UPDATE SET total_value = excluded.total_value`,
+		date, total,
 	)
 	return err
 }

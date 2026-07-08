@@ -47,6 +47,10 @@ Three things about today's implementation are conveniences, not commitments:
 - **Daily report** — an automatic summary pushed every day before US market open (21:00 Taiwan time)
 - **Post-close snapshots** — after each US session closes (05:30 Taiwan time), the watchlist's OHLCV
   is recorded to SQLite, building the price history behind `/track` and future analysis
+- **Position tracking** — `/buy` and `/sell` record trades against a weighted-average cost basis,
+  `/portfolio` shows market value and unrealized/realized P&L, and total position value is snapshotted
+  daily after close; open positions feed their cost basis into `/recommend` and the daily report so
+  SELL/HOLD calls have an actual P&L to reason against
 
 This is single-user by design: one Telegram chat ID, no accounts, no multi-tenant data model.
 
@@ -104,6 +108,9 @@ Talk to it in Telegram:
 | `/check <ticker>` | Instant LLM analysis of one ticker |
 | `/recommend` | LLM gives a BUY/SELL/HOLD call on every watchlist ticker, plus buy ideas from market movers |
 | `/track [days]` | Review past recommendations vs. today's prices and the resulting hit rate (default 7 days) |
+| `/buy <ticker> <shares> <price> [fee]` | Record a purchase; folds into the ticker's weighted-average cost and auto-adds it to your watchlist |
+| `/sell <ticker> <shares> <price> [fee]` | Record a sale against an open position and report the realized P&L |
+| `/portfolio` | Every open position's market value and unrealized P&L, plus cumulative realized P&L |
 | `/fundamentals <ticker>` | Raw valuation/profitability/financial-statement data (requires Finnhub key) |
 | `/dailyreport` | Manually trigger the daily report (normally runs automatically at 21:00 Taiwan time) |
 | `/reset` | Clear the chat mode's conversation memory |
