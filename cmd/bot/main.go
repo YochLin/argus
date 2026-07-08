@@ -102,6 +102,16 @@ func main() {
 	provider := data.NewMulti(providers...)
 
 	llmClient := llm.NewClient(recommendModel, checkModel, chatModel, lang)
+	// Antigravity fallback is opt-in, not presence-of-config-gated like
+	// Finnhub above: agy has no read-only mode for non-interactive calls (see
+	// AntigravityProvider's doc comment and PLAN.md's architecture-debt
+	// entry), so wiring it in is a deliberate risk the operator accepts via
+	// ANTIGRAVITY_ENABLED, not something that should turn on just because a
+	// model name happened to be set.
+	if os.Getenv("ANTIGRAVITY_ENABLED") == "true" {
+		antigravityModel := os.Getenv("ANTIGRAVITY_MODEL")
+		llmClient.AddFallback(llm.AntigravityProvider{}, antigravityModel, antigravityModel, antigravityModel)
+	}
 	defer llmClient.Close() // kills any still-open persistent chat session's subprocess
 
 	telegramBot, err := bot.New(telegramToken, chatID, database, provider, fundamentalsProvider, earningsProvider, marketNewsProvider, yahoo, llmClient, lang)

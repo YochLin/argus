@@ -4,30 +4,27 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 )
 
-// Session is a single ACP conversation against a running claude-agent-acp
-// process, authenticated via the operator's local `claude` CLI login
-// (Claude Pro/Max subscription) rather than a billed API key.
+// Session is a single ACP conversation against a running agent process.
 type Session struct {
 	conn      *Conn
 	sessionID string
 }
 
-// StartSession launches the ACP agent, completes the initialize handshake,
-// and opens a session with all built-in tool use disabled — this bot only
-// ever wants a text analysis back, never file/shell/network tool access.
+// StartSession launches command (with args) as the agent process, completes
+// the ACP initialize handshake, and opens a session with the given cwd and
+// _meta payload.
 //
-// cwd should be a neutral, non-project directory: the agent resolves
-// .claude/settings.json and CLAUDE.md relative to it, and we don't want this
-// repo's own coding-agent instructions bleeding into stock-analysis prompts.
-// systemPrompt replaces the agent's default "Claude Code" persona entirely.
-// model is a Claude model alias/ID (e.g. "opus", "sonnet"); empty uses the
-// agent's own default.
-func StartSession(ctx context.Context, cwd, systemPrompt, model string) (*Session, error) {
-	command, args := agentCommand()
+// meta is opaque to this package — its shape is an implementation-specific
+// ACP extension, not part of the base protocol, so it means whatever the
+// launched agent's own ACP adapter defines (e.g. claude-agent-acp's
+// disableBuiltInTools/systemPrompt/claudeCode.options.model — see
+// llm.acpProvider, which builds that map). This package only knows how to
+// launch a process and speak the ACP handshake against it, not which agent
+// it is or what that agent's private fields mean.
+func StartSession(ctx context.Context, command string, args []string, cwd string, meta map[string]any) (*Session, error) {
 	conn, err := Dial(ctx, command, args...)
 	if err != nil {
 		return nil, err
@@ -39,14 +36,6 @@ func StartSession(ctx context.Context, cwd, systemPrompt, model string) (*Sessio
 	}); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("initialize: %w", err)
-	}
-
-	meta := map[string]any{"disableBuiltInTools": true}
-	if systemPrompt != "" {
-		meta["systemPrompt"] = systemPrompt
-	}
-	if model != "" {
-		meta["claudeCode"] = map[string]any{"options": map[string]any{"model": model}}
 	}
 
 	result, err := conn.Call(ctx, "session/new", map[string]any{
@@ -114,16 +103,4 @@ func (s *Session) Prompt(ctx context.Context, text string) (string, error) {
 // Close shuts down the underlying agent process.
 func (s *Session) Close() error {
 	return s.conn.Close()
-}
-
-// agentCommand resolves how to launch the ACP agent. Defaults to `npx`,
-// which works with no setup beyond having Node installed; set
-// CLAUDE_ACP_COMMAND to a globally-installed binary (e.g. after
-// `npm install -g @agentclientprotocol/claude-agent-acp`) to skip npx's
-// resolution overhead on every call.
-func agentCommand() (string, []string) {
-	if custom := os.Getenv("CLAUDE_ACP_COMMAND"); custom != "" {
-		return custom, nil
-	}
-	return "npx", []string{"-y", "@agentclientprotocol/claude-agent-acp"}
 }

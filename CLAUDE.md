@@ -134,26 +134,65 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   selected once at startup via `BOT_LANGUAGE` (`zh`/`en`, default `zh`), threaded through
   `signals.NewDetector`, `llm.NewClient`, and `bot.New` — there's no per-message or per-user override, by
   the same single-user-bot design as `chatID`.
-- `internal/llm` — talks to Claude through the **Agent Client Protocol (ACP)**, not the Anthropic API SDK
-  (`internal/llm/acp` implements the minimal JSON-RPC-over-stdio client: `initialize` → `session/new` →
-  `session/prompt`, accumulating `session/update` text chunks). `Client` runs two different session
-  lifecycles side by side: `GenerateRecommendations`/`CheckStock` spawn a fresh `claude-agent-acp`
-  subprocess per call and close it once the reply arrives (`c.prompt`, one-shot, nothing to remember
-  between calls), while `Chat` keeps a single ACP session open across calls (`c.chatSession`, lazily
-  started, guarded by `c.chatMu`) so the agent retains conversation history for free-form back-and-forth —
-  `ResetChat` closes it early, and `Client.Close` (called once on bot shutdown in `main.go`) closes
-  whatever's still open so the subprocess doesn't get orphaned when the bot exits. Both paths authenticate
-  via the operator's local `claude` CLI login (Claude Pro/Max subscription) instead of a metered
-  `ANTHROPIC_API_KEY` — do not reintroduce an API key path without an explicit reason, that was a
-  deliberate choice to avoid API billing. Every session sets `_meta.disableBuiltInTools: true` and runs
-  from `os.TempDir()` with a custom `_meta.systemPrompt` (a different one for chat vs. analysis — see
-  `chatSystemPrompt`), so the agent never gets tool access and never picks up this repo's own
-  CLAUDE.md/skills — keep both of those in place if you touch `acp.StartSession`. Model per call is
-  configurable (`CLAUDE_RECOMMEND_MODEL` / `CLAUDE_CHECK_MODEL` / `CLAUDE_CHAT_MODEL` env vars, default
-  `opus` / `sonnet` / `sonnet`). `GenerateRecommendations`'s output is plain text following a
-  hand-specified format (`[TICKER: X]` / `<reason marker>: ...` blocks) that `parseRecommendations` parses
-  with string matching, not JSON — if you change that prompt's expected output shape, update the parser in
-  lockstep (and see `internal/i18n`'s entry above for why the reason marker specifically must stay wired
+- `internal/llm` — `Client` talks to an LLM through an ordered chain of `Provider`s (`provider.go`:
+  `Prompt` for one-shot calls, `NewChatSession`/`ChatSession.Send`/`Close` for a persistent multi-turn
+  session) rather than any one backend directly — `[]backend` (provider + that provider's own
+  recommend/check/chat model strings, since model aliases are provider-specific vocabulary — Claude's
+  "opus"/"sonnet" mean nothing to a different backend), tried in order with fallthrough on error, same
+  shape as `data.Multi` just for LLM calls. `NewClient` always seeds `backends[0]` with `acpProvider`
+  (defined in `acp_provider.go`), which drives Claude through the **Agent Client Protocol (ACP)**, not the
+  Anthropic API SDK. `internal/llm/acp` itself (`conn.go` + `session.go`) knows nothing about Claude — it's
+  a generic ACP JSON-RPC-over-stdio transport/handshake driver (`initialize` → `session/new` →
+  `session/prompt`, accumulating `session/update` text chunks) reusable by any ACP-speaking agent;
+  `acp.StartSession(ctx, command, args, cwd, meta)` takes the launch command and the `_meta` payload as
+  plain parameters rather than knowing what's inside them, since `_meta`'s contents are an
+  implementation-specific ACP extension, not part of the base protocol. Everything Claude-specific lives in
+  `acp_provider.go` instead: `claudeAgentCommand()` (resolves the `npx @agentclientprotocol/claude-agent-acp`
+  launch, overridable via `CLAUDE_ACP_COMMAND`) and `startClaudeSession()`, which builds the
+  `_meta.disableBuiltInTools`/`_meta.systemPrompt`/`_meta.claudeCode.options.model` fields that only
+  `claude-agent-acp` understands before calling `acp.StartSession`. If a future backend also turns out to
+  speak ACP (there's no other one today), it gets its own `<name>_provider.go` supplying its own
+  command/meta — `internal/llm/acp` doesn't change. `acpProvider.Prompt` spawns a fresh `claude-agent-acp`
+  subprocess per call and closes it once the reply arrives (one-shot, nothing to remember between calls),
+  while `acpProvider.NewChatSession` returns an `acpChatSession` wrapping a single ACP session kept open
+  across calls (`Client.chatSession`, lazily started, guarded by `Client.chatMu`) so the agent retains
+  conversation history for free-form back-and-forth — `ResetChat` closes it early, and `Client.Close`
+  (called once on bot shutdown in `main.go`) closes whatever's still open so the subprocess doesn't get
+  orphaned when the bot exits. `acpProvider` authenticates via the operator's local `claude` CLI login
+  (Claude Pro/Max subscription) instead of a metered `ANTHROPIC_API_KEY` — do not reintroduce an API key
+  path without an explicit reason, that was a deliberate choice to avoid API billing. Every ACP session
+  disables built-in tools and runs from `os.TempDir()` with a custom system prompt (a different one for
+  chat vs. analysis — see `chatSystemPrompt`), so the agent never gets tool access and never picks up this
+  repo's own CLAUDE.md/skills — keep both of those in place if you touch `startClaudeSession`.
+  `Client.AddFallback` appends a second `backend` to the chain — `main.go` calls it with
+  `antigravity_provider.go`'s `AntigravityProvider` (Google's Antigravity CLI, `agy -p`) only when
+  `ANTIGRAVITY_ENABLED=true`, deliberately opt-in rather than presence-of-config-gated like Finnhub, because
+  of the tradeoff below. `c.prompt`/`c.startChatSession` walk `c.backends` in order and return the first
+  success, exactly like `data.Multi` (no special-casing a "quota exceeded" error over any other failure).
+  For `Chat`, the chain is only consulted when (re)starting a session; once open, later calls reuse it
+  until it errors, and the *next* call restarts from `backends[0]` again — so a session that fell back to
+  Antigravity mid-conversation doesn't get stuck avoiding Claude forever, but falling back does lose
+  whatever history the old session held (a `Provider`'s chat memory lives inside its own session, not in
+  `Client`). Unlike `acpProvider`, `AntigravityProvider` always passes `--sandbox`: `agy -p` auto-approves
+  every tool call it makes, including `write_file`, with no working read-only/plan-mode flag for
+  non-interactive runs — a known upstream gap the user explicitly accepted the risk of rather than an
+  oversight in this code (see PLAN.md's architecture-debt entry) — `--sandbox` contains the blast radius in
+  an isolated container, it does not stop tool use, and requires the VPS to have a working
+  sandbox/container runtime available to `agy`. `antigravityChatSession` also replays the full conversation
+  transcript on every turn from Go-side state rather than resuming a backing session, because `agy -p` has
+  no reliable session id to resume against (unlike `acpChatSession`, which relies on the ACP process's own
+  memory). None of `AntigravityProvider` has been exercised against a real, logged-in `agy` install yet —
+  treat its behavior as unverified until it has been, particularly the reported non-TTY stdout-drop bug
+  (`ANTIGRAVITY_CLI_COMMAND` is the escape hatch to point at a wrapper if that bites, same pattern as
+  `CLAUDE_ACP_COMMAND`). Model per call for the Claude backend is configurable
+  (`CLAUDE_RECOMMEND_MODEL` / `CLAUDE_CHECK_MODEL` /
+  `CLAUDE_CHAT_MODEL` env vars, default `opus` / `sonnet` / `sonnet`); the Antigravity fallback shares one
+  `ANTIGRAVITY_MODEL` across all three call sites instead (empty uses `agy`'s own default) — it's a rarely
+  invoked fallback path, not worth three separate knobs. `GenerateRecommendations`'s output
+  is plain text following a hand-specified format (`[TICKER: X]` / `<reason marker>: ...` blocks) that
+  `parseRecommendations` parses with string matching, not JSON — if you change that prompt's expected
+  output shape, update the parser in lockstep (and see `internal/i18n`'s entry above for why the reason
+  marker specifically must stay wired
   through `i18n.KeyReasonMarker` rather than a hardcoded literal). When `marketNews` is non-empty,
   `GenerateRecommendations` also asks the model (via `KeyRecMarketSummaryTask`) to emit a
   `[MARKET SUMMARY]` block (`i18n.KeyMarketSummaryMarker`) *before* its `[TICKER: ...]` blocks — the same
