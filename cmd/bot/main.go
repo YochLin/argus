@@ -19,12 +19,22 @@ import (
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/llm"
+	"argus/internal/mcptools"
 	"argus/internal/scheduler"
 )
 
 var cst = time.FixedZone("CST", 8*3600)
 
 func main() {
+	// "mcp" runs this same binary as an MCP server over stdio instead of the
+	// Telegram bot (see internal/mcptools) — branch before any of the
+	// Telegram/env setup below, since an MCP subprocess (spawned by an ACP
+	// chat session via os.Executable(), not by a human) needs none of it.
+	if len(os.Args) > 1 && os.Args[1] == "mcp" {
+		runMCPServer()
+		return
+	}
+
 	if err := godotenv.Load(); err != nil {
 		log.Println("no .env file found, reading env from environment")
 	}
@@ -128,6 +138,17 @@ func main() {
 	log.Println("stock trader bot started")
 	telegramBot.Run(ctx)
 	log.Println("bot stopped")
+}
+
+// runMCPServer runs argus as an MCP server over stdio (see internal/mcptools)
+// until ctx is cancelled or the connection closes. Invoked via the "mcp"
+// subcommand, never directly by a human.
+func runMCPServer() {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	if err := mcptools.Run(ctx); err != nil {
+		log.Fatalf("mcp server: %v", err)
+	}
 }
 
 func mustEnv(key string) string {

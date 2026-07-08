@@ -22,6 +22,7 @@ rather than a quick swap.
 ```bash
 go build ./...              # build everything
 go run ./cmd/bot             # run locally (reads .env via godotenv)
+go run ./cmd/bot mcp         # run as an MCP server over stdio instead (see internal/mcptools)
 go vet ./...                 # static checks
 docker compose up --build    # build + run in Docker (uses .env, mounts ./data -> /app/data)
 ```
@@ -278,6 +279,20 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `RunDailyReport` already handled the same failure — keep new whole-job-abort paths in either function
   user-visible; per-ticker failures inside the loop (one quote fetch failing, etc.) should stay log-only
   so a bad day for one ticker doesn't spam a Telegram alert.
+- `internal/mcptools` — Phase 3.5's read-only MCP (Model Context Protocol) tool surface for chat, using
+  the official `github.com/modelcontextprotocol/go-sdk`. Currently a skeleton (`server.go`): `NewServer`
+  builds an `*mcp.Server` with **no tools registered yet** (that's the next Phase 3.5 checklist item —
+  see PLAN.md), and `Run` serves it on `mcp.StdioTransport`. Deliberately kept as its own function rather
+  than inlined into `Run` so a future test can add tools and connect over `mcp.NewInMemoryTransports`
+  without going through stdio. Reached via `cmd/bot/main.go`'s `mcp` subcommand
+  (`argus mcp` runs this instead of the Telegram bot) — branch on `os.Args[1] == "mcp"` happens *before*
+  `godotenv.Load()`/`mustEnv` in `main()`, since the MCP subprocess (spawned by an ACP chat session via
+  `os.Executable()`, never invoked directly by a human) needs none of the Telegram/env setup. Running the
+  same binary as a subcommand — rather than a separately built/deployed server — is deliberate: it can
+  never drift out of version sync with the running bot. Keep this package's dependency graph to
+  `internal/data` + `internal/i18n` only as tools get added (no `internal/db`/`internal/llm`/`internal/bot`
+  imports) — see PLAN.md's Phase 3.5 rationale for why (provider-neutral tool surface that survives an
+  `internal/llm` provider swap).
 
 ## Key behaviors to preserve
 
