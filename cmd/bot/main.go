@@ -106,6 +106,9 @@ func main() {
 	sched.AddClosingSnapshot(ctx, func(ctx context.Context) {
 		telegramBot.RunClosingSnapshot(ctx)
 	})
+	sched.AddUniverseScan(ctx, func(ctx context.Context) {
+		telegramBot.RunUniverseScan(ctx)
+	})
 	sched.AddLogRotation(func() {
 		if err := logFile.Rotate(); err != nil {
 			log.Printf("log rotation: %v", err)

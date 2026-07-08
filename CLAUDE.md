@@ -83,12 +83,19 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   loop would cost one request each) and filters the whole-market response down to the requested tickers
   client-side via the pure, unit-tested `filterEarningsCalendar` — one API call regardless of watchlist
   size, unlike the fundamentals path's per-ticker calls.
-- `internal/db` — thin wrapper around `database/sql` + `modernc.org/sqlite` (pure-Go, no cgo). Owns seven
+- `internal/db` — thin wrapper around `database/sql` + `modernc.org/sqlite` (pure-Go, no cgo). Owns nine
   tables: `watchlist`, `daily_snapshots`, `recommendations` (with `action` BUY/SELL/HOLD and `price` at
   recommendation time, both read back by `/track`), `signal_states` (last-notified state per
   ticker+signal family, backing MACD cross detection and RSI dedup), `positions` (one row per ticker,
   shares + weighted-average cost), `transactions` (the full buy/sell log, `realized_pnl` populated only
-  for SELL rows), and `net_worth_snapshots` (total position value by date). Migrations are versioned via
+  for SELL rows), `net_worth_snapshots` (total position value by date), `universe` (the Phase 2.6 scan
+  candidate pool — ticker + `source`, `'sp500'` or `'manual'`), and `scan_hits` (ticker/date/reason log
+  of daily universe-scan signal hits, no uniqueness constraint since one ticker can log more than one
+  hit a day). `universe.go`'s `seedSP500` bulk-inserts an embedded S&P 500 ticker list
+  (`sp500_tickers.txt`, `go:embed`) into `universe` the first time `New()` ever sees an empty `sp500`
+  source — deliberately not re-synced on every startup, so a user's manual `/universe remove` of a
+  seeded ticker sticks (a monthly refresh/diff is a known, deliberately deferred gap — see
+  docs/phase-2.6-universe-scan.md). Migrations are versioned via
   `PRAGMA user_version`: `migrate()` applies each entry of the ordered `migrations` slice past the
   recorded version — append new steps at the end, never edit or reorder shipped ones (deployed DBs have
   already recorded them as applied). Step 1 (the base tables) stays `IF NOT EXISTS`-idempotent because
@@ -151,7 +158,9 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   prompts wherever a position exists. `StockData.Earnings` (`{Date, DaysUntil}`, `DaysUntil` precomputed
   by the caller so this package doesn't do date math against "now") is the same pattern for an upcoming
   earnings report — `writeStockSection` renders `KeyEarningsLine` as a warning so the model doesn't call
-  BUY on something reporting earnings tomorrow.
+  BUY on something reporting earnings tomorrow. `StockData.ScanReason` (`*string`) is the same
+  attach-and-render pattern again for Phase 2.6's universe scan: set only for a candidate that was
+  surfaced by a signal hit rather than the market-movers list, rendered via `KeyScanHitLine`.
 - `internal/signals` — pure functions/struct for rule-based technical signals (price % threshold, RSI,
   MACD) independent of Telegram/LLM/DB. That purity is preserved for the stateful checks too:
   `CheckRSIState` and `CheckMACDCross` take the previously persisted state as a parameter and return the
@@ -168,18 +177,20 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   as everything in `internal/bot` — don't hardcode a new message string here either.
 - `internal/scheduler` — thin wrapper around `robfig/cron` fixed to `time.FixedZone("CST", 8*3600)`
   (Taiwan time) rather than a loaded `time.Location`, specifically so it works in the `alpine` Docker
-  image without needing the `tzdata` package installed. Four jobs: the daily report (21:00 CST daily),
+  image without needing the `tzdata` package installed. Five jobs: the daily report (21:00 CST daily),
   the closing snapshot (05:30 CST Tue–Sat — a US session ends at 04:00 or 05:00 CST the next morning
   depending on daylight saving, so 05:30 is past the close in both; Sun/Mon mornings follow no US
   session and are excluded at the cron level, while US holidays are handled by the job itself skipping
-  stale quotes), log rotation (`AddLogRotation`, 00:00 CST daily — `lumberjack.Logger` only rotates on
-  size by itself, so this cron call to `Rotate()` is what makes it an actual daily rotation), and the
+  stale quotes), the universe scan (`AddUniverseScan`, 05:45 CST Tue–Sat — after the closing snapshot,
+  before the backup), log rotation (`AddLogRotation`, 00:00 CST daily — `lumberjack.Logger` only rotates
+  on size by itself, so this cron call to `Rotate()` is what makes it an actual daily rotation), and the
   SQLite backup (`AddBackup`, 06:00 CST daily, after the closing snapshot so each backup includes that
   day's post-close data).
 - `internal/bot` — Telegram command dispatch (`/add`, `/remove`, `/list`, `/status`, `/recommend`,
-  `/check`, `/track`, `/buy`, `/sell`, `/portfolio`, `/dailyreport`, `/fundamentals`, `/reset`) plus two
-  scheduler-invoked jobs: `RunDailyReport` (21:00 CST, pre-open) and `RunClosingSnapshot` (05:30 CST
-  Tue–Sat, post-close), the latter writing each watchlist ticker's completed-session OHLCV to
+  `/check`, `/track`, `/buy`, `/sell`, `/portfolio`, `/dailyreport`, `/fundamentals`, `/universe`,
+  `/reset`) plus three scheduler-invoked jobs: `RunDailyReport` (21:00 CST, pre-open), `RunClosingSnapshot`
+  (05:30 CST Tue–Sat, post-close), and `RunUniverseScan` (05:45 CST Tue–Sat — see below). The former two:
+  `RunClosingSnapshot` writes each watchlist ticker's completed-session OHLCV to
   `daily_snapshots` dated one day back in Taiwan terms (that's the US trading date at that hour) and
   skipping quotes whose timestamp is >12h old (US market holiday — the providers return the prior
   session, which would otherwise be filed under the wrong date). `/track [days]` reads `recommendations`
@@ -211,7 +222,15 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   itself, so a ticker only re-alerts once its *next* earnings date rolls around. Both `handleRecommend`
   and `RunDailyReport` fetch `GetMarketMovers()` *before* building any `llm.StockData`, specifically so
   `loadEarnings` can cover the combined watchlist+candidate ticker set in one call rather than two.
-  `Run`'s `dispatch` splits incoming messages two ways: commands each get their own goroutine
+  `RunUniverseScan` is Phase 2.6's chunked candidate-pool scan (see docs/phase-2.6-universe-scan.md for
+  the full design): each run picks a rotating slice of the `universe` table (excluding watchlist
+  tickers) via the pure `universeScanChunk(tickers, scanChunkCount, dayIndex)` — stateless, no persisted
+  cursor, `scanChunkCount=5` to match the Tue–Sat cadence — and reuses `checkStatefulSignals` unchanged
+  (safe since the watchlist and universe-scan ticker sets never overlap, so no `signal_states` key
+  collision). Hits are logged to `scan_hits`; both `handleRecommend` and `RunDailyReport` call
+  `loadScanHits` (today's rows) and merge them into the candidate list via the pure
+  `mergeCandidates(movers, scanHits, watchlist)`, attaching the hit reason as `llm.StockData.ScanReason`
+  via `fetchStockData`'s `scanReasons` parameter. `Run`'s `dispatch` splits incoming messages two ways: commands each get their own goroutine
   (`go b.handleMessage(...)`) so a slow one like `/recommend` can't block a quick one like `/status` sent
   right after — but plain-text chat messages go on `chatQueue` instead, drained one at a time by the single
   `chatWorker` goroutine, so replies come back in the order the user actually sent them. That ordering

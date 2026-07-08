@@ -46,6 +46,11 @@ Three things about today's implementation are conveniences, not commitments:
   warning line in the `/recommend`/daily-report prompt (so a BUY call doesn't walk into next-day
   earnings volatility), plus a deduplicated Telegram reminder for watchlist tickers reporting within 3
   days — requires a Finnhub API key
+- **Candidate pool scanning** — a much larger scan universe than the watchlist (seeded from the S&P
+  500, `/universe add|remove` for manual tickers) gets checked daily in rotating chunks for the same
+  RSI/MACD signals used on the watchlist; a hit gets upgraded into that day's `/recommend`/daily-report
+  candidates with the triggering signal attached, instead of relying only on the market's "trending"
+  list
 - **Free-form chat** — message the bot without a command and it remembers the conversation, separate
   from the one-shot analysis commands
 - **Daily report** — an automatic summary pushed every day before US market open (21:00 Taiwan time)

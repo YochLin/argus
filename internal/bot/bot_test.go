@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -260,5 +261,71 @@ func TestFormatFinancialStatement(t *testing.T) {
 	// Revenue/NetIncome are formatted in millions with thousands separators.
 	if !strings.Contains(out, "391,035") {
 		t.Errorf("formatFinancialStatement() = %q, want revenue formatted in millions", out)
+	}
+}
+
+// TestUniverseScanChunkFullCoverage verifies universeScanChunk rotates
+// through every ticker exactly once over a full chunkCount-day cycle, with
+// no gaps or duplicates — the property the daily scan job actually depends
+// on for eventual full universe coverage.
+func TestUniverseScanChunkFullCoverage(t *testing.T) {
+	var tickers []string
+	for i := 0; i < 503; i++ {
+		tickers = append(tickers, fmt.Sprintf("T%03d", i))
+	}
+
+	seen := make(map[string]int)
+	for day := 0; day < scanChunkCount; day++ {
+		for _, ticker := range universeScanChunk(tickers, scanChunkCount, day) {
+			seen[ticker]++
+		}
+	}
+
+	if len(seen) != len(tickers) {
+		t.Fatalf("covered %d/%d tickers over a full cycle, want all of them", len(seen), len(tickers))
+	}
+	for ticker, n := range seen {
+		if n != 1 {
+			t.Errorf("ticker %s scanned %d times over a full cycle, want exactly 1", ticker, n)
+		}
+	}
+}
+
+func TestUniverseScanChunkEmptyAndNegativeDay(t *testing.T) {
+	if got := universeScanChunk(nil, scanChunkCount, 0); got != nil {
+		t.Errorf("universeScanChunk(nil, ...) = %v, want nil", got)
+	}
+	tickers := []string{"A", "B", "C", "D", "E"}
+	// A negative dayIndex must still resolve to a valid, in-range chunk
+	// rather than panicking on a negative slice index.
+	got := universeScanChunk(tickers, scanChunkCount, -1)
+	if len(got) == 0 {
+		t.Errorf("universeScanChunk(..., -1) = %v, want a non-empty chunk", got)
+	}
+}
+
+func TestMergeCandidates(t *testing.T) {
+	movers := []string{"AAPL", "MSFT"}
+	scanHits := map[string]string{
+		"MSFT": "RSI oversold (28.0)", // also a mover: must not duplicate
+		"NVDA": "MACD golden cross",
+	}
+	watchlist := []string{"TSLA"} // excluded even if it somehow appears
+
+	got := mergeCandidates(movers, scanHits, watchlist)
+
+	want := map[string]bool{"AAPL": true, "MSFT": true, "NVDA": true}
+	if len(got) != len(want) {
+		t.Fatalf("mergeCandidates() = %v, want exactly %v", got, want)
+	}
+	seen := make(map[string]bool)
+	for _, ticker := range got {
+		if seen[ticker] {
+			t.Errorf("mergeCandidates() contains duplicate %s", ticker)
+		}
+		seen[ticker] = true
+		if !want[ticker] {
+			t.Errorf("mergeCandidates() contains unexpected %s", ticker)
+		}
 	}
 }

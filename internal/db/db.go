@@ -84,6 +84,9 @@ func New(path string) (*DB, error) {
 	if err := d.migrate(); err != nil {
 		return nil, err
 	}
+	if err := d.seedSP500(); err != nil {
+		return nil, err
+	}
 	return d, nil
 }
 
@@ -170,6 +173,27 @@ var migrations = []string{
 	CREATE TABLE IF NOT EXISTS net_worth_snapshots (
 		date TEXT PRIMARY KEY,
 		total_value REAL NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	`,
+	// 4: universe is Phase 2.6's candidate scan pool — much bigger than
+	// watchlist, seeded once from an embedded S&P 500 list (see universe.go's
+	// seedSP500) plus whatever the user adds manually via /universe add.
+	// scan_hits logs which universe tickers the daily scan job found a fresh
+	// RSI/MACD signal on (no uniqueness constraint: a ticker can log more than
+	// one hit the same day) so the same evening's daily report can pull
+	// today's rows and upgrade those tickers into LLM candidates.
+	`
+	CREATE TABLE IF NOT EXISTS universe (
+		ticker TEXT PRIMARY KEY,
+		source TEXT NOT NULL,
+		added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS scan_hits (
+		ticker TEXT NOT NULL,
+		date TEXT NOT NULL,
+		reason TEXT NOT NULL,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	`,

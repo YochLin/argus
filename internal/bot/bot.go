@@ -167,6 +167,8 @@ func (b *Bot) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 		b.RunDailyReport(ctx)
 	case "fundamentals":
 		b.handleFundamentals(args)
+	case "universe":
+		b.handleUniverse(args)
 	case "reset":
 		b.handleReset()
 	default:
@@ -261,13 +263,14 @@ func (b *Bot) handleRecommend(ctx context.Context) {
 	if err != nil {
 		log.Printf("market movers: %v", err)
 	}
-	dedupedCandidates := dedup(candidateTickers, tickers)
+	scanHits := b.loadScanHits()
+	dedupedCandidates := mergeCandidates(candidateTickers, scanHits, tickers)
 
 	positions := b.loadPositions()
 	earnings := b.loadEarnings(append(append([]string{}, tickers...), dedupedCandidates...))
 
-	watchlist := b.fetchStockData(tickers, true, positions, earnings)
-	candidates := b.fetchStockData(dedupedCandidates, false, positions, earnings)
+	watchlist := b.fetchStockData(tickers, true, positions, earnings, nil)
+	candidates := b.fetchStockData(dedupedCandidates, false, positions, earnings, scanHits)
 
 	recs, err := b.llm.GenerateRecommendations(ctx, watchlist, candidates)
 	if err != nil {
@@ -631,6 +634,72 @@ func (b *Bot) handleFundamentals(ticker string) {
 	b.Send(sb.String())
 }
 
+// handleUniverse manages Phase 2.6's candidate scan pool. With no
+// arguments it shows a count summary (never the full ~500-ticker list,
+// which would blow past Telegram's message size for no reason); "add"/
+// "remove" manage the manual tier — the S&P 500 seed tier is read-only
+// from here (see db.seedSP500).
+func (b *Bot) handleUniverse(args string) {
+	fields := strings.Fields(args)
+	if len(fields) == 0 {
+		b.sendUniverseSummary()
+		return
+	}
+
+	sub := strings.ToLower(fields[0])
+	ticker := ""
+	if len(fields) > 1 {
+		ticker = strings.ToUpper(strings.TrimSpace(fields[1]))
+	}
+
+	switch sub {
+	case "add":
+		if ticker == "" {
+			b.Send(i18n.T(b.lang, i18n.KeyUniverseAddUsage))
+			return
+		}
+		if err := b.db.AddUniverseTicker(ticker, "manual"); err != nil {
+			b.Send(i18n.T(b.lang, i18n.KeyUniverseAddFailed, ticker, err))
+			return
+		}
+		b.Send(i18n.T(b.lang, i18n.KeyUniverseAddSuccess, ticker))
+	case "remove":
+		if ticker == "" {
+			b.Send(i18n.T(b.lang, i18n.KeyUniverseRemoveUsage))
+			return
+		}
+		if err := b.db.RemoveUniverseTicker(ticker); err != nil {
+			b.Send(i18n.T(b.lang, i18n.KeyUniverseRemoveFailed, ticker, err))
+			return
+		}
+		b.Send(i18n.T(b.lang, i18n.KeyUniverseRemoveSuccess, ticker))
+	default:
+		b.Send(i18n.T(b.lang, i18n.KeyUniverseUsage))
+	}
+}
+
+func (b *Bot) sendUniverseSummary() {
+	entries, err := b.db.GetUniverse()
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
+		return
+	}
+
+	bySource := make(map[string]int)
+	for _, e := range entries {
+		bySource[e.Source]++
+	}
+
+	var sb strings.Builder
+	sb.WriteString(i18n.T(b.lang, i18n.KeyUniverseSummary, len(entries)))
+	for _, source := range []string{"sp500", "manual"} {
+		if n := bySource[source]; n > 0 {
+			sb.WriteString(i18n.T(b.lang, i18n.KeyUniverseSourceLine, source, n))
+		}
+	}
+	b.Send(sb.String())
+}
+
 // handleChat replies to a plain-text (non-command) message using the LLM
 // client's persistent session, so the agent remembers earlier turns in this
 // conversation — unlike /recommend and /check, which are one-shot analysis
@@ -866,7 +935,8 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 	if err != nil {
 		log.Printf("market movers: %v", err)
 	}
-	dedupedCandidates := dedup(candidateTickers, tickers)
+	scanHits := b.loadScanHits()
+	dedupedCandidates := mergeCandidates(candidateTickers, scanHits, tickers)
 
 	positions := b.loadPositions()
 	earnings := b.loadEarnings(append(append([]string{}, tickers...), dedupedCandidates...))
@@ -874,7 +944,7 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 
 	// Detect signals on watchlist
 	var allSignals []signals.Signal
-	watchlist := b.fetchStockData(tickers, true, positions, earnings)
+	watchlist := b.fetchStockData(tickers, true, positions, earnings, nil)
 	for _, s := range watchlist {
 		if s.Quote != nil {
 			allSignals = append(allSignals, b.detector.CheckQuote(s.Quote)...)
@@ -892,7 +962,7 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 		b.SendSignalAlert(allSignals)
 	}
 
-	candidates := b.fetchStockData(dedupedCandidates, false, positions, earnings)
+	candidates := b.fetchStockData(dedupedCandidates, false, positions, earnings, scanHits)
 
 	recs, err := b.llm.GenerateRecommendations(ctx, watchlist, candidates)
 	if err != nil {
@@ -948,6 +1018,109 @@ func (b *Bot) checkStatefulSignals(ticker string, closes []float64) []signals.Si
 	return out
 }
 
+// scanChunkCount and universeScanRequestDelay govern Phase 2.6's daily
+// candidate-pool scan: the universe (~500 S&P 500 + manual tickers) is split
+// into scanChunkCount rotating slices — matching the closing-snapshot cadence
+// of Tue–Sat, 5 trading days/week — so a full pass covers roughly 100
+// tickers/day. universeScanRequestDelay throttles Yahoo history requests
+// within a chunk, per PLAN.md's explicit note not to hammer it.
+const (
+	scanChunkCount           = 5
+	universeScanRequestDelay = 300 * time.Millisecond
+)
+
+// universeScanChunk returns the slice of tickers to scan for dayIndex (an
+// ever-increasing day counter, e.g. time.Now().YearDay()), rotating through
+// all of tickers over chunkCount calls. Pure and stateless — no persisted
+// scan cursor needed — so coverage is deterministic given the same tickers
+// and dayIndex, at the cost of chunk boundaries shifting slightly as the
+// universe's membership changes day to day (harmless: PLAN.md tolerates
+// staleness on the order of months for this data).
+func universeScanChunk(tickers []string, chunkCount, dayIndex int) []string {
+	if len(tickers) == 0 || chunkCount <= 0 {
+		return nil
+	}
+	size := (len(tickers) + chunkCount - 1) / chunkCount
+	idx := dayIndex % chunkCount
+	if idx < 0 {
+		idx += chunkCount
+	}
+	start := idx * size
+	if start >= len(tickers) {
+		return nil
+	}
+	end := start + size
+	if end > len(tickers) {
+		end = len(tickers)
+	}
+	return tickers[start:end]
+}
+
+// RunUniverseScan is Phase 2.6's chunked candidate-pool scan: it checks
+// today's rotating slice of the universe (excluding anything already on the
+// watchlist, which gets a full RSI/MACD check daily anyway) for a fresh
+// RSI/MACD signal via the same checkStatefulSignals used for the watchlist —
+// safe to share signal_states with it since the two ticker sets never
+// overlap. Any hit is logged to scan_hits for RunDailyReport/handleRecommend
+// to pick up the same day and upgrade into an LLM candidate. Silent
+// background job like RunClosingSnapshot: results go to the DB/log, not
+// Telegram — the eventual daily report is the user-facing surface.
+func (b *Bot) RunUniverseScan(ctx context.Context) {
+	defer b.recoverJobPanic("universe scan")
+
+	entries, err := b.db.GetUniverse()
+	if err != nil {
+		log.Printf("universe scan: universe: %v", err)
+		return
+	}
+	watchlist, err := b.db.GetWatchlist()
+	if err != nil {
+		log.Printf("universe scan: watchlist: %v", err)
+		return
+	}
+	watchSet := make(map[string]bool, len(watchlist))
+	for _, t := range watchlist {
+		watchSet[t] = true
+	}
+
+	var tickers []string
+	for _, e := range entries {
+		if !watchSet[e.Ticker] {
+			tickers = append(tickers, e.Ticker)
+		}
+	}
+
+	chunk := universeScanChunk(tickers, scanChunkCount, time.Now().In(cst).YearDay())
+	date := todayDate()
+	hits := 0
+	for i, t := range chunk {
+		select {
+		case <-ctx.Done():
+			log.Printf("universe scan: cancelled after %d/%d tickers", i, len(chunk))
+			return
+		default:
+		}
+
+		closes, err := b.history.GetHistory(t)
+		if err != nil {
+			log.Printf("universe scan: history %s: %v", t, err)
+			continue
+		}
+		for _, sig := range b.checkStatefulSignals(t, closes) {
+			if err := b.db.SaveScanHit(t, date, sig.Message); err != nil {
+				log.Printf("universe scan: save hit %s: %v", t, err)
+				continue
+			}
+			hits++
+		}
+
+		if i < len(chunk)-1 {
+			time.Sleep(universeScanRequestDelay)
+		}
+	}
+	log.Printf("universe scan: checked %d tickers, %d hits", len(chunk), hits)
+}
+
 // fetchStockData fetches quote+news for each ticker. Fundamentals are only
 // attached when includeFundamentals is set (watchlist tickers, not the
 // broad market-mover candidate list) to stay well under Finnhub's free-tier
@@ -955,9 +1128,11 @@ func (b *Bot) checkStatefulSignals(ticker string, closes []float64) []signals.Si
 // positions (ticker -> open position) is looked up via loadPositions and
 // attaches cost-basis context for any ticker the user actually holds;
 // earnings (ticker -> upcoming earnings) is looked up via loadEarnings and
-// attaches an earnings-date warning for any ticker reporting soon. Pass nil
-// for either if there's nothing to attach.
-func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positions map[string]db.Position, earnings map[string]data.EarningsEvent) []llm.StockData {
+// attaches an earnings-date warning for any ticker reporting soon.
+// scanReasons (ticker -> joined signal message) is looked up via
+// db.GetScanHits and attaches why a Phase 2.6 universe-scan candidate was
+// surfaced. Pass nil for any of the three if there's nothing to attach.
+func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positions map[string]db.Position, earnings map[string]data.EarningsEvent, scanReasons map[string]string) []llm.StockData {
 	var result []llm.StockData
 	for _, t := range tickers {
 		q, err := b.provider.GetQuote(t)
@@ -979,6 +1154,9 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 		}
 		if e, ok := earnings[t]; ok {
 			stock.Earnings = &llm.Earnings{Date: e.Date, DaysUntil: daysUntil(e.Date)}
+		}
+		if r, ok := scanReasons[t]; ok {
+			stock.ScanReason = &r
 		}
 		result = append(result, stock)
 	}
@@ -1016,6 +1194,19 @@ func (b *Bot) loadEarnings(tickers []string) map[string]data.EarningsEvent {
 		return nil
 	}
 	return events
+}
+
+// loadScanHits returns today's Phase 2.6 universe-scan hits keyed by ticker
+// (joined reason string per ticker) via db.GetScanHits. Degrades to nil
+// (not an error) on a query failure — candidates without a scan reason still
+// go through movers as before.
+func (b *Bot) loadScanHits() map[string]string {
+	hits, err := b.db.GetScanHits(todayDate())
+	if err != nil {
+		log.Printf("scan hits: %v", err)
+		return nil
+	}
+	return hits
 }
 
 // checkEarningsAlerts sends one batched Telegram message warning about
@@ -1176,6 +1367,34 @@ func dedup(a, b []string) []string {
 		if !set[t] {
 			out = append(out, t)
 		}
+	}
+	return out
+}
+
+// mergeCandidates combines the market-movers list with today's Phase 2.6
+// universe-scan hits into the final candidate ticker list: movers first
+// (existing behavior preserved), then any scan-hit ticker not already
+// present, finally excluding anything already on the watchlist (exclude).
+func mergeCandidates(movers []string, scanHits map[string]string, exclude []string) []string {
+	seen := make(map[string]bool, len(movers)+len(scanHits))
+	excluded := make(map[string]bool, len(exclude))
+	for _, t := range exclude {
+		excluded[t] = true
+	}
+
+	var out []string
+	add := func(t string) {
+		if seen[t] || excluded[t] {
+			return
+		}
+		seen[t] = true
+		out = append(out, t)
+	}
+	for _, t := range movers {
+		add(t)
+	}
+	for t := range scanHits {
+		add(t)
 	}
 	return out
 }

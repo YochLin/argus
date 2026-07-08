@@ -31,6 +31,11 @@ type StockData struct {
 	// walk straight into next-day earnings volatility. Nil if nothing's
 	// scheduled soon.
 	Earnings *Earnings
+	// ScanReason is set when this candidate was surfaced by the Phase 2.6
+	// universe scan (bot.RunUniverseScan) rather than the market-movers list,
+	// so the prompt can say what technical signal actually triggered its
+	// inclusion. Nil for watchlist tickers and movers-sourced candidates.
+	ScanReason *string
 }
 
 // Position is the subset of a db.Position an LLM prompt needs: shares held
@@ -236,6 +241,10 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 
 	if e := s.Earnings; e != nil {
 		fmt.Fprint(sb, i18n.T(lang, i18n.KeyEarningsLine, e.Date, e.DaysUntil))
+	}
+
+	if r := s.ScanReason; r != nil {
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyScanHitLine, *r))
 	}
 
 	sb.WriteString("\n")

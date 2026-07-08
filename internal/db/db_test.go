@@ -376,3 +376,119 @@ func TestMigrateIsRerunnable(t *testing.T) {
 		t.Errorf("GetWatchlist() after reopen = %v, %v; want [AAPL], nil", got, err)
 	}
 }
+
+// TestSeedSP500 verifies New() seeds the universe table from the embedded
+// ticker list on first creation, and that reopening the same database
+// (simulating a restart) doesn't duplicate or re-seed rows the user may have
+// since removed.
+func TestSeedSP500(t *testing.T) {
+	d := newTestDB(t)
+
+	entries, err := d.GetUniverse()
+	if err != nil {
+		t.Fatalf("GetUniverse() error = %v", err)
+	}
+	if len(entries) < 400 {
+		t.Fatalf("GetUniverse() len = %d, want >= 400 (S&P 500 seed)", len(entries))
+	}
+	for _, e := range entries {
+		if e.Source != "sp500" {
+			t.Fatalf("unexpected source %q for freshly seeded ticker %q", e.Source, e.Ticker)
+		}
+	}
+
+	// A user removes a seeded ticker...
+	if err := d.RemoveUniverseTicker(entries[0].Ticker); err != nil {
+		t.Fatalf("RemoveUniverseTicker() error = %v", err)
+	}
+	afterRemove, err := d.GetUniverse()
+	if err != nil {
+		t.Fatalf("GetUniverse() error = %v", err)
+	}
+	if len(afterRemove) != len(entries)-1 {
+		t.Fatalf("GetUniverse() len after remove = %d, want %d", len(afterRemove), len(entries)-1)
+	}
+
+	// ...and it must not come back on a later seedSP500() call (only re-seeds
+	// when the sp500 source is entirely empty).
+	if err := d.seedSP500(); err != nil {
+		t.Fatalf("seedSP500() error = %v", err)
+	}
+	afterReseed, err := d.GetUniverse()
+	if err != nil {
+		t.Fatalf("GetUniverse() error = %v", err)
+	}
+	if len(afterReseed) != len(afterRemove) {
+		t.Errorf("GetUniverse() len after reseed = %d, want %d (removed ticker should stay gone)", len(afterReseed), len(afterRemove))
+	}
+}
+
+func TestUniverseAddRemove(t *testing.T) {
+	d := newTestDB(t)
+
+	if err := d.AddUniverseTicker("ZZZZ", "manual"); err != nil {
+		t.Fatalf("AddUniverseTicker() error = %v", err)
+	}
+	entries, err := d.GetUniverse()
+	if err != nil {
+		t.Fatalf("GetUniverse() error = %v", err)
+	}
+	found := false
+	for _, e := range entries {
+		if e.Ticker == "ZZZZ" {
+			found = true
+			if e.Source != "manual" {
+				t.Errorf("ZZZZ source = %q, want manual", e.Source)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("ZZZZ not found in universe after AddUniverseTicker()")
+	}
+
+	if err := d.RemoveUniverseTicker("ZZZZ"); err != nil {
+		t.Fatalf("RemoveUniverseTicker() error = %v", err)
+	}
+	entries, err = d.GetUniverse()
+	if err != nil {
+		t.Fatalf("GetUniverse() error = %v", err)
+	}
+	for _, e := range entries {
+		if e.Ticker == "ZZZZ" {
+			t.Fatalf("ZZZZ still present after RemoveUniverseTicker()")
+		}
+	}
+}
+
+func TestScanHitsGroupedByTicker(t *testing.T) {
+	d := newTestDB(t)
+
+	if err := d.SaveScanHit("ZZZZ", "2026-07-08", "RSI oversold (28.4)"); err != nil {
+		t.Fatalf("SaveScanHit() error = %v", err)
+	}
+	if err := d.SaveScanHit("ZZZZ", "2026-07-08", "MACD golden cross"); err != nil {
+		t.Fatalf("SaveScanHit() error = %v", err)
+	}
+	if err := d.SaveScanHit("YYYY", "2026-07-08", "RSI oversold (25.1)"); err != nil {
+		t.Fatalf("SaveScanHit() error = %v", err)
+	}
+	// A different date must not leak into the same-day query.
+	if err := d.SaveScanHit("ZZZZ", "2026-07-07", "RSI oversold (29.0)"); err != nil {
+		t.Fatalf("SaveScanHit() error = %v", err)
+	}
+
+	got, err := d.GetScanHits("2026-07-08")
+	if err != nil {
+		t.Fatalf("GetScanHits() error = %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("GetScanHits() len = %d, want 2", len(got))
+	}
+	want := "RSI oversold (28.4); MACD golden cross"
+	if got["ZZZZ"] != want {
+		t.Errorf("GetScanHits()[ZZZZ] = %q, want %q", got["ZZZZ"], want)
+	}
+	if got["YYYY"] != "RSI oversold (25.1)" {
+		t.Errorf("GetScanHits()[YYYY] = %q, want %q", got["YYYY"], "RSI oversold (25.1)")
+	}
+}
