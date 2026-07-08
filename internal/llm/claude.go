@@ -95,14 +95,20 @@ func NewClient(recommendModel, checkModel, chatModel string, lang i18n.Lang) *Cl
 
 // GenerateRecommendations analyzes watchlist stocks + broad market candidates
 // and returns 3–5 recommendations with explanations in the client's
-// configured language (c.lang).
-func (c *Client) GenerateRecommendations(ctx context.Context, watchlist []StockData, candidates []StockData) ([]Recommendation, error) {
-	prompt := buildRecommendationPrompt(c.lang, watchlist, candidates)
+// configured language (c.lang), plus a market-news summary when marketNews is
+// non-empty (empty string otherwise — e.g. Finnhub isn't configured). Both
+// are extracted from the single underlying LLM reply, not two separate
+// calls — see parseMarketSummary/parseRecommendations.
+func (c *Client) GenerateRecommendations(ctx context.Context, watchlist []StockData, candidates []StockData, marketNews []data.NewsItem) (summary string, recs []Recommendation, err error) {
+	prompt := buildRecommendationPrompt(c.lang, watchlist, candidates, marketNews)
 	raw, err := c.prompt(ctx, prompt, c.recommendModel)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
-	return parseRecommendations(c.lang, raw), nil
+	if len(marketNews) > 0 {
+		summary = parseMarketSummary(raw, i18n.T(c.lang, i18n.KeyMarketSummaryMarker))
+	}
+	return summary, parseRecommendations(c.lang, raw), nil
 }
 
 // CheckStock performs instant analysis of a single ticker.
@@ -171,10 +177,19 @@ func (c *Client) prompt(ctx context.Context, prompt, model string) (string, erro
 	return strings.TrimSpace(reply), nil
 }
 
-func buildRecommendationPrompt(lang i18n.Lang, watchlist []StockData, candidates []StockData) string {
+func buildRecommendationPrompt(lang i18n.Lang, watchlist []StockData, candidates []StockData, marketNews []data.NewsItem) string {
 	var sb strings.Builder
 
 	sb.WriteString(i18n.T(lang, i18n.KeyRecPromptIntro))
+
+	if len(marketNews) > 0 {
+		sb.WriteString(i18n.T(lang, i18n.KeyRecMarketNewsHeader))
+		for i, n := range marketNews {
+			fmt.Fprint(&sb, i18n.T(lang, i18n.KeyNewsItem, i+1, n.Source, n.Headline))
+		}
+		sb.WriteString("\n")
+	}
+
 	sb.WriteString(i18n.T(lang, i18n.KeyRecWatchlistHeader))
 
 	if len(watchlist) == 0 {
@@ -194,10 +209,42 @@ func buildRecommendationPrompt(lang i18n.Lang, watchlist []StockData, candidates
 		}
 	}
 
+	if len(marketNews) > 0 {
+		sb.WriteString(i18n.T(lang, i18n.KeyRecMarketSummaryTask, i18n.T(lang, i18n.KeyMarketSummaryMarker)))
+	}
+
 	action := i18n.T(lang, i18n.KeyActionMarker)
 	reason := i18n.T(lang, i18n.KeyReasonMarker)
 	sb.WriteString(i18n.T(lang, i18n.KeyRecTaskBlock, action, reason, action, reason))
 	return sb.String()
+}
+
+// parseMarketSummary extracts the free-text market-news summary the model
+// was instructed to emit under marker (see KeyRecMarketSummaryTask) before
+// its per-ticker [TICKER: ...] blocks. Returns "" if marker never appears
+// (e.g. the model omitted it) — same permissive-degrade shape as
+// parseRecommendations returning an empty slice.
+func parseMarketSummary(raw, marker string) string {
+	lines := strings.Split(raw, "\n")
+	start := -1
+	for i, line := range lines {
+		if strings.TrimSpace(line) == marker {
+			start = i + 1
+			break
+		}
+	}
+	if start == -1 {
+		return ""
+	}
+
+	end := len(lines)
+	for i := start; i < len(lines); i++ {
+		if strings.HasPrefix(strings.TrimSpace(lines[i]), "[TICKER:") {
+			end = i
+			break
+		}
+	}
+	return strings.TrimSpace(strings.Join(lines[start:end], "\n"))
 }
 
 func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {

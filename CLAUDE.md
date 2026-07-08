@@ -82,7 +82,12 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `/calendar/earnings` **without** a `symbol` filter (that param only accepts one ticker, so a per-ticker
   loop would cost one request each) and filters the whole-market response down to the requested tickers
   client-side via the pure, unit-tested `filterEarningsCalendar` — one API call regardless of watchlist
-  size, unlike the fundamentals path's per-ticker calls.
+  size, unlike the fundamentals path's per-ticker calls. `MarketNewsProvider` (`marketnews.go`) is
+  Finnhub-only for the same reason again: `GetMarketNews(limit)` hits `/news?category=general`, which
+  (unlike `/company-news`) isn't scoped to any ticker — it's the whole-market/macro news source for the
+  `/recommend`/daily-report news summary, not per-ticker headlines. No client-side filtering logic here
+  (unlike `filterEarningsCalendar`), so no dedicated test file — same as `finnhub.go`'s other simple
+  passthrough methods.
 - `internal/db` — thin wrapper around `database/sql` + `modernc.org/sqlite` (pure-Go, no cgo). Owns nine
   tables: `watchlist`, `daily_snapshots`, `recommendations` (with `action` BUY/SELL/HOLD and `price` at
   recommendation time, both read back by `/track`), `signal_states` (last-notified state per
@@ -148,7 +153,14 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   hand-specified format (`[TICKER: X]` / `<reason marker>: ...` blocks) that `parseRecommendations` parses
   with string matching, not JSON — if you change that prompt's expected output shape, update the parser in
   lockstep (and see `internal/i18n`'s entry above for why the reason marker specifically must stay wired
-  through `i18n.KeyReasonMarker` rather than a hardcoded literal). `Chat` has no such format to parse; its
+  through `i18n.KeyReasonMarker` rather than a hardcoded literal). When `marketNews` is non-empty,
+  `GenerateRecommendations` also asks the model (via `KeyRecMarketSummaryTask`) to emit a
+  `[MARKET SUMMARY]` block (`i18n.KeyMarketSummaryMarker`) *before* its `[TICKER: ...]` blocks — the same
+  raw reply gets a second, independent extraction pass via `parseMarketSummary(raw, marker)`, which grabs
+  everything between the marker line and the first `[TICKER:` line. This works without touching
+  `parseRecommendations` at all: it already ignores any text before the first `[TICKER:` line (it only
+  starts collecting once it sees one), so the prepended summary block is silently skipped by the existing
+  parser. `Chat` has no such format to parse; its
   reply is sent to the user verbatim. All LLM-facing prompts and bot-facing copy go through
   `internal/i18n` now — don't add a new hardcoded zh or en string in this package, add a `Key` instead.
   `StockData.Position` (a minimal `{Shares, AvgCost}` struct, deliberately not `db.Position` so this
@@ -222,6 +234,11 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   itself, so a ticker only re-alerts once its *next* earnings date rolls around. Both `handleRecommend`
   and `RunDailyReport` fetch `GetMarketMovers()` *before* building any `llm.StockData`, specifically so
   `loadEarnings` can cover the combined watchlist+candidate ticker set in one call rather than two.
+  `loadMarketNews` is the same nil-checked-optional-provider shape again, for
+  `data.MarketNewsProvider`: both callers fetch it once and pass it into
+  `llm.GenerateRecommendations`, which returns `(summary, recs, err)` — `summary` is prepended as its own
+  Telegram message by `sendAndSaveRecommendations` (via `KeyMarketNewsSummaryTitle`) when non-empty, but
+  is never written to `recommendations` since it isn't a per-ticker call `/track` can score.
   `RunUniverseScan` is Phase 2.6's chunked candidate-pool scan (see docs/phase-2.6-universe-scan.md for
   the full design): each run picks a rotating slice of the `universe` table (excluding watchlist
   tickers) via the pure `universeScanChunk(tickers, scanChunkCount, dayIndex)` — stateless, no persisted
@@ -278,7 +295,10 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   "Action:") and `KeyReasonMarker` ("原因:" / "Reason:"). Both appear in the `KeyRecTaskBlock` prompt
   template and must stay in lockstep with the parser (same constraint as the reason marker note in
   `internal/i18n` above). Actions are normalized to exactly BUY/SELL/HOLD; anything else parses as ""
-  so `/track` and the display never see a made-up action word.
+  so `/track` and the display never see a made-up action word. A third marker,
+  `KeyMarketSummaryMarker` ("[MARKET SUMMARY]", same in both languages), is independent of the two
+  above — it's what `parseMarketSummary` looks for, and it must stay wired through
+  `KeyRecMarketSummaryTask`'s `%s` verb rather than a hardcoded literal, same reasoning as the other two.
 - `Multi` provider fallback depends on provider order in `main.go` (Finnhub before Yahoo); don't reorder
   without reason since Finnhub is considered the more reliable/richer source.
 - The Dockerfile/docker-compose setup predates the ACP-based LLM client and has **not** been updated for

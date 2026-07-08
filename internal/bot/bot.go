@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/llm"
 	"argus/internal/signals"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 var cst = time.FixedZone("CST", 8*3600)
@@ -29,6 +29,10 @@ const (
 	earningsPromptWindowDays = 14
 	earningsAlertDays        = 3
 	earningsSignalFamily     = "earnings"
+
+	// marketNewsLimit is double the per-ticker news limit (5, see
+	// fetchStockData) since it covers the whole market rather than one name.
+	marketNewsLimit = 10
 )
 
 type Bot struct {
@@ -37,6 +41,7 @@ type Bot struct {
 	provider     data.Provider
 	fundamentals data.FundamentalsProvider // nil if FINNHUB_API_KEY isn't set
 	earnings     data.EarningsProvider     // nil if FINNHUB_API_KEY isn't set
+	marketNews   data.MarketNewsProvider   // nil if FINNHUB_API_KEY isn't set
 	history      data.HistoryProvider
 	llm          *llm.Client
 	detector     *signals.Detector
@@ -53,7 +58,7 @@ type Bot struct {
 	chatQueue chan *tgbotapi.Message
 }
 
-func New(token string, chatID int64, database *db.DB, provider data.Provider, fundamentals data.FundamentalsProvider, earnings data.EarningsProvider, history data.HistoryProvider, llmClient *llm.Client, lang i18n.Lang) (*Bot, error) {
+func New(token string, chatID int64, database *db.DB, provider data.Provider, fundamentals data.FundamentalsProvider, earnings data.EarningsProvider, marketNews data.MarketNewsProvider, history data.HistoryProvider, llmClient *llm.Client, lang i18n.Lang) (*Bot, error) {
 	api, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return nil, fmt.Errorf("telegram: %w", err)
@@ -65,6 +70,7 @@ func New(token string, chatID int64, database *db.DB, provider data.Provider, fu
 		provider:     provider,
 		fundamentals: fundamentals,
 		earnings:     earnings,
+		marketNews:   marketNews,
 		history:      history,
 		llm:          llmClient,
 		detector:     signals.NewDetector(lang),
@@ -268,11 +274,12 @@ func (b *Bot) handleRecommend(ctx context.Context) {
 
 	positions := b.loadPositions()
 	earnings := b.loadEarnings(append(append([]string{}, tickers...), dedupedCandidates...))
+	marketNews := b.loadMarketNews()
 
 	watchlist := b.fetchStockData(tickers, true, positions, earnings, nil)
 	candidates := b.fetchStockData(dedupedCandidates, false, positions, earnings, scanHits)
 
-	recs, err := b.llm.GenerateRecommendations(ctx, watchlist, candidates)
+	summary, recs, err := b.llm.GenerateRecommendations(ctx, watchlist, candidates, marketNews)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyLLMFailed, err))
 		return
@@ -283,7 +290,7 @@ func (b *Bot) handleRecommend(ctx context.Context) {
 		return
 	}
 
-	b.sendAndSaveRecommendations(recs, watchlist, candidates)
+	b.sendAndSaveRecommendations(summary, recs, watchlist, candidates)
 }
 
 // sendAndSaveRecommendations formats LLM recommendations for Telegram and
@@ -291,7 +298,11 @@ func (b *Bot) handleRecommend(ctx context.Context) {
 // from the already-fetched stock data — /track later compares that stored
 // price against the price on review day. Shared by /recommend and
 // RunDailyReport, which otherwise mirror each other.
-func (b *Bot) sendAndSaveRecommendations(recs []llm.Recommendation, stockLists ...[]llm.StockData) {
+func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommendation, stockLists ...[]llm.StockData) {
+	if newsSummary != "" {
+		b.Send(i18n.T(b.lang, i18n.KeyMarketNewsSummaryTitle) + newsSummary)
+	}
+
 	prices := make(map[string]float64)
 	for _, list := range stockLists {
 		for _, s := range list {
@@ -941,6 +952,7 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 	positions := b.loadPositions()
 	earnings := b.loadEarnings(append(append([]string{}, tickers...), dedupedCandidates...))
 	b.checkEarningsAlerts(tickers, earnings)
+	marketNews := b.loadMarketNews()
 
 	// Detect signals on watchlist
 	var allSignals []signals.Signal
@@ -964,7 +976,7 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 
 	candidates := b.fetchStockData(dedupedCandidates, false, positions, earnings, scanHits)
 
-	recs, err := b.llm.GenerateRecommendations(ctx, watchlist, candidates)
+	summary, recs, err := b.llm.GenerateRecommendations(ctx, watchlist, candidates, marketNews)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyLLMFailed, err))
 		return
@@ -975,7 +987,7 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 		return
 	}
 
-	b.sendAndSaveRecommendations(recs, watchlist, candidates)
+	b.sendAndSaveRecommendations(summary, recs, watchlist, candidates)
 }
 
 // checkStatefulSignals runs the RSI/MACD checks that diff against the last
@@ -1194,6 +1206,23 @@ func (b *Bot) loadEarnings(tickers []string) map[string]data.EarningsEvent {
 		return nil
 	}
 	return events
+}
+
+// loadMarketNews returns up to marketNewsLimit general market/macro news
+// items for the recommendation prompt's market-news summary section.
+// Degrades to nil (not an error) when Finnhub isn't configured or the
+// request fails — same optional-data pattern as fundamentals/earnings; a nil
+// result means GenerateRecommendations simply omits the summary.
+func (b *Bot) loadMarketNews() []data.NewsItem {
+	if b.marketNews == nil {
+		return nil
+	}
+	items, err := b.marketNews.GetMarketNews(marketNewsLimit)
+	if err != nil {
+		log.Printf("market news: %v", err)
+		return nil
+	}
+	return items
 }
 
 // loadScanHits returns today's Phase 2.6 universe-scan hits keyed by ticker

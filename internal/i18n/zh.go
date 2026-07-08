@@ -25,6 +25,7 @@ var zhMessages = map[Key]string{
 	KeyLLMFailed:              "LLM 分析失敗：%v",
 	KeyNoRecommendations:      "LLM 未回傳推薦標的，請稍後再試。",
 	KeyRecommendationsTitle:   "🤖 *今日推薦標的*\n\n",
+	KeyMarketNewsSummaryTitle: "📰 *市場新聞摘要*\n\n",
 	KeyCheckUsage:             "用法：/check <ticker>，例如 /check TSLA",
 	KeyAnalyzingTicker:        "分析中，請稍候... (%s)",
 	KeyCheckResultTitle:       "📈 *%s 即時分析*\n\n%s",
@@ -133,11 +134,18 @@ var zhMessages = map[Key]string{
 	KeySystemPromptAnalyst: "你是一位專業的美股分析師，只負責針對使用者提供的市場數據給出文字分析。你沒有任何工具可用，也不需要使用工具；請直接依照使用者訊息中的格式要求回覆，不要輸出與分析無關的內容。",
 	KeySystemPromptChat:    "你是使用者的個人助理，請用繁體中文自然對話，記住這段對話中先前提到的內容。你沒有任何工具可用，也不需要使用工具。",
 
-	KeyRecPromptIntro:     "你是一位美股分析師，請根據以下市場數據給出今日操作建議。\n\n",
-	KeyRecWatchlistHeader: "## 我的自選股\n\n",
-	KeyRecNoWatchlist:     "（無自選股）\n\n",
-	KeyRecMoversHeader:    "## 大盤熱門標的\n\n",
-	KeyRecNoCandidates:    "（無候選標的）\n\n",
+	KeyRecPromptIntro:      "你是一位美股分析師，請根據以下市場數據給出今日操作建議。\n\n",
+	KeyRecMarketNewsHeader: "## 大盤新聞\n\n",
+	KeyRecWatchlistHeader:  "## 我的自選股\n\n",
+	KeyRecNoWatchlist:      "（無自選股）\n\n",
+	KeyRecMoversHeader:     "## 大盤熱門標的\n\n",
+	KeyRecNoCandidates:     "（無候選標的）\n\n",
+	KeyRecMarketSummaryTask: `
+在逐檔分析之前，請先輸出一個區塊，第一行必須是：
+%s
+接著用 3–5 條重點統整以上市場新聞，並指出可能受惠或受害的類股/標的（總長 150 字以內）。
+之後再接續逐檔分析區塊。
+`,
 	KeyRecTaskBlock: `
 ## 任務
 
@@ -156,8 +164,9 @@ var zhMessages = map[Key]string{
 
 自選股排在前面；同組內依照你最看好的順序排列，信心最高的排第一。
 `,
-	KeyReasonMarker: "原因:",
-	KeyActionMarker: "動作:",
+	KeyReasonMarker:        "原因:",
+	KeyActionMarker:        "動作:",
+	KeyMarketSummaryMarker: "[MARKET SUMMARY]",
 
 	KeyCheckPromptIntro: "你是一位美股分析師，請針對以下標的給出即時市場分析。\n\n",
 	KeyCheckPromptTask: `

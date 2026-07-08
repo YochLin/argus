@@ -107,3 +107,38 @@ func TestParseRecommendations(t *testing.T) {
 		}
 	})
 }
+
+func TestParseMarketSummary(t *testing.T) {
+	marker := "[MARKET SUMMARY]"
+
+	t.Run("summary present, ticker blocks follow", func(t *testing.T) {
+		raw := "[MARKET SUMMARY]\n- Fed signals a pause.\n- Oil prices climb.\n\n[TICKER: AAPL]\nReason: strong earnings.\n"
+		got := parseMarketSummary(raw, marker)
+		want := "- Fed signals a pause.\n- Oil prices climb."
+		if got != want {
+			t.Errorf("parseMarketSummary() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("marker absent (Finnhub not configured / model omitted it) yields empty", func(t *testing.T) {
+		raw := "[TICKER: AAPL]\nReason: strong earnings.\n"
+		if got := parseMarketSummary(raw, marker); got != "" {
+			t.Errorf("parseMarketSummary() = %q, want empty", got)
+		}
+	})
+
+	t.Run("marker present with no ticker blocks extracts to end of string", func(t *testing.T) {
+		raw := "[MARKET SUMMARY]\n- Only macro news today, no picks.\n"
+		got := parseMarketSummary(raw, marker)
+		want := "- Only macro news today, no picks."
+		if got != want {
+			t.Errorf("parseMarketSummary() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("empty input yields empty summary", func(t *testing.T) {
+		if got := parseMarketSummary("", marker); got != "" {
+			t.Errorf("parseMarketSummary() = %q, want empty", got)
+		}
+	})
+}

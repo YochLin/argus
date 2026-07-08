@@ -51,6 +51,9 @@ Three things about today's implementation are conveniences, not commitments:
   RSI/MACD signals used on the watchlist; a hit gets upgraded into that day's `/recommend`/daily-report
   candidates with the triggering signal attached, instead of relying only on the market's "trending"
   list
+- **Market news summary** — general (non-ticker) market/macro news is fetched alongside the usual
+  per-ticker headlines, and the LLM opens its `/recommend`/daily-report reply with a short summary of
+  what's moving the broader market before its per-ticker calls — requires a Finnhub API key
 - **Free-form chat** — message the bot without a command and it remembers the conversation, separate
   from the one-shot analysis commands
 - **Daily report** — an automatic summary pushed every day before US market open (21:00 Taiwan time)

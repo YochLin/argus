@@ -22,6 +22,7 @@ var enMessages = map[Key]string{
 	KeyLLMFailed:              "LLM analysis failed: %v",
 	KeyNoRecommendations:      "The LLM returned no recommendations — try again later.",
 	KeyRecommendationsTitle:   "🤖 *Today's Recommendations*\n\n",
+	KeyMarketNewsSummaryTitle: "📰 *Market News Summary*\n\n",
 	KeyCheckUsage:             "Usage: /check <ticker>, e.g. /check TSLA",
 	KeyAnalyzingTicker:        "Analyzing, please wait... (%s)",
 	KeyCheckResultTitle:       "📈 *%s Instant Analysis*\n\n%s",
@@ -130,11 +131,19 @@ var enMessages = map[Key]string{
 	KeySystemPromptAnalyst: "You are a professional US equities analyst whose only job is to give a written analysis based on the market data the user provides. You have no tools available and need none; reply strictly according to the format the user's message requests, with no content unrelated to the analysis.",
 	KeySystemPromptChat:    "You are the user's personal assistant. Talk naturally in English and remember what was said earlier in this conversation. You have no tools available and need none.",
 
-	KeyRecPromptIntro:     "You are a US equities analyst. Based on the market data below, give today's action recommendations.\n\n",
-	KeyRecWatchlistHeader: "## My Watchlist\n\n",
-	KeyRecNoWatchlist:     "(No watchlist tickers)\n\n",
-	KeyRecMoversHeader:    "## Broad Market Movers\n\n",
-	KeyRecNoCandidates:    "(No candidate tickers)\n\n",
+	KeyRecPromptIntro:      "You are a US equities analyst. Based on the market data below, give today's action recommendations.\n\n",
+	KeyRecMarketNewsHeader: "## Broad Market News\n\n",
+	KeyRecWatchlistHeader:  "## My Watchlist\n\n",
+	KeyRecNoWatchlist:      "(No watchlist tickers)\n\n",
+	KeyRecMoversHeader:     "## Broad Market Movers\n\n",
+	KeyRecNoCandidates:     "(No candidate tickers)\n\n",
+	KeyRecMarketSummaryTask: `
+Before the per-ticker analysis below, first output a block starting with the exact line
+%s
+followed by 3–5 bullet points summarizing the market news above, noting which sectors or
+tickers might benefit or suffer (under 150 words total). Then continue with the per-ticker
+blocks.
+`,
 	KeyRecTaskBlock: `
 ## Task
 
@@ -153,8 +162,9 @@ Strictly follow this output structure, one block per ticker, with no extra text:
 
 Watchlist tickers come first; within each group, order by conviction with your highest-confidence pick first.
 `,
-	KeyReasonMarker: "Reason:",
-	KeyActionMarker: "Action:",
+	KeyReasonMarker:        "Reason:",
+	KeyActionMarker:        "Action:",
+	KeyMarketSummaryMarker: "[MARKET SUMMARY]",
 
 	KeyCheckPromptIntro: "You are a US equities analyst. Give an instant market read on the ticker below.\n\n",
 	KeyCheckPromptTask: `
