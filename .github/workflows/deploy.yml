@@ -1,0 +1,42 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+# 防止兩次部署同時跑（第二次觸發會排隊等第一次結束）
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: go build -o argus.new ./cmd/bot
+
+      - name: Install binary
+        run: |
+          mkdir -p "$HOME/apps/argus"
+          # mv 是原子的 rename，即使舊 binary 正在執行也不會遇到 "text file busy"
+          mv -f argus.new "$HOME/apps/argus/argus"
+
+      - name: Restart service
+        run: |
+          # runner 以服務身分跑時沒有 login session 環境，
+          # 需要手動指向 user bus 才能用 systemctl --user
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          systemctl --user restart argus
+
+      - name: Verify
+        run: |
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          sleep 3
+          systemctl --user is-active argus
+          journalctl --user -u argus -n 20 --no-pager || true

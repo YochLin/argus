@@ -1,0 +1,21 @@
+# systemd user unit — 放到 VPS 的 ~/.config/systemd/user/argus.service
+#
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now argus
+#
+# user service 預設會在使用者登出後被停掉，跑無人值守的 bot 必須開 linger:
+#   sudo loginctl enable-linger <user>
+
+[Unit]
+Description=Argus stock monitoring bot
+After=network-online.target
+
+[Service]
+# .env 和 data/ 都放在工作目錄下，bot 用 godotenv 從這裡讀 .env
+WorkingDirectory=%h/apps/argus
+ExecStart=%h/apps/argus/argus
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
