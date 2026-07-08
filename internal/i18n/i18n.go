@@ -102,6 +102,13 @@ const (
 	KeyPortfolioEmpty          Key = "portfolio_empty"
 	KeyPortfolioLine           Key = "portfolio_line"
 	KeyPortfolioSummary        Key = "portfolio_summary"
+	KeyJobPanic                Key = "job_panic"
+
+	KeyChatContextHeader       Key = "chat_context_header"
+	KeyChatContextTickerNoData Key = "chat_context_ticker_no_data"
+	KeyChatContextWatchLine    Key = "chat_context_watch_line"
+	KeyChatContextPositionLine Key = "chat_context_position_line"
+	KeyChatContextFooter       Key = "chat_context_footer"
 
 	KeyQuoteLine Key = "quote_line"
 

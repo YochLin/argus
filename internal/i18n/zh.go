@@ -45,10 +45,10 @@ var zhMessages = map[Key]string{
 	KeyTrackLineNoPrice:      "• %s *%s* %s — 無推薦時價格可比對\n",
 	KeyTrackSummary:          "\n命中率：%d/%d (%.0f%%)\n（BUY 上漲算命中、SELL 下跌算命中；HOLD 與無價格資料者不計入）",
 
-	KeyBuyUsage:               "用法：/buy <ticker> <股數> <價格> [手續費]，例如 /buy AAPL 10 205.5",
+	KeyBuyUsage:               "用法：/buy <ticker> <股數> <價格> [手續費] [日期]，例如 /buy AAPL 10 205.5 或 /buy AAPL 10 205.5 1.5 2026-01-15（回填歷史交易日期）",
 	KeyBuyFailed:              "記錄買入失敗：%v",
 	KeyBuySuccess:             "✅ 已記錄買入 *%s* %g 股 @ $%.2f（手續費 $%.2f）\n目前持倉：%g 股，平均成本 $%.2f",
-	KeySellUsage:              "用法：/sell <ticker> <股數> <價格> [手續費]，例如 /sell AAPL 5 210",
+	KeySellUsage:              "用法：/sell <ticker> <股數> <價格> [手續費] [日期]，例如 /sell AAPL 5 210 或 /sell AAPL 5 210 1 2026-01-15（回填歷史交易日期）",
 	KeySellFailed:             "記錄賣出失敗：%v",
 	KeySellSuccess:            "✅ 已記錄賣出 *%s* %g 股 @ $%.2f（手續費 $%.2f）\n已實現損益：%+.2f\n剩餘持倉：%g 股",
 	KeySellNoPosition:         "沒有 *%s* 的持倉可供賣出。",
@@ -57,6 +57,13 @@ var zhMessages = map[Key]string{
 	KeyPortfolioEmpty:         "目前沒有持倉。使用 /buy <ticker> <股數> <價格> 記錄買入。",
 	KeyPortfolioLine:          "*%s*  %g 股 @ 均價 $%.2f\n現價 $%.2f　市值 $%.2f　未實現損益 %+.2f (%+.2f%%)\n\n",
 	KeyPortfolioSummary:       "—\n總市值：$%.2f\n累計已實現損益：%+.2f",
+	KeyJobPanic:               "⚠️ *%s* 執行時發生未預期錯誤，已中止：%v",
+
+	KeyChatContextHeader:       "[背景資料，非即時報價，僅供參考]\n",
+	KeyChatContextTickerNoData: "- %s：尚無收盤資料\n",
+	KeyChatContextWatchLine:    "- %s：%s 收盤 $%.2f (%+.2f%%)\n",
+	KeyChatContextPositionLine: "- %s：%s 收盤 $%.2f (%+.2f%%)｜持倉 %g 股，均價 $%.2f，未實現損益 %+.2f%%\n",
+	KeyChatContextFooter:       "[背景資料結束，請針對以下訊息回覆]\n\n",
 
 	KeyQuoteLine: "*%s*  $%.2f  %s%.2f%%\n開: $%.2f　高: $%.2f　低: $%.2f",
 

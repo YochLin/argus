@@ -246,6 +246,26 @@ func (d *DB) GetSnapshotClose(ticker, date string) (close float64, ok bool, err 
 	return close, true, nil
 }
 
+// GetLatestSnapshot returns the most recent daily_snapshots row for ticker
+// regardless of date, or ok=false if none exists yet. Used by chat context
+// injection, which wants "whatever we last saw" rather than a specific
+// day's close.
+func (d *DB) GetLatestSnapshot(ticker string) (DailySnapshot, bool, error) {
+	s := DailySnapshot{Ticker: ticker}
+	err := d.conn.QueryRow(`
+		SELECT date, open, close, high, low, volume, change_percent
+		FROM daily_snapshots WHERE ticker = ? ORDER BY date DESC LIMIT 1`,
+		ticker,
+	).Scan(&s.Date, &s.Open, &s.Close, &s.High, &s.Low, &s.Volume, &s.ChangePercent)
+	if err == sql.ErrNoRows {
+		return DailySnapshot{}, false, nil
+	}
+	if err != nil {
+		return DailySnapshot{}, false, err
+	}
+	return s, true, nil
+}
+
 func (d *DB) SaveRecommendations(date string, recs []Recommendation) error {
 	tx, err := d.conn.Begin()
 	if err != nil {
@@ -473,6 +493,18 @@ func (d *DB) SaveNetWorthSnapshot(date string, total float64) error {
 		ON CONFLICT(date) DO UPDATE SET total_value = excluded.total_value`,
 		date, total,
 	)
+	return err
+}
+
+// Backup writes a consistent point-in-time copy of the database to destPath
+// via SQLite's VACUUM INTO, which is safe to run against a live database
+// (unlike copying the file directly, which can catch it mid-write or miss
+// WAL-journaled pages). destPath is bound as a parameter rather than
+// interpolated into the SQL string, even though it's caller-controlled
+// (config, not user input) — no reason to hand-format a file path into SQL
+// when the driver can bind it safely.
+func (d *DB) Backup(destPath string) error {
+	_, err := d.conn.Exec(`VACUUM INTO ?`, destPath)
 	return err
 }
 

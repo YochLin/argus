@@ -309,6 +309,48 @@ func TestSaveNetWorthSnapshotUpsert(t *testing.T) {
 	}
 }
 
+func TestGetLatestSnapshot(t *testing.T) {
+	d := newTestDB(t)
+
+	if _, ok, err := d.GetLatestSnapshot("AAPL"); err != nil || ok {
+		t.Fatalf("GetLatestSnapshot() before any snapshot: ok = %v, err = %v; want false, nil", ok, err)
+	}
+
+	if err := d.SaveSnapshot(DailySnapshot{Ticker: "AAPL", Date: "2026-07-01", Close: 200}); err != nil {
+		t.Fatalf("SaveSnapshot() error = %v", err)
+	}
+	if err := d.SaveSnapshot(DailySnapshot{Ticker: "AAPL", Date: "2026-07-05", Close: 210}); err != nil {
+		t.Fatalf("SaveSnapshot() error = %v", err)
+	}
+
+	got, ok, err := d.GetLatestSnapshot("AAPL")
+	if err != nil || !ok || got.Date != "2026-07-05" || got.Close != 210 {
+		t.Errorf("GetLatestSnapshot() = %+v, %v, %v; want Date=2026-07-05 Close=210, true, nil", got, ok, err)
+	}
+}
+
+func TestBackup(t *testing.T) {
+	d := newTestDB(t)
+	if err := d.AddTicker("AAPL"); err != nil {
+		t.Fatalf("AddTicker() error = %v", err)
+	}
+
+	dest := filepath.Join(t.TempDir(), "backup.db")
+	if err := d.Backup(dest); err != nil {
+		t.Fatalf("Backup() error = %v", err)
+	}
+
+	backup, err := New(dest)
+	if err != nil {
+		t.Fatalf("open backup file: %v", err)
+	}
+	defer backup.Close()
+	got, err := backup.GetWatchlist()
+	if err != nil || len(got) != 1 || got[0] != "AAPL" {
+		t.Errorf("backup GetWatchlist() = %v, %v; want [AAPL], nil", got, err)
+	}
+}
+
 // TestMigrateIsRerunnable reopens the same database file, simulating a bot
 // restart — migrate() must see the recorded user_version and skip already-
 // applied steps (re-running the ALTER TABLE step would fail on duplicate

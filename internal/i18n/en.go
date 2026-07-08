@@ -42,10 +42,10 @@ var enMessages = map[Key]string{
 	KeyTrackLineNoPrice:      "• %s *%s* %s — no price recorded to compare against\n",
 	KeyTrackSummary:          "\nHit rate: %d/%d (%.0f%%)\n(BUY counts as a hit if the price rose, SELL if it fell; HOLD and rows without price data are excluded)",
 
-	KeyBuyUsage:               "Usage: /buy <ticker> <shares> <price> [fee], e.g. /buy AAPL 10 205.5",
+	KeyBuyUsage:               "Usage: /buy <ticker> <shares> <price> [fee] [date], e.g. /buy AAPL 10 205.5 or /buy AAPL 10 205.5 1.5 2026-01-15 (backdate a historical trade)",
 	KeyBuyFailed:              "Failed to record buy: %v",
 	KeyBuySuccess:             "✅ Recorded BUY of *%s* %g shares @ $%.2f (fee $%.2f)\nPosition now: %g shares, avg cost $%.2f",
-	KeySellUsage:              "Usage: /sell <ticker> <shares> <price> [fee], e.g. /sell AAPL 5 210",
+	KeySellUsage:              "Usage: /sell <ticker> <shares> <price> [fee] [date], e.g. /sell AAPL 5 210 or /sell AAPL 5 210 1 2026-01-15 (backdate a historical trade)",
 	KeySellFailed:             "Failed to record sell: %v",
 	KeySellSuccess:            "✅ Recorded SELL of *%s* %g shares @ $%.2f (fee $%.2f)\nRealized P&L: %+.2f\nRemaining position: %g shares",
 	KeySellNoPosition:         "No position in *%s* to sell.",
@@ -54,6 +54,13 @@ var enMessages = map[Key]string{
 	KeyPortfolioEmpty:         "No positions yet. Use /buy <ticker> <shares> <price> to record a purchase.",
 	KeyPortfolioLine:          "*%s*  %g shares @ avg $%.2f\nPrice $%.2f  Value $%.2f  Unrealized %+.2f (%+.2f%%)\n\n",
 	KeyPortfolioSummary:       "—\nTotal market value: $%.2f\nCumulative realized P&L: %+.2f",
+	KeyJobPanic:               "⚠️ *%s* hit an unexpected error and aborted: %v",
+
+	KeyChatContextHeader:       "[Background info, not real-time, for reference only]\n",
+	KeyChatContextTickerNoData: "- %s: no closing data yet\n",
+	KeyChatContextWatchLine:    "- %s: %s close $%.2f (%+.2f%%)\n",
+	KeyChatContextPositionLine: "- %s: %s close $%.2f (%+.2f%%) | holding %g shares, avg cost $%.2f, unrealized %+.2f%%\n",
+	KeyChatContextFooter:       "[End of background info — reply to the message below]\n\n",
 
 	KeyQuoteLine: "*%s*  $%.2f  %s%.2f%%\nOpen: $%.2f  High: $%.2f  Low: $%.2f",
 

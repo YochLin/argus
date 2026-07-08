@@ -94,7 +94,14 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   basis), `RecordSell` computes `realizedPnL = (price-avgCost)*shares - fee` and deletes the `positions`
   row outright once shares hits ~0 rather than leaving a zero-share row — it returns `ErrNoPosition` /
   `ErrInsufficientShares` (sentinel errors, checked with `errors.Is` in `bot.handleSell`) rather than
-  ever going negative, since this project only tracks long positions.
+  ever going negative, since this project only tracks long positions. Both take an explicit `date`
+  param (not always "today") so `/buy`/`/sell` can backdate a historical trade; `RecordBuy`'s
+  weighted-average math is order-independent so backdated buys are safe in any order, but a backdated
+  sell's `realizedPnL` is computed against whatever `avg_cost` the position holds *at call time* — enter
+  backdated sells oldest-first or the realized P&L won't match what it would have been on that date.
+  `GetLatestSnapshot` (most recent `daily_snapshots` row for a ticker, regardless of date) backs the
+  chat context injection in `internal/bot` — see below. `Backup` runs `VACUUM INTO ?` (safe against a
+  live DB, unlike copying the file directly) for the daily backup job.
 - `internal/i18n` — every user/LLM-facing string in the project, split into exactly two files by design:
   `zh.go` (Traditional Chinese, the original default) and `en.go` (English), both keyed by the `Key`
   constants declared in `i18n.go`. `T(lang, key, args...)` does the lookup + `fmt.Sprintf`. This covers two
@@ -153,11 +160,14 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   as everything in `internal/bot` — don't hardcode a new message string here either.
 - `internal/scheduler` — thin wrapper around `robfig/cron` fixed to `time.FixedZone("CST", 8*3600)`
   (Taiwan time) rather than a loaded `time.Location`, specifically so it works in the `alpine` Docker
-  image without needing the `tzdata` package installed. Two jobs: the daily report (21:00 CST daily) and
+  image without needing the `tzdata` package installed. Four jobs: the daily report (21:00 CST daily),
   the closing snapshot (05:30 CST Tue–Sat — a US session ends at 04:00 or 05:00 CST the next morning
   depending on daylight saving, so 05:30 is past the close in both; Sun/Mon mornings follow no US
   session and are excluded at the cron level, while US holidays are handled by the job itself skipping
-  stale quotes).
+  stale quotes), log rotation (`AddLogRotation`, 00:00 CST daily — `lumberjack.Logger` only rotates on
+  size by itself, so this cron call to `Rotate()` is what makes it an actual daily rotation), and the
+  SQLite backup (`AddBackup`, 06:00 CST daily, after the closing snapshot so each backup includes that
+  day's post-close data).
 - `internal/bot` — Telegram command dispatch (`/add`, `/remove`, `/list`, `/status`, `/recommend`,
   `/check`, `/track`, `/buy`, `/sell`, `/portfolio`, `/dailyreport`, `/fundamentals`, `/reset`) plus two
   scheduler-invoked jobs: `RunDailyReport` (21:00 CST, pre-open) and `RunClosingSnapshot` (05:30 CST
@@ -170,7 +180,10 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `/buy`/`/sell` (`handleBuy`/`handleSell`, parsed by the shared `parseTradeArgs`) wrap
   `db.RecordBuy`/`RecordSell`; `/buy` also calls `db.AddTicker` so a bought position is always on the
   watchlist (positions are never auto-removed from it on a full sell — the user may still want to watch
-  it). `/portfolio` (`handlePortfolio`) lists every `db.GetPositions()` row against a live quote for
+  it). `parseTradeArgs` accepts an optional trailing date (`YYYY-MM-DD`, order-independent with the
+  optional fee — distinguished by shape via `tradeDateRe`) for backdating historical trades; omitted
+  date defaults to today in the handler, not the parser, so the parser stays a pure function (see
+  `bot_test.go`'s `TestParseTradeArgs`). `/portfolio` (`handlePortfolio`) lists every `db.GetPositions()` row against a live quote for
   market value and unrealized P&L, plus `db.GetRealizedPnL()`'s all-time SELL total.
   `RunClosingSnapshot` calls `recordNetWorthSnapshot` after its per-ticker loop, reusing the quotes it
   already fetched for watchlist tickers (falling back to a direct quote fetch for any position ticker
@@ -185,7 +198,15 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   guarantee is the reason chat isn't just `go b.handleChat(...)` too: it shares one persistent LLM session,
   and answering two chat messages concurrently could let the second reach that session before the first.
   `handleChat` (used only by `chatWorker`) is the bot's free-form chat mode, backed by `llm.Client`'s
-  persistent session (see `internal/llm` below) — separate from the one-shot analysis commands. `/reset`
+  persistent session (see `internal/llm` below) — separate from the one-shot analysis commands. Every
+  chat message is prefixed with `buildChatContext`'s output before being sent to the LLM: a read-only
+  summary (watchlist ∪ position tickers, each one's `db.GetLatestSnapshot`, cost basis/unrealized P&L
+  for held ones) rendered by the pure, independently-tested `formatChatContext`. This deliberately reads
+  local `daily_snapshots` instead of live quotes — fetching a live quote per ticker on every chat
+  message would add real latency to a conversational flow — and deliberately prefixes *every* message
+  rather than injecting once per session, since ACP auth has no metered token cost (ordinary API pricing
+  concerns don't apply — see the Pro/Max note below), so data freshness wins over the context bloat of
+  repeating it each turn. `/reset`
   clears that persistent session's memory via `llm.Client.ResetChat`. `RunDailyReport` and `/recommend`
   share almost identical logic (fetch watchlist + market-mover candidates, run signal detection, call
   the LLM, then the shared `sendAndSaveRecommendations` tail: send results and persist ticker + action +
@@ -194,6 +215,13 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `data.FundamentalsProvider` that's `nil` whenever `FINNHUB_API_KEY` isn't set — every fundamentals
   code path (`/fundamentals`, and the fundamentals branch in `handleCheck`/`fetchStockData`) must nil-check
   it and degrade gracefully rather than erroring, since this data source is optional by design.
+  `RunDailyReport`/`RunClosingSnapshot` both `defer b.recoverJobPanic(...)` — the bot runs unattended on
+  a VPS, so a panic in either scheduler-invoked job must not just kill that goroutine silently; it logs
+  and sends a Telegram alert (`KeyJobPanic`) instead. `RunClosingSnapshot`'s early-return on a failed
+  `db.GetWatchlist()` also now sends `KeyWatchlistQueryFailed` (previously log-only), matching how
+  `RunDailyReport` already handled the same failure — keep new whole-job-abort paths in either function
+  user-visible; per-ticker failures inside the loop (one quote fetch failing, etc.) should stay log-only
+  so a bad day for one ticker doesn't spam a Telegram alert.
 
 ## Key behaviors to preserve
 
@@ -219,3 +247,13 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   credential path solved for a Linux container yet. Running the bot in Docker currently only works for the
   Telegram/data/DB parts, not `/recommend` or `/check`. Treat this as an open problem, not an oversight, if
   asked to containerize this.
+- Migration steps append at the end of `db.migrations` and never get edited/reordered once shipped (see
+  `internal/db` above) — this now also applies to `positions`/`transactions`/`net_worth_snapshots`
+  (migration 3). `db.Backup`'s `VACUUM INTO` runs against the live DB via the same `*sql.DB` handle the
+  bot uses, so it must stay a plain read (no schema/write locks held across it) or it'll contend with
+  normal request handling.
+- Log rotation (`AddLogRotation`) and backups (`AddBackup`) both run at fixed CST times distinct from the
+  daily report/closing snapshot (00:00 and 06:00 respectively) — keep the backup after 05:30 (closing
+  snapshot) so a day's backup always includes that day's post-close data, and don't move log rotation
+  onto the same minute as another cron job for no reason (keeps log lines from either job from
+  interleaving confusingly around a rotation boundary).

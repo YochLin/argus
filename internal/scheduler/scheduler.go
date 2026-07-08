@@ -54,6 +54,35 @@ func (s *Scheduler) AddClosingSnapshot(ctx context.Context, fn JobFunc) {
 	log.Println("scheduler: closing snapshot registered at 05:30 CST (Tue–Sat)")
 }
 
+// AddLogRotation schedules fn (typically a rotating log writer's Rotate
+// method) at midnight CST daily. lumberjack.Logger only rotates on size by
+// itself, so this is what turns that into an actual daily rotation; MaxAge/
+// MaxBackups on the logger handle pruning old files.
+func (s *Scheduler) AddLogRotation(fn func()) {
+	_, err := s.c.AddFunc("0 0 0 * * *", func() {
+		log.Println("scheduler: rotating log")
+		fn()
+	})
+	if err != nil {
+		log.Fatalf("scheduler: add log rotation: %v", err)
+	}
+	log.Println("scheduler: log rotation registered at 00:00 CST")
+}
+
+// AddBackup schedules fn (the SQLite backup routine) at 06:00 CST daily,
+// after the closing snapshot (05:30) so each day's backup captures that
+// day's post-close data.
+func (s *Scheduler) AddBackup(fn func()) {
+	_, err := s.c.AddFunc("0 0 6 * * *", func() {
+		log.Println("scheduler: running backup")
+		fn()
+	})
+	if err != nil {
+		log.Fatalf("scheduler: add backup: %v", err)
+	}
+	log.Println("scheduler: backup registered at 06:00 CST")
+}
+
 func (s *Scheduler) Start() {
 	s.c.Start()
 	log.Println("scheduler: started")

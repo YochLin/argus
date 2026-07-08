@@ -2,13 +2,18 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
+	"gopkg.in/natefinch/lumberjack.v2"
 	"argus/internal/bot"
 	"argus/internal/data"
 	"argus/internal/db"
@@ -16,6 +21,8 @@ import (
 	"argus/internal/llm"
 	"argus/internal/scheduler"
 )
+
+var cst = time.FixedZone("CST", 8*3600)
 
 func main() {
 	if err := godotenv.Load(); err != nil {
@@ -40,6 +47,20 @@ func main() {
 	if err := os.MkdirAll("data", 0o755); err != nil {
 		log.Fatalf("create data dir: %v", err)
 	}
+
+	// Log to both stdout (visible via `docker logs`/systemd journal) and a
+	// daily-rotated file (registered below on the scheduler) so a VPS
+	// deployment has something to grep after the fact — lumberjack only
+	// rotates on size by itself; MaxAge+MaxBackups here cap it at roughly a
+	// week of history so the log can't slowly fill the disk.
+	logFile := &lumberjack.Logger{
+		Filename:   envOr("LOG_PATH", "data/argus.log"),
+		MaxBackups: 7,
+		MaxAge:     7,
+		Compress:   true,
+	}
+	defer logFile.Close()
+	log.SetOutput(io.MultiWriter(os.Stdout, logFile))
 
 	database, err := db.New(dbPath)
 	if err != nil {
@@ -82,6 +103,16 @@ func main() {
 	sched.AddClosingSnapshot(ctx, func(ctx context.Context) {
 		telegramBot.RunClosingSnapshot(ctx)
 	})
+	sched.AddLogRotation(func() {
+		if err := logFile.Rotate(); err != nil {
+			log.Printf("log rotation: %v", err)
+		}
+	})
+	backupDir := envOr("BACKUP_DIR", "data/backups")
+	backupRetentionDays := envOrInt("BACKUP_RETENTION_DAYS", 14)
+	sched.AddBackup(func() {
+		runBackup(database, backupDir, backupRetentionDays)
+	})
 	sched.Start()
 	defer sched.Stop()
 
@@ -103,4 +134,59 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func envOrInt(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		log.Printf("invalid %s=%q, using default %d", key, v, fallback)
+		return fallback
+	}
+	return n
+}
+
+// runBackup writes a dated SQLite backup (via db.Backup's VACUUM INTO) into
+// dir and prunes backup files older than retentionDays. transactions/
+// positions are irreplaceable personal financial data with no other backup
+// path on a single VPS, hence a daily on-disk copy — see PLAN.md.
+func runBackup(database *db.DB, dir string, retentionDays int) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		log.Printf("backup: create dir: %v", err)
+		return
+	}
+
+	dest := filepath.Join(dir, fmt.Sprintf("argus-%s.db", time.Now().In(cst).Format("2006-01-02")))
+	if err := database.Backup(dest); err != nil {
+		log.Printf("backup: %v", err)
+		return
+	}
+	log.Printf("backup: wrote %s", dest)
+
+	pruneOldBackups(dir, retentionDays)
+}
+
+func pruneOldBackups(dir string, retentionDays int) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		log.Printf("backup: prune: read dir: %v", err)
+		return
+	}
+	cutoff := time.Now().AddDate(0, 0, -retentionDays)
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil {
+			log.Printf("backup: prune: stat %s: %v", e.Name(), err)
+			continue
+		}
+		if info.ModTime().After(cutoff) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, e.Name())); err != nil {
+			log.Printf("backup: prune: remove %s: %v", e.Name(), err)
+		}
+	}
 }

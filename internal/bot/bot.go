@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -439,40 +440,73 @@ func (b *Bot) handleTrack(daysArg string) {
 	b.Send(sb.String())
 }
 
-// parseTradeArgs parses the "<ticker> <shares> <price> [fee]" arguments
-// shared by /buy and /sell. fee defaults to 0 when omitted.
-func parseTradeArgs(args string) (ticker string, shares, price, fee float64, err error) {
+// tradeDateRe matches an optional trailing YYYY-MM-DD date argument to
+// /buy and /sell, for backdating a trade entered after the fact (e.g.
+// migrating cost basis from a broker/spreadsheet) instead of recording it
+// under today's date.
+var tradeDateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+
+// parseTradeArgs parses the "<ticker> <shares> <price> [fee] [date]"
+// arguments shared by /buy and /sell. fee and date are both optional and
+// order-independent relative to each other (distinguished by shape: a
+// YYYY-MM-DD token is the date, any other numeric token is the fee), so
+// "10 200 1.5 2026-01-15" and "10 200 2026-01-15" (no fee) both parse. date
+// is returned as "" when omitted; the caller defaults that to today.
+func parseTradeArgs(args string) (ticker string, shares, price, fee float64, date string, err error) {
 	fields := strings.Fields(args)
-	if len(fields) < 3 || len(fields) > 4 {
-		return "", 0, 0, 0, fmt.Errorf("expected <ticker> <shares> <price> [fee]")
+	if len(fields) < 3 || len(fields) > 5 {
+		return "", 0, 0, 0, "", fmt.Errorf("expected <ticker> <shares> <price> [fee] [date]")
 	}
 	ticker = strings.ToUpper(fields[0])
 	if shares, err = strconv.ParseFloat(fields[1], 64); err != nil || shares <= 0 {
-		return "", 0, 0, 0, fmt.Errorf("invalid shares %q", fields[1])
+		return "", 0, 0, 0, "", fmt.Errorf("invalid shares %q", fields[1])
 	}
 	if price, err = strconv.ParseFloat(fields[2], 64); err != nil || price <= 0 {
-		return "", 0, 0, 0, fmt.Errorf("invalid price %q", fields[2])
+		return "", 0, 0, 0, "", fmt.Errorf("invalid price %q", fields[2])
 	}
-	if len(fields) == 4 {
-		if fee, err = strconv.ParseFloat(fields[3], 64); err != nil || fee < 0 {
-			return "", 0, 0, 0, fmt.Errorf("invalid fee %q", fields[3])
+
+	feeSet := false
+	for _, f := range fields[3:] {
+		if tradeDateRe.MatchString(f) {
+			if date != "" {
+				return "", 0, 0, 0, "", fmt.Errorf("duplicate date %q", f)
+			}
+			if _, perr := time.Parse("2006-01-02", f); perr != nil {
+				return "", 0, 0, 0, "", fmt.Errorf("invalid date %q", f)
+			}
+			date = f
+			continue
 		}
+		if feeSet {
+			return "", 0, 0, 0, "", fmt.Errorf("unexpected argument %q", f)
+		}
+		if fee, err = strconv.ParseFloat(f, 64); err != nil || fee < 0 {
+			return "", 0, 0, 0, "", fmt.Errorf("invalid fee %q", f)
+		}
+		feeSet = true
 	}
-	return ticker, shares, price, fee, nil
+	return ticker, shares, price, fee, date, nil
 }
 
 // handleBuy records a purchase and folds it into the ticker's position
 // (weighted-average cost). The ticker is also added to the watchlist —
 // see the "持倉自動納入 watchlist" PLAN.md item — so a bought position is
-// never silently unmonitored.
+// never silently unmonitored. An explicit date backdates the trade (for
+// migrating historical cost basis); note weighted-average cost is
+// order-independent for buys, but backdated sells should still be entered
+// oldest-first so realized P&L is computed against the cost basis as it
+// actually stood at the time.
 func (b *Bot) handleBuy(args string) {
-	ticker, shares, price, fee, err := parseTradeArgs(args)
+	ticker, shares, price, fee, date, err := parseTradeArgs(args)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyBuyUsage))
 		return
 	}
+	if date == "" {
+		date = todayDate()
+	}
 
-	pos, err := b.db.RecordBuy(ticker, shares, price, fee, todayDate())
+	pos, err := b.db.RecordBuy(ticker, shares, price, fee, date)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyBuyFailed, err))
 		return
@@ -487,13 +521,16 @@ func (b *Bot) handleBuy(args string) {
 // realized P&L. It does not remove the ticker from the watchlist even when
 // the position is fully closed out — the user may still want to watch it.
 func (b *Bot) handleSell(args string) {
-	ticker, shares, price, fee, err := parseTradeArgs(args)
+	ticker, shares, price, fee, date, err := parseTradeArgs(args)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeySellUsage))
 		return
 	}
+	if date == "" {
+		date = todayDate()
+	}
 
-	pos, realizedPnL, err := b.db.RecordSell(ticker, shares, price, fee, todayDate())
+	pos, realizedPnL, err := b.db.RecordSell(ticker, shares, price, fee, date)
 	if err != nil {
 		switch {
 		case errors.Is(err, db.ErrNoPosition):
@@ -581,9 +618,16 @@ func (b *Bot) handleFundamentals(ticker string) {
 // handleChat replies to a plain-text (non-command) message using the LLM
 // client's persistent session, so the agent remembers earlier turns in this
 // conversation — unlike /recommend and /check, which are one-shot analysis
-// calls with no memory between requests.
+// calls with no memory between requests. Every message is prefixed with a
+// read-only summary of the watchlist/positions (see buildChatContext) so
+// free-form questions like "我自選股裡最近跌最多的是哪檔" are answerable
+// without giving the ACP session any tools.
 func (b *Bot) handleChat(ctx context.Context, text string) {
 	b.Send(i18n.T(b.lang, i18n.KeyThinking))
+
+	if ctxBlock := b.buildChatContext(); ctxBlock != "" {
+		text = ctxBlock + text
+	}
 
 	reply, err := b.llm.Chat(ctx, text)
 	if err != nil {
@@ -593,11 +637,101 @@ func (b *Bot) handleChat(ctx context.Context, text string) {
 	b.Send(reply)
 }
 
+// buildChatContext composes formatChatContext's input from the DB: the
+// union of watchlist and position tickers (a position ticker should always
+// already be on the watchlist via /buy's auto-add, but this covers a
+// position added before that existed), each one's latest closing snapshot,
+// and every open position. It deliberately reads local snapshots instead of
+// fetching live quotes — adding a round of network calls to every chat
+// message would make free-form chat feel sluggish, and "as of last close"
+// is a fine trade for conversational context (use /status or /portfolio for
+// real-time prices). Returns "" if there's nothing to show.
+func (b *Bot) buildChatContext() string {
+	watchlist, err := b.db.GetWatchlist()
+	if err != nil {
+		log.Printf("chat context: watchlist: %v", err)
+	}
+	positions, err := b.db.GetPositions()
+	if err != nil {
+		log.Printf("chat context: positions: %v", err)
+	}
+
+	tickerSet := make(map[string]bool, len(watchlist))
+	tickers := make([]string, 0, len(watchlist)+len(positions))
+	for _, t := range watchlist {
+		tickerSet[t] = true
+		tickers = append(tickers, t)
+	}
+	posByTicker := make(map[string]db.Position, len(positions))
+	for _, p := range positions {
+		posByTicker[p.Ticker] = p
+		if !tickerSet[p.Ticker] {
+			tickerSet[p.Ticker] = true
+			tickers = append(tickers, p.Ticker)
+		}
+	}
+
+	snapshots := make(map[string]db.DailySnapshot, len(tickers))
+	for _, t := range tickers {
+		snap, ok, err := b.db.GetLatestSnapshot(t)
+		if err != nil {
+			log.Printf("chat context: snapshot %s: %v", t, err)
+			continue
+		}
+		if ok {
+			snapshots[t] = snap
+		}
+	}
+
+	return formatChatContext(b.lang, tickers, posByTicker, snapshots)
+}
+
+// formatChatContext renders the read-only background block prefixed to
+// chat messages: each ticker's most recent close plus, for tickers actually
+// held, cost basis and unrealized P&L against that close. tickers is the
+// order to render in; positions/snapshots are keyed by ticker. Returns ""
+// for an empty tickers list so callers can skip prefixing entirely.
+func formatChatContext(lang i18n.Lang, tickers []string, positions map[string]db.Position, snapshots map[string]db.DailySnapshot) string {
+	if len(tickers) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString(i18n.T(lang, i18n.KeyChatContextHeader))
+	for _, t := range tickers {
+		snap, ok := snapshots[t]
+		if !ok {
+			sb.WriteString(i18n.T(lang, i18n.KeyChatContextTickerNoData, t))
+			continue
+		}
+		if p, held := positions[t]; held {
+			unrealizedPct := (snap.Close - p.AvgCost) / p.AvgCost * 100
+			sb.WriteString(i18n.T(lang, i18n.KeyChatContextPositionLine, t, snap.Date, snap.Close, snap.ChangePercent, p.Shares, p.AvgCost, unrealizedPct))
+		} else {
+			sb.WriteString(i18n.T(lang, i18n.KeyChatContextWatchLine, t, snap.Date, snap.Close, snap.ChangePercent))
+		}
+	}
+	sb.WriteString(i18n.T(lang, i18n.KeyChatContextFooter))
+	return sb.String()
+}
+
 // handleReset clears the persistent chat session so the next message starts
 // a fresh conversation with no memory of earlier turns.
 func (b *Bot) handleReset() {
 	b.llm.ResetChat()
 	b.Send(i18n.T(b.lang, i18n.KeyResetDone))
+}
+
+// recoverJobPanic recovers from a panic inside a scheduler-invoked job
+// (RunDailyReport/RunClosingSnapshot), logging it and alerting the user over
+// Telegram. Without this, a panic in either job would kill that goroutine
+// silently — the bot keeps running and answering commands, but the VPS is
+// unattended, so a failed daily report or closing snapshot would otherwise
+// go completely unnoticed. job names the job for the log line and alert.
+func (b *Bot) recoverJobPanic(job string) {
+	if r := recover(); r != nil {
+		log.Printf("%s: panic: %v", job, r)
+		b.Send(i18n.T(b.lang, i18n.KeyJobPanic, job, r))
+	}
 }
 
 // SendSignalAlert sends signal notifications to the chat.
@@ -621,9 +755,12 @@ func (b *Bot) SendSignalAlert(sigs []signals.Signal) {
 // It's a silent background job: results go to the DB and errors to the log,
 // not to Telegram.
 func (b *Bot) RunClosingSnapshot(ctx context.Context) {
+	defer b.recoverJobPanic("closing snapshot")
+
 	tickers, err := b.db.GetWatchlist()
 	if err != nil {
 		log.Printf("closing snapshot: watchlist: %v", err)
+		b.Send(i18n.T(b.lang, i18n.KeyWatchlistQueryFailed, err))
 		return
 	}
 
@@ -699,6 +836,8 @@ func (b *Bot) recordNetWorthSnapshot(date string, prices map[string]float64) {
 // RunDailyReport fetches data, detects signals, generates LLM recommendations,
 // and sends the daily report. Called by the scheduler.
 func (b *Bot) RunDailyReport(ctx context.Context) {
+	defer b.recoverJobPanic("daily report")
+
 	b.Send(i18n.T(b.lang, i18n.KeyDailyReportStart))
 
 	tickers, err := b.db.GetWatchlist()

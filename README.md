@@ -47,10 +47,17 @@ Three things about today's implementation are conveniences, not commitments:
 - **Daily report** — an automatic summary pushed every day before US market open (21:00 Taiwan time)
 - **Post-close snapshots** — after each US session closes (05:30 Taiwan time), the watchlist's OHLCV
   is recorded to SQLite, building the price history behind `/track` and future analysis
-- **Position tracking** — `/buy` and `/sell` record trades against a weighted-average cost basis,
-  `/portfolio` shows market value and unrealized/realized P&L, and total position value is snapshotted
-  daily after close; open positions feed their cost basis into `/recommend` and the daily report so
-  SELL/HOLD calls have an actual P&L to reason against
+- **Position tracking** — `/buy` and `/sell` record trades against a weighted-average cost basis
+  (both accept an optional backdated date, for migrating historical cost basis), `/portfolio` shows
+  market value and unrealized/realized P&L, and total position value is snapshotted daily after close;
+  open positions feed their cost basis into `/recommend` and the daily report so SELL/HOLD calls have
+  an actual P&L to reason against
+- **Context-aware chat** — free-form chat is prefixed with a read-only summary of your watchlist and
+  positions (latest close, cost basis, unrealized P&L), so it can answer questions like "which of my
+  watchlist tickers dropped the most recently" without giving the LLM any tools
+- **Unattended-VPS resilience** — a rotating daily log (kept ~1 week), a daily SQLite backup (kept ~2
+  weeks by default), and a Telegram alert if a scheduled job (daily report / closing snapshot) panics
+  or can't even read the watchlist
 
 This is single-user by design: one Telegram chat ID, no accounts, no multi-tenant data model.
 
@@ -108,8 +115,8 @@ Talk to it in Telegram:
 | `/check <ticker>` | Instant LLM analysis of one ticker |
 | `/recommend` | LLM gives a BUY/SELL/HOLD call on every watchlist ticker, plus buy ideas from market movers |
 | `/track [days]` | Review past recommendations vs. today's prices and the resulting hit rate (default 7 days) |
-| `/buy <ticker> <shares> <price> [fee]` | Record a purchase; folds into the ticker's weighted-average cost and auto-adds it to your watchlist |
-| `/sell <ticker> <shares> <price> [fee]` | Record a sale against an open position and report the realized P&L |
+| `/buy <ticker> <shares> <price> [fee] [date]` | Record a purchase; folds into the ticker's weighted-average cost and auto-adds it to your watchlist. `date` (YYYY-MM-DD) backdates a historical trade |
+| `/sell <ticker> <shares> <price> [fee] [date]` | Record a sale against an open position and report the realized P&L |
 | `/portfolio` | Every open position's market value and unrealized P&L, plus cumulative realized P&L |
 | `/fundamentals <ticker>` | Raw valuation/profitability/financial-statement data (requires Finnhub key) |
 | `/dailyreport` | Manually trigger the daily report (normally runs automatically at 21:00 Taiwan time) |
