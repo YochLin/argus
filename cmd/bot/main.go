@@ -142,11 +142,39 @@ func main() {
 
 // runMCPServer runs argus as an MCP server over stdio (see internal/mcptools)
 // until ctx is cancelled or the connection closes. Invoked via the "mcp"
-// subcommand, never directly by a human.
+// subcommand, never directly by a human — but it still needs its own
+// godotenv.Load()/FINNHUB_API_KEY/BOT_LANGUAGE read, since main() skips all
+// of that for this subcommand (see the branch in main()) and the ACP
+// subprocess that spawns this one doesn't pass bot-specific env through.
+// log output here goes to log's default stderr, not stdout — stdout is
+// reserved for the MCP JSON-RPC stream (mcp.StdioTransport).
 func runMCPServer() {
+	if err := godotenv.Load(); err != nil {
+		log.Println("no .env file found, reading env from environment")
+	}
+	finnhubKey := os.Getenv("FINNHUB_API_KEY")
+	lang := i18n.Parse(envOr("BOT_LANGUAGE", "zh"))
+
+	// Same provider construction as main(): Finnhub-only tools
+	// (fundamentals/statements/earnings) stay nil without a key, same as
+	// Bot.fundamentals — mcptools.NewServer skips registering their tools
+	// in that case rather than registering a tool that always fails.
+	var providers []data.Provider
+	var fundamentalsProvider data.FundamentalsProvider
+	var earningsProvider data.EarningsProvider
+	if finnhubKey != "" {
+		finnhub := data.NewFinnhub(finnhubKey)
+		providers = append(providers, finnhub)
+		fundamentalsProvider = finnhub
+		earningsProvider = finnhub
+	}
+	yahoo := data.NewYahoo()
+	providers = append(providers, yahoo)
+	provider := data.NewMulti(providers...)
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	if err := mcptools.Run(ctx); err != nil {
+	if err := mcptools.Run(ctx, lang, provider, yahoo, fundamentalsProvider, earningsProvider); err != nil {
 		log.Fatalf("mcp server: %v", err)
 	}
 }

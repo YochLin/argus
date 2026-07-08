@@ -191,4 +191,23 @@ var zhMessages = map[Key]string{
 	KeyPositionLine:            "- 持倉: %g 股　平均成本 $%.2f　未實現損益 %+.2f%%\n",
 	KeyEarningsLine:            "- ⚠️ 財報日: %s（%d 天內），留意波動\n",
 	KeyScanHitLine:             "- 🔎 掃描命中: %s\n",
+
+	KeyMCPTickerHeader: "## %s\n",
+
+	KeyMCPNoQuote: "查不到 %s 的報價資料。",
+
+	KeyMCPNoHistory:     "查不到 %s 的歷史價格資料。",
+	KeyMCPHistoryResult: "%s 近 %d 個交易日收盤價（由舊到新）：%s\n",
+
+	KeyMCPNoNews:   "%s 目前沒有相關新聞。",
+	KeyMCPNewsItem: "%d. [%s] %s（%s）\n   %s\n",
+
+	KeyMCPNoFundamentals:        "查不到 %s 的基本面資料。",
+	KeyMCPNoFinancialStatements: "查不到 %s 的財報資料。",
+
+	KeyMCPNoEarnings:   "查詢的標的在未來 %d 天內沒有排定財報。",
+	KeyMCPEarningsItem: "- %s：%s（%s）\n",
+
+	KeyMCPNoMovers:     "目前沒有市場熱門標的資料。",
+	KeyMCPMoversResult: "目前市場熱門標的：%s\n",
 }

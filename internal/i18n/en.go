@@ -189,4 +189,23 @@ Keep the reply concise — under 400 words total.
 	KeyPositionLine:            "- Position: %g shares, avg cost $%.2f (unrealized %+.2f%%)\n",
 	KeyEarningsLine:            "- ⚠️ Earnings date: %s (in %d days) — expect volatility\n",
 	KeyScanHitLine:             "- 🔎 Scan hit: %s\n",
+
+	KeyMCPTickerHeader: "## %s\n",
+
+	KeyMCPNoQuote: "No quote data available for %s.",
+
+	KeyMCPNoHistory:     "No historical price data available for %s.",
+	KeyMCPHistoryResult: "%s closing prices for the last %d trading days (oldest first): %s\n",
+
+	KeyMCPNoNews:   "No recent news found for %s.",
+	KeyMCPNewsItem: "%d. [%s] %s (%s)\n   %s\n",
+
+	KeyMCPNoFundamentals:        "No fundamentals data available for %s.",
+	KeyMCPNoFinancialStatements: "No financial statement data available for %s.",
+
+	KeyMCPNoEarnings:   "None of the requested tickers have earnings scheduled within %d days.",
+	KeyMCPEarningsItem: "- %s: %s (%s)\n",
+
+	KeyMCPNoMovers:     "No market movers data available right now.",
+	KeyMCPMoversResult: "Current market movers: %s\n",
 }

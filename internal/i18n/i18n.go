@@ -215,3 +215,34 @@ const (
 	KeyEarningsLine            Key = "earnings_line"
 	KeyScanHitLine             Key = "scan_hit_line"
 )
+
+// Keys used by internal/mcptools (read-only MCP tool result/error text
+// returned to the chat model — see PLAN.md's Phase 3.5). get_fundamentals/
+// get_financial_statements deliberately reuse internal/bot's granular
+// per-field keys (KeyValuationHeader, KeyPE, KeyStatementTitle, ... — see
+// "Keys used by internal/bot" above) instead of inventing new ones: those
+// already render the full struct field-by-field for /fundamentals, which is
+// exactly what a full-fidelity on-demand tool result wants too. Only the
+// genuinely new pieces (ticker header, no-data errors, history/news/
+// earnings/movers formatting — none of which /fundamentals or the
+// prompt-injection keys already cover) get their own keys here.
+const (
+	KeyMCPTickerHeader Key = "mcp_ticker_header"
+
+	KeyMCPNoQuote Key = "mcp_no_quote"
+
+	KeyMCPNoHistory     Key = "mcp_no_history"
+	KeyMCPHistoryResult Key = "mcp_history_result"
+
+	KeyMCPNoNews   Key = "mcp_no_news"
+	KeyMCPNewsItem Key = "mcp_news_item"
+
+	KeyMCPNoFundamentals        Key = "mcp_no_fundamentals"
+	KeyMCPNoFinancialStatements Key = "mcp_no_financial_statements"
+
+	KeyMCPNoEarnings   Key = "mcp_no_earnings"
+	KeyMCPEarningsItem Key = "mcp_earnings_item"
+
+	KeyMCPNoMovers     Key = "mcp_no_movers"
+	KeyMCPMoversResult Key = "mcp_movers_result"
+)

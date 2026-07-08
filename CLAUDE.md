@@ -280,19 +280,42 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   user-visible; per-ticker failures inside the loop (one quote fetch failing, etc.) should stay log-only
   so a bad day for one ticker doesn't spam a Telegram alert.
 - `internal/mcptools` — Phase 3.5's read-only MCP (Model Context Protocol) tool surface for chat, using
-  the official `github.com/modelcontextprotocol/go-sdk`. Currently a skeleton (`server.go`): `NewServer`
-  builds an `*mcp.Server` with **no tools registered yet** (that's the next Phase 3.5 checklist item —
-  see PLAN.md), and `Run` serves it on `mcp.StdioTransport`. Deliberately kept as its own function rather
-  than inlined into `Run` so a future test can add tools and connect over `mcp.NewInMemoryTransports`
-  without going through stdio. Reached via `cmd/bot/main.go`'s `mcp` subcommand
-  (`argus mcp` runs this instead of the Telegram bot) — branch on `os.Args[1] == "mcp"` happens *before*
-  `godotenv.Load()`/`mustEnv` in `main()`, since the MCP subprocess (spawned by an ACP chat session via
-  `os.Executable()`, never invoked directly by a human) needs none of the Telegram/env setup. Running the
-  same binary as a subcommand — rather than a separately built/deployed server — is deliberate: it can
-  never drift out of version sync with the running bot. Keep this package's dependency graph to
-  `internal/data` + `internal/i18n` only as tools get added (no `internal/db`/`internal/llm`/`internal/bot`
-  imports) — see PLAN.md's Phase 3.5 rationale for why (provider-neutral tool surface that survives an
-  `internal/llm` provider swap).
+  the official `github.com/modelcontextprotocol/go-sdk`. `NewServer(lang, provider, history, fundamentals,
+  earnings)` builds an `*mcp.Server` and registers seven tools (`tools.go`'s `registerTools`): `get_quote`/
+  `get_history`/`get_news`/`get_market_movers` unconditionally, `get_fundamentals`/
+  `get_financial_statements`/`get_upcoming_earnings` only when `fundamentals`/`earnings` are non-nil —
+  same nil-check-and-degrade shape as `Bot.fundamentals`, so a client's `tools/list` never advertises a
+  tool that would always fail without a Finnhub key. `Run` serves the result on `mcp.StdioTransport`.
+  `NewServer` is kept separate from `Run` specifically so tests can add tools and connect over
+  `mcp.NewInMemoryTransports` without going through stdio (see `tools_test.go`'s `connectTool`). Reached
+  via `cmd/bot/main.go`'s `mcp` subcommand (`argus mcp` runs this instead of the Telegram bot) — branch on
+  `os.Args[1] == "mcp"` happens *before* `godotenv.Load()`/`mustEnv` in `main()`, since the MCP subprocess
+  (spawned by an ACP chat session via `os.Executable()`, never invoked directly by a human) needs none of
+  the Telegram-specific env setup; `runMCPServer` does its own minimal `godotenv.Load()` +
+  `FINNHUB_API_KEY` + `BOT_LANGUAGE` read and builds the same `Multi(finnhub?, yahoo)` chain `main()`
+  does — kept as a separate, duplicated block rather than a shared helper since the two call sites need
+  almost entirely disjoint env vars. Running the same binary as a subcommand — rather than a separately
+  built/deployed server — is deliberate: it can never drift out of version sync with the running bot.
+  `log` output in the `mcp` subprocess stays on its default stderr, **never** get redirected onto
+  `os.Stdout` the way `main()`'s `io.MultiWriter` does for the Telegram path — `os.Stdout` here is the
+  live MCP JSON-RPC stream (`mcp.StdioTransport`), and anything else written to it corrupts the protocol.
+  Keep this package's dependency graph to `internal/data` + `internal/i18n` only (no
+  `internal/db`/`internal/llm`/`internal/bot` imports) — see PLAN.md's Phase 3.5 rationale for why
+  (provider-neutral tool surface that survives an `internal/llm` provider swap). This cost something
+  concrete: `get_fundamentals`/`get_financial_statements` want the exact full-field-dump formatting
+  `internal/bot`'s `/fundamentals` command already has (`formatFundamentals`/`formatFinancialStatement` in
+  `bot.go`, built from `internal/i18n`'s granular per-field keys like `KeyPE`/`KeyROE`/`KeyStatementTitle`
+  — see that package's entry above), but can't import `internal/bot` to reuse the functions themselves, so
+  `tools.go` has its own copies of `formatFundamentals`/`formatFinancialStatement`/`commaf` that call the
+  *same* i18n keys — keep those two implementations in sync by hand if either one's field list changes;
+  don't let them drift into using different keys for the same field. Every tool handler routes errors
+  through `ts.mcpErr(key, args...)` (an `i18n.T`-formatted `fmt.Errorf`) rather than returning a
+  provider's raw Go error — the SDK's generic `AddTool` wrapper auto-packs a returned `error` into
+  `CallToolResult{IsError: true}`, so a raw `err` would leak an untranslated, implementation-detail string
+  like `"yahoo: no data for %s"` straight to the chat model regardless of `BOT_LANGUAGE`. An empty-but-
+  no-error result (e.g. `get_news` finding zero headlines) is treated as an `IsError` result too, via the
+  same helper — a chat model needs to be able to tell "no news" from "the tool call actually failed"
+  instead of silently getting an empty string either way.
 
 ## Key behaviors to preserve
 

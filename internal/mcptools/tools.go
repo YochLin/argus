@@ -1,0 +1,323 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"argus/internal/data"
+	"argus/internal/i18n"
+)
+
+// cst mirrors internal/llm and internal/bot's fixed Taiwan-time zone (see
+// CLAUDE.md's internal/scheduler note on why this is a FixedZone rather than
+// a loaded time.Location) — quote/news timestamps are rendered in it so a
+// tool result reads the same way the rest of the bot's output does.
+var cst = time.FixedZone("CST", 8*3600)
+
+const (
+	// defaultNewsLimit mirrors the per-ticker news count internal/bot
+	// already fetches for prompt injection (bot.go's fetchStockData).
+	defaultNewsLimit = 5
+	// defaultEarningsWindowDays mirrors bot.go's earningsPromptWindowDays.
+	defaultEarningsWindowDays = 14
+)
+
+// toolset holds the read-only providers and language every tool handler
+// needs. A method value (ts.getQuote, etc.) is what actually gets
+// registered with mcp.AddTool — this is the only state the tools carry, no
+// package-level globals.
+type toolset struct {
+	lang         i18n.Lang
+	provider     data.Provider
+	history      data.HistoryProvider
+	fundamentals data.FundamentalsProvider
+	earnings     data.EarningsProvider
+}
+
+// registerTools adds every tool this build has a provider for.
+// Fundamentals/statements/earnings are Finnhub-only (see internal/data) and
+// simply aren't registered when their provider is nil, so a client's
+// tools/list never advertises a tool that would always fail — the same
+// nil-check-and-degrade shape as Bot.fundamentals elsewhere in the project.
+func registerTools(s *mcp.Server, ts *toolset) {
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get_quote",
+		Description: "Get the current/latest quote for a US stock ticker: price, change %, open/high/low, volume, previous close, and quote timestamp.",
+	}, ts.getQuote)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get_history",
+		Description: "Get roughly 3 months of daily closing prices for a US stock ticker, oldest first — useful for eyeballing a trend or computing an indicator not already exposed as a tool.",
+	}, ts.getHistory)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get_news",
+		Description: "Get recent news headlines for a US stock ticker, newest first.",
+	}, ts.getNews)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get_market_movers",
+		Description: "Get a list of currently active/high-profile US stock tickers, for when the user asks about \"what's moving\" without naming a specific ticker.",
+	}, ts.getMarketMovers)
+
+	if ts.fundamentals != nil {
+		mcp.AddTool(s, &mcp.Tool{
+			Name:        "get_fundamentals",
+			Description: "Get valuation, profitability, financial-health, and growth ratios for a US stock ticker (P/E, P/B, ROE, margins, debt/equity, revenue growth, dividend yield, etc.).",
+		}, ts.getFundamentals)
+
+		mcp.AddTool(s, &mcp.Tool{
+			Name:        "get_financial_statements",
+			Description: "Get the key income statement, balance sheet, and cash flow line items from a US stock ticker's most recent 10-K or 10-Q filing.",
+		}, ts.getFinancialStatements)
+	}
+
+	if ts.earnings != nil {
+		mcp.AddTool(s, &mcp.Tool{
+			Name:        "get_upcoming_earnings",
+			Description: "Get upcoming earnings report dates for a list of US stock tickers within a look-ahead window.",
+		}, ts.getUpcomingEarnings)
+	}
+}
+
+type tickerInput struct {
+	Ticker string `json:"ticker" jsonschema:"US stock ticker symbol, e.g. AAPL"`
+}
+
+type newsInput struct {
+	Ticker string `json:"ticker" jsonschema:"US stock ticker symbol, e.g. AAPL"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"max number of news items to return (default 5)"`
+}
+
+type financialStatementInput struct {
+	Ticker string `json:"ticker" jsonschema:"US stock ticker symbol, e.g. AAPL"`
+	Freq   string `json:"freq,omitempty" jsonschema:"'annual' for the latest 10-K, or 'quarterly' for the latest 10-Q (default annual)"`
+}
+
+type earningsInput struct {
+	Tickers []string `json:"tickers" jsonschema:"US stock ticker symbols to check for upcoming earnings"`
+	Days    int      `json:"days,omitempty" jsonschema:"look-ahead window in days (default 14)"`
+}
+
+type emptyInput struct{}
+
+func normalizeTicker(s string) string {
+	return strings.ToUpper(strings.TrimSpace(s))
+}
+
+func textResult(text string) *mcp.CallToolResult {
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}
+}
+
+// mcpErr builds a tool error from an i18n key rather than returning a
+// provider's raw Go error — those are technical/English-only regardless of
+// BOT_LANGUAGE ("yahoo: no data for %s"), and the whole point of routing
+// tool text through i18n is that a zh-configured bot's chat model sees zh
+// error text too.
+func (ts *toolset) mcpErr(key i18n.Key, args ...any) error {
+	return fmt.Errorf("%s", i18n.T(ts.lang, key, args...))
+}
+
+func (ts *toolset) getQuote(_ context.Context, _ *mcp.CallToolRequest, in tickerInput) (*mcp.CallToolResult, any, error) {
+	ticker := normalizeTicker(in.Ticker)
+	q, err := ts.provider.GetQuote(ticker)
+	if err != nil {
+		return nil, nil, ts.mcpErr(i18n.KeyMCPNoQuote, ticker)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(i18n.T(ts.lang, i18n.KeyMCPTickerHeader, ticker))
+	sb.WriteString(i18n.T(ts.lang, i18n.KeyPriceLine, q.Price, q.ChangePercent))
+	sb.WriteString(i18n.T(ts.lang, i18n.KeyOHLLine, q.Open, q.High, q.Low))
+	sb.WriteString(i18n.T(ts.lang, i18n.KeyVolumeLine, q.Volume, q.PrevClose))
+	sb.WriteString(i18n.T(ts.lang, i18n.KeyQuoteTimeLine, q.Timestamp.In(cst).Format("2006-01-02 15:04")))
+	return textResult(sb.String()), nil, nil
+}
+
+func (ts *toolset) getHistory(_ context.Context, _ *mcp.CallToolRequest, in tickerInput) (*mcp.CallToolResult, any, error) {
+	ticker := normalizeTicker(in.Ticker)
+	closes, err := ts.history.GetHistory(ticker)
+	if err != nil || len(closes) == 0 {
+		return nil, nil, ts.mcpErr(i18n.KeyMCPNoHistory, ticker)
+	}
+
+	parts := make([]string, len(closes))
+	for i, c := range closes {
+		parts[i] = strconv.FormatFloat(c, 'f', 2, 64)
+	}
+	text := i18n.T(ts.lang, i18n.KeyMCPHistoryResult, ticker, len(closes), strings.Join(parts, ", "))
+	return textResult(text), nil, nil
+}
+
+func (ts *toolset) getNews(_ context.Context, _ *mcp.CallToolRequest, in newsInput) (*mcp.CallToolResult, any, error) {
+	ticker := normalizeTicker(in.Ticker)
+	limit := in.Limit
+	if limit <= 0 {
+		limit = defaultNewsLimit
+	}
+	items, err := ts.provider.GetNews(ticker, limit)
+	if err != nil || len(items) == 0 {
+		return nil, nil, ts.mcpErr(i18n.KeyMCPNoNews, ticker)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(i18n.T(ts.lang, i18n.KeyMCPTickerHeader, ticker))
+	for i, n := range items {
+		sb.WriteString(i18n.T(ts.lang, i18n.KeyMCPNewsItem, i+1, n.Source, n.Headline, n.PublishedAt.In(cst).Format("2006-01-02"), n.URL))
+	}
+	return textResult(sb.String()), nil, nil
+}
+
+func (ts *toolset) getMarketMovers(_ context.Context, _ *mcp.CallToolRequest, _ emptyInput) (*mcp.CallToolResult, any, error) {
+	tickers, err := ts.provider.GetMarketMovers()
+	if err != nil || len(tickers) == 0 {
+		return nil, nil, ts.mcpErr(i18n.KeyMCPNoMovers)
+	}
+	text := i18n.T(ts.lang, i18n.KeyMCPMoversResult, strings.Join(tickers, ", "))
+	return textResult(text), nil, nil
+}
+
+func (ts *toolset) getFundamentals(_ context.Context, _ *mcp.CallToolRequest, in tickerInput) (*mcp.CallToolResult, any, error) {
+	ticker := normalizeTicker(in.Ticker)
+	fd, err := ts.fundamentals.GetFundamentals(ticker)
+	if err != nil {
+		return nil, nil, ts.mcpErr(i18n.KeyMCPNoFundamentals, ticker)
+	}
+	return textResult(formatFundamentals(ts.lang, ticker, fd)), nil, nil
+}
+
+func (ts *toolset) getFinancialStatements(_ context.Context, _ *mcp.CallToolRequest, in financialStatementInput) (*mcp.CallToolResult, any, error) {
+	ticker := normalizeTicker(in.Ticker)
+	freq := strings.ToLower(strings.TrimSpace(in.Freq))
+	if freq != "annual" && freq != "quarterly" {
+		freq = "annual"
+	}
+	st, err := ts.fundamentals.GetFinancialStatements(ticker, freq)
+	if err != nil {
+		return nil, nil, ts.mcpErr(i18n.KeyMCPNoFinancialStatements, ticker)
+	}
+	return textResult(formatFinancialStatement(ts.lang, ticker, st)), nil, nil
+}
+
+func (ts *toolset) getUpcomingEarnings(_ context.Context, _ *mcp.CallToolRequest, in earningsInput) (*mcp.CallToolResult, any, error) {
+	days := in.Days
+	if days <= 0 {
+		days = defaultEarningsWindowDays
+	}
+	tickers := make([]string, len(in.Tickers))
+	for i, t := range in.Tickers {
+		tickers[i] = normalizeTicker(t)
+	}
+
+	events, err := ts.earnings.GetUpcomingEarnings(tickers, days)
+	if err != nil || len(events) == 0 {
+		return nil, nil, ts.mcpErr(i18n.KeyMCPNoEarnings, days)
+	}
+
+	var sb strings.Builder
+	for _, ticker := range tickers {
+		e, ok := events[ticker]
+		if !ok {
+			continue
+		}
+		sb.WriteString(i18n.T(ts.lang, i18n.KeyMCPEarningsItem, e.Ticker, e.Date, e.Hour))
+	}
+	return textResult(sb.String()), nil, nil
+}
+
+// formatFundamentals renders the full Fundamentals struct field-by-field,
+// reusing internal/bot's granular per-field i18n keys (KeyValuationHeader,
+// KeyPE, KeyROE, ...) — the same keys /fundamentals already uses to render
+// this exact data. Deliberately not calling into internal/bot to get that
+// formatter directly: this package's dependency boundary stays scoped to
+// internal/data + internal/i18n (see server.go), so the ~15-line assembly
+// is duplicated here rather than sharing a helper across the boundary.
+func formatFundamentals(lang i18n.Lang, ticker string, fd *data.Fundamentals) string {
+	var sb strings.Builder
+	sb.WriteString(i18n.T(lang, i18n.KeyFundamentalsTitle, ticker))
+
+	sb.WriteString(i18n.T(lang, i18n.KeyValuationHeader))
+	sb.WriteString(i18n.T(lang, i18n.KeyPE, fd.PE))
+	sb.WriteString(i18n.T(lang, i18n.KeyPB, fd.PB))
+	sb.WriteString(i18n.T(lang, i18n.KeyPS, fd.PS))
+	sb.WriteString(i18n.T(lang, i18n.KeyMarketCap, commaf(fd.MarketCapMillion)))
+	sb.WriteString(i18n.T(lang, i18n.KeyBeta, fd.Beta))
+	sb.WriteString(i18n.T(lang, i18n.Key52Week, fd.Week52High, fd.Week52Low))
+
+	sb.WriteString(i18n.T(lang, i18n.KeyProfitabilityHeader))
+	sb.WriteString(i18n.T(lang, i18n.KeyROE, fd.ROE))
+	sb.WriteString(i18n.T(lang, i18n.KeyROA, fd.ROA))
+	sb.WriteString(i18n.T(lang, i18n.KeyGrossMargin, fd.GrossMarginPct))
+	sb.WriteString(i18n.T(lang, i18n.KeyOperatingMargin, fd.OperatingMarginPct))
+	sb.WriteString(i18n.T(lang, i18n.KeyNetMargin, fd.NetMarginPct))
+
+	sb.WriteString(i18n.T(lang, i18n.KeyFinStructureHeader))
+	sb.WriteString(i18n.T(lang, i18n.KeyDebtToEquity, fd.DebtToEquity))
+	sb.WriteString(i18n.T(lang, i18n.KeyCurrentRatio, fd.CurrentRatio))
+	sb.WriteString(i18n.T(lang, i18n.KeyQuickRatio, fd.QuickRatio))
+
+	sb.WriteString(i18n.T(lang, i18n.KeyGrowthHeader))
+	sb.WriteString(i18n.T(lang, i18n.KeyRevenueGrowth, fd.RevenueGrowthYoY))
+	sb.WriteString(i18n.T(lang, i18n.KeyEPSGrowth, fd.EPSGrowthYoY))
+	sb.WriteString(i18n.T(lang, i18n.KeyEPS, fd.EPS))
+	sb.WriteString(i18n.T(lang, i18n.KeyBookValue, fd.BookValuePerShare))
+	sb.WriteString(i18n.T(lang, i18n.KeyDividendYield, fd.DividendYieldPct))
+	return sb.String()
+}
+
+// formatFinancialStatement mirrors formatFundamentals' reuse rationale —
+// same KeyStatementTitle/KeyRevenue/... keys /fundamentals already uses.
+func formatFinancialStatement(lang i18n.Lang, ticker string, st *data.FinancialStatement) string {
+	var sb strings.Builder
+	sb.WriteString(i18n.T(lang, i18n.KeyMCPTickerHeader, ticker))
+	sb.WriteString(i18n.T(lang, i18n.KeyStatementTitle, st.Form, st.FiscalYear, st.PeriodEnd))
+
+	sb.WriteString(i18n.T(lang, i18n.KeyIncomeStatementHeader))
+	sb.WriteString(i18n.T(lang, i18n.KeyRevenue, commaf(st.Revenue/1e6)))
+	sb.WriteString(i18n.T(lang, i18n.KeyGrossProfit, commaf(st.GrossProfit/1e6)))
+	sb.WriteString(i18n.T(lang, i18n.KeyOperatingIncome, commaf(st.OperatingIncome/1e6)))
+	sb.WriteString(i18n.T(lang, i18n.KeyNetIncome, commaf(st.NetIncome/1e6)))
+	sb.WriteString(i18n.T(lang, i18n.KeyDilutedEPS, st.DilutedEPS))
+
+	sb.WriteString(i18n.T(lang, i18n.KeyBalanceSheetHeader))
+	sb.WriteString(i18n.T(lang, i18n.KeyTotalAssets, commaf(st.TotalAssets/1e6)))
+	sb.WriteString(i18n.T(lang, i18n.KeyTotalLiabilities, commaf(st.TotalLiabilities/1e6)))
+	sb.WriteString(i18n.T(lang, i18n.KeyTotalEquity, commaf(st.TotalEquity/1e6)))
+
+	sb.WriteString(i18n.T(lang, i18n.KeyCashFlowHeader))
+	sb.WriteString(i18n.T(lang, i18n.KeyOperatingCashFlow, commaf(st.OperatingCashFlow/1e6)))
+	sb.WriteString(i18n.T(lang, i18n.KeyCapEx, commaf(st.CapEx/1e6)))
+	sb.WriteString(i18n.T(lang, i18n.KeyFreeCashFlow, commaf(st.FreeCashFlow/1e6)))
+	return sb.String()
+}
+
+// commaf formats a float as a rounded integer with thousands separators
+// (e.g. 4321020 -> "4,321,020") — duplicated from internal/bot's identical
+// helper for the same dependency-boundary reason as formatFundamentals.
+func commaf(v float64) string {
+	n := int64(v + 0.5)
+	if v < 0 {
+		n = int64(v - 0.5)
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	s := strconv.FormatInt(n, 10)
+	var out []byte
+	for i, c := range []byte(s) {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			out = append(out, ',')
+		}
+		out = append(out, c)
+	}
+	if neg {
+		return "-" + string(out)
+	}
+	return string(out)
+}
