@@ -65,6 +65,9 @@ var zhMessages = map[Key]string{
 	KeyChatContextPositionLine: "- %s：%s 收盤 $%.2f (%+.2f%%)｜持倉 %g 股，均價 $%.2f，未實現損益 %+.2f%%\n",
 	KeyChatContextFooter:       "[背景資料結束，請針對以下訊息回覆]\n\n",
 
+	KeyEarningsAlertTitle: "📅 *財報日提醒*\n\n",
+	KeyEarningsAlertLine:  "• *%s* 將於 %s 公布財報（%d 天內）\n",
+
 	KeyQuoteLine: "*%s*  $%.2f  %s%.2f%%\n開: $%.2f　高: $%.2f　低: $%.2f",
 
 	KeyValuationHeader:     "*估值*\n",
@@ -167,4 +170,5 @@ var zhMessages = map[Key]string{
 	KeyFundamentalsSummaryLine: "- 基本面：本益比 %.1f｜股價淨值比 %.1f｜ROE %.1f%%｜毛利率 %.1f%%｜營業利益率 %.1f%%｜淨利率 %.1f%%｜負債權益比 %.2f｜營收年增率 %.1f%%｜EPS年增率 %.1f%%｜股息殖利率 %.2f%%｜Beta %.2f\n",
 	KeyStatementSummaryLine:    "- 最新財報（%s，會計年度 %d，截至 %s）：營收 $%.0fM｜毛利 $%.0fM｜營業利益 $%.0fM｜淨利 $%.0fM｜總資產 $%.0fM｜總負債 $%.0fM｜股東權益 $%.0fM｜營運現金流 $%.0fM｜自由現金流 $%.0fM\n",
 	KeyPositionLine:            "- 持倉: %g 股　平均成本 $%.2f　未實現損益 %+.2f%%\n",
+	KeyEarningsLine:            "- ⚠️ 財報日: %s（%d 天內），留意波動\n",
 }

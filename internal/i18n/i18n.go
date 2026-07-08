@@ -110,6 +110,9 @@ const (
 	KeyChatContextPositionLine Key = "chat_context_position_line"
 	KeyChatContextFooter       Key = "chat_context_footer"
 
+	KeyEarningsAlertTitle Key = "earnings_alert_title"
+	KeyEarningsAlertLine  Key = "earnings_alert_line"
+
 	KeyQuoteLine Key = "quote_line"
 
 	KeyValuationHeader     Key = "valuation_header"
@@ -195,4 +198,5 @@ const (
 	KeyFundamentalsSummaryLine  Key = "fundamentals_summary_line"
 	KeyStatementSummaryLine     Key = "statement_summary_line"
 	KeyPositionLine             Key = "position_line"
+	KeyEarningsLine             Key = "earnings_line"
 )

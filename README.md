@@ -42,6 +42,10 @@ Three things about today's implementation are conveniences, not commitments:
   English, switched with one env var — see Getting Started
 - **Fundamentals** — P/E, margins, growth, and key 10-K/10-Q line items, when a Finnhub API key is
   configured
+- **Earnings calendar awareness** — watchlist/candidate tickers reporting earnings within 14 days get a
+  warning line in the `/recommend`/daily-report prompt (so a BUY call doesn't walk into next-day
+  earnings volatility), plus a deduplicated Telegram reminder for watchlist tickers reporting within 3
+  days — requires a Finnhub API key
 - **Free-form chat** — message the bot without a command and it remembers the conversation, separate
   from the one-shot analysis commands
 - **Daily report** — an automatic summary pushed every day before US market open (21:00 Taiwan time)

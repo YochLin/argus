@@ -3,6 +3,7 @@ package bot
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"argus/internal/data"
 	"argus/internal/db"
@@ -113,6 +114,29 @@ func TestFormatFundamentals(t *testing.T) {
 	out := formatFundamentals(i18n.EN, fd)
 	if !strings.Contains(out, "3,200,000") {
 		t.Errorf("formatFundamentals() = %q, want market cap formatted with thousands separators", out)
+	}
+}
+
+func TestDaysUntil(t *testing.T) {
+	today := time.Now().In(cst).Format("2006-01-02")
+	tomorrow := time.Now().In(cst).AddDate(0, 0, 1).Format("2006-01-02")
+	yesterday := time.Now().In(cst).AddDate(0, 0, -1).Format("2006-01-02")
+	nextWeek := time.Now().In(cst).AddDate(0, 0, 7).Format("2006-01-02")
+
+	tests := []struct {
+		date string
+		want int
+	}{
+		{today, 0},
+		{tomorrow, 1},
+		{yesterday, -1},
+		{nextWeek, 7},
+		{"not-a-date", 0},
+	}
+	for _, tt := range tests {
+		if got := daysUntil(tt.date); got != tt.want {
+			t.Errorf("daysUntil(%q) = %d, want %d", tt.date, got, tt.want)
+		}
 	}
 }
 

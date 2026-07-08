@@ -69,17 +69,20 @@ func main() {
 	defer database.Close()
 
 	// Set up multi-provider data layer (Finnhub primary, Yahoo fallback).
-	// Fundamentals/financial statements are Finnhub-only (Yahoo's
-	// equivalent requires a crumb/cookie handshake we don't implement), so
-	// fundamentalsProvider stays nil when no Finnhub key is configured.
+	// Fundamentals/financial statements and the earnings calendar are both
+	// Finnhub-only (Yahoo's fundamentals equivalent requires a crumb/cookie
+	// handshake we don't implement, and has no earnings-calendar endpoint at
+	// all), so both providers stay nil when no Finnhub key is configured.
 	// Historical closes (for RSI/MACD) go the other way: Finnhub's free
 	// tier blocks /stock/candle entirely, so history is Yahoo-only.
 	var providers []data.Provider
 	var fundamentalsProvider data.FundamentalsProvider
+	var earningsProvider data.EarningsProvider
 	if finnhubKey != "" {
 		finnhub := data.NewFinnhub(finnhubKey)
 		providers = append(providers, finnhub)
 		fundamentalsProvider = finnhub
+		earningsProvider = finnhub
 	}
 	yahoo := data.NewYahoo()
 	providers = append(providers, yahoo)
@@ -88,7 +91,7 @@ func main() {
 	llmClient := llm.NewClient(recommendModel, checkModel, chatModel, lang)
 	defer llmClient.Close() // kills any still-open persistent chat session's subprocess
 
-	telegramBot, err := bot.New(telegramToken, chatID, database, provider, fundamentalsProvider, yahoo, llmClient, lang)
+	telegramBot, err := bot.New(telegramToken, chatID, database, provider, fundamentalsProvider, earningsProvider, yahoo, llmClient, lang)
 	if err != nil {
 		log.Fatalf("init bot: %v", err)
 	}

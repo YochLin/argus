@@ -77,7 +77,12 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   candidate list, which can be 15+ tickers. `HistoryProvider` (`GetHistory`, daily closes for RSI/MACD) is
   the mirror image of `FundamentalsProvider`: Yahoo-only, no `Multi` wrapper, because Finnhub's free tier
   blocks `/stock/candle` entirely — same constraint as the `Quote.Volume` gap above, just hitting a
-  different feature this time.
+  different feature this time. `EarningsProvider` (`earnings.go`) is Finnhub-only for the same reason as
+  `FundamentalsProvider` — no Yahoo equivalent. `GetUpcomingEarnings(tickers, days)` fetches Finnhub's
+  `/calendar/earnings` **without** a `symbol` filter (that param only accepts one ticker, so a per-ticker
+  loop would cost one request each) and filters the whole-market response down to the requested tickers
+  client-side via the pure, unit-tested `filterEarningsCalendar` — one API call regardless of watchlist
+  size, unlike the fundamentals path's per-ticker calls.
 - `internal/db` — thin wrapper around `database/sql` + `modernc.org/sqlite` (pure-Go, no cgo). Owns seven
   tables: `watchlist`, `daily_snapshots`, `recommendations` (with `action` BUY/SELL/HOLD and `price` at
   recommendation time, both read back by `/track`), `signal_states` (last-notified state per
@@ -143,7 +148,10 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   package doesn't import `internal/db`) is optional and set by `internal/bot`'s `fetchStockData` for any
   ticker the user holds — `writeStockSection` renders it as an unrealized-P&L line computed against the
   quote already in the same section, so cost basis is available for both `/recommend` and daily-report
-  prompts wherever a position exists.
+  prompts wherever a position exists. `StockData.Earnings` (`{Date, DaysUntil}`, `DaysUntil` precomputed
+  by the caller so this package doesn't do date math against "now") is the same pattern for an upcoming
+  earnings report — `writeStockSection` renders `KeyEarningsLine` as a warning so the model doesn't call
+  BUY on something reporting earnings tomorrow.
 - `internal/signals` — pure functions/struct for rule-based technical signals (price % threshold, RSI,
   MACD) independent of Telegram/LLM/DB. That purity is preserved for the stateful checks too:
   `CheckRSIState` and `CheckMACDCross` take the previously persisted state as a parameter and return the
@@ -191,7 +199,19 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `loadPositions` (called once per `/recommend`/`RunDailyReport` run) builds a `ticker -> db.Position`
   map that `fetchStockData` attaches to `llm.StockData.Position` — this is how a held ticker's cost
   basis and unrealized P&L% reach the recommendation prompt (see `internal/llm`'s `KeyPositionLine`) so
-  a SELL/HOLD call has an actual P&L to reason against, not just price action. `Run`'s `dispatch` splits incoming messages two ways: commands each get their own goroutine
+  a SELL/HOLD call has an actual P&L to reason against, not just price action. `loadEarnings` is the
+  same shape for `data.EarningsProvider` (nil-checked exactly like `Bot.fundamentals`): a single bulk
+  call covering watchlist ∪ candidate tickers within `earningsPromptWindowDays` (14), attached by
+  `fetchStockData` as `llm.StockData.Earnings` so a BUY call doesn't walk into next-day earnings
+  volatility. `checkEarningsAlerts` is the separate, narrower-window (`earningsAlertDays`, 3) proactive
+  Telegram reminder — called only from `RunDailyReport`, not `/recommend` (same asymmetry as
+  `checkStatefulSignals` below), deduped via `signal_states` under the literal family string
+  `"earnings"` (not one of `signals.FamilyRSI`/`FamilyMACD`, since this isn't a price-derived technical
+  signal — `internal/signals` stays scoped to those) with `state` holding the earnings date string
+  itself, so a ticker only re-alerts once its *next* earnings date rolls around. Both `handleRecommend`
+  and `RunDailyReport` fetch `GetMarketMovers()` *before* building any `llm.StockData`, specifically so
+  `loadEarnings` can cover the combined watchlist+candidate ticker set in one call rather than two.
+  `Run`'s `dispatch` splits incoming messages two ways: commands each get their own goroutine
   (`go b.handleMessage(...)`) so a slow one like `/recommend` can't block a quick one like `/status` sent
   right after — but plain-text chat messages go on `chatQueue` instead, drained one at a time by the single
   `chatWorker` goroutine, so replies come back in the order the user actually sent them. That ordering

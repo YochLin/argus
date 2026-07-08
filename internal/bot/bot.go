@@ -20,11 +20,23 @@ import (
 
 var cst = time.FixedZone("CST", 8*3600)
 
+// earningsPromptWindowDays bounds how far ahead we look for upcoming
+// earnings when feeding it into LLM prompts — wide enough to matter for a
+// low-frequency trader deciding whether to enter a position now or wait.
+// earningsAlertDays is the (narrower) window for the proactive Telegram
+// reminder, close enough to actually be actionable that week.
+const (
+	earningsPromptWindowDays = 14
+	earningsAlertDays        = 3
+	earningsSignalFamily     = "earnings"
+)
+
 type Bot struct {
 	api          *tgbotapi.BotAPI
 	db           *db.DB
 	provider     data.Provider
 	fundamentals data.FundamentalsProvider // nil if FINNHUB_API_KEY isn't set
+	earnings     data.EarningsProvider     // nil if FINNHUB_API_KEY isn't set
 	history      data.HistoryProvider
 	llm          *llm.Client
 	detector     *signals.Detector
@@ -41,7 +53,7 @@ type Bot struct {
 	chatQueue chan *tgbotapi.Message
 }
 
-func New(token string, chatID int64, database *db.DB, provider data.Provider, fundamentals data.FundamentalsProvider, history data.HistoryProvider, llmClient *llm.Client, lang i18n.Lang) (*Bot, error) {
+func New(token string, chatID int64, database *db.DB, provider data.Provider, fundamentals data.FundamentalsProvider, earnings data.EarningsProvider, history data.HistoryProvider, llmClient *llm.Client, lang i18n.Lang) (*Bot, error) {
 	api, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return nil, fmt.Errorf("telegram: %w", err)
@@ -52,6 +64,7 @@ func New(token string, chatID int64, database *db.DB, provider data.Provider, fu
 		db:           database,
 		provider:     provider,
 		fundamentals: fundamentals,
+		earnings:     earnings,
 		history:      history,
 		llm:          llmClient,
 		detector:     signals.NewDetector(lang),
@@ -244,14 +257,17 @@ func (b *Bot) handleRecommend(ctx context.Context) {
 		return
 	}
 
-	positions := b.loadPositions()
-	watchlist := b.fetchStockData(tickers, true, positions)
-
 	candidateTickers, err := b.provider.GetMarketMovers()
 	if err != nil {
 		log.Printf("market movers: %v", err)
 	}
-	candidates := b.fetchStockData(dedup(candidateTickers, tickers), false, positions)
+	dedupedCandidates := dedup(candidateTickers, tickers)
+
+	positions := b.loadPositions()
+	earnings := b.loadEarnings(append(append([]string{}, tickers...), dedupedCandidates...))
+
+	watchlist := b.fetchStockData(tickers, true, positions, earnings)
+	candidates := b.fetchStockData(dedupedCandidates, false, positions, earnings)
 
 	recs, err := b.llm.GenerateRecommendations(ctx, watchlist, candidates)
 	if err != nil {
@@ -846,11 +862,19 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 		return
 	}
 
+	candidateTickers, err := b.provider.GetMarketMovers()
+	if err != nil {
+		log.Printf("market movers: %v", err)
+	}
+	dedupedCandidates := dedup(candidateTickers, tickers)
+
 	positions := b.loadPositions()
+	earnings := b.loadEarnings(append(append([]string{}, tickers...), dedupedCandidates...))
+	b.checkEarningsAlerts(tickers, earnings)
 
 	// Detect signals on watchlist
 	var allSignals []signals.Signal
-	watchlist := b.fetchStockData(tickers, true, positions)
+	watchlist := b.fetchStockData(tickers, true, positions, earnings)
 	for _, s := range watchlist {
 		if s.Quote != nil {
 			allSignals = append(allSignals, b.detector.CheckQuote(s.Quote)...)
@@ -868,11 +892,7 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 		b.SendSignalAlert(allSignals)
 	}
 
-	candidateTickers, err := b.provider.GetMarketMovers()
-	if err != nil {
-		log.Printf("market movers: %v", err)
-	}
-	candidates := b.fetchStockData(dedup(candidateTickers, tickers), false, positions)
+	candidates := b.fetchStockData(dedupedCandidates, false, positions, earnings)
 
 	recs, err := b.llm.GenerateRecommendations(ctx, watchlist, candidates)
 	if err != nil {
@@ -933,9 +953,11 @@ func (b *Bot) checkStatefulSignals(ticker string, closes []float64) []signals.Si
 // broad market-mover candidate list) to stay well under Finnhub's free-tier
 // 60-requests/minute limit when a candidate list has a dozen-plus tickers.
 // positions (ticker -> open position) is looked up via loadPositions and
-// attaches cost-basis context for any ticker the user actually holds; pass
-// nil if there's nothing to attach.
-func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positions map[string]db.Position) []llm.StockData {
+// attaches cost-basis context for any ticker the user actually holds;
+// earnings (ticker -> upcoming earnings) is looked up via loadEarnings and
+// attaches an earnings-date warning for any ticker reporting soon. Pass nil
+// for either if there's nothing to attach.
+func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positions map[string]db.Position, earnings map[string]data.EarningsEvent) []llm.StockData {
 	var result []llm.StockData
 	for _, t := range tickers {
 		q, err := b.provider.GetQuote(t)
@@ -954,6 +976,9 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 		}
 		if p, ok := positions[t]; ok {
 			stock.Position = &llm.Position{Shares: p.Shares, AvgCost: p.AvgCost}
+		}
+		if e, ok := earnings[t]; ok {
+			stock.Earnings = &llm.Earnings{Date: e.Date, DaysUntil: daysUntil(e.Date)}
 		}
 		result = append(result, stock)
 	}
@@ -975,6 +1000,78 @@ func (b *Bot) loadPositions() map[string]db.Position {
 		out[p.Ticker] = p
 	}
 	return out
+}
+
+// loadEarnings returns each ticker's next scheduled earnings date within
+// earningsPromptWindowDays, keyed by ticker. Degrades to nil (not an error)
+// when Finnhub isn't configured or the request fails — same optional-data
+// pattern as fundamentals.
+func (b *Bot) loadEarnings(tickers []string) map[string]data.EarningsEvent {
+	if b.earnings == nil || len(tickers) == 0 {
+		return nil
+	}
+	events, err := b.earnings.GetUpcomingEarnings(tickers, earningsPromptWindowDays)
+	if err != nil {
+		log.Printf("earnings calendar: %v", err)
+		return nil
+	}
+	return events
+}
+
+// checkEarningsAlerts sends one batched Telegram message warning about
+// watchlist tickers (positions are always on the watchlist via /buy's
+// auto-add, so this covers held positions too) with earnings due within
+// earningsAlertDays. Deduped via signal_states (family "earnings", state =
+// the earnings date string) so it fires once per reporting date rather than
+// every day the ticker sits inside the alert window.
+func (b *Bot) checkEarningsAlerts(tickers []string, earnings map[string]data.EarningsEvent) {
+	var lines []string
+	for _, t := range tickers {
+		e, ok := earnings[t]
+		if !ok {
+			continue
+		}
+		days := daysUntil(e.Date)
+		if days < 0 || days > earningsAlertDays {
+			continue
+		}
+
+		prev, err := b.db.GetSignalState(t, earningsSignalFamily)
+		if err != nil {
+			log.Printf("earnings alert state %s: %v", t, err)
+		}
+		if prev == e.Date {
+			continue
+		}
+
+		lines = append(lines, i18n.T(b.lang, i18n.KeyEarningsAlertLine, t, e.Date, days))
+		if err := b.db.SetSignalState(t, earningsSignalFamily, e.Date); err != nil {
+			log.Printf("earnings alert state %s: %v", t, err)
+		}
+	}
+	if len(lines) == 0 {
+		return
+	}
+
+	var sb strings.Builder
+	sb.WriteString(i18n.T(b.lang, i18n.KeyEarningsAlertTitle))
+	for _, l := range lines {
+		sb.WriteString(l)
+	}
+	b.Send(sb.String())
+}
+
+// daysUntil returns the whole number of days from today (Taiwan time) until
+// dateStr (YYYY-MM-DD), which may be negative for a past date. Both sides
+// are compared as date-only values (not instants) so it's not sensitive to
+// what time of day it's called.
+func daysUntil(dateStr string) int {
+	target, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return 0
+	}
+	today, _ := time.Parse("2006-01-02", time.Now().In(cst).Format("2006-01-02"))
+	return int(target.Sub(today).Hours() / 24)
 }
 
 func formatQuote(lang i18n.Lang, q *data.Quote) string {

@@ -62,6 +62,9 @@ var enMessages = map[Key]string{
 	KeyChatContextPositionLine: "- %s: %s close $%.2f (%+.2f%%) | holding %g shares, avg cost $%.2f, unrealized %+.2f%%\n",
 	KeyChatContextFooter:       "[End of background info — reply to the message below]\n\n",
 
+	KeyEarningsAlertTitle: "📅 *Earnings Reminder*\n\n",
+	KeyEarningsAlertLine:  "• *%s* reports earnings on %s (in %d days)\n",
+
 	KeyQuoteLine: "*%s*  $%.2f  %s%.2f%%\nOpen: $%.2f  High: $%.2f  Low: $%.2f",
 
 	KeyValuationHeader:     "*Valuation*\n",
@@ -164,4 +167,5 @@ Keep the reply concise — under 400 words total.
 	KeyFundamentalsSummaryLine: "- Fundamentals: P/E %.1f | P/B %.1f | ROE %.1f%% | Gross Margin %.1f%% | Operating Margin %.1f%% | Net Margin %.1f%% | Debt/Equity %.2f | Revenue YoY %.1f%% | EPS YoY %.1f%% | Dividend Yield %.2f%% | Beta %.2f\n",
 	KeyStatementSummaryLine:    "- Latest Filing (%s, FY%d, as of %s): Revenue $%.0fM | Gross Profit $%.0fM | Operating Income $%.0fM | Net Income $%.0fM | Total Assets $%.0fM | Total Liabilities $%.0fM | Total Equity $%.0fM | Operating Cash Flow $%.0fM | Free Cash Flow $%.0fM\n",
 	KeyPositionLine:            "- Position: %g shares, avg cost $%.2f (unrealized %+.2f%%)\n",
+	KeyEarningsLine:            "- ⚠️ Earnings date: %s (in %d days) — expect volatility\n",
 }

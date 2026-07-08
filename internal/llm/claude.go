@@ -26,6 +26,11 @@ type StockData struct {
 	// SELL/HOLD call has actual cost basis to reason against instead of just
 	// price action. Nil for tickers with no open position.
 	Position *Position
+	// Earnings is set when this ticker has a scheduled earnings report
+	// within the fetch window (see bot.loadEarnings), so a BUY call doesn't
+	// walk straight into next-day earnings volatility. Nil if nothing's
+	// scheduled soon.
+	Earnings *Earnings
 }
 
 // Position is the subset of a db.Position an LLM prompt needs: shares held
@@ -34,6 +39,14 @@ type StockData struct {
 type Position struct {
 	Shares  float64
 	AvgCost float64
+}
+
+// Earnings is the subset of a data.EarningsEvent an LLM prompt needs, with
+// DaysUntil precomputed by the caller (bot.loadEarnings) so this package
+// doesn't need to do date math against "now" itself.
+type Earnings struct {
+	Date      string
+	DaysUntil int
 }
 
 type Recommendation struct {
@@ -219,6 +232,10 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 	if p := s.Position; p != nil {
 		unrealizedPct := (q.Price - p.AvgCost) / p.AvgCost * 100
 		fmt.Fprint(sb, i18n.T(lang, i18n.KeyPositionLine, p.Shares, p.AvgCost, unrealizedPct))
+	}
+
+	if e := s.Earnings; e != nil {
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyEarningsLine, e.Date, e.DaysUntil))
 	}
 
 	sb.WriteString("\n")
