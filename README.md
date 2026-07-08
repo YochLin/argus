@@ -56,7 +56,8 @@ Three things about today's implementation are conveniences, not commitments:
   what's moving the broader market before its per-ticker calls — requires a Finnhub API key
 - **Free-form chat** — message the bot without a command and it remembers the conversation, separate
   from the one-shot analysis commands
-- **Daily report** — an automatic summary pushed every day before US market open (21:00 Taiwan time)
+- **Daily report** — an automatic summary pushed every day after US market open (23:30 Taiwan time, at
+  least an hour into the session), so recommendations are informed by today's actual price action
 - **Post-close snapshots** — after each US session closes (05:30 Taiwan time), the watchlist's OHLCV
   is recorded to SQLite, building the price history behind `/track` and future analysis
 - **Position tracking** — `/buy` and `/sell` record trades against a weighted-average cost basis
@@ -131,7 +132,7 @@ Talk to it in Telegram:
 | `/sell <ticker> <shares> <price> [fee] [date]` | Record a sale against an open position and report the realized P&L |
 | `/portfolio` | Every open position's market value and unrealized P&L, plus cumulative realized P&L |
 | `/fundamentals <ticker>` | Raw valuation/profitability/financial-statement data (requires Finnhub key) |
-| `/dailyreport` | Manually trigger the daily report (normally runs automatically at 21:00 Taiwan time) |
+| `/dailyreport` | Manually trigger the daily report (normally runs automatically at 23:30 Taiwan time) |
 | `/reset` | Clear the chat mode's conversation memory |
 | _(anything else)_ | Free-form chat — no command needed, just send a message |
 

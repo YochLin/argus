@@ -845,9 +845,10 @@ func (b *Bot) SendSignalAlert(sigs []signals.Signal) {
 
 // RunClosingSnapshot records the just-closed US session's OHLCV for every
 // watchlist ticker into daily_snapshots. Called by the scheduler at 05:30
-// CST — after the US close — so unlike the pre-open daily report this
-// captures genuine closing data. At that hour the US trading date is
-// Taiwan's "yesterday", which is why the snapshot is dated one day back.
+// CST — after the US close — so unlike the daily report (which runs an
+// hour or two into the session, not at the close) this captures genuine
+// closing data. At that hour the US trading date is Taiwan's "yesterday",
+// which is why the snapshot is dated one day back.
 // It's a silent background job: results go to the DB and errors to the log,
 // not to Telegram.
 func (b *Bot) RunClosingSnapshot(ctx context.Context) {

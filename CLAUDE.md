@@ -229,7 +229,8 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   as everything in `internal/bot` — don't hardcode a new message string here either.
 - `internal/scheduler` — thin wrapper around `robfig/cron` fixed to `time.FixedZone("CST", 8*3600)`
   (Taiwan time) rather than a loaded `time.Location`, specifically so it works in the `alpine` Docker
-  image without needing the `tzdata` package installed. Five jobs: the daily report (21:00 CST daily),
+  image without needing the `tzdata` package installed. Five jobs: the daily report (23:30 CST daily —
+  at least an hour into the US session, see `AddDailyReport`'s doc comment for why 23:30 specifically),
   the closing snapshot (05:30 CST Tue–Sat — a US session ends at 04:00 or 05:00 CST the next morning
   depending on daylight saving, so 05:30 is past the close in both; Sun/Mon mornings follow no US
   session and are excluded at the cron level, while US holidays are handled by the job itself skipping
@@ -240,7 +241,7 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   day's post-close data).
 - `internal/bot` — Telegram command dispatch (`/add`, `/remove`, `/list`, `/status`, `/recommend`,
   `/check`, `/track`, `/buy`, `/sell`, `/portfolio`, `/dailyreport`, `/fundamentals`, `/universe`,
-  `/reset`) plus three scheduler-invoked jobs: `RunDailyReport` (21:00 CST, pre-open), `RunClosingSnapshot`
+  `/reset`) plus three scheduler-invoked jobs: `RunDailyReport` (23:30 CST, ~1–2h into the US session), `RunClosingSnapshot`
   (05:30 CST Tue–Sat, post-close), and `RunUniverseScan` (05:45 CST Tue–Sat — see below). The former two:
   `RunClosingSnapshot` writes each watchlist ticker's completed-session OHLCV to
   `daily_snapshots` dated one day back in Taiwan terms (that's the US trading date at that hour) and
@@ -374,10 +375,12 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
 - `main.go` must call `llmClient.Close()` on shutdown (currently a `defer` right after construction) —
   the persistent chat session's `claude-agent-acp` subprocess has no other way to get cleaned up if the
   bot exits mid-conversation.
-- The daily report is scheduled for 21:00 CST/Taiwan time — before US market open — via cron spec
-  `"0 0 21 * * *"` in `scheduler.go`. The closing snapshot runs at `"0 30 5 * * 2-6"` (05:30 CST
-  Tue–Sat, after US close); it dates snapshots one day back in Taiwan terms and must keep skipping
-  quotes older than ~12h, or US-holiday reruns of the previous session get filed under the wrong date.
+- The daily report is scheduled for 23:30 CST/Taiwan time — at least an hour into the US session (see
+  `scheduler.go`'s `AddDailyReport` doc comment for the DST-vs-standard-time reasoning behind that
+  specific time) — via cron spec `"0 30 23 * * *"` in `scheduler.go`. The closing snapshot runs at
+  `"0 30 5 * * 2-6"` (05:30 CST Tue–Sat, after US close); it dates snapshots one day back in Taiwan
+  terms and must keep skipping quotes older than ~12h, or US-holiday reruns of the previous session get
+  filed under the wrong date.
 - `parseRecommendations` matches two i18n-driven markers, not one: `KeyActionMarker` ("動作:" /
   "Action:") and `KeyReasonMarker` ("原因:" / "Reason:"). Both appear in the `KeyRecTaskBlock` prompt
   template and must stay in lockstep with the parser (same constraint as the reason marker note in

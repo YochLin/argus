@@ -23,18 +23,31 @@ func New() *Scheduler {
 	}
 }
 
-// AddDailyReport schedules the daily report job at 21:00 CST every day
-// (US market opens at 21:30 CST on standard time, 20:30 during daylight saving).
-// Cron with seconds: "0 0 21 * * *"
+// AddDailyReport schedules the daily report job at 23:30 CST every day, so
+// it runs after the US market has actually opened rather than off
+// yesterday's close — the point being a same-day, price-action-informed
+// buy/sell call instead of a pre-market guess (the user's own framing: this
+// is a low-frequency bot, one BUY/SELL/HOLD decision a day, and that
+// decision should see today's trading before it's made).
+//
+// US market open isn't fixed relative to Taiwan time: it's 21:30 CST during
+// US daylight saving (~Mar–Nov) and 22:30 CST during standard time
+// (~Nov–Mar) — Taiwan has no DST of its own, so the gap to US ET shifts by
+// an hour twice a year. A single fixed cron can't land exactly "+1h after
+// open" in both regimes, so 23:30 was chosen to guarantee *at least* an
+// hour of post-open trading either way (2h into the session during
+// daylight saving, 1h during standard time) rather than risk firing before
+// or right at the open in the worse-case season.
+// Cron with seconds: "0 30 23 * * *"
 func (s *Scheduler) AddDailyReport(ctx context.Context, fn JobFunc) {
-	_, err := s.c.AddFunc("0 0 21 * * *", func() {
+	_, err := s.c.AddFunc("0 30 23 * * *", func() {
 		log.Println("scheduler: running daily report")
 		fn(ctx)
 	})
 	if err != nil {
 		log.Fatalf("scheduler: add daily report: %v", err)
 	}
-	log.Println("scheduler: daily report registered at 21:00 CST")
+	log.Println("scheduler: daily report registered at 23:30 CST")
 }
 
 // AddClosingSnapshot schedules the post-close snapshot job at 05:30 CST,
