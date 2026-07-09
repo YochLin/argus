@@ -54,6 +54,21 @@ func TestRSI(t *testing.T) {
 	})
 }
 
+func TestMA(t *testing.T) {
+	t.Run("insufficient data returns 0", func(t *testing.T) {
+		if got := MA([]float64{1, 2, 3}, 5); got != 0 {
+			t.Errorf("MA() = %v, want 0", got)
+		}
+	})
+
+	t.Run("averages the trailing window, not the oldest", func(t *testing.T) {
+		closes := []float64{100, 100, 100, 10, 20, 30}
+		if got := MA(closes, 3); !almostEqual(got, 20) {
+			t.Errorf("MA() = %v, want 20", got)
+		}
+	})
+}
+
 func TestEmaSeries(t *testing.T) {
 	got := emaSeries([]float64{1, 2, 3, 4}, 3)
 	want := []float64{1, 1.5, 2.25, 3.125}

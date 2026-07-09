@@ -150,6 +150,8 @@ blocks.
 Every watchlist ticker must get an explicit call, and the action must be exactly one of BUY, SELL, or HOLD;
 from the broad market movers, only list the ones you actually like as buys (at most 3, action BUY) — none is fine.
 
+When weighing each ticker's news, note whether each headline reads as bullish or bearish and fold that into your reasoning.
+
 Strictly follow this output structure, one block per ticker, with no extra text:
 
 [TICKER: AAPL]
@@ -184,11 +186,18 @@ Keep the reply concise — under 400 words total.
 	KeyQuoteTimeLine:           "- Quote Time: %s\n",
 	KeyNewsHeader:              "- Recent News:\n",
 	KeyNewsItem:                "  %d. [%s] %s\n",
-	KeyFundamentalsSummaryLine: "- Fundamentals: P/E %.1f | P/B %.1f | ROE %.1f%% | Gross Margin %.1f%% | Operating Margin %.1f%% | Net Margin %.1f%% | Debt/Equity %.2f | Revenue YoY %.1f%% | EPS YoY %.1f%% | Dividend Yield %.2f%% | Beta %.2f\n",
+	KeyFundamentalsSummaryLine: "- Fundamentals: P/E %.1f | P/B %.1f | ROE %.1f%% | Gross Margin %.1f%% | Operating Margin %.1f%% | Net Margin %.1f%% | Debt/Equity %.2f | Revenue YoY %.1f%% | EPS YoY %.1f%% | Dividend Yield %.2f%% | Beta %.2f | EPS(TTM) %.2f | Current Ratio %.2f | Market Cap $%.0fM | From 52W High %+.1f%% | From 52W Low %+.1f%%\n",
 	KeyStatementSummaryLine:    "- Latest Filing (%s, FY%d, as of %s): Revenue $%.0fM | Gross Profit $%.0fM | Operating Income $%.0fM | Net Income $%.0fM | Total Assets $%.0fM | Total Liabilities $%.0fM | Total Equity $%.0fM | Operating Cash Flow $%.0fM | Free Cash Flow $%.0fM\n",
 	KeyPositionLine:            "- Position: %g shares, avg cost $%.2f (unrealized %+.2f%%)\n",
 	KeyEarningsLine:            "- ⚠️ Earnings date: %s (in %d days) — expect volatility\n",
 	KeyScanHitLine:             "- 🔎 Scan hit: %s\n",
+	KeyTechnicalsSummaryLine:   "- Technicals: RSI(14) %.1f | MACD %s\n",
+	KeyTechnicalsMALine:        "- %s MA%d ($%.2f)\n",
+	KeyTrendBullish:            "Bullish",
+	KeyTrendBearish:            "Bearish",
+	KeyTrendUnknown:            "insufficient data",
+	KeyAboveMA:                 "Above",
+	KeyBelowMA:                 "Below",
 
 	KeyMCPTickerHeader: "## %s\n",
 

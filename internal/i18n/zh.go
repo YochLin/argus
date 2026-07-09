@@ -152,6 +152,8 @@ var zhMessages = map[Key]string{
 自選股的每一檔都必須給出明確操作建議，動作只能是 BUY、SELL、HOLD 三者之一；
 大盤熱門標的則只挑出你看好、值得買進的（最多 3 檔，動作為 BUY），沒有就不列。
 
+評估每檔新聞時，請留意每則是利多還是利空，並融入你的原因說明。
+
 輸出格式請嚴格遵守以下結構，每檔一個區塊，不要有額外文字：
 
 [TICKER: AAPL]
@@ -186,11 +188,18 @@ var zhMessages = map[Key]string{
 	KeyQuoteTimeLine:           "- 報價時間: %s\n",
 	KeyNewsHeader:              "- 近期新聞:\n",
 	KeyNewsItem:                "  %d. [%s] %s\n",
-	KeyFundamentalsSummaryLine: "- 基本面：本益比 %.1f｜股價淨值比 %.1f｜ROE %.1f%%｜毛利率 %.1f%%｜營業利益率 %.1f%%｜淨利率 %.1f%%｜負債權益比 %.2f｜營收年增率 %.1f%%｜EPS年增率 %.1f%%｜股息殖利率 %.2f%%｜Beta %.2f\n",
+	KeyFundamentalsSummaryLine: "- 基本面：本益比 %.1f｜股價淨值比 %.1f｜ROE %.1f%%｜毛利率 %.1f%%｜營業利益率 %.1f%%｜淨利率 %.1f%%｜負債權益比 %.2f｜營收年增率 %.1f%%｜EPS年增率 %.1f%%｜股息殖利率 %.2f%%｜Beta %.2f｜EPS(TTM) %.2f｜流動比率 %.2f｜市值 $%.0fM｜距52週高點 %+.1f%%｜距52週低點 %+.1f%%\n",
 	KeyStatementSummaryLine:    "- 最新財報（%s，會計年度 %d，截至 %s）：營收 $%.0fM｜毛利 $%.0fM｜營業利益 $%.0fM｜淨利 $%.0fM｜總資產 $%.0fM｜總負債 $%.0fM｜股東權益 $%.0fM｜營運現金流 $%.0fM｜自由現金流 $%.0fM\n",
 	KeyPositionLine:            "- 持倉: %g 股　平均成本 $%.2f　未實現損益 %+.2f%%\n",
 	KeyEarningsLine:            "- ⚠️ 財報日: %s（%d 天內），留意波動\n",
 	KeyScanHitLine:             "- 🔎 掃描命中: %s\n",
+	KeyTechnicalsSummaryLine:   "- 技術面：RSI(14) %.1f｜MACD %s\n",
+	KeyTechnicalsMALine:        "- %s MA%d ($%.2f)\n",
+	KeyTrendBullish:            "多頭",
+	KeyTrendBearish:            "空頭",
+	KeyTrendUnknown:            "數據不足",
+	KeyAboveMA:                 "站上",
+	KeyBelowMA:                 "跌破",
 
 	KeyMCPTickerHeader: "## %s\n",
 

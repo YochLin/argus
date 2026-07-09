@@ -30,12 +30,13 @@ type Provider interface {
 }
 
 // HistoryProvider supplies historical closing prices for technical
-// indicators (RSI/MACD). Finnhub's free tier blocks /stock/candle entirely
-// ("You don't have access to this resource"), so unlike Provider this has no
-// Finnhub implementation or Multi wrapper — Yahoo's chart endpoint is the
-// only source, same one GetQuote already uses.
+// indicators (RSI/MACD/moving averages). Finnhub's free tier blocks
+// /stock/candle entirely ("You don't have access to this resource"), so
+// unlike Provider this has no Finnhub implementation or Multi wrapper —
+// Yahoo's chart endpoint is the only source, same one GetQuote already uses.
 type HistoryProvider interface {
-	// GetHistory returns daily closing prices for ticker, oldest first.
+	// GetHistory returns ~1 year of daily closing prices for ticker, oldest
+	// first — enough for a 200-day moving average.
 	GetHistory(ticker string) ([]float64, error)
 }
 

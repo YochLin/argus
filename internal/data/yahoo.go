@@ -111,10 +111,12 @@ func (y *Yahoo) GetQuote(ticker string) (*Quote, error) {
 	return q, nil
 }
 
-// GetHistory returns ~3 months of daily closing prices, oldest first — enough
-// for a 14-period RSI or a 12/26/9 MACD with room for the signal-line warm-up.
+// GetHistory returns ~1 year of daily closing prices, oldest first — enough
+// for a 200-period moving average (MA200 needs ~200 trading days), and still
+// plenty of room for a 14-period RSI or a 12/26/9 MACD, which only read the
+// tail of the slice regardless of how much extra history is in front of it.
 func (y *Yahoo) GetHistory(ticker string) ([]float64, error) {
-	url := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&range=3mo", ticker)
+	url := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&range=1y", ticker)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
