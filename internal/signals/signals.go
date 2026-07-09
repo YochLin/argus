@@ -97,6 +97,21 @@ func RSI(closes []float64, period int) float64 {
 	return 100 - (100 / (1 + rs))
 }
 
+// MA returns the simple moving average of the trailing period closes (closes
+// is oldest-first, same convention as RSI/MACD), or 0 if there isn't enough
+// history yet — e.g. a recent IPO won't have ~200 days of closes for MA200.
+func MA(closes []float64, period int) float64 {
+	if len(closes) < period {
+		return 0
+	}
+	closes = closes[len(closes)-period:]
+	var sum float64
+	for _, c := range closes {
+		sum += c
+	}
+	return sum / float64(period)
+}
+
 // CheckRSIState is the deduplicated version of CheckRSI: it only returns a
 // signal when RSI newly enters overbought/oversold territory relative to
 // prevState (the state persisted after the previous check; "" reads as

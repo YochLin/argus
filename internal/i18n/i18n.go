@@ -214,6 +214,13 @@ const (
 	KeyPositionLine            Key = "position_line"
 	KeyEarningsLine            Key = "earnings_line"
 	KeyScanHitLine             Key = "scan_hit_line"
+	KeyTechnicalsSummaryLine   Key = "technicals_summary_line"
+	KeyTechnicalsMALine        Key = "technicals_ma_line"
+	KeyTrendBullish            Key = "trend_bullish"
+	KeyTrendBearish            Key = "trend_bearish"
+	KeyTrendUnknown            Key = "trend_unknown"
+	KeyAboveMA                 Key = "above_ma"
+	KeyBelowMA                 Key = "below_ma"
 )
 
 // Keys used by internal/mcptools (read-only MCP tool result/error text

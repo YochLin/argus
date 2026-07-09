@@ -32,6 +32,23 @@ type StockData struct {
 	// so the prompt can say what technical signal actually triggered its
 	// inclusion. Nil for watchlist tickers and movers-sourced candidates.
 	ScanReason *string
+	// Technicals is set whenever bot.HistoryProvider.GetHistory succeeded for
+	// this ticker (see bot.fetchStockData/handleCheck), so a BUY/SELL call has
+	// trend context (RSI/MACD/moving averages) instead of just a single day's
+	// OHLCV. Nil if history couldn't be fetched.
+	Technicals *Technicals
+}
+
+// Technicals is the subset of computed technical-indicator values an LLM
+// prompt needs. MACDTrend mirrors signals.MACDTrend's own vocabulary
+// ("bullish"/"bearish"/"" for not-enough-history) as a plain string rather
+// than importing internal/signals here, same reasoning as Position/Earnings
+// staying package-local mini-structs. MA200 is 0 when there isn't ~200 days
+// of history yet (e.g. a recent IPO).
+type Technicals struct {
+	RSI14             float64
+	MACDTrend         string
+	MA20, MA50, MA200 float64
 }
 
 // Position is the subset of a db.Position an LLM prompt needs: shares held
@@ -109,6 +126,28 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 	fmt.Fprint(sb, i18n.T(lang, i18n.KeyVolumeLine, q.Volume, q.PrevClose))
 	fmt.Fprint(sb, i18n.T(lang, i18n.KeyQuoteTimeLine, q.Timestamp.In(time.FixedZone("CST", 8*3600)).Format("2006-01-02 15:04")))
 
+	if t := s.Technicals; t != nil {
+		macdLabel := i18n.T(lang, i18n.KeyTrendUnknown)
+		switch t.MACDTrend {
+		case "bullish":
+			macdLabel = i18n.T(lang, i18n.KeyTrendBullish)
+		case "bearish":
+			macdLabel = i18n.T(lang, i18n.KeyTrendBearish)
+		}
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyTechnicalsSummaryLine, t.RSI14, macdLabel))
+		// Each MA is only rendered when there was enough history to compute
+		// it — MA returns 0 as a sentinel otherwise (e.g. MA200 on a recent
+		// IPO), and 0 would misleadingly look like a real price level.
+		for _, ma := range []struct {
+			period int
+			value  float64
+		}{{20, t.MA20}, {50, t.MA50}, {200, t.MA200}} {
+			if ma.value > 0 {
+				fmt.Fprint(sb, i18n.T(lang, i18n.KeyTechnicalsMALine, maLabel(lang, q.Price, ma.value), ma.period, ma.value))
+			}
+		}
+	}
+
 	if len(s.News) > 0 {
 		sb.WriteString(i18n.T(lang, i18n.KeyNewsHeader))
 		for i, n := range s.News {
@@ -122,7 +161,9 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 	if fd := s.Fundamentals; fd != nil {
 		fmt.Fprint(sb, i18n.T(lang, i18n.KeyFundamentalsSummaryLine,
 			fd.PE, fd.PB, fd.ROE, fd.GrossMarginPct, fd.OperatingMarginPct, fd.NetMarginPct,
-			fd.DebtToEquity, fd.RevenueGrowthYoY, fd.EPSGrowthYoY, fd.DividendYieldPct, fd.Beta))
+			fd.DebtToEquity, fd.RevenueGrowthYoY, fd.EPSGrowthYoY, fd.DividendYieldPct, fd.Beta,
+			fd.EPS, fd.CurrentRatio, fd.MarketCapMillion,
+			pctFrom(q.Price, fd.Week52High), pctFrom(q.Price, fd.Week52Low)))
 	}
 
 	if st := s.Statement; st != nil {
@@ -154,4 +195,23 @@ func buildCheckPrompt(lang i18n.Lang, s StockData) string {
 	writeStockSection(&sb, lang, s)
 	sb.WriteString(i18n.T(lang, i18n.KeyCheckPromptTask))
 	return sb.String()
+}
+
+// maLabel renders whether price sits above or below a moving average as an
+// already-localized string, so writeStockSection never builds display text
+// outside of internal/i18n.
+func maLabel(lang i18n.Lang, price, ma float64) string {
+	if price > ma {
+		return i18n.T(lang, i18n.KeyAboveMA)
+	}
+	return i18n.T(lang, i18n.KeyBelowMA)
+}
+
+// pctFrom returns the percentage difference of price from ref (e.g. a 52-week
+// high/low), or 0 if ref is unavailable (0) to avoid a divide-by-zero.
+func pctFrom(price, ref float64) float64 {
+	if ref == 0 {
+		return 0
+	}
+	return (price - ref) / ref * 100
 }

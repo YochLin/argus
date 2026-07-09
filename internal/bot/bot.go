@@ -366,6 +366,7 @@ func (b *Bot) handleCheck(ctx context.Context, ticker string) {
 			stock.Statement = st
 		}
 	}
+	stock.Technicals = b.computeTechnicals(ticker)
 
 	result, err := b.llm.CheckStock(ctx, stock)
 	if err != nil {
@@ -1138,13 +1139,16 @@ func (b *Bot) RunUniverseScan(ctx context.Context) {
 // attached when includeFundamentals is set (watchlist tickers, not the
 // broad market-mover candidate list) to stay well under Finnhub's free-tier
 // 60-requests/minute limit when a candidate list has a dozen-plus tickers.
-// positions (ticker -> open position) is looked up via loadPositions and
-// attaches cost-basis context for any ticker the user actually holds;
-// earnings (ticker -> upcoming earnings) is looked up via loadEarnings and
-// attaches an earnings-date warning for any ticker reporting soon.
-// scanReasons (ticker -> joined signal message) is looked up via
-// db.GetScanHits and attaches why a Phase 2.6 universe-scan candidate was
-// surfaced. Pass nil for any of the three if there's nothing to attach.
+// Technicals (RSI/MACD/moving averages, via computeTechnicals) has no such
+// gate — Yahoo's history endpoint carries no rate-limit concern, and
+// candidates are exactly where the model most needs trend context before
+// calling a fresh BUY. positions (ticker -> open position) is looked up via
+// loadPositions and attaches cost-basis context for any ticker the user
+// actually holds; earnings (ticker -> upcoming earnings) is looked up via
+// loadEarnings and attaches an earnings-date warning for any ticker
+// reporting soon. scanReasons (ticker -> joined signal message) is looked up
+// via db.GetScanHits and attaches why a Phase 2.6 universe-scan candidate
+// was surfaced. Pass nil for any of the three if there's nothing to attach.
 func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positions map[string]db.Position, earnings map[string]data.EarningsEvent, scanReasons map[string]string) []llm.StockData {
 	var result []llm.StockData
 	for _, t := range tickers {
@@ -1162,6 +1166,7 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 				stock.Fundamentals = fd
 			}
 		}
+		stock.Technicals = b.computeTechnicals(t)
 		if p, ok := positions[t]; ok {
 			stock.Position = &llm.Position{Shares: p.Shares, AvgCost: p.AvgCost}
 		}
@@ -1174,6 +1179,31 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 		result = append(result, stock)
 	}
 	return result
+}
+
+// computeTechnicals fetches ticker's closing-price history and reduces it to
+// the RSI/MACD/moving-average values an LLM prompt needs (see
+// llm.Technicals). Returns nil (not an error) on a history-fetch failure, so
+// callers degrade the same way the fundamentals fetch above does. This
+// duplicates the GetHistory call RunDailyReport's signal-check loop already
+// makes for watchlist tickers (see checkStatefulSignals) — the two serve
+// different purposes (stateful alert dedup vs. raw values for the prompt)
+// and don't share a data structure, and Yahoo's history endpoint has no
+// rate-limit concern like Finnhub's, so the duplicate call is an accepted
+// trade-off rather than an oversight.
+func (b *Bot) computeTechnicals(ticker string) *llm.Technicals {
+	closes, err := b.history.GetHistory(ticker)
+	if err != nil {
+		log.Printf("history %s: %v", ticker, err)
+		return nil
+	}
+	return &llm.Technicals{
+		RSI14:     signals.RSI(closes, 14),
+		MACDTrend: signals.MACDTrend(closes),
+		MA20:      signals.MA(closes, 20),
+		MA50:      signals.MA(closes, 50),
+		MA200:     signals.MA(closes, 200),
+	}
 }
 
 // loadPositions returns every open position keyed by ticker, for attaching

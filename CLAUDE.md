@@ -75,10 +75,13 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   add more aliases if a ticker comes back with an unexpectedly-zero field rather than assuming the data
   doesn't exist. Finnhub's free tier is rate-limited to 60 req/min, so fundamentals are only fetched for
   watchlist tickers (`fetchStockData(..., includeFundamentals: true)`), never for the broad market-mover
-  candidate list, which can be 15+ tickers. `HistoryProvider` (`GetHistory`, daily closes for RSI/MACD) is
-  the mirror image of `FundamentalsProvider`: Yahoo-only, no `Multi` wrapper, because Finnhub's free tier
-  blocks `/stock/candle` entirely — same constraint as the `Quote.Volume` gap above, just hitting a
-  different feature this time. `EarningsProvider` (`earnings.go`) is Finnhub-only for the same reason as
+  candidate list, which can be 15+ tickers. `HistoryProvider` (`GetHistory`, daily closes for RSI/MACD/moving
+  averages) is the mirror image of `FundamentalsProvider`: Yahoo-only, no `Multi` wrapper, because Finnhub's
+  free tier blocks `/stock/candle` entirely — same constraint as the `Quote.Volume` gap above, just hitting
+  a different feature this time. `GetHistory`'s window is `range=1y` (Phase 3.7) rather than the `3mo` it
+  used to be — a 200-day moving average needs ~200 trading days of closes, and the existing RSI(14)/MACD
+  callers are unaffected since both only read the tail of the slice regardless of how much history sits in
+  front of it. `EarningsProvider` (`earnings.go`) is Finnhub-only for the same reason as
   `FundamentalsProvider` — no Yahoo equivalent. `GetUpcomingEarnings(tickers, days)` fetches Finnhub's
   `/calendar/earnings` **without** a `symbol` filter (that param only accepts one ticker, so a per-ticker
   loop would cost one request each) and filters the whole-market response down to the requested tickers
@@ -213,6 +216,22 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   BUY on something reporting earnings tomorrow. `StockData.ScanReason` (`*string`) is the same
   attach-and-render pattern again for Phase 2.6's universe scan: set only for a candidate that was
   surfaced by a signal hit rather than the market-movers list, rendered via `KeyScanHitLine`.
+  `StockData.Technicals` (`{RSI14, MACDTrend, MA20, MA50, MA200}`, Phase 3.7) is the same pattern once
+  more, set by `bot.computeTechnicals` from `HistoryProvider.GetHistory` — unlike Position/Earnings/
+  ScanReason it's attached unconditionally for every ticker `fetchStockData` builds (watchlist *and*
+  candidates), not gated behind a bulk-prefetched map, since candidates are exactly where the model most
+  needs trend context before calling a fresh BUY and Yahoo's history endpoint carries none of Finnhub's
+  rate-limit concern. `MACDTrend` is a plain string mirroring `signals.MACDTrend`'s own vocabulary
+  ("bullish"/"bearish"/"" for not-enough-history) rather than an import of `internal/signals`, same
+  reasoning as Position/Earnings staying package-local mini-structs. `MA20`/`MA50`/`MA200` are each 0 when
+  there isn't enough history to compute them (`signals.MA` returns 0 as a sentinel, e.g. `MA200` on a
+  recent IPO) — `writeStockSection` renders each moving-average line independently and skips any that are
+  0 rather than showing a misleading `$0.00`, so `KeyTechnicalsMALine` is a single reusable
+  `"%s MA%d ($%.2f)"` line (label/period/value), not three separate per-period keys.
+  `KeyFundamentalsSummaryLine` also grew five more `%`-verbs in this phase for fields that were already
+  being fetched but never rendered: `EPS`, `CurrentRatio`, `MarketCapMillion`, and `Week52High`/
+  `Week52Low` converted to "% from 52-week high/low" via a `pctFrom(price, ref)` helper that returns 0
+  when `ref` is 0 (a ticker Finnhub hasn't got a 52-week range for yet) rather than dividing by zero.
 - `internal/signals` — pure functions/struct for rule-based technical signals (price % threshold, RSI,
   MACD) independent of Telegram/LLM/DB. That purity is preserved for the stateful checks too:
   `CheckRSIState` and `CheckMACDCross` take the previously persisted state as a parameter and return the
@@ -288,7 +307,15 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   collision). Hits are logged to `scan_hits`; both `handleRecommend` and `RunDailyReport` call
   `loadScanHits` (today's rows) and merge them into the candidate list via the pure
   `mergeCandidates(movers, scanHits, watchlist)`, attaching the hit reason as `llm.StockData.ScanReason`
-  via `fetchStockData`'s `scanReasons` parameter. `Run`'s `dispatch` splits incoming messages two ways: commands each get their own goroutine
+  via `fetchStockData`'s `scanReasons` parameter. `computeTechnicals` (Phase 3.7) is `fetchStockData`'s and
+  `handleCheck`'s shared helper for `llm.StockData.Technicals`: one `b.history.GetHistory(ticker)` call
+  reduced via `signals.RSI`/`signals.MACDTrend`/`signals.MA` into RSI(14), MACD trend, and MA20/50/200 —
+  a history-fetch failure logs and returns nil (degrades exactly like the fundamentals fetch beside it),
+  never aborts the ticker. This duplicates the `GetHistory` call `RunDailyReport`'s own signal-check loop
+  already makes for watchlist tickers (`checkStatefulSignals`'s stateful RSI/MACD-cross alerting) — the
+  two aren't merged into one call because they serve different purposes (dedup-by-persisted-state alerts
+  vs. raw values for the prompt) and Yahoo's history endpoint has no Finnhub-style rate-limit concern to
+  justify the coupling. `Run`'s `dispatch` splits incoming messages two ways: commands each get their own goroutine
   (`go b.handleMessage(...)`) so a slow one like `/recommend` can't block a quick one like `/status` sent
   right after — but plain-text chat messages go on `chatQueue` instead, drained one at a time by the single
   `chatWorker` goroutine, so replies come back in the order the user actually sent them. That ordering
