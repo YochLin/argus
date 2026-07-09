@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -37,9 +38,31 @@ type Conn struct {
 	mu      sync.Mutex
 	pending map[string]chan rpcMessage
 
+	// trustedToolPrefixes lists "mcp__<server>__" prefixes this connection
+	// auto-approves session/request_permission calls for — exactly the MCP
+	// servers this same process configured via StartSession's mcpServers
+	// param (trustPermissionsFor), since those are servers we launched
+	// ourselves rather than ones the agent decided to connect to on its
+	// own. Everything else (built-in tools, if disableBuiltInTools were
+	// ever off; any other MCP server) is denied, same as before MCP
+	// support existed.
+	trustedToolPrefixes []string
+
 	// NotifyHandler is invoked for every agent->client notification
 	// (a message with a method but no id), e.g. "session/update".
 	NotifyHandler func(method string, params json.RawMessage)
+}
+
+// trustPermissionsFor records the MCP servers this connection should
+// auto-approve tool-call permission requests for. Must be called before the
+// session/new call that actually connects them, so a permission request
+// arriving early never races an unset trust list.
+func (c *Conn) trustPermissionsFor(servers []MCPServer) {
+	prefixes := make([]string, len(servers))
+	for i, s := range servers {
+		prefixes[i] = "mcp__" + s.Name + "__"
+	}
+	c.trustedToolPrefixes = prefixes
 }
 
 // Dial starts the given command and speaks ACP over its stdin/stdout.
@@ -96,9 +119,7 @@ func (c *Conn) readLoop(stdout io.Reader, stderr *bytes.Buffer) {
 				ch <- msg
 			}
 		case len(msg.ID) > 0 && msg.Method != "":
-			// Agent -> client request (e.g. permission/fs/terminal). This bot
-			// never grants tool access, so there's nothing to honor here.
-			c.respondError(msg.ID, -32601, "method not supported by this client")
+			c.handleAgentRequest(msg)
 		case msg.Method != "":
 			if c.NotifyHandler != nil {
 				c.NotifyHandler(msg.Method, msg.Params)
@@ -128,6 +149,95 @@ func (c *Conn) respondError(id json.RawMessage, code int, message string) {
 	}
 	b = append(b, '\n')
 	c.stdin.Write(b)
+}
+
+func (c *Conn) respondResult(id json.RawMessage, result any) {
+	resp := struct {
+		JSONRPC string          `json:"jsonrpc"`
+		ID      json.RawMessage `json:"id"`
+		Result  any             `json:"result"`
+	}{"2.0", id, result}
+	b, err := json.Marshal(resp)
+	if err != nil {
+		return
+	}
+	b = append(b, '\n')
+	c.stdin.Write(b)
+}
+
+// handleAgentRequest answers an agent -> client request. The only one this
+// client understands is session/request_permission for a tool call from one
+// of the MCP servers this connection itself configured (trustedToolPrefixes)
+// — auto-approved, since we chose to launch that server. Everything else
+// (fs/terminal access, a permission request outside every trusted prefix, or
+// one this client can't even parse) is rejected: either with a proper
+// RequestPermissionResponse reject outcome when the request parses far
+// enough to pick one, or a blanket JSON-RPC "not supported" error otherwise.
+func (c *Conn) handleAgentRequest(msg rpcMessage) {
+	if msg.Method == "session/request_permission" && c.respondToPermissionRequest(msg) {
+		return
+	}
+	c.respondError(msg.ID, -32601, "method not supported by this client")
+}
+
+// respondToPermissionRequest answers a session/request_permission call,
+// approving iff the tool call's name (ACP renders it as toolCall.title for
+// any tool the client has no built-in rendering for, which includes every
+// MCP tool — see agentclientprotocol/claude-agent-acp's tools.js default
+// case) starts with one of trustedToolPrefixes. Reports whether it sent a
+// response at all — false means the request didn't parse or none of the
+// offered options matched the desired allow/reject kind, so the caller
+// should fall back to the generic "not supported" rejection instead of
+// leaving the agent's request hanging.
+func (c *Conn) respondToPermissionRequest(msg rpcMessage) bool {
+	var req struct {
+		ToolCall struct {
+			Title string `json:"title"`
+		} `json:"toolCall"`
+		Options []struct {
+			OptionID string `json:"optionId"`
+			Kind     string `json:"kind"`
+		} `json:"options"`
+	}
+	if err := json.Unmarshal(msg.Params, &req); err != nil {
+		return false
+	}
+
+	trusted := false
+	for _, prefix := range c.trustedToolPrefixes {
+		if strings.HasPrefix(req.ToolCall.Title, prefix) {
+			trusted = true
+			break
+		}
+	}
+
+	wantKind, fallbackKind := "reject_once", "reject_always"
+	if trusted {
+		wantKind, fallbackKind = "allow_once", "allow_always"
+	}
+	optionID := ""
+	for _, o := range req.Options {
+		if o.Kind == wantKind {
+			optionID = o.OptionID
+			break
+		}
+	}
+	if optionID == "" {
+		for _, o := range req.Options {
+			if o.Kind == fallbackKind {
+				optionID = o.OptionID
+				break
+			}
+		}
+	}
+	if optionID == "" {
+		return false
+	}
+
+	c.respondResult(msg.ID, map[string]any{
+		"outcome": map[string]any{"outcome": "selected", "optionId": optionID},
+	})
+	return true
 }
 
 // Call sends a JSON-RPC request and blocks until the matching response

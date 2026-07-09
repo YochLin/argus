@@ -154,10 +154,13 @@ func main() {
 // until ctx is cancelled or the connection closes. Invoked via the "mcp"
 // subcommand, never directly by a human — but it still needs its own
 // godotenv.Load()/FINNHUB_API_KEY/BOT_LANGUAGE read, since main() skips all
-// of that for this subcommand (see the branch in main()) and the ACP
-// subprocess that spawns this one doesn't pass bot-specific env through.
-// log output here goes to log's default stderr, not stdout — stdout is
-// reserved for the MCP JSON-RPC stream (mcp.StdioTransport).
+// of that for this subcommand (see the branch in main()). When launched as a
+// chat session's MCP server (llm.argusMCPServer), godotenv.Load() here finds
+// no .env at its cwd (os.TempDir(), not this repo) and silently no-ops, but
+// FINNHUB_API_KEY/BOT_LANGUAGE still resolve correctly: argusMCPServer passes
+// them through explicitly via the MCP server's env config. log output here
+// goes to log's default stderr, not stdout — stdout is reserved for the MCP
+// JSON-RPC stream (mcp.StdioTransport).
 func runMCPServer() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("no .env file found, reading env from environment")
