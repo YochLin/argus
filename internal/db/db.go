@@ -268,6 +268,21 @@ var migrations = []string{
 	// read path treats an empty source as "watchlist" for display, keeping
 	// this migration a single cheap ALTER TABLE.
 	`ALTER TABLE recommendations ADD COLUMN source TEXT NOT NULL DEFAULT '';`,
+	// 6: settings is a generic single-value key/value table, first used by
+	// Phase 3.6's manually-declared cash balance (key "cash_balance") — see
+	// GetSetting/SetSetting. Generic rather than a dedicated cash_balance
+	// table since "a table that stores a single value" is exactly what
+	// PLAN.md's Phase 3.6 item asked for, and any future single-value
+	// setting (there will likely be more as this grows into a broader
+	// personal assistant, per CLAUDE.md's project description) reuses this
+	// table instead of its own one-off migration.
+	`
+	CREATE TABLE IF NOT EXISTS settings (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	`,
 }
 
 func (d *DB) migrate() error {
@@ -664,6 +679,33 @@ func (d *DB) SaveNetWorthSnapshot(date string, total float64) error {
 		VALUES (?, ?)
 		ON CONFLICT(date) DO UPDATE SET total_value = excluded.total_value`,
 		date, total,
+	)
+	return err
+}
+
+// GetSetting returns the stored value for key, or ok=false if it's never
+// been set.
+func (d *DB) GetSetting(key string) (string, bool, error) {
+	var value string
+	err := d.conn.QueryRow(`SELECT value FROM settings WHERE key = ?`, key).Scan(&value)
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return value, true, nil
+}
+
+// SetSetting upserts value for key.
+func (d *DB) SetSetting(key, value string) error {
+	_, err := d.conn.Exec(`
+		INSERT INTO settings (key, value, updated_at)
+		VALUES (?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(key) DO UPDATE SET
+			value = excluded.value,
+			updated_at = excluded.updated_at`,
+		key, value,
 	)
 	return err
 }

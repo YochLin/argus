@@ -99,6 +99,19 @@ func (c *Client) CheckStock(ctx context.Context, stock StockData) (string, error
 	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
 }
 
+// InsightPortfolio performs a one-shot, portfolio-level analysis across
+// every held position (Phase 3.6) — concentration risk, whether each
+// holding's original thesis still stands, and add/reduce/stop-loss
+// suggestions, rather than /recommend's per-candidate scanning view or
+// CheckStock's single-ticker view. Reuses checkModel (no dedicated
+// insightModel/env var): this is the same one-shot-session shape as
+// CheckStock, just a different prompt, and doesn't warrant its own model
+// tier for a rarely-invoked command.
+func (c *Client) InsightPortfolio(ctx context.Context, positions []StockData, cash float64, haveCash bool) (string, error) {
+	prompt := buildInsightPrompt(c.lang, positions, cash, haveCash)
+	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+}
+
 // Chat sends text on the client's persistent chat session, starting one on
 // the first call. Unlike GenerateRecommendations/CheckStock, the session
 // stays open across calls so the agent remembers earlier turns.

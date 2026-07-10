@@ -3,7 +3,7 @@ package i18n
 // enMessages is the English message table. Every format verb here must
 // appear in the same order as its zh.go counterpart — see the note there.
 var enMessages = map[Key]string{
-	KeyUnknownCommand:         "Unknown command. Available commands:\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [days]\n/buy <ticker> <shares> <price> [fee]\n/sell <ticker> <shares> <price> [fee]\n/portfolio\n/dailyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n\nSend a plain message (no leading /) to chat freely.",
+	KeyUnknownCommand:         "Unknown command. Available commands:\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [days]\n/buy <ticker> <shares> <price> [fee]\n/sell <ticker> <shares> <price> [fee]\n/portfolio\n/insight\n/cash [amount]\n/dailyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n\nSend a plain message (no leading /) to chat freely.",
 	KeyAddUsage:               "Usage: /add <ticker>, e.g. /add AAPL",
 	KeyAddFailed:              "Failed to add: %v",
 	KeyAddSuccess:             "Added *%s* to your watchlist.",
@@ -60,6 +60,14 @@ var enMessages = map[Key]string{
 	KeyPortfolioLine:          "*%s*  %g shares @ avg $%.2f\nPrice $%.2f  Value $%.2f  Unrealized %+.2f (%+.2f%%)\n\n",
 	KeyPortfolioSummary:       "—\nTotal market value: $%.2f\nCumulative realized P&L: %+.2f",
 	KeyJobPanic:               "⚠️ *%s* hit an unexpected error and aborted: %v",
+
+	KeyInsightResultTitle: "💡 *Portfolio Insight*\n\n%s",
+
+	KeyCashUsage:      "Usage: /cash <amount> (omit the amount to check the current value)",
+	KeyCashCurrent:    "Declared cash: $%.2f",
+	KeyCashNotSet:     "Cash balance not set yet. Use /cash <amount> to set it.",
+	KeyCashSetSuccess: "Cash balance set to $%.2f.",
+	KeyCashSetFailed:  "Failed to set cash balance: %v",
 
 	KeyStopLossAlertTitle:     "🛑 *Stop-Loss Alert*\n\n",
 	KeyStopLossAlertLine:      "• *%s* cost $%.2f → price $%.2f, unrealized loss %.1f%% — stop-loss threshold hit\n",
@@ -190,6 +198,19 @@ Please analyze in English:
 4. Short-term call (Buy / Hold / Reduce) with reasoning
 
 Keep the reply concise — under 400 words total.
+`,
+
+	KeyInsightPromptIntro:       "You are a US equities analyst. Give a portfolio-level read on the whole set of holdings below (not a repeat of each ticker's individual analysis).\n\n",
+	KeyInsightPositionValueLine: "Total position value: $%.2f\n",
+	KeyInsightCashLine:          "Cash balance: $%.2f\nTotal assets (positions + cash): $%.2f\n",
+	KeyInsightPromptTask: `
+Please analyze the whole portfolio in English (don't repeat the per-ticker data already listed — focus on portfolio-level judgment):
+1. Concentration risk: is any single position or sector too large a share of the portfolio
+2. Thesis check: against the recent news/fundamentals shown, does each holding's original rationale still hold
+3. Add/reduce/stop-loss suggestions: which positions should be added to, trimmed, or given a stop-loss, and why
+4. If a cash balance is provided, briefly comment on whether the current positions/cash split makes sense
+
+Keep the reply concise — under 600 words total.
 `,
 
 	KeyStockHeader:             "### %s\n",

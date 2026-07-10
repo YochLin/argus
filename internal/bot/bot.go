@@ -186,6 +186,10 @@ func (b *Bot) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 		b.handleSell(args)
 	case "portfolio":
 		b.handlePortfolio()
+	case "insight":
+		b.handleInsight(ctx)
+	case "cash":
+		b.handleCash(args)
 	case "dailyreport":
 		b.RunDailyReport(ctx)
 	case "fundamentals":
@@ -788,6 +792,104 @@ func (b *Bot) handlePortfolio() {
 	}
 	sb.WriteString(i18n.T(b.lang, i18n.KeyPortfolioSummary, totalValue, realizedTotal))
 	b.Send(sb.String())
+}
+
+// handleInsight is Phase 3.6's portfolio-level analysis command: unlike
+// /recommend (a per-candidate scanning view) or /check (a single ticker),
+// this steps back to look at the whole set of holdings together —
+// concentration risk, whether each position's original thesis still holds,
+// add/reduce/stop-loss suggestions. Reuses fetchStockData/loadEarnings
+// exactly like /recommend and RunDailyReport do (same attach-and-render
+// StockData fields: technicals, fundamentals, earnings, cost basis) rather
+// than building a separate data-gathering path.
+func (b *Bot) handleInsight(ctx context.Context) {
+	positions, err := b.db.GetPositions()
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
+		return
+	}
+	if len(positions) == 0 {
+		b.Send(i18n.T(b.lang, i18n.KeyPortfolioEmpty))
+		return
+	}
+
+	b.Send(i18n.T(b.lang, i18n.KeyAnalyzing))
+
+	tickers := make([]string, len(positions))
+	positionsMap := make(map[string]db.Position, len(positions))
+	for i, p := range positions {
+		tickers[i] = p.Ticker
+		positionsMap[p.Ticker] = p
+	}
+
+	earnings := b.loadEarnings(tickers)
+	stocks := b.fetchStockData(tickers, true, positionsMap, earnings, nil, nil)
+
+	cash, haveCash, err := b.loadCash()
+	if err != nil {
+		log.Printf("insight: load cash: %v", err)
+	}
+
+	result, err := b.llm.InsightPortfolio(ctx, stocks, cash, haveCash)
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyLLMFailed, err))
+		return
+	}
+	b.Send(i18n.T(b.lang, i18n.KeyInsightResultTitle, result))
+}
+
+// cashSettingKey is the db.settings key /cash reads/writes — see
+// db.GetSetting/SetSetting's Phase 3.6 doc comment.
+const cashSettingKey = "cash_balance"
+
+// handleCash manages the user's manually-declared cash balance (Phase 3.6).
+// With no argument it reports the current value; with one, it sets it.
+// Deliberately never touched by /buy or /sell (see PLAN.md's Phase 3.6
+// "現金水位" item) — transactions don't record where the money came from,
+// so auto-adjusting cash from them would drift from reality quickly. This
+// is a purely user-maintained reference value, fed only into /insight (see
+// handleInsight) — never into /recommend, so the model doesn't see idle
+// cash and start nudging toward "put it to work."
+func (b *Bot) handleCash(args string) {
+	args = strings.TrimSpace(args)
+	if args == "" {
+		cash, ok, err := b.loadCash()
+		if err != nil {
+			b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
+			return
+		}
+		if !ok {
+			b.Send(i18n.T(b.lang, i18n.KeyCashNotSet))
+			return
+		}
+		b.Send(i18n.T(b.lang, i18n.KeyCashCurrent, cash))
+		return
+	}
+
+	amount, err := strconv.ParseFloat(args, 64)
+	if err != nil || amount < 0 {
+		b.Send(i18n.T(b.lang, i18n.KeyCashUsage))
+		return
+	}
+	if err := b.db.SetSetting(cashSettingKey, strconv.FormatFloat(amount, 'f', 2, 64)); err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyCashSetFailed, err))
+		return
+	}
+	b.Send(i18n.T(b.lang, i18n.KeyCashSetSuccess, amount))
+}
+
+// loadCash returns the user's declared cash balance, or ok=false if /cash
+// has never been run.
+func (b *Bot) loadCash() (float64, bool, error) {
+	raw, ok, err := b.db.GetSetting(cashSettingKey)
+	if err != nil || !ok {
+		return 0, ok, err
+	}
+	amount, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return 0, false, err
+	}
+	return amount, true, nil
 }
 
 // handleFundamentals shows raw fundamentals/financial-statement data

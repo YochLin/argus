@@ -109,6 +109,14 @@ const (
 	KeyPortfolioSummary       Key = "portfolio_summary"
 	KeyJobPanic               Key = "job_panic"
 
+	KeyInsightResultTitle Key = "insight_result_title"
+
+	KeyCashUsage      Key = "cash_usage"
+	KeyCashCurrent    Key = "cash_current"
+	KeyCashNotSet     Key = "cash_not_set"
+	KeyCashSetSuccess Key = "cash_set_success"
+	KeyCashSetFailed  Key = "cash_set_failed"
+
 	KeyStopLossAlertTitle     Key = "stop_loss_alert_title"
 	KeyStopLossAlertLine      Key = "stop_loss_alert_line"
 	KeyTrailingStopAlertTitle Key = "trailing_stop_alert_title"
@@ -210,6 +218,11 @@ const (
 
 	KeyCheckPromptIntro Key = "check_prompt_intro"
 	KeyCheckPromptTask  Key = "check_prompt_task"
+
+	KeyInsightPromptIntro       Key = "insight_prompt_intro"
+	KeyInsightPositionValueLine Key = "insight_position_value_line"
+	KeyInsightCashLine          Key = "insight_cash_line"
+	KeyInsightPromptTask        Key = "insight_prompt_task"
 
 	KeyStockHeader             Key = "stock_header"
 	KeyPriceLine               Key = "price_line"

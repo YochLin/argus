@@ -6,7 +6,7 @@ package i18n
 // sites pass positional args once and reuse them for whichever table T
 // picks.
 var zhMessages = map[Key]string{
-	KeyUnknownCommand:         "未知指令。可用指令：\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [天數]\n/buy <ticker> <股數> <價格> [手續費]\n/sell <ticker> <股數> <價格> [手續費]\n/portfolio\n/dailyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n\n直接傳一般訊息（不加 / 開頭）則會跟我自由對話。",
+	KeyUnknownCommand:         "未知指令。可用指令：\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [天數]\n/buy <ticker> <股數> <價格> [手續費]\n/sell <ticker> <股數> <價格> [手續費]\n/portfolio\n/insight\n/cash [金額]\n/dailyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n\n直接傳一般訊息（不加 / 開頭）則會跟我自由對話。",
 	KeyAddUsage:               "用法：/add <ticker>，例如 /add AAPL",
 	KeyAddFailed:              "新增失敗：%v",
 	KeyAddSuccess:             "已將 *%s* 加入自選股。",
@@ -63,6 +63,14 @@ var zhMessages = map[Key]string{
 	KeyPortfolioLine:          "*%s*  %g 股 @ 均價 $%.2f\n現價 $%.2f　市值 $%.2f　未實現損益 %+.2f (%+.2f%%)\n\n",
 	KeyPortfolioSummary:       "—\n總市值：$%.2f\n累計已實現損益：%+.2f",
 	KeyJobPanic:               "⚠️ *%s* 執行時發生未預期錯誤，已中止：%v",
+
+	KeyInsightResultTitle: "💡 *投資組合見解*\n\n%s",
+
+	KeyCashUsage:      "用法：/cash <金額>（查詢請不帶參數）",
+	KeyCashCurrent:    "目前登記現金：$%.2f",
+	KeyCashNotSet:     "尚未登記現金水位，使用 /cash <金額> 設定。",
+	KeyCashSetSuccess: "已將現金水位設為 $%.2f。",
+	KeyCashSetFailed:  "設定現金水位失敗：%v",
 
 	KeyStopLossAlertTitle:     "🛑 *停損提醒*\n\n",
 	KeyStopLossAlertLine:      "• *%s* 成本 $%.2f → 現價 $%.2f，未實現損失 %.1f%%，已達停損門檻\n",
@@ -191,6 +199,19 @@ var zhMessages = map[Key]string{
 4. 短線操作建議（買進 / 觀望 / 減碼）並說明理由
 
 回覆請簡潔，總字數控制在 400 字以內。
+`,
+
+	KeyInsightPromptIntro:       "你是一位美股分析師，請針對以下整體持倉組合給出組合層級的見解（不是逐檔重複個股分析）。\n\n",
+	KeyInsightPositionValueLine: "持倉總市值：$%.2f\n",
+	KeyInsightCashLine:          "現金水位：$%.2f\n總資產（持倉＋現金）：$%.2f\n",
+	KeyInsightPromptTask: `
+請用繁體中文分析整個投資組合（不要逐檔重複已列出的數據，聚焦組合層級的判斷）：
+1. 集中度風險：單一持股或單一產業是否佔比過高
+2. 持有理由檢視：對照近期新聞與基本面，各檔當初的持有邏輯是否仍然成立
+3. 加碼／減碼／停損建議：哪些部位該加碼、該減碼、或該設停損，並說明理由
+4. 若有提供現金水位，簡短評論目前的持倉／現金配置是否合理
+
+回覆請簡潔，總字數控制在 600 字以內。
 `,
 
 	KeyStockHeader:             "### %s\n",
