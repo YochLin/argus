@@ -93,8 +93,9 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   (unlike `filterEarningsCalendar`), so no dedicated test file — same as `finnhub.go`'s other simple
   passthrough methods.
 - `internal/db` — thin wrapper around `database/sql` + `modernc.org/sqlite` (pure-Go, no cgo). Owns nine
-  tables: `watchlist`, `daily_snapshots`, `recommendations` (with `action` BUY/SELL/HOLD and `price` at
-  recommendation time, both read back by `/track`), `signal_states` (last-notified state per
+  tables: `watchlist`, `daily_snapshots`, `recommendations` (with `action` BUY/SELL/HOLD, `price` at
+  recommendation time, and `source` — `"watchlist"`/`"movers"`/`"scan"`, migration 5, `""` for rows saved
+  before the column existed — all read back by `/track`, see `internal/bot` below), `signal_states` (last-notified state per
   ticker+signal family, backing MACD cross detection and RSI dedup), `positions` (one row per ticker,
   shares + weighted-average cost), `transactions` (the full buy/sell log, `realized_pnl` populated only
   for SELL rows), `net_worth_snapshots` (total position value by date), `universe` (the Phase 2.6 scan
@@ -280,9 +281,21 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `RunClosingSnapshot` writes each watchlist ticker's completed-session OHLCV to
   `daily_snapshots` dated one day back in Taiwan terms (that's the US trading date at that hour) and
   skipping quotes whose timestamp is >12h old (US market holiday — the providers return the prior
-  session, which would otherwise be filed under the wrong date). `/track [days]` reads `recommendations`
-  back (the only reader) and scores each BUY/SELL against today's price for a hit rate; it prefers the
-  `price` stored at recommendation time and falls back to the `daily_snapshots` close for older rows.
+  session, which would otherwise be filed under the wrong date). It also calls `snapshotBenchmark`
+  (Phase 3.8), which snapshots `benchmarkTicker` (`"SPY"`, a plain const, not env-configurable) into
+  `daily_snapshots` under the same date and stale-quote guard — SPY is deliberately never added to the
+  `watchlist` table (it's not a holding, and `/list` shouldn't show it), so this is the only place SPY
+  data enters the DB. `/track [days]` reads `recommendations` back (the only reader) and scores each
+  BUY/SELL for a hit rate; it prefers the `price` stored at recommendation time and falls back to the
+  `daily_snapshots` close for older rows. The hit rule itself (`trackHit`, pure) is Phase 3.8's
+  relative-to-market benchmark: when a same-period SPY close is on record, BUY only counts as a hit if
+  the ticker beat SPY's move and SELL only if it underperformed SPY — otherwise ("in a rally, everything
+  looks like a good BUY") it falls back to the pre-Phase-3.8 absolute-direction rule (BUY up / SELL
+  down), which is also what a date predating `snapshotBenchmark`'s rollout falls back to. `summarizeTrack`
+  (pure, over `trackRow` values `handleTrack` builds from live quotes) folds hit rate into average
+  BUY/SELL magnitude and — only rendered when more than one source appears in the window, via
+  `sortedSourceKeys` for deterministic output — a hit-rate breakdown by `recommendations.source`
+  (`displaySource` maps a stored `""` to `"watchlist"` for display, never rewriting the DB row itself).
   `/buy`/`/sell` (`handleBuy`/`handleSell`, parsed by the shared `parseTradeArgs`) wrap
   `db.RecordBuy`/`RecordSell`; `/buy` also calls `db.AddTicker` so a bought position is always on the
   watchlist (positions are never auto-removed from it on a full sell — the user may still want to watch
@@ -349,8 +362,14 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   clears that persistent session's memory via `llm.Client.ResetChat`. `RunDailyReport` and `/recommend`
   share almost identical logic (fetch watchlist + market-mover candidates, run signal detection, call
   the LLM, then the shared `sendAndSaveRecommendations` tail: send results and persist ticker + action +
-  reason + current price to `recommendations`) — when changing one, check whether the other needs the
-  same change. `Bot.fundamentals` is a
+  reason + current price + source to `recommendations`) — when changing one, check whether the other
+  needs the same change. The `source` value comes from `recommendationSources(watchlist, candidates,
+  scanHits)` (pure; called right before `sendAndSaveRecommendations` in both `handleRecommend` and
+  `RunDailyReport`), which labels every ticker `"watchlist"`/`"scan"`/`"movers"` — a ticker in both
+  `scanHits` and the candidate list is labeled `"scan"` (the more specific reason it was surfaced, see
+  `llm.StockData.ScanReason`), and a ticker present in both `watchlist` and `candidates` (shouldn't
+  happen given `mergeCandidates` already excludes watchlist tickers, but guarded anyway) keeps
+  `"watchlist"` rather than whichever loop happened to run last. `Bot.fundamentals` is a
   `data.FundamentalsProvider` that's `nil` whenever `FINNHUB_API_KEY` isn't set — every fundamentals
   code path (`/fundamentals`, and the fundamentals branch in `handleCheck`/`fetchStockData`) must nil-check
   it and degrade gracefully rather than erroring, since this data source is optional by design.

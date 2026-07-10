@@ -34,6 +34,13 @@ const (
 	// marketNewsLimit is double the per-ticker news limit (5, see
 	// fetchStockData) since it covers the whole market rather than one name.
 	marketNewsLimit = 10
+
+	// benchmarkTicker is snapshotted alongside the watchlist on every closing
+	// snapshot (see snapshotBenchmark) so /track can compare a recommendation
+	// against the same-period broad-market move instead of just its own
+	// absolute direction. It's intentionally not added to the watchlist table
+	// — it's not a holding, and /list shouldn't show it.
+	benchmarkTicker = "SPY"
 )
 
 type Bot struct {
@@ -302,15 +309,18 @@ func (b *Bot) handleRecommend(ctx context.Context) {
 		return
 	}
 
-	b.sendAndSaveRecommendations(summary, recs, watchlist, candidates)
+	sources := recommendationSources(tickers, dedupedCandidates, scanHits)
+	b.sendAndSaveRecommendations(summary, recs, sources, watchlist, candidates)
 }
 
 // sendAndSaveRecommendations formats LLM recommendations for Telegram and
 // persists them dated today, each with its ticker's current price looked up
 // from the already-fetched stock data — /track later compares that stored
-// price against the price on review day. Shared by /recommend and
-// RunDailyReport, which otherwise mirror each other.
-func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommendation, stockLists ...[]llm.StockData) {
+// price against the price on review day. sources (ticker -> "watchlist"/
+// "movers"/"scan", see recommendationSources) is persisted alongside so
+// /track can break its hit rate down by candidate-sourcing path (Phase 3.8).
+// Shared by /recommend and RunDailyReport, which otherwise mirror each other.
+func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommendation, sources map[string]string, stockLists ...[]llm.StockData) {
 	if newsSummary != "" {
 		b.Send(i18n.T(b.lang, i18n.KeyMarketNewsSummaryTitle) + newsSummary)
 	}
@@ -342,6 +352,7 @@ func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommen
 			Action: r.Action,
 			Reason: r.Reason,
 			Price:  prices[r.Ticker],
+			Source: sources[r.Ticker],
 		})
 	}
 	if err := b.db.SaveRecommendations(todayDate(), dbRecs); err != nil {
@@ -391,12 +402,19 @@ func (b *Bot) handleCheck(ctx context.Context, ticker string) {
 
 // handleTrack reviews recommendations from the past N days (default 7)
 // against today's prices, so recommendation quality is verifiable instead of
-// write-only. A BUY counts as a hit if the price rose since the
-// recommendation, a SELL if it fell; HOLDs are listed but excluded from the
-// hit rate. The baseline price is the one stored at recommendation time;
-// rows from before that column existed fall back to the ticker's
-// daily_snapshots close on the recommendation date, if the post-close job
-// captured one.
+// write-only. Hit criteria (Phase 3.8): when a same-period benchmarkTicker
+// (SPY) close is on record (see snapshotBenchmark), BUY only counts as a hit
+// if the ticker beat SPY's move over the same window and SELL only if it
+// underperformed SPY — "up in a broad rally" no longer counts as a good BUY
+// call on its own (see trackHit). Recommendations predating the SPY
+// snapshot job (or any date SPY has no snapshot for) fall back to the
+// absolute-direction rule: BUY hits if price rose, SELL if it fell. The
+// baseline price is the one stored at recommendation time; rows from before
+// that column existed fall back to the ticker's daily_snapshots close on
+// the recommendation date, if the post-close job captured one. The summary
+// footer adds average BUY/SELL magnitude and, when more than one candidate
+// source appears in the window, a hit-rate breakdown by source
+// (watchlist/movers/scan) — see summarizeTrack.
 func (b *Bot) handleTrack(daysArg string) {
 	days := 7
 	if daysArg != "" {
@@ -421,10 +439,15 @@ func (b *Bot) handleTrack(daysArg string) {
 
 	// One quote per distinct ticker, however often it was recommended.
 	quotes := make(map[string]*data.Quote)
+	spyQuote, err := b.provider.GetQuote(benchmarkTicker)
+	if err != nil {
+		log.Printf("track: benchmark %s quote: %v", benchmarkTicker, err)
+		spyQuote = nil
+	}
 
 	var sb strings.Builder
 	sb.WriteString(i18n.T(b.lang, i18n.KeyTrackTitle, days))
-	hits, evaluated := 0, 0
+	var rows []trackRow
 	for _, r := range recs {
 		action := r.Action
 		if action == "" {
@@ -458,29 +481,170 @@ func (b *Bot) handleTrack(daysArg string) {
 		}
 
 		changePct := (q.Price - base) / base * 100
-		verdict := ""
-		switch r.Action {
-		case "BUY":
-			evaluated++
-			verdict = "❌"
-			if changePct > 0 {
-				hits++
-				verdict = "✅"
-			}
-		case "SELL":
-			evaluated++
-			verdict = "❌"
-			if changePct < 0 {
-				hits++
-				verdict = "✅"
+
+		var spyChangePct float64
+		haveSPY := false
+		if spyQuote != nil {
+			if spyBase, ok, err := b.db.GetSnapshotClose(benchmarkTicker, r.Date); err == nil && ok && spyBase != 0 {
+				spyChangePct = (spyQuote.Price - spyBase) / spyBase * 100
+				haveSPY = true
 			}
 		}
-		sb.WriteString(i18n.T(b.lang, i18n.KeyTrackLine, r.Date, r.Ticker, action, base, q.Price, changePct, verdict))
+
+		verdict := ""
+		if r.Action == "BUY" || r.Action == "SELL" {
+			hit := trackHit(r.Action, changePct, spyChangePct, haveSPY)
+			verdict = "❌"
+			if hit {
+				verdict = "✅"
+			}
+			rows = append(rows, trackRow{
+				Action:    r.Action,
+				Source:    displaySource(r.Source),
+				ChangePct: changePct,
+				Hit:       hit,
+			})
+		}
+
+		if haveSPY {
+			sb.WriteString(i18n.T(b.lang, i18n.KeyTrackLineVsSPY, r.Date, r.Ticker, action, base, q.Price, changePct, spyChangePct, verdict))
+		} else {
+			sb.WriteString(i18n.T(b.lang, i18n.KeyTrackLine, r.Date, r.Ticker, action, base, q.Price, changePct, verdict))
+		}
 	}
-	if evaluated > 0 {
-		sb.WriteString(i18n.T(b.lang, i18n.KeyTrackSummary, hits, evaluated, float64(hits)/float64(evaluated)*100))
+
+	overall, bySource := summarizeTrack(rows)
+	if overall.Evaluated > 0 {
+		sb.WriteString(i18n.T(b.lang, i18n.KeyTrackSummary, overall.Hits, overall.Evaluated, overall.HitRate()))
+		sb.WriteString(i18n.T(b.lang, i18n.KeyTrackAvgReturnLine, overall.AvgBuyPct(), overall.BuyCount, overall.AvgSellPct(), overall.SellCount))
+
+		if len(bySource) > 1 {
+			sb.WriteString(i18n.T(b.lang, i18n.KeyTrackBySourceHeader))
+			for _, source := range sortedSourceKeys(bySource) {
+				s := bySource[source]
+				sb.WriteString(i18n.T(b.lang, i18n.KeyTrackBySourceLine, source, s.Hits, s.Evaluated, s.HitRate()))
+			}
+		}
 	}
 	b.Send(sb.String())
+}
+
+// trackHit implements Phase 3.8's relative-to-SPY hit rule: when a
+// same-period SPY change is available, BUY only counts as a hit if the
+// ticker beat it and SELL only if it underperformed it; otherwise it falls
+// back to the pre-Phase-3.8 absolute-direction rule (BUY counts if price
+// rose, SELL if it fell). Only meaningful for action == "BUY"/"SELL" —
+// anything else (HOLD, "") always returns false, since handleTrack never
+// scores those.
+func trackHit(action string, tickerChangePct, spyChangePct float64, haveSPY bool) bool {
+	switch action {
+	case "BUY":
+		if haveSPY {
+			return tickerChangePct > spyChangePct
+		}
+		return tickerChangePct > 0
+	case "SELL":
+		if haveSPY {
+			return tickerChangePct < spyChangePct
+		}
+		return tickerChangePct < 0
+	default:
+		return false
+	}
+}
+
+// trackRow is one BUY/SELL recommendation reduced to what /track's summary
+// needs, computed by handleTrack (which has the live quotes/SPY data) so the
+// aggregation below stays a pure pass over plain values.
+type trackRow struct {
+	Action    string // "BUY" or "SELL" only
+	Source    string // already normalized via displaySource
+	ChangePct float64
+	Hit       bool
+}
+
+// trackSourceStats accumulates hit-rate and average-magnitude stats for one
+// group of trackRows (either every row, or one source's rows).
+type trackSourceStats struct {
+	Hits, Evaluated int
+	BuySum          float64
+	BuyCount        int
+	SellSum         float64
+	SellCount       int
+}
+
+func (s trackSourceStats) HitRate() float64 {
+	if s.Evaluated == 0 {
+		return 0
+	}
+	return float64(s.Hits) / float64(s.Evaluated) * 100
+}
+
+func (s trackSourceStats) AvgBuyPct() float64 {
+	if s.BuyCount == 0 {
+		return 0
+	}
+	return s.BuySum / float64(s.BuyCount)
+}
+
+func (s trackSourceStats) AvgSellPct() float64 {
+	if s.SellCount == 0 {
+		return 0
+	}
+	return s.SellSum / float64(s.SellCount)
+}
+
+// summarizeTrack aggregates trackRows into overall stats and a per-source
+// breakdown (see trackSourceStats), for /track's summary footer: hit rate,
+// average BUY/SELL magnitude, and — when more than one source is present —
+// the same broken down by candidate-sourcing path (Phase 2.6's
+// deferred-until-Phase-3.8 "成效對照").
+func summarizeTrack(rows []trackRow) (overall trackSourceStats, bySource map[string]trackSourceStats) {
+	bySource = make(map[string]trackSourceStats)
+	for _, r := range rows {
+		accumulateTrackRow(&overall, r)
+		s := bySource[r.Source]
+		accumulateTrackRow(&s, r)
+		bySource[r.Source] = s
+	}
+	return overall, bySource
+}
+
+func accumulateTrackRow(s *trackSourceStats, r trackRow) {
+	s.Evaluated++
+	if r.Hit {
+		s.Hits++
+	}
+	switch r.Action {
+	case "BUY":
+		s.BuySum += r.ChangePct
+		s.BuyCount++
+	case "SELL":
+		s.SellSum += r.ChangePct
+		s.SellCount++
+	}
+}
+
+// displaySource normalizes a stored db.Recommendation.Source for display:
+// rows saved before the source column existed have "" and read as
+// "watchlist" (see the migration's doc comment in internal/db).
+func displaySource(source string) string {
+	if source == "" {
+		return "watchlist"
+	}
+	return source
+}
+
+// sortedSourceKeys returns bySource's keys in alphabetical order, so
+// /track's per-source breakdown renders in a stable order instead of Go's
+// randomized map iteration.
+func sortedSourceKeys(bySource map[string]trackSourceStats) []string {
+	keys := make([]string, 0, len(bySource))
+	for k := range bySource {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // tradeDateRe matches an optional trailing YYYY-MM-DD date argument to
@@ -906,7 +1070,41 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context) {
 	}
 	log.Printf("closing snapshot: done for %s (%d tickers)", date, len(tickers))
 
+	b.snapshotBenchmark(date)
 	b.recordNetWorthSnapshot(date, prices)
+}
+
+// snapshotBenchmark records benchmarkTicker's (SPY) closing price into
+// daily_snapshots under the same date as the watchlist snapshot, so /track's
+// relative-to-market hit rate (Phase 3.8) has same-day SPY data to compare
+// against without ever needing to replay history through a live API call.
+// Same stale-quote guard as the per-ticker loop above (a US holiday still
+// fires the cron but returns the prior session's quote). Silent on failure,
+// same as the rest of this job — a missing benchmark row just makes /track
+// fall back to its absolute-direction hit rule for that date.
+func (b *Bot) snapshotBenchmark(date string) {
+	q, err := b.provider.GetQuote(benchmarkTicker)
+	if err != nil {
+		log.Printf("closing snapshot: benchmark %s: %v", benchmarkTicker, err)
+		return
+	}
+	if time.Since(q.Timestamp) > 12*time.Hour {
+		log.Printf("closing snapshot: benchmark %s quote is stale (%s), skipping (US holiday?)", benchmarkTicker, q.Timestamp.Format(time.RFC3339))
+		return
+	}
+	snap := db.DailySnapshot{
+		Ticker:        benchmarkTicker,
+		Date:          date,
+		Open:          q.Open,
+		Close:         q.Price,
+		High:          q.High,
+		Low:           q.Low,
+		Volume:        q.Volume,
+		ChangePercent: q.ChangePercent,
+	}
+	if err := b.db.SaveSnapshot(snap); err != nil {
+		log.Printf("closing snapshot: save benchmark %s: %v", benchmarkTicker, err)
+	}
 }
 
 // recordNetWorthSnapshot totals every open position's value as of the
@@ -1007,7 +1205,8 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 		return
 	}
 
-	b.sendAndSaveRecommendations(summary, recs, watchlist, candidates)
+	sources := recommendationSources(tickers, dedupedCandidates, scanHits)
+	b.sendAndSaveRecommendations(summary, recs, sources, watchlist, candidates)
 }
 
 // checkStatefulSignals runs the RSI/MACD checks that diff against the last
@@ -1669,6 +1868,36 @@ func mergeCandidates(movers []string, scanHits map[string]string, exclude []stri
 	}
 	for t := range scanHits {
 		add(t)
+	}
+	return out
+}
+
+// recommendationSources maps every ticker eligible for today's LLM call to
+// where it came from ("watchlist"/"scan"/"movers"), for Phase 3.8's /track
+// breakdown by candidate-sourcing path. candidates is the already-deduped
+// list returned by mergeCandidates; a ticker present in both scanHits and
+// that list is attributed to "scan" rather than "movers" — that's the more
+// specific signal that actually surfaced it with a stated reason (see
+// llm.StockData.ScanReason), even if it also happened to be trending.
+func recommendationSources(watchlist, candidates []string, scanHits map[string]string) map[string]string {
+	out := make(map[string]string, len(watchlist)+len(candidates))
+	for _, t := range watchlist {
+		out[t] = "watchlist"
+	}
+	for _, t := range candidates {
+		// mergeCandidates already excludes watchlist tickers from candidates
+		// in normal use, so this shouldn't fire in practice — kept as a
+		// defensive guard so "watchlist" always wins over "movers"/"scan"
+		// for a ticker present in both, rather than depending on which loop
+		// ran last.
+		if out[t] == "watchlist" {
+			continue
+		}
+		if _, ok := scanHits[t]; ok {
+			out[t] = "scan"
+		} else {
+			out[t] = "movers"
+		}
 	}
 	return out
 }

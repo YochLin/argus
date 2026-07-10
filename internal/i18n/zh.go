@@ -43,8 +43,12 @@ var zhMessages = map[Key]string{
 	KeyTrackTitle:             "📊 *推薦成效回顧（過去 %d 天）*\n\n",
 	KeyTrackEmpty:             "過去 %d 天內沒有推薦記錄。",
 	KeyTrackLine:              "• %s *%s* %s  $%.2f → $%.2f (%+.2f%%) %s\n",
+	KeyTrackLineVsSPY:         "• %s *%s* %s  $%.2f → $%.2f (%+.2f%% vs SPY %+.2f%%) %s\n",
 	KeyTrackLineNoPrice:       "• %s *%s* %s — 無推薦時價格可比對\n",
-	KeyTrackSummary:           "\n命中率：%d/%d (%.0f%%)\n（BUY 上漲算命中、SELL 下跌算命中；HOLD 與無價格資料者不計入）",
+	KeyTrackSummary:           "\n命中率：%d/%d (%.0f%%)\n（有同期 SPY 資料時，BUY 需跑贏大盤、SELL 需跑輸大盤才算命中；缺 SPY 資料則以絕對漲跌計算；HOLD 與無價格資料者不計入）",
+	KeyTrackAvgReturnLine:     "平均報酬：BUY %+.2f%%（%d 筆）｜SELL %+.2f%%（%d 筆）\n",
+	KeyTrackBySourceHeader:    "\n按來源分組：\n",
+	KeyTrackBySourceLine:      "- %s：%d/%d (%.0f%%)\n",
 
 	KeyBuyUsage:               "用法：/buy <ticker> <股數> <價格> [手續費] [日期]，例如 /buy AAPL 10 205.5 或 /buy AAPL 10 205.5 1.5 2026-01-15（回填歷史交易日期）",
 	KeyBuyFailed:              "記錄買入失敗：%v",

@@ -90,6 +90,10 @@ const (
 	KeyTrackLine              Key = "track_line"
 	KeyTrackLineNoPrice       Key = "track_line_no_price"
 	KeyTrackSummary           Key = "track_summary"
+	KeyTrackLineVsSPY         Key = "track_line_vs_spy"
+	KeyTrackAvgReturnLine     Key = "track_avg_return_line"
+	KeyTrackBySourceHeader    Key = "track_by_source_header"
+	KeyTrackBySourceLine      Key = "track_by_source_line"
 
 	KeyBuyUsage               Key = "buy_usage"
 	KeyBuyFailed              Key = "buy_failed"
