@@ -214,7 +214,8 @@ func runMCPServer() {
 	// directly (e.g. manual testing from the repo root) rather than spawned
 	// as a chat session's MCP server, where main() always exports an
 	// absolute DB_PATH before the subprocess is launched.
-	database, err := db.OpenReadOnly(envOr("DB_PATH", "data/argus.db"))
+	dbPath := envOr("DB_PATH", "data/argus.db")
+	database, err := db.OpenReadOnly(dbPath)
 	if err != nil {
 		log.Printf("mcp: open read-only db: %v", err)
 		database = nil
@@ -222,9 +223,22 @@ func runMCPServer() {
 		defer database.Close()
 	}
 
+	// Writable DB connection for add_to_watchlist/remove_from_watchlist
+	// (Phase 3.5 "watchlist 寫入工具" pilot — see db.OpenForWrites' doc
+	// comment for why this is a distinct connection from the read-only one
+	// above rather than the same one with query_only left off). Same
+	// nil-degrade contract: a failure here only takes down these two tools.
+	writeDatabase, err := db.OpenForWrites(dbPath)
+	if err != nil {
+		log.Printf("mcp: open writable db: %v", err)
+		writeDatabase = nil
+	} else {
+		defer writeDatabase.Close()
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	if err := mcptools.Run(ctx, lang, provider, yahoo, fundamentalsProvider, earningsProvider, database); err != nil {
+	if err := mcptools.Run(ctx, lang, provider, yahoo, fundamentalsProvider, earningsProvider, database, writeDatabase); err != nil {
 		log.Fatalf("mcp server: %v", err)
 	}
 }

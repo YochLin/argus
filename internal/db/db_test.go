@@ -409,6 +409,44 @@ func TestOpenReadOnly(t *testing.T) {
 	}
 }
 
+// TestOpenForWrites verifies the write-pilot connection is genuinely
+// writable (unlike OpenReadOnly) and that its writes are visible through a
+// separate connection to the same file — the two-writer-process scenario
+// add_to_watchlist/remove_from_watchlist actually run under.
+func TestOpenForWrites(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.db")
+	rw, err := New(path)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	defer rw.Close()
+
+	writer, err := OpenForWrites(path)
+	if err != nil {
+		t.Fatalf("OpenForWrites() error = %v", err)
+	}
+	defer writer.Close()
+
+	if err := writer.AddTicker("TSLA"); err != nil {
+		t.Fatalf("AddTicker() through the write connection error = %v", err)
+	}
+
+	got, err := rw.GetWatchlist()
+	if err != nil {
+		t.Fatalf("GetWatchlist() error = %v", err)
+	}
+	if len(got) != 1 || got[0] != "TSLA" {
+		t.Errorf("GetWatchlist() via the main connection = %v, want [TSLA] (write from the second connection should be visible)", got)
+	}
+
+	if err := writer.RemoveTicker("TSLA"); err != nil {
+		t.Fatalf("RemoveTicker() through the write connection error = %v", err)
+	}
+	if got, err := rw.GetWatchlist(); err != nil || len(got) != 0 {
+		t.Errorf("GetWatchlist() after remove = %v, %v; want empty, nil", got, err)
+	}
+}
+
 // TestMigrateIsRerunnable reopens the same database file, simulating a bot
 // restart — migrate() must see the recorded user_version and skip already-
 // applied steps (re-running the ALTER TABLE step would fail on duplicate

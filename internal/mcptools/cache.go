@@ -47,3 +47,14 @@ func (c *ttlCache) set(key string, result *mcp.CallToolResult, ttl time.Duration
 	defer c.mu.Unlock()
 	c.entries[key] = cacheEntry{result: result, expires: time.Now().Add(ttl)}
 }
+
+// delete drops key if present — a no-op otherwise. Used by mutating tools
+// (add_to_watchlist/remove_from_watchlist) to invalidate get_watchlist's
+// cached result immediately after a successful write, rather than leaving
+// a chat model looking at a stale watchlist for up to get_watchlist's own
+// longCacheTTL.
+func (c *ttlCache) delete(key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.entries, key)
+}
