@@ -60,6 +60,11 @@ var zhMessages = map[Key]string{
 	KeyPortfolioSummary:       "—\n總市值：$%.2f\n累計已實現損益：%+.2f",
 	KeyJobPanic:               "⚠️ *%s* 執行時發生未預期錯誤，已中止：%v",
 
+	KeyStopLossAlertTitle:     "🛑 *停損提醒*\n\n",
+	KeyStopLossAlertLine:      "• *%s* 成本 $%.2f → 現價 $%.2f，未實現損失 %.1f%%，已達停損門檻\n",
+	KeyTrailingStopAlertTitle: "📉 *移動停損提醒*\n\n",
+	KeyTrailingStopAlertLine:  "• *%s* 持有期間最高收盤 $%.2f → 現價 $%.2f，回落 %.1f%%，已達移動停損門檻\n",
+
 	KeyChatContextHeader:       "[背景資料，非即時報價，僅供參考]\n",
 	KeyChatContextTickerNoData: "- %s：尚無收盤資料\n",
 	KeyChatContextWatchLine:    "- %s：%s 收盤 $%.2f (%+.2f%%)\n",
@@ -154,6 +159,9 @@ var zhMessages = map[Key]string{
 
 評估每檔新聞時，請留意每則是利多還是利空，並融入你的原因說明。
 
+若某檔下方列出了「上次建議」，且這次的動作與上次不同，請在原因中明確說明是什麼改變了
+（新資訊、技術訊號翻轉、或原本的論點已經站不住腳），不要只是換個說法重複同一個結論。
+
 輸出格式請嚴格遵守以下結構，每檔一個區塊，不要有額外文字：
 
 [TICKER: AAPL]
@@ -191,6 +199,7 @@ var zhMessages = map[Key]string{
 	KeyFundamentalsSummaryLine: "- 基本面：本益比 %.1f｜股價淨值比 %.1f｜ROE %.1f%%｜毛利率 %.1f%%｜營業利益率 %.1f%%｜淨利率 %.1f%%｜負債權益比 %.2f｜營收年增率 %.1f%%｜EPS年增率 %.1f%%｜股息殖利率 %.2f%%｜Beta %.2f｜EPS(TTM) %.2f｜流動比率 %.2f｜市值 $%.0fM｜距52週高點 %+.1f%%｜距52週低點 %+.1f%%\n",
 	KeyStatementSummaryLine:    "- 最新財報（%s，會計年度 %d，截至 %s）：營收 $%.0fM｜毛利 $%.0fM｜營業利益 $%.0fM｜淨利 $%.0fM｜總資產 $%.0fM｜總負債 $%.0fM｜股東權益 $%.0fM｜營運現金流 $%.0fM｜自由現金流 $%.0fM\n",
 	KeyPositionLine:            "- 持倉: %g 股　平均成本 $%.2f　未實現損益 %+.2f%%\n",
+	KeyPrevRecLine:             "- 上次建議: %s @ $%.2f（%d 天前）\n",
 	KeyEarningsLine:            "- ⚠️ 財報日: %s（%d 天內），留意波動\n",
 	KeyScanHitLine:             "- 🔎 掃描命中: %s\n",
 	KeyTechnicalsSummaryLine:   "- 技術面：RSI(14) %.1f｜MACD %s\n",

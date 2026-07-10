@@ -37,6 +37,12 @@ type StockData struct {
 	// trend context (RSI/MACD/moving averages) instead of just a single day's
 	// OHLCV. Nil if history couldn't be fetched.
 	Technicals *Technicals
+	// PrevRec is set when this ticker has a prior recommendation on record
+	// (see bot.loadPrevRecs), so today's call comes with continuity: the
+	// prompt can ask the model to explain a reversal instead of contradicting
+	// an earlier call with no acknowledgment. Nil for a ticker recommended
+	// for the first time.
+	PrevRec *PrevRecommendation
 }
 
 // Technicals is the subset of computed technical-indicator values an LLM
@@ -65,6 +71,20 @@ type Position struct {
 type Earnings struct {
 	Date      string
 	DaysUntil int
+}
+
+// PrevRecommendation is the subset of a db.Recommendation an LLM prompt
+// needs for Phase 3.8's recommendation continuity: what the model said last
+// time, so a reversal in today's call comes with an explanation instead of
+// silent flip-flopping. DaysAgo is precomputed by the caller (bot.loadPrevRecs)
+// so this package doesn't do date math against "now", same reasoning as
+// Earnings.DaysUntil. Kept as a package-local mini-struct rather than reusing
+// db.Recommendation directly, same reasoning as Position/Earnings.
+type PrevRecommendation struct {
+	Action  string
+	Date    string
+	Price   float64
+	DaysAgo int
 }
 
 type Recommendation struct {
@@ -184,6 +204,10 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 
 	if r := s.ScanReason; r != nil {
 		fmt.Fprint(sb, i18n.T(lang, i18n.KeyScanHitLine, *r))
+	}
+
+	if pr := s.PrevRec; pr != nil {
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyPrevRecLine, pr.Action, pr.Price, pr.DaysAgo))
 	}
 
 	sb.WriteString("\n")

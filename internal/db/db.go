@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -497,6 +498,83 @@ func (d *DB) GetPositions() ([]Position, error) {
 		positions = append(positions, p)
 	}
 	return positions, rows.Err()
+}
+
+// GetLatestRecommendations returns each ticker's most recent recommendation
+// row (by insertion order, i.e. highest id) in one batched query, keyed by
+// ticker — tickers with no recommendation history are simply absent from the
+// map. Backs Phase 3.8's recommendation continuity: the caller feeds "what
+// did we say last time" into today's prompt so a reversal comes with an
+// explanation instead of silently contradicting an earlier call.
+func (d *DB) GetLatestRecommendations(tickers []string) (map[string]Recommendation, error) {
+	if len(tickers) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(tickers))
+	args := make([]any, len(tickers))
+	for i, t := range tickers {
+		placeholders[i] = "?"
+		args[i] = t
+	}
+	query := fmt.Sprintf(`
+		SELECT id, date, ticker, action, reason, price FROM recommendations
+		WHERE id IN (
+			SELECT MAX(id) FROM recommendations WHERE ticker IN (%s) GROUP BY ticker
+		)`, strings.Join(placeholders, ","))
+
+	rows, err := d.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[string]Recommendation)
+	for rows.Next() {
+		var r Recommendation
+		if err := rows.Scan(&r.ID, &r.Date, &r.Ticker, &r.Action, &r.Reason, &r.Price); err != nil {
+			return nil, err
+		}
+		out[r.Ticker] = r
+	}
+	return out, rows.Err()
+}
+
+// GetEarliestBuyDate returns the date of ticker's first recorded BUY
+// transaction, or ok=false if there is none on record. Used to anchor the
+// trailing-stop peak-close lookup to "since this position was first opened"
+// rather than an arbitrary window.
+func (d *DB) GetEarliestBuyDate(ticker string) (string, bool, error) {
+	var date sql.NullString
+	err := d.conn.QueryRow(
+		`SELECT MIN(date) FROM transactions WHERE ticker = ? AND side = 'BUY'`,
+		ticker,
+	).Scan(&date)
+	if err != nil {
+		return "", false, err
+	}
+	if !date.Valid {
+		return "", false, nil
+	}
+	return date.String, true, nil
+}
+
+// GetPeakClose returns the highest daily_snapshots close recorded for ticker
+// on or after sinceDate, or ok=false if there's no snapshot in that range
+// yet. Backs the trailing-stop check's running-high, computed on demand from
+// existing snapshot history rather than a separately maintained column.
+func (d *DB) GetPeakClose(ticker, sinceDate string) (float64, bool, error) {
+	var peak sql.NullFloat64
+	err := d.conn.QueryRow(
+		`SELECT MAX(close) FROM daily_snapshots WHERE ticker = ? AND date >= ?`,
+		ticker, sinceDate,
+	).Scan(&peak)
+	if err != nil {
+		return 0, false, err
+	}
+	if !peak.Valid {
+		return 0, false, nil
+	}
+	return peak.Float64, true, nil
 }
 
 // GetRealizedPnL sums realized_pnl across every SELL transaction ever

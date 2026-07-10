@@ -68,6 +68,13 @@ Three things about today's implementation are conveniences, not commitments:
 - **Context-aware chat** — free-form chat is prefixed with a read-only summary of your watchlist and
   positions (latest close, cost basis, unrealized P&L), so it can answer questions like "which of my
   watchlist tickers dropped the most recently" without giving the LLM any tools
+- **Exit discipline** — rule-based, LLM-independent daily checks warn once when a position's unrealized
+  loss crosses a fixed stop-loss threshold, or when the price falls a set percentage from its highest
+  close since the position was opened (trailing stop); both dedupe so a breach alerts once and resets
+  once the position recovers
+- **Recommendation continuity** — `/recommend`/daily report feed each ticker's last recommendation back
+  into the prompt, so a reversal (BUY → SELL, etc.) comes with an explanation of what changed instead of
+  a context-free flip-flop
 - **Unattended-VPS resilience** — a rotating daily log (kept ~1 week), a daily SQLite backup (kept ~2
   weeks by default), and a Telegram alert if a scheduled job (daily report / closing snapshot) panics
   or can't even read the watchlist

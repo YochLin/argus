@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -48,6 +49,13 @@ type Bot struct {
 	chatID       int64
 	lang         i18n.Lang
 
+	// stopLossPct/trailingStopPct (STOP_LOSS_PCT/TRAILING_STOP_PCT env,
+	// Phase 3.8) are positive percentage thresholds for RunDailyReport's
+	// rule-based exit-discipline checks (checkStopLossAlerts/
+	// checkTrailingStopAlerts) — 0 disables the corresponding check entirely.
+	stopLossPct     float64
+	trailingStopPct float64
+
 	// chatQueue feeds chatWorker, which answers plain-text messages one at a
 	// time and in the order they arrived — unlike commands, chat shares one
 	// persistent LLM session, so processing it concurrently could let a
@@ -58,25 +66,27 @@ type Bot struct {
 	chatQueue chan *tgbotapi.Message
 }
 
-func New(token string, chatID int64, database *db.DB, provider data.Provider, fundamentals data.FundamentalsProvider, earnings data.EarningsProvider, marketNews data.MarketNewsProvider, history data.HistoryProvider, llmClient *llm.Client, lang i18n.Lang) (*Bot, error) {
+func New(token string, chatID int64, database *db.DB, provider data.Provider, fundamentals data.FundamentalsProvider, earnings data.EarningsProvider, marketNews data.MarketNewsProvider, history data.HistoryProvider, llmClient *llm.Client, lang i18n.Lang, stopLossPct, trailingStopPct float64) (*Bot, error) {
 	api, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return nil, fmt.Errorf("telegram: %w", err)
 	}
 	log.Printf("Telegram bot authorized: @%s", api.Self.UserName)
 	return &Bot{
-		api:          api,
-		db:           database,
-		provider:     provider,
-		fundamentals: fundamentals,
-		earnings:     earnings,
-		marketNews:   marketNews,
-		history:      history,
-		llm:          llmClient,
-		detector:     signals.NewDetector(lang),
-		chatID:       chatID,
-		lang:         lang,
-		chatQueue:    make(chan *tgbotapi.Message, 32),
+		api:             api,
+		db:              database,
+		provider:        provider,
+		fundamentals:    fundamentals,
+		earnings:        earnings,
+		marketNews:      marketNews,
+		history:         history,
+		llm:             llmClient,
+		detector:        signals.NewDetector(lang),
+		chatID:          chatID,
+		lang:            lang,
+		stopLossPct:     stopLossPct,
+		trailingStopPct: trailingStopPct,
+		chatQueue:       make(chan *tgbotapi.Message, 32),
 	}, nil
 }
 
@@ -271,13 +281,15 @@ func (b *Bot) handleRecommend(ctx context.Context) {
 	}
 	scanHits := b.loadScanHits()
 	dedupedCandidates := mergeCandidates(candidateTickers, scanHits, tickers)
+	allTickers := append(append([]string{}, tickers...), dedupedCandidates...)
 
 	positions := b.loadPositions()
-	earnings := b.loadEarnings(append(append([]string{}, tickers...), dedupedCandidates...))
+	earnings := b.loadEarnings(allTickers)
 	marketNews := b.loadMarketNews()
+	prevRecs := b.loadPrevRecs(allTickers)
 
-	watchlist := b.fetchStockData(tickers, true, positions, earnings, nil)
-	candidates := b.fetchStockData(dedupedCandidates, false, positions, earnings, scanHits)
+	watchlist := b.fetchStockData(tickers, true, positions, earnings, nil, prevRecs)
+	candidates := b.fetchStockData(dedupedCandidates, false, positions, earnings, scanHits, prevRecs)
 
 	summary, recs, err := b.llm.GenerateRecommendations(ctx, watchlist, candidates, marketNews)
 	if err != nil {
@@ -902,7 +914,7 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context) {
 // can be drawn later. prices reuses the quotes RunClosingSnapshot already
 // fetched for watchlist tickers (positions are auto-added to the watchlist
 // on /buy, so this covers the common case); any position ticker missing
-// from it gets a direct quote fetch as a fallback.
+// from it gets a direct quote fetch as a fallback (see priceFor).
 func (b *Bot) recordNetWorthSnapshot(date string, prices map[string]float64) {
 	positions, err := b.db.GetPositions()
 	if err != nil {
@@ -915,14 +927,9 @@ func (b *Bot) recordNetWorthSnapshot(date string, prices map[string]float64) {
 
 	var total float64
 	for _, p := range positions {
-		price, ok := prices[p.Ticker]
+		price, ok := b.priceFor(p.Ticker, prices)
 		if !ok {
-			q, err := b.provider.GetQuote(p.Ticker)
-			if err != nil {
-				log.Printf("net worth snapshot: quote %s: %v", p.Ticker, err)
-				continue
-			}
-			price = q.Price
+			continue
 		}
 		total += p.Shares * price
 	}
@@ -950,17 +957,21 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 	}
 	scanHits := b.loadScanHits()
 	dedupedCandidates := mergeCandidates(candidateTickers, scanHits, tickers)
+	allTickers := append(append([]string{}, tickers...), dedupedCandidates...)
 
 	positions := b.loadPositions()
-	earnings := b.loadEarnings(append(append([]string{}, tickers...), dedupedCandidates...))
+	earnings := b.loadEarnings(allTickers)
 	b.checkEarningsAlerts(tickers, earnings)
 	marketNews := b.loadMarketNews()
+	prevRecs := b.loadPrevRecs(allTickers)
 
 	// Detect signals on watchlist
 	var allSignals []signals.Signal
-	watchlist := b.fetchStockData(tickers, true, positions, earnings, nil)
+	watchlist := b.fetchStockData(tickers, true, positions, earnings, nil, prevRecs)
+	prices := make(map[string]float64, len(watchlist))
 	for _, s := range watchlist {
 		if s.Quote != nil {
+			prices[s.Quote.Ticker] = s.Quote.Price
 			allSignals = append(allSignals, b.detector.CheckQuote(s.Quote)...)
 		}
 	}
@@ -976,7 +987,14 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 		b.SendSignalAlert(allSignals)
 	}
 
-	candidates := b.fetchStockData(dedupedCandidates, false, positions, earnings, scanHits)
+	// Exit-discipline checks (Phase 3.8): rule-based, independent of the LLM
+	// call below, so a down LLM provider doesn't suppress them. Daily-report
+	// only, by design — no intraday/at-price monitoring (see PLAN.md).
+	positionList := positionsSlice(positions)
+	b.checkStopLossAlerts(positionList, prices)
+	b.checkTrailingStopAlerts(positionList, prices)
+
+	candidates := b.fetchStockData(dedupedCandidates, false, positions, earnings, scanHits, prevRecs)
 
 	summary, recs, err := b.llm.GenerateRecommendations(ctx, watchlist, candidates, marketNews)
 	if err != nil {
@@ -1148,8 +1166,12 @@ func (b *Bot) RunUniverseScan(ctx context.Context) {
 // loadEarnings and attaches an earnings-date warning for any ticker
 // reporting soon. scanReasons (ticker -> joined signal message) is looked up
 // via db.GetScanHits and attaches why a Phase 2.6 universe-scan candidate
-// was surfaced. Pass nil for any of the three if there's nothing to attach.
-func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positions map[string]db.Position, earnings map[string]data.EarningsEvent, scanReasons map[string]string) []llm.StockData {
+// was surfaced. prevRecs (ticker -> last recommendation on record) is looked
+// up via loadPrevRecs and attaches Phase 3.8's recommendation-continuity
+// line; a row with an empty Action (pre-Phase-1 data, or a call the model
+// omitted) is skipped rather than rendering a blank line. Pass nil for any
+// of the four if there's nothing to attach.
+func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positions map[string]db.Position, earnings map[string]data.EarningsEvent, scanReasons map[string]string, prevRecs map[string]db.Recommendation) []llm.StockData {
 	var result []llm.StockData
 	for _, t := range tickers {
 		q, err := b.provider.GetQuote(t)
@@ -1175,6 +1197,9 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 		}
 		if r, ok := scanReasons[t]; ok {
 			stock.ScanReason = &r
+		}
+		if pr, ok := prevRecs[t]; ok && pr.Action != "" {
+			stock.PrevRec = &llm.PrevRecommendation{Action: pr.Action, Date: pr.Date, Price: pr.Price, DaysAgo: -daysUntil(pr.Date)}
 		}
 		result = append(result, stock)
 	}
@@ -1221,6 +1246,23 @@ func (b *Bot) loadPositions() map[string]db.Position {
 		out[p.Ticker] = p
 	}
 	return out
+}
+
+// loadPrevRecs returns each ticker's most recent recommendation on record
+// (across any past date), keyed by ticker, for Phase 3.8's recommendation
+// continuity (see llm.StockData.PrevRec). Degrades to nil on a query failure
+// or an empty ticker list — same optional-data pattern as
+// fundamentals/earnings/positions.
+func (b *Bot) loadPrevRecs(tickers []string) map[string]db.Recommendation {
+	if len(tickers) == 0 {
+		return nil
+	}
+	recs, err := b.db.GetLatestRecommendations(tickers)
+	if err != nil {
+		log.Printf("load prev recommendations: %v", err)
+		return nil
+	}
+	return recs
 }
 
 // loadEarnings returns each ticker's next scheduled earnings date within
@@ -1306,6 +1348,178 @@ func (b *Bot) checkEarningsAlerts(tickers []string, earnings map[string]data.Ear
 
 	var sb strings.Builder
 	sb.WriteString(i18n.T(b.lang, i18n.KeyEarningsAlertTitle))
+	for _, l := range lines {
+		sb.WriteString(l)
+	}
+	b.Send(sb.String())
+}
+
+const (
+	stopLossSignalFamily     = "stop_loss"
+	trailingStopSignalFamily = "trailing_stop"
+	// breachedState is the signal_states value recorded while a stop-loss/
+	// trailing-stop threshold stays breached; any other value (including "",
+	// the unset default) means "not currently breached".
+	breachedState = "breached"
+)
+
+// priceFor returns ticker's current price, preferring an already-fetched
+// quote from prices (built by the caller from data it fetched for another
+// purpose, e.g. RunDailyReport's watchlist stock data) and falling back to a
+// direct quote fetch for any ticker prices doesn't cover — the same
+// prefetch-with-fallback shape recordNetWorthSnapshot has always used for
+// position tickers outside the watchlist prefetch.
+func (b *Bot) priceFor(ticker string, prices map[string]float64) (float64, bool) {
+	if p, ok := prices[ticker]; ok {
+		return p, true
+	}
+	q, err := b.provider.GetQuote(ticker)
+	if err != nil {
+		log.Printf("quote %s: %v", ticker, err)
+		return 0, false
+	}
+	return q.Price, true
+}
+
+// positionsSlice converts loadPositions' ticker->position map into a slice
+// sorted by ticker, purely so the stop-loss/trailing-stop alert messages
+// render in a stable, deterministic order — Go map iteration order is
+// randomized.
+func positionsSlice(positions map[string]db.Position) []db.Position {
+	out := make([]db.Position, 0, len(positions))
+	for _, p := range positions {
+		out = append(out, p)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Ticker < out[j].Ticker })
+	return out
+}
+
+// breachAlertDecision implements the dedup rule shared by the stop-loss and
+// trailing-stop checks: alert once when an adverse move (a positive
+// percentage — unrealized loss for stop-loss, drawdown from peak for
+// trailing-stop) first crosses thresholdPct, stay silent on later calls
+// while it remains breached, and reset once it recovers back under the
+// threshold so a later re-breach alerts again. Mirrors the RSI/MACD dedup
+// shape in checkStatefulSignals, generalized to a single scalar threshold.
+// prevState is the raw signal_states value; newState is what the caller
+// should persist back via db.SetSignalState ("" clears it, matching
+// GetSignalState's own "unset" representation) — callers should only write
+// it back when it differs from prevState, same as checkStatefulSignals does.
+func breachAlertDecision(adverseMovePct, thresholdPct float64, prevState string) (breached, shouldAlert bool, newState string) {
+	if adverseMovePct < thresholdPct {
+		return false, false, ""
+	}
+	if prevState == breachedState {
+		return true, false, breachedState
+	}
+	return true, true, breachedState
+}
+
+// checkStopLossAlerts warns about any open position whose unrealized loss
+// has just breached STOP_LOSS_PCT (b.stopLossPct, 0 disables the check
+// entirely). Rule-based and independent of the LLM, so it still fires when
+// every LLM provider is down. positions is expected sorted by ticker (see
+// positionsSlice); prices is the current-price lookup built by the caller
+// (see priceFor).
+func (b *Bot) checkStopLossAlerts(positions []db.Position, prices map[string]float64) {
+	if b.stopLossPct <= 0 {
+		return
+	}
+	var lines []string
+	for _, p := range positions {
+		price, ok := b.priceFor(p.Ticker, prices)
+		if !ok {
+			continue
+		}
+		lossPct := (p.AvgCost - price) / p.AvgCost * 100
+
+		prev, err := b.db.GetSignalState(p.Ticker, stopLossSignalFamily)
+		if err != nil {
+			log.Printf("stop loss state %s: %v", p.Ticker, err)
+		}
+		_, shouldAlert, newState := breachAlertDecision(lossPct, b.stopLossPct, prev)
+		if newState != prev {
+			if err := b.db.SetSignalState(p.Ticker, stopLossSignalFamily, newState); err != nil {
+				log.Printf("stop loss state %s: %v", p.Ticker, err)
+			}
+		}
+		if !shouldAlert {
+			continue
+		}
+		lines = append(lines, i18n.T(b.lang, i18n.KeyStopLossAlertLine, p.Ticker, p.AvgCost, price, lossPct))
+	}
+	if len(lines) == 0 {
+		return
+	}
+
+	var sb strings.Builder
+	sb.WriteString(i18n.T(b.lang, i18n.KeyStopLossAlertTitle))
+	for _, l := range lines {
+		sb.WriteString(l)
+	}
+	b.Send(sb.String())
+}
+
+// checkTrailingStopAlerts warns about any open position whose close-price
+// drawdown from its post-first-buy peak has just breached TRAILING_STOP_PCT
+// (b.trailingStopPct, 0 disables the check). The peak is computed on demand
+// from daily_snapshots closes on or after the ticker's earliest recorded BUY
+// date (db.GetEarliestBuyDate/GetPeakClose) rather than a separately
+// maintained running-high column — a held ticker is always on the watchlist
+// (via /buy's auto-add), so it already gets a daily closing snapshot. Skips
+// (logs, no alert) a ticker with no BUY transaction or no snapshot history
+// yet, rather than risk a false alarm off an unknown peak. Same dedup shape
+// as checkStopLossAlerts (see breachAlertDecision), under its own
+// signal_states family so the two checks don't share state.
+func (b *Bot) checkTrailingStopAlerts(positions []db.Position, prices map[string]float64) {
+	if b.trailingStopPct <= 0 {
+		return
+	}
+	var lines []string
+	for _, p := range positions {
+		buyDate, ok, err := b.db.GetEarliestBuyDate(p.Ticker)
+		if err != nil {
+			log.Printf("trailing stop: earliest buy %s: %v", p.Ticker, err)
+			continue
+		}
+		if !ok {
+			continue
+		}
+		peak, ok, err := b.db.GetPeakClose(p.Ticker, buyDate)
+		if err != nil {
+			log.Printf("trailing stop: peak close %s: %v", p.Ticker, err)
+			continue
+		}
+		if !ok || peak <= 0 {
+			continue
+		}
+		price, ok := b.priceFor(p.Ticker, prices)
+		if !ok {
+			continue
+		}
+		drawdownPct := (peak - price) / peak * 100
+
+		prev, err := b.db.GetSignalState(p.Ticker, trailingStopSignalFamily)
+		if err != nil {
+			log.Printf("trailing stop state %s: %v", p.Ticker, err)
+		}
+		_, shouldAlert, newState := breachAlertDecision(drawdownPct, b.trailingStopPct, prev)
+		if newState != prev {
+			if err := b.db.SetSignalState(p.Ticker, trailingStopSignalFamily, newState); err != nil {
+				log.Printf("trailing stop state %s: %v", p.Ticker, err)
+			}
+		}
+		if !shouldAlert {
+			continue
+		}
+		lines = append(lines, i18n.T(b.lang, i18n.KeyTrailingStopAlertLine, p.Ticker, peak, price, drawdownPct))
+	}
+	if len(lines) == 0 {
+		return
+	}
+
+	var sb strings.Builder
+	sb.WriteString(i18n.T(b.lang, i18n.KeyTrailingStopAlertTitle))
 	for _, l := range lines {
 		sb.WriteString(l)
 	}

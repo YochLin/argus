@@ -47,6 +47,12 @@ func main() {
 	chatModel := envOr("CLAUDE_CHAT_MODEL", "sonnet")
 	dbPath := envOr("DB_PATH", "data/argus.db")
 	lang := i18n.Parse(envOr("BOT_LANGUAGE", "zh"))
+	// Phase 3.8 exit-discipline thresholds: positive percentages, 0 disables
+	// the corresponding daily-report check entirely. Defaults are a starting
+	// point, not backed by any backtest yet — see PLAN.md's Phase 3.8 note
+	// that /track is the intended feedback loop for tuning these later.
+	stopLossPct := envOrFloat("STOP_LOSS_PCT", 10)
+	trailingStopPct := envOrFloat("TRAILING_STOP_PCT", 15)
 
 	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
 	if err != nil {
@@ -114,7 +120,7 @@ func main() {
 	}
 	defer llmClient.Close() // kills any still-open persistent chat session's subprocess
 
-	telegramBot, err := bot.New(telegramToken, chatID, database, provider, fundamentalsProvider, earningsProvider, marketNewsProvider, yahoo, llmClient, lang)
+	telegramBot, err := bot.New(telegramToken, chatID, database, provider, fundamentalsProvider, earningsProvider, marketNewsProvider, yahoo, llmClient, lang, stopLossPct, trailingStopPct)
 	if err != nil {
 		log.Fatalf("init bot: %v", err)
 	}
@@ -205,6 +211,19 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func envOrFloat(key string, fallback float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		log.Printf("invalid %s=%q, using default %v", key, v, fallback)
+		return fallback
+	}
+	return n
 }
 
 func envOrInt(key string, fallback int) int {

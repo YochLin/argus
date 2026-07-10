@@ -105,6 +105,11 @@ const (
 	KeyPortfolioSummary       Key = "portfolio_summary"
 	KeyJobPanic               Key = "job_panic"
 
+	KeyStopLossAlertTitle     Key = "stop_loss_alert_title"
+	KeyStopLossAlertLine      Key = "stop_loss_alert_line"
+	KeyTrailingStopAlertTitle Key = "trailing_stop_alert_title"
+	KeyTrailingStopAlertLine  Key = "trailing_stop_alert_line"
+
 	KeyChatContextHeader       Key = "chat_context_header"
 	KeyChatContextTickerNoData Key = "chat_context_ticker_no_data"
 	KeyChatContextWatchLine    Key = "chat_context_watch_line"
@@ -212,6 +217,7 @@ const (
 	KeyFundamentalsSummaryLine Key = "fundamentals_summary_line"
 	KeyStatementSummaryLine    Key = "statement_summary_line"
 	KeyPositionLine            Key = "position_line"
+	KeyPrevRecLine             Key = "prev_rec_line"
 	KeyEarningsLine            Key = "earnings_line"
 	KeyScanHitLine             Key = "scan_hit_line"
 	KeyTechnicalsSummaryLine   Key = "technicals_summary_line"
