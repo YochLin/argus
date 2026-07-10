@@ -221,6 +221,37 @@ func buildCheckPrompt(lang i18n.Lang, s StockData) string {
 	return sb.String()
 }
 
+// buildInsightPrompt is Phase 3.6's portfolio-level analysis prompt: every
+// held position (via writeStockSection, same per-ticker rendering
+// /recommend and /check already use — quote, technicals, fundamentals,
+// earnings, cost basis) followed by a portfolio-wide summary line and a task
+// block that explicitly asks for concentration/thesis/rebalancing judgment
+// rather than a repeat of the per-ticker analysis above it. cash is only
+// rendered when haveCash is true (the user has run /cash at least once) —
+// see PLAN.md's Phase 3.6 "現金水位" item: an unset cash balance should read
+// as "no data," not silently as $0, which would misleadingly suggest 100%
+// invested.
+func buildInsightPrompt(lang i18n.Lang, positions []StockData, cash float64, haveCash bool) string {
+	var sb strings.Builder
+	sb.WriteString(i18n.T(lang, i18n.KeyInsightPromptIntro))
+
+	var totalValue float64
+	for _, s := range positions {
+		if s.Quote != nil && s.Position != nil {
+			totalValue += s.Quote.Price * s.Position.Shares
+		}
+		writeStockSection(&sb, lang, s)
+	}
+
+	sb.WriteString(i18n.T(lang, i18n.KeyInsightPositionValueLine, totalValue))
+	if haveCash {
+		sb.WriteString(i18n.T(lang, i18n.KeyInsightCashLine, cash, totalValue+cash))
+	}
+
+	sb.WriteString(i18n.T(lang, i18n.KeyInsightPromptTask))
+	return sb.String()
+}
+
 // maLabel renders whether price sits above or below a moving average as an
 // already-localized string, so writeStockSection never builds display text
 // outside of internal/i18n.
