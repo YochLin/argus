@@ -49,6 +49,7 @@ type Recommendation struct {
 	Action    string // BUY / SELL / HOLD ("" for rows saved before the column existed)
 	Reason    string
 	Price     float64 // price at recommendation time (0 for rows saved before the column existed)
+	Source    string  // "watchlist" / "movers" / "scan" ("" for rows saved before the column existed — display as "watchlist")
 	CreatedAt time.Time
 }
 
@@ -198,6 +199,13 @@ var migrations = []string{
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	`,
+	// 5: recommendations gains a source column ("watchlist"/"movers"/"scan")
+	// so /track can break its hit rate down by which candidate-sourcing path
+	// actually produced a given call (Phase 3.8's deferred-from-2.6 "成效對照").
+	// Existing rows get "" rather than being backfilled to "watchlist" — the
+	// read path treats an empty source as "watchlist" for display, keeping
+	// this migration a single cheap ALTER TABLE.
+	`ALTER TABLE recommendations ADD COLUMN source TEXT NOT NULL DEFAULT '';`,
 }
 
 func (d *DB) migrate() error {
@@ -299,8 +307,8 @@ func (d *DB) SaveRecommendations(date string, recs []Recommendation) error {
 	defer tx.Rollback()
 
 	for _, r := range recs {
-		_, err := tx.Exec(`INSERT INTO recommendations (date, ticker, action, reason, price) VALUES (?, ?, ?, ?, ?)`,
-			date, r.Ticker, r.Action, r.Reason, r.Price)
+		_, err := tx.Exec(`INSERT INTO recommendations (date, ticker, action, reason, price, source) VALUES (?, ?, ?, ?, ?, ?)`,
+			date, r.Ticker, r.Action, r.Reason, r.Price, r.Source)
 		if err != nil {
 			return err
 		}
@@ -312,7 +320,7 @@ func (d *DB) SaveRecommendations(date string, recs []Recommendation) error {
 // (dates are lexicographically comparable YYYY-MM-DD strings), oldest first.
 func (d *DB) GetRecommendationsSince(fromDate string) ([]Recommendation, error) {
 	rows, err := d.conn.Query(
-		`SELECT id, date, ticker, action, reason, price FROM recommendations
+		`SELECT id, date, ticker, action, reason, price, source FROM recommendations
 		 WHERE date >= ? ORDER BY date, id`,
 		fromDate,
 	)
@@ -324,7 +332,7 @@ func (d *DB) GetRecommendationsSince(fromDate string) ([]Recommendation, error) 
 	var recs []Recommendation
 	for rows.Next() {
 		var r Recommendation
-		if err := rows.Scan(&r.ID, &r.Date, &r.Ticker, &r.Action, &r.Reason, &r.Price); err != nil {
+		if err := rows.Scan(&r.ID, &r.Date, &r.Ticker, &r.Action, &r.Reason, &r.Price, &r.Source); err != nil {
 			return nil, err
 		}
 		recs = append(recs, r)

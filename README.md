@@ -36,8 +36,10 @@ Three things about today's implementation are conveniences, not commitments:
 - **LLM-powered analysis** — ask for an instant read on any ticker, or daily recommendations with an
   explicit BUY / SELL / HOLD call for every watchlist ticker plus picks from the day's broad market
   movers
-- **Recommendation tracking** — `/track` reviews past recommendations against today's prices and
-  reports the hit rate, so recommendation quality is verifiable
+- **Recommendation tracking** — `/track` reviews past recommendations against today's prices. A BUY/SELL
+  only counts as a hit if it beat/underperformed SPY over the same period (falling back to plain
+  up/down when no same-period SPY data is on record), alongside average return magnitude and a hit-rate
+  breakdown by where the candidate came from (watchlist / market movers / universe scan)
 - **Bilingual (zh/en)** — every bot reply and LLM prompt is available in Traditional Chinese (default) or
   English, switched with one env var — see Getting Started
 - **Fundamentals** — P/E, margins, growth, and key 10-K/10-Q line items, when a Finnhub API key is

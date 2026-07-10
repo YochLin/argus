@@ -40,8 +40,12 @@ var enMessages = map[Key]string{
 	KeyTrackTitle:             "📊 *Recommendation Review (past %d days)*\n\n",
 	KeyTrackEmpty:             "No recommendations recorded in the past %d days.",
 	KeyTrackLine:              "• %s *%s* %s  $%.2f → $%.2f (%+.2f%%) %s\n",
+	KeyTrackLineVsSPY:         "• %s *%s* %s  $%.2f → $%.2f (%+.2f%% vs SPY %+.2f%%) %s\n",
 	KeyTrackLineNoPrice:       "• %s *%s* %s — no price recorded to compare against\n",
-	KeyTrackSummary:           "\nHit rate: %d/%d (%.0f%%)\n(BUY counts as a hit if the price rose, SELL if it fell; HOLD and rows without price data are excluded)",
+	KeyTrackSummary:           "\nHit rate: %d/%d (%.0f%%)\n(When same-period SPY data is available, BUY must beat SPY and SELL must underperform SPY to count as a hit; without SPY data it falls back to absolute direction; HOLD and rows without price data are excluded)",
+	KeyTrackAvgReturnLine:     "Avg return: BUY %+.2f%% (%d calls) | SELL %+.2f%% (%d calls)\n",
+	KeyTrackBySourceHeader:    "\nBy source:\n",
+	KeyTrackBySourceLine:      "- %s: %d/%d (%.0f%%)\n",
 
 	KeyBuyUsage:               "Usage: /buy <ticker> <shares> <price> [fee] [date], e.g. /buy AAPL 10 205.5 or /buy AAPL 10 205.5 1.5 2026-01-15 (backdate a historical trade)",
 	KeyBuyFailed:              "Failed to record buy: %v",

@@ -373,3 +373,127 @@ func TestMergeCandidates(t *testing.T) {
 		}
 	}
 }
+
+func TestRecommendationSources(t *testing.T) {
+	watchlist := []string{"AAPL", "MSFT"}
+	// MSFT also appears as a candidate — shouldn't happen in practice since
+	// mergeCandidates already excludes watchlist tickers, but recommendationSources
+	// guards it anyway: watchlist attribution must win regardless.
+	candidates := []string{"MSFT", "NVDA", "TSLA"}
+	scanHits := map[string]string{
+		"NVDA": "RSI oversold (28.0)",
+	}
+
+	got := recommendationSources(watchlist, candidates, scanHits)
+
+	want := map[string]string{
+		"AAPL": "watchlist",
+		"MSFT": "watchlist",
+		"NVDA": "scan",
+		"TSLA": "movers",
+	}
+	for ticker, wantSource := range want {
+		if got[ticker] != wantSource {
+			t.Errorf("recommendationSources()[%s] = %q, want %q", ticker, got[ticker], wantSource)
+		}
+	}
+}
+
+func TestTrackHit(t *testing.T) {
+	tests := []struct {
+		name                          string
+		action                        string
+		tickerChangePct, spyChangePct float64
+		haveSPY                       bool
+		want                          bool
+	}{
+		{"BUY beats SPY is a hit", "BUY", 10, 4, true, true},
+		{"BUY behind SPY is not a hit even though price rose", "BUY", 3, 4, true, false},
+		{"BUY without SPY data falls back to absolute direction (up)", "BUY", 3, 0, false, true},
+		{"BUY without SPY data falls back to absolute direction (down)", "BUY", -1, 0, false, false},
+		{"SELL underperforming SPY is a hit", "SELL", -10, -2, true, true},
+		{"SELL merely tracking SPY down is not a hit", "SELL", -2, -2, true, false},
+		{"SELL without SPY data falls back to absolute direction (down)", "SELL", -3, 0, false, true},
+		{"HOLD never counts as a hit", "HOLD", 10, -10, true, false},
+		{"unset action never counts as a hit", "", 10, -10, true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := trackHit(tt.action, tt.tickerChangePct, tt.spyChangePct, tt.haveSPY); got != tt.want {
+				t.Errorf("trackHit(%q, %v, %v, %v) = %v, want %v",
+					tt.action, tt.tickerChangePct, tt.spyChangePct, tt.haveSPY, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDisplaySource(t *testing.T) {
+	if got := displaySource(""); got != "watchlist" {
+		t.Errorf(`displaySource("") = %q, want "watchlist"`, got)
+	}
+	if got := displaySource("scan"); got != "scan" {
+		t.Errorf(`displaySource("scan") = %q, want "scan"`, got)
+	}
+}
+
+func TestSummarizeTrack(t *testing.T) {
+	rows := []trackRow{
+		{Action: "BUY", Source: "watchlist", ChangePct: 10, Hit: true},
+		{Action: "BUY", Source: "watchlist", ChangePct: -2, Hit: false},
+		{Action: "SELL", Source: "scan", ChangePct: -5, Hit: true},
+		{Action: "BUY", Source: "scan", ChangePct: 4, Hit: true},
+	}
+
+	overall, bySource := summarizeTrack(rows)
+
+	if overall.Evaluated != 4 || overall.Hits != 3 {
+		t.Fatalf("summarizeTrack() overall = %+v, want Evaluated=4 Hits=3", overall)
+	}
+	if got, want := overall.HitRate(), 75.0; got != want {
+		t.Errorf("overall.HitRate() = %v, want %v", got, want)
+	}
+	// BUY avg: (10 + -2 + 4) / 3 = 4; SELL avg: -5 / 1 = -5
+	if got, want := overall.AvgBuyPct(), 4.0; got != want {
+		t.Errorf("overall.AvgBuyPct() = %v, want %v", got, want)
+	}
+	if got, want := overall.AvgSellPct(), -5.0; got != want {
+		t.Errorf("overall.AvgSellPct() = %v, want %v", got, want)
+	}
+
+	if len(bySource) != 2 {
+		t.Fatalf("summarizeTrack() bySource = %+v, want exactly 2 groups", bySource)
+	}
+	watchlistStats := bySource["watchlist"]
+	if watchlistStats.Evaluated != 2 || watchlistStats.Hits != 1 {
+		t.Errorf("bySource[watchlist] = %+v, want Evaluated=2 Hits=1", watchlistStats)
+	}
+	scanStats := bySource["scan"]
+	if scanStats.Evaluated != 2 || scanStats.Hits != 2 {
+		t.Errorf("bySource[scan] = %+v, want Evaluated=2 Hits=2", scanStats)
+	}
+}
+
+func TestTrackSourceStatsZeroDivision(t *testing.T) {
+	var s trackSourceStats
+	if s.HitRate() != 0 || s.AvgBuyPct() != 0 || s.AvgSellPct() != 0 {
+		t.Errorf("zero-value trackSourceStats methods = %v, %v, %v; want all 0", s.HitRate(), s.AvgBuyPct(), s.AvgSellPct())
+	}
+}
+
+func TestSortedSourceKeys(t *testing.T) {
+	bySource := map[string]trackSourceStats{
+		"watchlist": {},
+		"scan":      {},
+		"movers":    {},
+	}
+	got := sortedSourceKeys(bySource)
+	want := []string{"movers", "scan", "watchlist"}
+	if len(got) != len(want) {
+		t.Fatalf("sortedSourceKeys() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("sortedSourceKeys() = %v, want %v", got, want)
+		}
+	}
+}
