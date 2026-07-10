@@ -372,6 +372,43 @@ func TestBackup(t *testing.T) {
 	}
 }
 
+// TestOpenReadOnly verifies both halves of the read-only connection's
+// contract: it can see data committed by a separate read-write connection
+// to the same file (proving it isn't just an empty in-memory stand-in), and
+// SQLite's query_only pragma actually rejects a write attempted through it
+// (proving "read-only" is enforced, not just a naming convention) — see
+// OpenReadOnly's doc comment for why this can't rely on the DSN's
+// conventional "mode=ro" instead.
+func TestOpenReadOnly(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.db")
+	rw, err := New(path)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	defer rw.Close()
+	if err := rw.AddTicker("AAPL"); err != nil {
+		t.Fatalf("AddTicker() error = %v", err)
+	}
+
+	ro, err := OpenReadOnly(path)
+	if err != nil {
+		t.Fatalf("OpenReadOnly() error = %v", err)
+	}
+	defer ro.Close()
+
+	got, err := ro.GetWatchlist()
+	if err != nil {
+		t.Fatalf("GetWatchlist() error = %v", err)
+	}
+	if len(got) != 1 || got[0] != "AAPL" {
+		t.Errorf("GetWatchlist() = %v, want [AAPL]", got)
+	}
+
+	if err := ro.AddTicker("MSFT"); err == nil {
+		t.Error("AddTicker() through a read-only connection should have failed, got nil error")
+	}
+}
+
 // TestMigrateIsRerunnable reopens the same database file, simulating a bot
 // restart — migrate() must see the recorded user_version and skip already-
 // applied steps (re-running the ALTER TABLE step would fail on duplicate

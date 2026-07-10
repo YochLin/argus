@@ -10,6 +10,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"argus/internal/data"
+	"argus/internal/db"
 	"argus/internal/i18n"
 )
 
@@ -51,6 +52,7 @@ type toolset struct {
 	history      data.HistoryProvider
 	fundamentals data.FundamentalsProvider
 	earnings     data.EarningsProvider
+	db           *db.DB
 	cache        *ttlCache
 	limiter      *tokenBucket
 }
@@ -127,6 +129,8 @@ func registerTools(s *mcp.Server, ts *toolset) {
 			Description: "Get upcoming earnings report dates for a list of US stock tickers within a look-ahead window.",
 		}, ts.getUpcomingEarnings)
 	}
+
+	registerDBTools(s, ts)
 }
 
 type tickerInput struct {
