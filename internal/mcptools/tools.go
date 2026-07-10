@@ -53,6 +53,7 @@ type toolset struct {
 	fundamentals data.FundamentalsProvider
 	earnings     data.EarningsProvider
 	db           *db.DB
+	writeDB      *db.DB
 	cache        *ttlCache
 	limiter      *tokenBucket
 }
@@ -131,6 +132,7 @@ func registerTools(s *mcp.Server, ts *toolset) {
 	}
 
 	registerDBTools(s, ts)
+	registerWriteTools(s, ts)
 }
 
 type tickerInput struct {

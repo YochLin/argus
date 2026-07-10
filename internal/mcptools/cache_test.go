@@ -50,3 +50,19 @@ func TestTTLCacheDistinctKeys(t *testing.T) {
 		t.Error("distinct keys should not clobber each other's cached result")
 	}
 }
+
+func TestTTLCacheDelete(t *testing.T) {
+	c := newTTLCache()
+	c.set("k", textResult("hello"), time.Hour)
+
+	c.delete("k")
+
+	if _, ok := c.get("k"); ok {
+		t.Error("get() after delete() should miss")
+	}
+}
+
+func TestTTLCacheDeleteUnknownKeyIsNoop(t *testing.T) {
+	c := newTTLCache()
+	c.delete("nope") // must not panic
+}
