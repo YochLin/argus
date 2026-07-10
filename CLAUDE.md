@@ -122,7 +122,15 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   backdated sells oldest-first or the realized P&L won't match what it would have been on that date.
   `GetLatestSnapshot` (most recent `daily_snapshots` row for a ticker, regardless of date) backs the
   chat context injection in `internal/bot` — see below. `Backup` runs `VACUUM INTO ?` (safe against a
-  live DB, unlike copying the file directly) for the daily backup job.
+  live DB, unlike copying the file directly) for the daily backup job. `GetLatestRecommendations(tickers)`
+  (Phase 3.8) batches "each ticker's newest recommendation" into one query
+  (`WHERE id IN (SELECT MAX(id) ... GROUP BY ticker)`) rather than a per-ticker loop, same principle as
+  `filterEarningsCalendar`'s single whole-market call in `internal/data`. `GetEarliestBuyDate`/
+  `GetPeakClose` back the trailing-stop check's running-high: the peak is computed on demand from
+  `daily_snapshots` closes on/after the ticker's first BUY date rather than maintained as a running column
+  — `GetPeakClose` returns `ok=false` (via `sql.NullFloat64`, since `MAX()` on zero matching rows returns
+  SQL NULL, not zero rows) when there's no snapshot in range yet, and callers must treat that as "skip the
+  check," not as a peak of 0.
 - `internal/i18n` — every user/LLM-facing string in the project, split into exactly two files by design:
   `zh.go` (Traditional Chinese, the original default) and `en.go` (English), both keyed by the `Key`
   constants declared in `i18n.go`. `T(lang, key, args...)` does the lookup + `fmt.Sprintf`. This covers two
@@ -232,6 +240,13 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   being fetched but never rendered: `EPS`, `CurrentRatio`, `MarketCapMillion`, and `Week52High`/
   `Week52Low` converted to "% from 52-week high/low" via a `pctFrom(price, ref)` helper that returns 0
   when `ref` is 0 (a ticker Finnhub hasn't got a 52-week range for yet) rather than dividing by zero.
+  `StockData.PrevRec` (Phase 3.8, `*PrevRecommendation`) is the same attach-and-render pattern once more,
+  for recommendation continuity: `bot.loadPrevRecs`/`fetchStockData` only set it when a prior
+  `db.Recommendation.Action` is non-empty (skips legacy pre-action rows and any the model failed to parse
+  an action out of), and `DaysAgo` is precomputed by the caller exactly like `Earnings.DaysUntil` so this
+  package still does no date math of its own. `KeyRecTaskBlock`'s prompt text was extended (no new `%s`
+  verbs, same four in the same order) to tell the model that a reversal from `PrevRec.Action` needs an
+  explicit "what changed" in its reasoning, not just a restated conclusion.
 - `internal/signals` — pure functions/struct for rule-based technical signals (price % threshold, RSI,
   MACD) independent of Telegram/LLM/DB. That purity is preserved for the stateful checks too:
   `CheckRSIState` and `CheckMACDCross` take the previously persisted state as a parameter and return the
@@ -346,6 +361,28 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `RunDailyReport` already handled the same failure — keep new whole-job-abort paths in either function
   user-visible; per-ticker failures inside the loop (one quote fetch failing, etc.) should stay log-only
   so a bad day for one ticker doesn't spam a Telegram alert.
+  `checkStopLossAlerts`/`checkTrailingStopAlerts` (Phase 3.8) are `RunDailyReport`-only, same asymmetry as
+  `checkEarningsAlerts` — rule-based exit-discipline warnings, not something `/recommend` triggers.
+  Both share one dedup helper, `breachAlertDecision(adverseMovePct, thresholdPct, prevState)`: a pure
+  function (no DB/Telegram calls) that turns "how far has this moved against me" into
+  breached/shouldAlert/newState, so the alert-once-then-reset logic lives in exactly one place instead of
+  being duplicated per check. `signal_states` for both is a fixed `"breached"`/`""` string (not a
+  computed value like RSI's state), under their own families (`"stop_loss"`/`"trailing_stop"`) so the two
+  checks — and the unrelated `checkStatefulSignals` RSI/MACD dedup — never collide. `checkTrailingStopAlerts`
+  computes its running-high on demand via two new DB reads, `GetEarliestBuyDate` (ticker's first BUY
+  transaction date) and `GetPeakClose` (max `daily_snapshots` close on/after that date) — no separate
+  running-high column, since a held ticker is always on the watchlist (via `/buy`'s auto-add) and so
+  already accumulates daily snapshots. Both checks share `priceFor(ticker, prices)` — prefer an
+  already-fetched quote from the caller's prefetch map, else one direct `GetQuote` fallback — which also
+  replaced `recordNetWorthSnapshot`'s previously-inlined copy of the same fallback. `STOP_LOSS_PCT`/
+  `TRAILING_STOP_PCT` (env, `Bot.stopLossPct`/`trailingStopPct`) are positive percentages; either at 0
+  disables that check entirely rather than firing on every position. Phase 3.8's other item,
+  recommendation continuity, is prompt-only (not an alert): `loadPrevRecs` wraps the new batched
+  `db.GetLatestRecommendations(tickers)` (one `MAX(id) ... GROUP BY ticker` query, not a per-ticker
+  loop — same one-call-not-N-calls principle as `loadEarnings`), and `fetchStockData` attaches it as
+  `llm.StockData.PrevRec` for both `/recommend` and `RunDailyReport` (unlike the stop-loss checks, this
+  is prompt input, not a proactive push, so both call sites get it) — see `internal/llm`'s entry below
+  for the rendering side.
 - `internal/mcptools` — Phase 3.5's read-only MCP (Model Context Protocol) tool surface for chat, using
   the official `github.com/modelcontextprotocol/go-sdk`. `NewServer(lang, provider, history, fundamentals,
   earnings)` builds an `*mcp.Server` and registers seven tools (`tools.go`'s `registerTools`): `get_quote`/

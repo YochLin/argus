@@ -460,6 +460,92 @@ func TestUniverseAddRemove(t *testing.T) {
 	}
 }
 
+func TestGetLatestRecommendations(t *testing.T) {
+	d := newTestDB(t)
+
+	if err := d.SaveRecommendations("2026-07-01", []Recommendation{
+		{Ticker: "AAPL", Action: "HOLD", Reason: "wait and see", Price: 200},
+	}); err != nil {
+		t.Fatalf("SaveRecommendations() error = %v", err)
+	}
+	if err := d.SaveRecommendations("2026-07-05", []Recommendation{
+		{Ticker: "AAPL", Action: "BUY", Reason: "breakout", Price: 210},
+		{Ticker: "MSFT", Action: "SELL", Reason: "overextended", Price: 430},
+	}); err != nil {
+		t.Fatalf("SaveRecommendations() error = %v", err)
+	}
+
+	got, err := d.GetLatestRecommendations([]string{"AAPL", "MSFT", "NVDA"})
+	if err != nil {
+		t.Fatalf("GetLatestRecommendations() error = %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("GetLatestRecommendations() = %+v, want exactly AAPL/MSFT (NVDA has no history)", got)
+	}
+	// AAPL must resolve to the 07-05 row (latest), not the 07-01 HOLD.
+	if got["AAPL"].Action != "BUY" || got["AAPL"].Date != "2026-07-05" || got["AAPL"].Price != 210 {
+		t.Errorf("GetLatestRecommendations()[AAPL] = %+v, want BUY/2026-07-05/210", got["AAPL"])
+	}
+	if got["MSFT"].Action != "SELL" {
+		t.Errorf("GetLatestRecommendations()[MSFT] = %+v, want SELL", got["MSFT"])
+	}
+	if _, ok := got["NVDA"]; ok {
+		t.Errorf("GetLatestRecommendations()[NVDA] present, want absent (no recommendation history)")
+	}
+}
+
+func TestGetLatestRecommendationsEmptyTickers(t *testing.T) {
+	d := newTestDB(t)
+	got, err := d.GetLatestRecommendations(nil)
+	if err != nil || got != nil {
+		t.Errorf("GetLatestRecommendations(nil) = %v, %v; want nil, nil", got, err)
+	}
+}
+
+func TestGetEarliestBuyDate(t *testing.T) {
+	d := newTestDB(t)
+
+	if _, ok, err := d.GetEarliestBuyDate("AAPL"); err != nil || ok {
+		t.Fatalf("GetEarliestBuyDate() before any buy: ok = %v, err = %v; want false, nil", ok, err)
+	}
+
+	if _, err := d.RecordBuy("AAPL", 5, 200, 0, "2026-07-05"); err != nil {
+		t.Fatalf("RecordBuy() error = %v", err)
+	}
+	if _, err := d.RecordBuy("AAPL", 5, 210, 0, "2026-07-01"); err != nil {
+		t.Fatalf("RecordBuy() error = %v", err)
+	}
+
+	date, ok, err := d.GetEarliestBuyDate("AAPL")
+	if err != nil || !ok || date != "2026-07-01" {
+		t.Errorf("GetEarliestBuyDate() = %q, %v, %v; want 2026-07-01, true, nil", date, ok, err)
+	}
+}
+
+func TestGetPeakClose(t *testing.T) {
+	d := newTestDB(t)
+
+	if _, ok, err := d.GetPeakClose("AAPL", "2026-07-01"); err != nil || ok {
+		t.Fatalf("GetPeakClose() before any snapshot: ok = %v, err = %v; want false, nil", ok, err)
+	}
+
+	for _, s := range []DailySnapshot{
+		{Ticker: "AAPL", Date: "2026-06-30", Close: 300}, // before sinceDate, must be excluded
+		{Ticker: "AAPL", Date: "2026-07-01", Close: 200},
+		{Ticker: "AAPL", Date: "2026-07-03", Close: 220},
+		{Ticker: "AAPL", Date: "2026-07-05", Close: 210},
+	} {
+		if err := d.SaveSnapshot(s); err != nil {
+			t.Fatalf("SaveSnapshot() error = %v", err)
+		}
+	}
+
+	peak, ok, err := d.GetPeakClose("AAPL", "2026-07-01")
+	if err != nil || !ok || peak != 220 {
+		t.Errorf("GetPeakClose() = %v, %v, %v; want 220, true, nil", peak, ok, err)
+	}
+}
+
 func TestScanHitsGroupedByTicker(t *testing.T) {
 	d := newTestDB(t)
 

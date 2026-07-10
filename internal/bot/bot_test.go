@@ -304,6 +304,50 @@ func TestUniverseScanChunkEmptyAndNegativeDay(t *testing.T) {
 	}
 }
 
+func TestBreachAlertDecision(t *testing.T) {
+	tests := []struct {
+		name           string
+		adverseMovePct float64
+		thresholdPct   float64
+		prevState      string
+		wantBreached   bool
+		wantAlert      bool
+		wantNewState   string
+	}{
+		{"under threshold, never breached", 5, 10, "", false, false, ""},
+		{"fresh breach alerts", 12, 10, "", true, true, "breached"},
+		{"exactly at threshold counts as breached", 10, 10, "", true, true, "breached"},
+		{"already breached does not re-alert", 15, 10, "breached", true, false, "breached"},
+		{"still under threshold with no prior breach stays quiet", 3, 10, "", false, false, ""},
+		{"recovering under threshold resets state", 8, 10, "breached", false, false, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			breached, alert, newState := breachAlertDecision(tt.adverseMovePct, tt.thresholdPct, tt.prevState)
+			if breached != tt.wantBreached || alert != tt.wantAlert || newState != tt.wantNewState {
+				t.Errorf("breachAlertDecision(%v, %v, %q) = %v, %v, %q; want %v, %v, %q",
+					tt.adverseMovePct, tt.thresholdPct, tt.prevState,
+					breached, alert, newState, tt.wantBreached, tt.wantAlert, tt.wantNewState)
+			}
+		})
+	}
+}
+
+func TestPositionsSlice(t *testing.T) {
+	positions := map[string]db.Position{
+		"MSFT": {Ticker: "MSFT", Shares: 1, AvgCost: 400},
+		"AAPL": {Ticker: "AAPL", Shares: 2, AvgCost: 200},
+	}
+	got := positionsSlice(positions)
+	if len(got) != 2 || got[0].Ticker != "AAPL" || got[1].Ticker != "MSFT" {
+		t.Errorf("positionsSlice() = %+v, want [AAPL, MSFT] order", got)
+	}
+
+	if got := positionsSlice(nil); len(got) != 0 {
+		t.Errorf("positionsSlice(nil) = %+v, want empty", got)
+	}
+}
+
 func TestMergeCandidates(t *testing.T) {
 	movers := []string{"AAPL", "MSFT"}
 	scanHits := map[string]string{

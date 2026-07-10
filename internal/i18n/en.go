@@ -57,6 +57,11 @@ var enMessages = map[Key]string{
 	KeyPortfolioSummary:       "—\nTotal market value: $%.2f\nCumulative realized P&L: %+.2f",
 	KeyJobPanic:               "⚠️ *%s* hit an unexpected error and aborted: %v",
 
+	KeyStopLossAlertTitle:     "🛑 *Stop-Loss Alert*\n\n",
+	KeyStopLossAlertLine:      "• *%s* cost $%.2f → price $%.2f, unrealized loss %.1f%% — stop-loss threshold hit\n",
+	KeyTrailingStopAlertTitle: "📉 *Trailing-Stop Alert*\n\n",
+	KeyTrailingStopAlertLine:  "• *%s* peak close since entry $%.2f → price $%.2f, down %.1f%% from peak — trailing-stop threshold hit\n",
+
 	KeyChatContextHeader:       "[Background info, not real-time, for reference only]\n",
 	KeyChatContextTickerNoData: "- %s: no closing data yet\n",
 	KeyChatContextWatchLine:    "- %s: %s close $%.2f (%+.2f%%)\n",
@@ -152,6 +157,10 @@ from the broad market movers, only list the ones you actually like as buys (at m
 
 When weighing each ticker's news, note whether each headline reads as bullish or bearish and fold that into your reasoning.
 
+If a ticker's section below shows a "Previous call" and today's action differs from it, your reasoning must
+explicitly say what changed (new information, a technical signal reversal, or the original thesis no longer
+holding) — don't just restate the same conclusion in different words.
+
 Strictly follow this output structure, one block per ticker, with no extra text:
 
 [TICKER: AAPL]
@@ -189,6 +198,7 @@ Keep the reply concise — under 400 words total.
 	KeyFundamentalsSummaryLine: "- Fundamentals: P/E %.1f | P/B %.1f | ROE %.1f%% | Gross Margin %.1f%% | Operating Margin %.1f%% | Net Margin %.1f%% | Debt/Equity %.2f | Revenue YoY %.1f%% | EPS YoY %.1f%% | Dividend Yield %.2f%% | Beta %.2f | EPS(TTM) %.2f | Current Ratio %.2f | Market Cap $%.0fM | From 52W High %+.1f%% | From 52W Low %+.1f%%\n",
 	KeyStatementSummaryLine:    "- Latest Filing (%s, FY%d, as of %s): Revenue $%.0fM | Gross Profit $%.0fM | Operating Income $%.0fM | Net Income $%.0fM | Total Assets $%.0fM | Total Liabilities $%.0fM | Total Equity $%.0fM | Operating Cash Flow $%.0fM | Free Cash Flow $%.0fM\n",
 	KeyPositionLine:            "- Position: %g shares, avg cost $%.2f (unrealized %+.2f%%)\n",
+	KeyPrevRecLine:             "- Previous call: %s @ $%.2f (%d days ago)\n",
 	KeyEarningsLine:            "- ⚠️ Earnings date: %s (in %d days) — expect volatility\n",
 	KeyScanHitLine:             "- 🔎 Scan hit: %s\n",
 	KeyTechnicalsSummaryLine:   "- Technicals: RSI(14) %.1f | MACD %s\n",
