@@ -1,10 +1,14 @@
 // Package mcptools implements Argus's MCP (Model Context Protocol) server —
 // the read-only tool surface a chat session can call into for on-demand data
 // (see PLAN.md's Phase 3.5). Deliberately narrow dependency surface (only
-// internal/data + internal/i18n) so this stays a thin, provider-neutral
-// adapter rather than pulling in internal/db, internal/llm, or internal/bot
-// — see tools.go's formatFundamentals/commaf for what that boundary costs
-// (small, deliberate duplication instead of importing internal/bot).
+// internal/data + internal/i18n, plus internal/db for the Phase 3.5
+// "追加項" read-only query tools — see db.OpenReadOnly's doc comment for why
+// that one import is safe despite this package's original "don't touch the
+// DB" decision) so this stays a thin, provider-neutral adapter rather than
+// pulling in internal/llm or internal/bot — see tools.go's
+// formatFundamentals/commaf and db_tools.go's duplicated track-scoring
+// helpers for what that narrower boundary costs (small, deliberate
+// duplication instead of importing internal/bot).
 package mcptools
 
 import (
@@ -13,6 +17,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"argus/internal/data"
+	"argus/internal/db"
 	"argus/internal/i18n"
 )
 
@@ -47,6 +52,9 @@ const (
 // 階段就不註冊" decision. provider and history are never nil in practice
 // (Multi always wraps at least Yahoo, and history is Yahoo-only but always
 // constructed — see cmd/bot/main.go), so their tools are unconditional.
+// database is the same nil-check-and-degrade shape once more: nil whenever
+// db.OpenReadOnly failed (see runMCPServer), so a DB hiccup takes down the
+// four DB-backed tools, not the whole MCP server.
 //
 // Every tool handler is routed through a shared per-process TTL cache and
 // token-bucket rate limiter (tools.go's withCache) — once this server is
@@ -54,7 +62,7 @@ const (
 // call cadence is driven by the model, not bot-side prefetch logic, so this
 // process has to protect Finnhub's rate limit itself instead of relying on
 // callers to behave.
-func NewServer(lang i18n.Lang, provider data.Provider, history data.HistoryProvider, fundamentals data.FundamentalsProvider, earnings data.EarningsProvider) *mcp.Server {
+func NewServer(lang i18n.Lang, provider data.Provider, history data.HistoryProvider, fundamentals data.FundamentalsProvider, earnings data.EarningsProvider, database *db.DB) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "argus",
 		Version: Version,
@@ -65,6 +73,7 @@ func NewServer(lang i18n.Lang, provider data.Provider, history data.HistoryProvi
 		history:      history,
 		fundamentals: fundamentals,
 		earnings:     earnings,
+		db:           database,
 		cache:        newTTLCache(),
 		limiter:      newTokenBucket(rateLimiterCapacity, rateLimiterRefillPerSecond),
 	})
@@ -76,7 +85,7 @@ func NewServer(lang i18n.Lang, provider data.Provider, history data.HistoryProvi
 // invokes — an ACP chat session launches the same binary as a subprocess
 // (os.Executable()) rather than a separately deployed server, so the tool
 // surface can never drift out of version sync with the running bot.
-func Run(ctx context.Context, lang i18n.Lang, provider data.Provider, history data.HistoryProvider, fundamentals data.FundamentalsProvider, earnings data.EarningsProvider) error {
-	server := NewServer(lang, provider, history, fundamentals, earnings)
+func Run(ctx context.Context, lang i18n.Lang, provider data.Provider, history data.HistoryProvider, fundamentals data.FundamentalsProvider, earnings data.EarningsProvider, database *db.DB) error {
+	server := NewServer(lang, provider, history, fundamentals, earnings, database)
 	return server.Run(ctx, &mcp.StdioTransport{})
 }

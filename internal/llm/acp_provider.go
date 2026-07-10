@@ -98,14 +98,17 @@ func startClaudeSession(ctx context.Context, systemPrompt, model string, withMCP
 // server, so the tool surface can never drift out of version sync with the
 // running bot (same rationale as mcptools.Run's doc comment).
 //
-// Only FINNHUB_API_KEY and BOT_LANGUAGE are threaded through explicitly:
-// claude-agent-acp launches this subprocess itself (not this Go process
-// directly) with a bare environment and a cwd this package doesn't control
-// (os.TempDir(), see startClaudeSession) — runMCPServer's own
-// godotenv.Load() has no .env file to find there, so these two env vars
-// (already loaded into this process's own environment by main()'s
-// godotenv.Load() at startup) are the subprocess's only source of the
-// config main() otherwise reads straight from .env.
+// FINNHUB_API_KEY, BOT_LANGUAGE, and DB_PATH are threaded through
+// explicitly: claude-agent-acp launches this subprocess itself (not this Go
+// process directly) with a bare environment and a cwd this package doesn't
+// control (os.TempDir(), see startClaudeSession) — runMCPServer's own
+// godotenv.Load() has no .env file to find there, so these env vars
+// (already resolved into this process's own environment — FINNHUB_API_KEY/
+// BOT_LANGUAGE by main()'s godotenv.Load() at startup, DB_PATH explicitly
+// re-exported as an absolute path by main() for exactly this reason, since
+// it may otherwise only exist as a relative default no .env ever set) are
+// the subprocess's only source of the config main() otherwise reads
+// straight from .env.
 func argusMCPServer() (acp.MCPServer, error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -117,6 +120,9 @@ func argusMCPServer() (acp.MCPServer, error) {
 	}
 	if v := os.Getenv("BOT_LANGUAGE"); v != "" {
 		env["BOT_LANGUAGE"] = v
+	}
+	if v := os.Getenv("DB_PATH"); v != "" {
+		env["DB_PATH"] = v
 	}
 	return acp.MCPServer{
 		Name:    "argus",

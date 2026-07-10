@@ -64,6 +64,19 @@ func main() {
 		log.Fatalf("create data dir: %v", err)
 	}
 
+	// Re-export DB_PATH as an absolute path so llm.argusMCPServer (which
+	// reads it back via os.Getenv when a chat session spins up the MCP
+	// subprocess) sees the right file regardless of DB_PATH's default vs.
+	// explicit-in-.env origin. This matters because that subprocess is
+	// launched by claude-agent-acp from os.TempDir(), not this process's
+	// cwd (see acp_provider.go's startClaudeSession) — a relative path here
+	// would resolve against the wrong directory once handed to the child.
+	if absDBPath, err := filepath.Abs(dbPath); err != nil {
+		log.Printf("warning: could not resolve absolute DB_PATH from %q: %v", dbPath, err)
+	} else {
+		os.Setenv("DB_PATH", absDBPath)
+	}
+
 	// Log to both stdout (visible via `docker logs`/systemd journal) and a
 	// daily-rotated file (registered below on the scheduler) so a VPS
 	// deployment has something to grep after the fact — lumberjack only
@@ -191,9 +204,27 @@ func runMCPServer() {
 	providers = append(providers, yahoo)
 	provider := data.NewMulti(providers...)
 
+	// Read-only DB connection for get_watchlist/get_portfolio/
+	// get_recommendation_stats/get_universe_summary (Phase 3.5 "追加項" —
+	// see db.OpenReadOnly's doc comment for how read-only is actually
+	// enforced). A failure here degrades exactly like a missing Finnhub
+	// key: those four tools are simply not registered (mcptools.NewServer's
+	// nil-check), everything else still works. DB_PATH falls back to the
+	// same default as main() for the case where this subcommand is run
+	// directly (e.g. manual testing from the repo root) rather than spawned
+	// as a chat session's MCP server, where main() always exports an
+	// absolute DB_PATH before the subprocess is launched.
+	database, err := db.OpenReadOnly(envOr("DB_PATH", "data/argus.db"))
+	if err != nil {
+		log.Printf("mcp: open read-only db: %v", err)
+		database = nil
+	} else {
+		defer database.Close()
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	if err := mcptools.Run(ctx, lang, provider, yahoo, fundamentalsProvider, earningsProvider); err != nil {
+	if err := mcptools.Run(ctx, lang, provider, yahoo, fundamentalsProvider, earningsProvider, database); err != nil {
 		log.Fatalf("mcp server: %v", err)
 	}
 }

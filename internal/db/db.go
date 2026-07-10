@@ -92,6 +92,38 @@ func New(path string) (*DB, error) {
 	return d, nil
 }
 
+// OpenReadOnly opens a second connection to the SQLite database at path for
+// a separate process that must never write to it — the MCP server
+// subprocess (see internal/mcptools and PLAN.md's Phase 3.5 "DB 唯讀查詢
+// 工具" item), which relaxes that phase's original "don't touch the DB at
+// all" decision now that it's clear a same-process-family read-only
+// connection carries none of the cross-process write-conflict risk that
+// decision was guarding against.
+//
+// Unlike New, this skips migrate()/seedSP500() (both write) — it assumes
+// the schema already exists, which holds in practice since this connection
+// is only ever opened after the main bot process has already opened (and
+// migrated) the database.
+//
+// modernc.org/sqlite's "mode=ro" DSN query parameter is silently ignored —
+// confirmed against the driver's own test suite (all_test.go's
+// TestInMemory: "// This parameter should be ignored"); this pure-Go
+// driver always opens with SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE
+// regardless of what the DSN says, so "mode=ro" would be a lie here. Real
+// enforcement instead comes from `PRAGMA query_only = ON`, applied via the
+// driver's `_pragma` DSN parameter: SQLite rejects any write statement on
+// a query_only connection with "attempt to write a readonly database",
+// independent of how the file was opened. The `file:` prefix is required
+// for the driver to honor the query string at all — without it, the
+// driver's DSN parser strips everything after `?` before opening.
+func OpenReadOnly(path string) (*DB, error) {
+	conn, err := sql.Open("sqlite", fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=query_only(1)", path))
+	if err != nil {
+		return nil, err
+	}
+	return &DB{conn: conn}, nil
+}
+
 // migrations is the ordered list of incremental schema steps. The DB's
 // PRAGMA user_version records how many have been applied, so migrate() only
 // runs the ones past it — this is how columns get added to existing
