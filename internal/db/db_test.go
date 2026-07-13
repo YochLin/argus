@@ -363,6 +363,39 @@ func TestSettingRoundTripAndUpsert(t *testing.T) {
 	}
 }
 
+func TestGetThesisUnsetTickerIsNotFound(t *testing.T) {
+	d := newTestDB(t)
+
+	_, ok, err := d.GetThesis("AAPL")
+	if err != nil {
+		t.Fatalf("GetThesis() error = %v", err)
+	}
+	if ok {
+		t.Error("GetThesis() on a ticker with no thesis should return ok=false")
+	}
+}
+
+func TestThesisRoundTripAndOverwrite(t *testing.T) {
+	d := newTestDB(t)
+
+	if err := d.SetThesis("AAPL", "long-term compounder, services growth"); err != nil {
+		t.Fatalf("SetThesis() error = %v", err)
+	}
+	got, ok, err := d.GetThesis("AAPL")
+	if err != nil || !ok || got != "long-term compounder, services growth" {
+		t.Errorf("GetThesis() = %q, %v, %v; want the set thesis, true, nil", got, ok, err)
+	}
+
+	// Same ticker should overwrite wholesale, not conflict or append.
+	if err := d.SetThesis("AAPL", "changed my mind: AI capex risk"); err != nil {
+		t.Fatalf("SetThesis() (overwrite) error = %v", err)
+	}
+	got, ok, err = d.GetThesis("AAPL")
+	if err != nil || !ok || got != "changed my mind: AI capex risk" {
+		t.Errorf("GetThesis() after overwrite = %q, %v, %v; want the new thesis, true, nil", got, ok, err)
+	}
+}
+
 func TestGetLatestSnapshot(t *testing.T) {
 	d := newTestDB(t)
 

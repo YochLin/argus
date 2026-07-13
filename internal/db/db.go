@@ -283,6 +283,20 @@ var migrations = []string{
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	`,
+	// 7: thesis holds one free-text holding rationale per ticker (Phase 3.6
+	// expansion's "論點日誌"), set/overwritten wholesale by /thesis — a
+	// dedicated table rather than another settings key, since settings is for
+	// single global values and this is one row per ticker. Deliberately no
+	// history (no timestamped multi-entry log): a single-user low-frequency
+	// bot doesn't need a thesis audit trail, just "what do I currently
+	// believe about this position."
+	`
+	CREATE TABLE IF NOT EXISTS thesis (
+		ticker TEXT PRIMARY KEY,
+		thesis TEXT NOT NULL,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	`,
 }
 
 func (d *DB) migrate() error {
@@ -706,6 +720,35 @@ func (d *DB) SetSetting(key, value string) error {
 			value = excluded.value,
 			updated_at = excluded.updated_at`,
 		key, value,
+	)
+	return err
+}
+
+// GetThesis returns the user's holding rationale for ticker, or ok=false if
+// /thesis has never been run for it.
+func (d *DB) GetThesis(ticker string) (string, bool, error) {
+	var thesis string
+	err := d.conn.QueryRow(`SELECT thesis FROM thesis WHERE ticker = ?`, ticker).Scan(&thesis)
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return thesis, true, nil
+}
+
+// SetThesis upserts ticker's holding rationale, replacing whatever was there
+// before — see the thesis table's migration-7 doc comment for why this is a
+// single overwritable field rather than a journaled history.
+func (d *DB) SetThesis(ticker, thesis string) error {
+	_, err := d.conn.Exec(`
+		INSERT INTO thesis (ticker, thesis, updated_at)
+		VALUES (?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(ticker) DO UPDATE SET
+			thesis = excluded.thesis,
+			updated_at = excluded.updated_at`,
+		ticker, thesis,
 	)
 	return err
 }

@@ -6,7 +6,7 @@ package i18n
 // sites pass positional args once and reuse them for whichever table T
 // picks.
 var zhMessages = map[Key]string{
-	KeyUnknownCommand:         "未知指令。可用指令：\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [天數]\n/buy <ticker> <股數> <價格> [手續費]\n/sell <ticker> <股數> <價格> [手續費]\n/portfolio\n/insight\n/cash [金額]\n/dailyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n\n直接傳一般訊息（不加 / 開頭）則會跟我自由對話。",
+	KeyUnknownCommand:         "未知指令。可用指令：\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [天數]\n/buy <ticker> <股數> <價格> [手續費]\n/sell <ticker> <股數> <價格> [手續費]\n/portfolio\n/insight\n/cash [金額]\n/thesis <ticker> [論點文字]\n/dailyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n\n直接傳一般訊息（不加 / 開頭）則會跟我自由對話。",
 	KeyAddUsage:               "用法：/add <ticker>，例如 /add AAPL",
 	KeyAddFailed:              "新增失敗：%v",
 	KeyAddSuccess:             "已將 *%s* 加入自選股。",
@@ -95,6 +95,13 @@ var zhMessages = map[Key]string{
 	KeyUniverseRemoveUsage:   "用法：/universe remove TICKER",
 	KeyUniverseRemoveSuccess: "已將 %s 從掃描池移除。",
 	KeyUniverseRemoveFailed:  "移除 %s 失敗：%v",
+
+	KeyThesisUsage:      "用法：/thesis <ticker> [論點文字]\n只帶 ticker 會查詢目前記錄的論點；帶文字會覆寫設定。",
+	KeyThesisSetFailed:  "記錄 %s 的論點失敗：%v",
+	KeyThesisSetSuccess: "已記錄 *%s* 的持有論點：%s",
+	KeyThesisNotSet:     "*%s* 目前沒有記錄論點，用 /thesis %s <文字> 補上。",
+	KeyThesisCurrent:    "*%s* 目前的持有論點：%s",
+	KeyBuyThesisNudge:   "\n💭 *%s* 還沒有記錄持有論點，要不要用 /thesis %s <文字> 補一句？",
 
 	KeyQuoteLine: "*%s*  $%.2f  %s%.2f%%\n開: $%.2f　高: $%.2f　低: $%.2f",
 
@@ -206,10 +213,12 @@ var zhMessages = map[Key]string{
 	KeyInsightCashLine:          "現金水位：$%.2f\n總資產（持倉＋現金）：$%.2f\n",
 	KeyInsightPromptTask: `
 請用繁體中文分析整個投資組合（不要逐檔重複已列出的數據，聚焦組合層級的判斷）：
-1. 集中度風險：單一持股或單一產業是否佔比過高
-2. 持有理由檢視：對照近期新聞與基本面，各檔當初的持有邏輯是否仍然成立
-3. 加碼／減碼／停損建議：哪些部位該加碼、該減碼、或該設停損，並說明理由
-4. 若有提供現金水位，簡短評論目前的持倉／現金配置是否合理
+1. 集中度風險：單一持股或單一產業是否佔比過高（產業請根據你自己對這些標的的認識判斷，不用等資料提供）
+2. 持有理由檢視：若某檔附有「持有論點」，請直接挑戰它——對照近期新聞與基本面，這個論點是否還站得住腳，
+   哪裡已經變了；沒有附論點的標的，則檢視當初可能的持有邏輯是否仍然成立
+3. 相對大盤表現：若附有「相對大盤」數據，指出哪些持倉其實在跑輸 SPY，光是上漲不代表這筆投資是對的
+4. 加碼／減碼／停損建議：哪些部位該加碼、該減碼、或該設停損，並說明理由
+5. 若有提供現金水位，簡短評論目前的持倉／現金配置是否合理
 
 回覆請簡潔，總字數控制在 600 字以內。
 `,
@@ -227,6 +236,8 @@ var zhMessages = map[Key]string{
 	KeyPrevRecLine:             "- 上次建議: %s @ $%.2f（%d 天前）\n",
 	KeyEarningsLine:            "- ⚠️ 財報日: %s（%d 天內），留意波動\n",
 	KeyScanHitLine:             "- 🔎 掃描命中: %s\n",
+	KeyThesisLine:              "- 📝 持有論點: %s\n",
+	KeyVsSPYLine:               "- 相對大盤: 持有期間 %+.1f%% vs SPY 同期 %+.1f%%\n",
 	KeyTechnicalsSummaryLine:   "- 技術面：RSI(14) %.1f｜MACD %s\n",
 	KeyTechnicalsMALine:        "- %s MA%d ($%.2f)\n",
 	KeyTrendBullish:            "多頭",

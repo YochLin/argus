@@ -63,3 +63,34 @@ func TestBuildInsightPromptSkipsValueForPositionWithoutQuote(t *testing.T) {
 		t.Errorf("buildInsightPrompt() missing total position value 2000.00 (should ignore the quote-less position), got:\n%s", prompt)
 	}
 }
+
+func TestBuildInsightPromptRendersThesisAndVsSPY(t *testing.T) {
+	thesis := "long-term compounder, services growth"
+	positions := []StockData{
+		{
+			Quote:    &data.Quote{Ticker: "AAPL", Price: 200},
+			Position: &Position{Shares: 10, AvgCost: 150},
+			Thesis:   &thesis,
+			VsSPY:    &VsSPYReturn{TickerPct: 33.3, SPYPct: 10.0},
+		},
+	}
+
+	prompt := buildInsightPrompt(i18n.EN, positions, 0, false)
+
+	if !strings.Contains(prompt, thesis) {
+		t.Errorf("buildInsightPrompt() missing thesis text, got:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "+33.3%") || !strings.Contains(prompt, "+10.0%") {
+		t.Errorf("buildInsightPrompt() missing vs-SPY percentages, got:\n%s", prompt)
+	}
+}
+
+func TestWriteStockSectionOmitsThesisAndVsSPYWhenNil(t *testing.T) {
+	var sb strings.Builder
+	writeStockSection(&sb, i18n.EN, StockData{Quote: &data.Quote{Ticker: "AAPL", Price: 200}})
+
+	got := sb.String()
+	if strings.Contains(got, "Holding thesis") || strings.Contains(got, "vs. market") {
+		t.Errorf("writeStockSection() should omit thesis/vs-SPY lines when both are nil, got:\n%s", got)
+	}
+}

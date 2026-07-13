@@ -196,6 +196,8 @@ func (b *Bot) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 		b.handleFundamentals(args)
 	case "universe":
 		b.handleUniverse(args)
+	case "thesis":
+		b.handleThesis(args)
 	case "reset":
 		b.handleReset()
 	default:
@@ -725,7 +727,24 @@ func (b *Bot) handleBuy(args string) {
 	if err := b.db.AddTicker(ticker); err != nil {
 		log.Printf("buy: add %s to watchlist: %v", ticker, err)
 	}
-	b.Send(i18n.T(b.lang, i18n.KeyBuySuccess, ticker, shares, price, fee, pos.Shares, pos.AvgCost))
+	b.Send(i18n.T(b.lang, i18n.KeyBuySuccess, ticker, shares, price, fee, pos.Shares, pos.AvgCost) + b.thesisNudge(ticker))
+}
+
+// thesisNudge returns a one-line nudge to record a holding thesis when
+// ticker doesn't have one yet, or "" when it already does (or the lookup
+// fails — a nudge is a courtesy, not worth failing the trade confirmation
+// over). Called only from handleBuy, never blocking the trade itself — see
+// PLAN.md's Phase 3.6 expansion "論點日誌" item.
+func (b *Bot) thesisNudge(ticker string) string {
+	_, ok, err := b.db.GetThesis(ticker)
+	if err != nil {
+		log.Printf("buy: check thesis %s: %v", ticker, err)
+		return ""
+	}
+	if ok {
+		return ""
+	}
+	return i18n.T(b.lang, i18n.KeyBuyThesisNudge, ticker, ticker)
 }
 
 // handleSell records a sale against an existing position and reports the
@@ -824,6 +843,18 @@ func (b *Bot) handleInsight(ctx context.Context) {
 
 	earnings := b.loadEarnings(tickers)
 	stocks := b.fetchStockData(tickers, true, positionsMap, earnings, nil, nil)
+
+	theses := b.loadTheses(tickers)
+	vsSPY := b.loadVsSPY(stocks, positionsMap)
+	for i := range stocks {
+		ticker := stocks[i].Quote.Ticker
+		if th, ok := theses[ticker]; ok {
+			stocks[i].Thesis = &th
+		}
+		if v, ok := vsSPY[ticker]; ok {
+			stocks[i].VsSPY = &v
+		}
+	}
 
 	cash, haveCash, err := b.loadCash()
 	if err != nil {
@@ -988,6 +1019,48 @@ func (b *Bot) sendUniverseSummary() {
 		}
 	}
 	b.Send(sb.String())
+}
+
+// handleThesis manages the Phase 3.6 expansion's holding-thesis journal:
+// "/thesis TICKER" alone queries the currently recorded rationale, "/thesis
+// TICKER free text" sets/overwrites it wholesale (see db.SetThesis's doc
+// comment for why there's no history). Deliberately fed only into /insight
+// (see handleInsight's loadTheses call) — never /recommend, so the model
+// challenges the user's stated thesis instead of confirming it.
+func (b *Bot) handleThesis(args string) {
+	args = strings.TrimSpace(args)
+	if args == "" {
+		b.Send(i18n.T(b.lang, i18n.KeyThesisUsage))
+		return
+	}
+
+	parts := strings.SplitN(args, " ", 2)
+	ticker := strings.ToUpper(strings.TrimSpace(parts[0]))
+	if ticker == "" {
+		b.Send(i18n.T(b.lang, i18n.KeyThesisUsage))
+		return
+	}
+
+	if len(parts) < 2 || strings.TrimSpace(parts[1]) == "" {
+		thesis, ok, err := b.db.GetThesis(ticker)
+		if err != nil {
+			b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
+			return
+		}
+		if !ok {
+			b.Send(i18n.T(b.lang, i18n.KeyThesisNotSet, ticker, ticker))
+			return
+		}
+		b.Send(i18n.T(b.lang, i18n.KeyThesisCurrent, ticker, thesis))
+		return
+	}
+
+	thesis := strings.TrimSpace(parts[1])
+	if err := b.db.SetThesis(ticker, thesis); err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyThesisSetFailed, ticker, err))
+		return
+	}
+	b.Send(i18n.T(b.lang, i18n.KeyThesisSetSuccess, ticker, thesis))
 }
 
 // handleChat replies to a plain-text (non-command) message using the LLM
@@ -1580,6 +1653,82 @@ func (b *Bot) loadEarnings(tickers []string) map[string]data.EarningsEvent {
 		return nil
 	}
 	return events
+}
+
+// loadTheses returns each ticker's recorded holding thesis (see /thesis,
+// handleThesis), keyed by ticker — only tickers with one on record appear in
+// the map. A per-ticker query failure logs and skips that ticker rather than
+// aborting the whole call; unlike fundamentals/earnings this hits local
+// SQLite, not a rate-limited external API, so a plain loop (not a batched
+// query) is fine at the handful-of-positions scale /insight runs at.
+func (b *Bot) loadTheses(tickers []string) map[string]string {
+	out := make(map[string]string, len(tickers))
+	for _, t := range tickers {
+		thesis, ok, err := b.db.GetThesis(t)
+		if err != nil {
+			log.Printf("load thesis %s: %v", t, err)
+			continue
+		}
+		if ok {
+			out[t] = thesis
+		}
+	}
+	return out
+}
+
+// computeVsSPY is the pure percentage math behind the Phase 3.6 expansion's
+// "逐檔 vs SPY" item: a position's own holding-period return next to SPY's
+// over the same period. Split out from loadVsSPY (which owns the DB/quote
+// lookups) so the arithmetic is independently testable, same shape as
+// breachAlertDecision.
+func computeVsSPY(currentPrice, avgCost, spyPrice, spyEntryClose float64) llm.VsSPYReturn {
+	return llm.VsSPYReturn{
+		TickerPct: (currentPrice - avgCost) / avgCost * 100,
+		SPYPct:    (spyPrice - spyEntryClose) / spyEntryClose * 100,
+	}
+}
+
+// loadVsSPY computes computeVsSPY for every position in stocks that has both
+// a BUY date on record (db.GetEarliestBuyDate) and a same-date SPY close in
+// daily_snapshots (populated by snapshotBenchmark since Phase 3.8) — a
+// position missing either is simply omitted from the result, not an error
+// (e.g. a pre-Phase-3.8 buy predates SPY ever being snapshotted). Reuses
+// stocks' already-fetched Quote.Price rather than a second GetQuote call per
+// ticker, and fetches the current SPY quote once up front since every
+// position compares against the same value.
+func (b *Bot) loadVsSPY(stocks []llm.StockData, positions map[string]db.Position) map[string]llm.VsSPYReturn {
+	spyQuote, err := b.provider.GetQuote(benchmarkTicker)
+	if err != nil {
+		log.Printf("vs-spy: benchmark %s quote: %v", benchmarkTicker, err)
+		return nil
+	}
+
+	out := make(map[string]llm.VsSPYReturn, len(stocks))
+	for _, s := range stocks {
+		ticker := s.Quote.Ticker
+		p, ok := positions[ticker]
+		if !ok || p.AvgCost == 0 {
+			continue
+		}
+		buyDate, ok, err := b.db.GetEarliestBuyDate(ticker)
+		if err != nil {
+			log.Printf("vs-spy: earliest buy %s: %v", ticker, err)
+			continue
+		}
+		if !ok {
+			continue
+		}
+		spyEntryClose, ok, err := b.db.GetSnapshotClose(benchmarkTicker, buyDate)
+		if err != nil {
+			log.Printf("vs-spy: benchmark snapshot %s: %v", ticker, err)
+			continue
+		}
+		if !ok || spyEntryClose == 0 {
+			continue
+		}
+		out[ticker] = computeVsSPY(s.Quote.Price, p.AvgCost, spyQuote.Price, spyEntryClose)
+	}
+	return out
 }
 
 // loadMarketNews returns up to marketNewsLimit general market/macro news
