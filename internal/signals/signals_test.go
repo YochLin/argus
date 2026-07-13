@@ -69,6 +69,28 @@ func TestMA(t *testing.T) {
 	})
 }
 
+func TestVolumeRatio(t *testing.T) {
+	t.Run("insufficient data returns 0", func(t *testing.T) {
+		if got := VolumeRatio([]int64{1, 2, 3}, 5); got != 0 {
+			t.Errorf("VolumeRatio() = %v, want 0", got)
+		}
+	})
+
+	t.Run("compares latest against the average of the preceding window, excluding itself", func(t *testing.T) {
+		volumes := []int64{100, 100, 100, 100, 400}
+		if got := VolumeRatio(volumes, 4); !almostEqual(got, 4) {
+			t.Errorf("VolumeRatio() = %v, want 4", got)
+		}
+	})
+
+	t.Run("zero baseline average returns 0 rather than dividing by zero", func(t *testing.T) {
+		volumes := []int64{0, 0, 0, 0, 500}
+		if got := VolumeRatio(volumes, 4); got != 0 {
+			t.Errorf("VolumeRatio() = %v, want 0", got)
+		}
+	})
+}
+
 func TestEmaSeries(t *testing.T) {
 	got := emaSeries([]float64{1, 2, 3, 4}, 3)
 	want := []float64{1, 1.5, 2.25, 3.125}

@@ -112,6 +112,29 @@ func MA(closes []float64, period int) float64 {
 	return sum / float64(period)
 }
 
+// VolumeRatio returns the latest day's volume as a multiple of the average
+// of the preceding period days (excluding the latest day itself, so a huge
+// print doesn't inflate its own baseline), or 0 if there isn't enough
+// history yet or the baseline average is 0 (e.g. an illiquid ticker with no
+// real volume data). volumes is oldest-first and index-aligned with the
+// closes HistoryProvider.GetHistory returns alongside it.
+func VolumeRatio(volumes []int64, period int) float64 {
+	if len(volumes) < period+1 {
+		return 0
+	}
+	latest := volumes[len(volumes)-1]
+	window := volumes[len(volumes)-1-period : len(volumes)-1]
+	var sum int64
+	for _, v := range window {
+		sum += v
+	}
+	avg := float64(sum) / float64(period)
+	if avg == 0 {
+		return 0
+	}
+	return float64(latest) / avg
+}
+
 // CheckRSIState is the deduplicated version of CheckRSI: it only returns a
 // signal when RSI newly enters overbought/oversold territory relative to
 // prevState (the state persisted after the previous check; "" reads as

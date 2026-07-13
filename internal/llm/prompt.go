@@ -82,11 +82,18 @@ type VsSPYReturn struct {
 // ("bullish"/"bearish"/"" for not-enough-history) as a plain string rather
 // than importing internal/signals here, same reasoning as Position/Earnings
 // staying package-local mini-structs. MA200 is 0 when there isn't ~200 days
-// of history yet (e.g. a recent IPO).
+// of history yet (e.g. a recent IPO). Volume/VolumeRatio come from
+// HistoryProvider.GetHistory rather than StockData.Quote.Volume — the latter
+// is always 0 for a Finnhub-quoted ticker (Finnhub's /quote has no volume
+// field), so this is the only reliable volume source. VolumeRatio is 0 when
+// there isn't ~21 days of history yet (see signals.VolumeRatio); 0 renders
+// as "no data", not "no volume".
 type Technicals struct {
 	RSI14             float64
 	MACDTrend         string
 	MA20, MA50, MA200 float64
+	Volume            int64
+	VolumeRatio       float64
 }
 
 // Position is the subset of a db.Position an LLM prompt needs: shares held
@@ -175,7 +182,14 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 	fmt.Fprint(sb, i18n.T(lang, i18n.KeyStockHeader, q.Ticker))
 	fmt.Fprint(sb, i18n.T(lang, i18n.KeyPriceLine, q.Price, q.ChangePercent))
 	fmt.Fprint(sb, i18n.T(lang, i18n.KeyOHLLine, q.Open, q.High, q.Low))
-	fmt.Fprint(sb, i18n.T(lang, i18n.KeyVolumeLine, q.Volume, q.PrevClose))
+	// Prefer Technicals.Volume (from Yahoo's history endpoint) over
+	// q.Volume — the latter is always 0 whenever the quote came from
+	// Finnhub, which has no volume field on /quote at all.
+	vol := q.Volume
+	if t := s.Technicals; t != nil && t.Volume > 0 {
+		vol = t.Volume
+	}
+	fmt.Fprint(sb, i18n.T(lang, i18n.KeyVolumeLine, vol, q.PrevClose))
 	fmt.Fprint(sb, i18n.T(lang, i18n.KeyQuoteTimeLine, q.Timestamp.In(time.FixedZone("CST", 8*3600)).Format("2006-01-02 15:04")))
 
 	if t := s.Technicals; t != nil {
@@ -197,6 +211,9 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 			if ma.value > 0 {
 				fmt.Fprint(sb, i18n.T(lang, i18n.KeyTechnicalsMALine, maLabel(lang, q.Price, ma.value), ma.period, ma.value))
 			}
+		}
+		if t.VolumeRatio > 0 {
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyVolumeRatioLine, t.VolumeRatio))
 		}
 	}
 

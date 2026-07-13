@@ -38,11 +38,14 @@ func (f *fakeProvider) GetNews(string, int) ([]data.NewsItem, error) { return f.
 func (f *fakeProvider) GetMarketMovers() ([]string, error)           { return f.movers, f.moversErr }
 
 type fakeHistory struct {
-	closes []float64
-	err    error
+	closes  []float64
+	volumes []int64
+	err     error
 }
 
-func (f *fakeHistory) GetHistory(string) ([]float64, error) { return f.closes, f.err }
+func (f *fakeHistory) GetHistory(string) ([]float64, []int64, error) {
+	return f.closes, f.volumes, f.err
+}
 
 type fakeFundamentals struct {
 	fd      *data.Fundamentals
