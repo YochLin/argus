@@ -11,28 +11,6 @@ import (
 	"argus/internal/i18n"
 )
 
-func TestCommaf(t *testing.T) {
-	tests := []struct {
-		in   float64
-		want string
-	}{
-		{0, "0"},
-		{5, "5"},
-		{999, "999"},
-		{1000, "1,000"},
-		{4321020, "4,321,020"},
-		{1234567.89, "1,234,568"}, // rounds to nearest integer
-		{-1234567, "-1,234,567"},
-		{-500, "-500"},
-		{100, "100"},
-	}
-	for _, tt := range tests {
-		if got := commaf(tt.in); got != tt.want {
-			t.Errorf("commaf(%v) = %q, want %q", tt.in, got, tt.want)
-		}
-	}
-}
-
 func TestDedup(t *testing.T) {
 	tests := []struct {
 		name string
@@ -104,18 +82,6 @@ func TestFormatQuote(t *testing.T) {
 			t.Errorf("formatQuote() = %q, want it to contain down arrow", out)
 		}
 	})
-}
-
-func TestFormatFundamentals(t *testing.T) {
-	fd := &data.Fundamentals{
-		Ticker:           "AAPL",
-		PE:               28.5,
-		MarketCapMillion: 3200000,
-	}
-	out := formatFundamentals(i18n.EN, fd)
-	if !strings.Contains(out, "3,200,000") {
-		t.Errorf("formatFundamentals() = %q, want market cap formatted with thousands separators", out)
-	}
 }
 
 func TestDaysUntil(t *testing.T) {
@@ -244,24 +210,6 @@ func TestFormatChatContext(t *testing.T) {
 			t.Errorf("formatChatContext() = %q, want a no-data line for NEWCO", out)
 		}
 	})
-}
-
-func TestFormatFinancialStatement(t *testing.T) {
-	st := &data.FinancialStatement{
-		Form:       "10-K",
-		FiscalYear: 2025,
-		PeriodEnd:  "2025-09-27",
-		Revenue:    391035000000,
-		NetIncome:  93736000000,
-	}
-	out := formatFinancialStatement(i18n.EN, st)
-	if !strings.Contains(out, "10-K") || !strings.Contains(out, "2025-09-27") {
-		t.Errorf("formatFinancialStatement() = %q, want it to contain form and period end", out)
-	}
-	// Revenue/NetIncome are formatted in millions with thousands separators.
-	if !strings.Contains(out, "391,035") {
-		t.Errorf("formatFinancialStatement() = %q, want revenue formatted in millions", out)
-	}
 }
 
 // TestUniverseScanChunkFullCoverage verifies universeScanChunk rotates

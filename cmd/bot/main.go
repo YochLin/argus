@@ -12,8 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/joho/godotenv"
-	"gopkg.in/natefinch/lumberjack.v2"
 	"argus/internal/bot"
 	"argus/internal/data"
 	"argus/internal/db"
@@ -21,6 +19,8 @@ import (
 	"argus/internal/llm"
 	"argus/internal/mcptools"
 	"argus/internal/scheduler"
+	"github.com/joho/godotenv"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var cst = time.FixedZone("CST", 8*3600)
@@ -133,7 +133,20 @@ func main() {
 	}
 	defer llmClient.Close() // kills any still-open persistent chat session's subprocess
 
-	telegramBot, err := bot.New(telegramToken, chatID, database, provider, fundamentalsProvider, earningsProvider, marketNewsProvider, yahoo, llmClient, lang, stopLossPct, trailingStopPct)
+	telegramBot, err := bot.New(bot.Config{
+		Token:           telegramToken,
+		ChatID:          chatID,
+		DB:              database,
+		Provider:        provider,
+		Fundamentals:    fundamentalsProvider,
+		Earnings:        earningsProvider,
+		MarketNews:      marketNewsProvider,
+		History:         yahoo,
+		LLM:             llmClient,
+		Lang:            lang,
+		StopLossPct:     stopLossPct,
+		TrailingStopPct: trailingStopPct,
+	})
 	if err != nil {
 		log.Fatalf("init bot: %v", err)
 	}
