@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/llm"
@@ -182,106 +181,24 @@ func (b *Bot) handleTrack(daysArg string) {
 		days = n
 	}
 
-	fromDate := time.Now().In(cst).AddDate(0, 0, -days).Format("2006-01-02")
-	recs, err := b.db.GetRecommendationsSince(fromDate)
+	rows, lines, ok, err := b.computeTrackRows(days)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
 		return
 	}
-	if len(recs) == 0 {
+	if !ok {
 		b.Send(i18n.T(b.lang, i18n.KeyTrackEmpty, days))
 		return
 	}
 
-	// One quote per distinct ticker, however often it was recommended.
-	quotes := make(map[string]*data.Quote)
-	spyQuote, err := b.provider.GetQuote(benchmarkTicker)
-	if err != nil {
-		log.Printf("track: benchmark %s quote: %v", benchmarkTicker, err)
-		spyQuote = nil
-	}
-
 	var sb strings.Builder
 	sb.WriteString(i18n.T(b.lang, i18n.KeyTrackTitle, days))
-	var rows []trackRow
-	for _, r := range recs {
-		action := r.Action
-		if action == "" {
-			action = "—"
-		}
-
-		base := r.Price
-		if base == 0 {
-			if c, ok, err := b.db.GetSnapshotClose(r.Ticker, r.Date); err == nil && ok {
-				base = c
-			}
-		}
-		if base == 0 {
-			sb.WriteString(i18n.T(b.lang, i18n.KeyTrackLineNoPrice, r.Date, r.Ticker, action))
-			continue
-		}
-
-		q, seen := quotes[r.Ticker]
-		if !seen {
-			var err error
-			q, err = b.provider.GetQuote(r.Ticker)
-			if err != nil {
-				log.Printf("track: quote %s: %v", r.Ticker, err)
-				q = nil
-			}
-			quotes[r.Ticker] = q
-		}
-		if q == nil {
-			sb.WriteString(i18n.T(b.lang, i18n.KeyQuoteUnavailable, r.Ticker))
-			continue
-		}
-
-		changePct := (q.Price - base) / base * 100
-
-		var spyChangePct float64
-		haveSPY := false
-		if spyQuote != nil {
-			if spyBase, ok, err := b.db.GetSnapshotClose(benchmarkTicker, r.Date); err == nil && ok && spyBase != 0 {
-				spyChangePct = (spyQuote.Price - spyBase) / spyBase * 100
-				haveSPY = true
-			}
-		}
-
-		verdict := ""
-		if r.Action == "BUY" || r.Action == "SELL" {
-			hit := trackHit(r.Action, changePct, spyChangePct, haveSPY)
-			verdict = "❌"
-			if hit {
-				verdict = "✅"
-			}
-			rows = append(rows, trackRow{
-				Action:    r.Action,
-				Source:    displaySource(r.Source),
-				ChangePct: changePct,
-				Hit:       hit,
-			})
-		}
-
-		if haveSPY {
-			sb.WriteString(i18n.T(b.lang, i18n.KeyTrackLineVsSPY, r.Date, r.Ticker, action, base, q.Price, changePct, spyChangePct, verdict))
-		} else {
-			sb.WriteString(i18n.T(b.lang, i18n.KeyTrackLine, r.Date, r.Ticker, action, base, q.Price, changePct, verdict))
-		}
+	for _, l := range lines {
+		sb.WriteString(l)
 	}
 
 	overall, bySource := summarizeTrack(rows)
-	if overall.Evaluated > 0 {
-		sb.WriteString(i18n.T(b.lang, i18n.KeyTrackSummary, overall.Hits, overall.Evaluated, overall.HitRate()))
-		sb.WriteString(i18n.T(b.lang, i18n.KeyTrackAvgReturnLine, overall.AvgBuyPct(), overall.BuyCount, overall.AvgSellPct(), overall.SellCount))
-
-		if len(bySource) > 1 {
-			sb.WriteString(i18n.T(b.lang, i18n.KeyTrackBySourceHeader))
-			for _, source := range sortedSourceKeys(bySource) {
-				s := bySource[source]
-				sb.WriteString(i18n.T(b.lang, i18n.KeyTrackBySourceLine, source, s.Hits, s.Evaluated, s.HitRate()))
-			}
-		}
-	}
+	sb.WriteString(renderTrackSummary(b.lang, overall, bySource))
 	b.Send(sb.String())
 }
 
@@ -310,8 +227,8 @@ func trackHit(action string, tickerChangePct, spyChangePct float64, haveSPY bool
 }
 
 // trackRow is one BUY/SELL recommendation reduced to what /track's summary
-// needs, computed by handleTrack (which has the live quotes/SPY data) so the
-// aggregation below stays a pure pass over plain values.
+// needs, computed by computeTrackRows (which has the live quotes/SPY data)
+// so the aggregation below stays a pure pass over plain values.
 type trackRow struct {
 	Action    string // "BUY" or "SELL" only
 	Source    string // already normalized via displaySource

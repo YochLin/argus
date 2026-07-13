@@ -330,6 +330,70 @@ func TestSaveNetWorthSnapshotUpsert(t *testing.T) {
 	}
 }
 
+func TestGetLatestNetWorthEmpty(t *testing.T) {
+	d := newTestDB(t)
+
+	_, _, ok, err := d.GetLatestNetWorth()
+	if err != nil {
+		t.Fatalf("GetLatestNetWorth() error = %v", err)
+	}
+	if ok {
+		t.Error("GetLatestNetWorth() on an empty table should return ok=false")
+	}
+}
+
+func TestGetLatestNetWorth(t *testing.T) {
+	d := newTestDB(t)
+
+	if err := d.SaveNetWorthSnapshot("2026-07-01", 1000); err != nil {
+		t.Fatalf("SaveNetWorthSnapshot() error = %v", err)
+	}
+	if err := d.SaveNetWorthSnapshot("2026-07-08", 1100); err != nil {
+		t.Fatalf("SaveNetWorthSnapshot() error = %v", err)
+	}
+
+	date, total, ok, err := d.GetLatestNetWorth()
+	if err != nil || !ok || date != "2026-07-08" || total != 1100 {
+		t.Errorf("GetLatestNetWorth() = %q, %v, %v, %v; want \"2026-07-08\", 1100, true, nil", date, total, ok, err)
+	}
+}
+
+func TestGetNetWorthOnOrBefore(t *testing.T) {
+	d := newTestDB(t)
+
+	if err := d.SaveNetWorthSnapshot("2026-07-01", 1000); err != nil {
+		t.Fatalf("SaveNetWorthSnapshot() error = %v", err)
+	}
+	if err := d.SaveNetWorthSnapshot("2026-07-03", 1050); err != nil {
+		t.Fatalf("SaveNetWorthSnapshot() error = %v", err)
+	}
+
+	t.Run("exact date match", func(t *testing.T) {
+		total, ok, err := d.GetNetWorthOnOrBefore("2026-07-03")
+		if err != nil || !ok || total != 1050 {
+			t.Errorf("GetNetWorthOnOrBefore(2026-07-03) = %v, %v, %v; want 1050, true, nil", total, ok, err)
+		}
+	})
+
+	t.Run("falls back to most recent prior date", func(t *testing.T) {
+		// 2026-07-02 has no snapshot (e.g. a weekend) — should fall back to 07-01.
+		total, ok, err := d.GetNetWorthOnOrBefore("2026-07-02")
+		if err != nil || !ok || total != 1000 {
+			t.Errorf("GetNetWorthOnOrBefore(2026-07-02) = %v, %v, %v; want 1000, true, nil", total, ok, err)
+		}
+	})
+
+	t.Run("no snapshot on or before date", func(t *testing.T) {
+		_, ok, err := d.GetNetWorthOnOrBefore("2026-06-01")
+		if err != nil {
+			t.Fatalf("GetNetWorthOnOrBefore() error = %v", err)
+		}
+		if ok {
+			t.Error("GetNetWorthOnOrBefore() before any snapshot should return ok=false")
+		}
+	})
+}
+
 func TestGetSettingUnsetKeyIsNotFound(t *testing.T) {
 	d := newTestDB(t)
 

@@ -697,6 +697,42 @@ func (d *DB) SaveNetWorthSnapshot(date string, total float64) error {
 	return err
 }
 
+// GetLatestNetWorth returns the most recent net_worth_snapshots row
+// regardless of date, or ok=false if none exists yet — same "most recent
+// regardless of date" shape as GetLatestSnapshot, for the weekly review's
+// net-worth line (Phase 3.6 PR2), net_worth_snapshots' first reader.
+func (d *DB) GetLatestNetWorth() (date string, total float64, ok bool, err error) {
+	err = d.conn.QueryRow(
+		`SELECT date, total_value FROM net_worth_snapshots ORDER BY date DESC LIMIT 1`,
+	).Scan(&date, &total)
+	if err == sql.ErrNoRows {
+		return "", 0, false, nil
+	}
+	if err != nil {
+		return "", 0, false, err
+	}
+	return date, total, true, nil
+}
+
+// GetNetWorthOnOrBefore returns the most recent net_worth_snapshots row with
+// date <= the given date, or ok=false if none exists — used to find a
+// baseline "about a week ago" even when that exact date wasn't a trading
+// day (weekend/holiday), same reasoning as GetPeakClose's date-range query.
+func (d *DB) GetNetWorthOnOrBefore(date string) (float64, bool, error) {
+	var total float64
+	err := d.conn.QueryRow(
+		`SELECT total_value FROM net_worth_snapshots WHERE date <= ? ORDER BY date DESC LIMIT 1`,
+		date,
+	).Scan(&total)
+	if err == sql.ErrNoRows {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	return total, true, nil
+}
+
 // GetSetting returns the stored value for key, or ok=false if it's never
 // been set.
 func (d *DB) GetSetting(key string) (string, bool, error) {

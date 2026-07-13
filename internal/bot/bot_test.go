@@ -471,3 +471,71 @@ func TestSortedSourceKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderTrackSummaryEmptyWhenNothingEvaluated(t *testing.T) {
+	if got := renderTrackSummary(i18n.EN, trackSourceStats{}, nil); got != "" {
+		t.Errorf("renderTrackSummary() with Evaluated=0 = %q, want \"\"", got)
+	}
+}
+
+func TestRenderTrackSummaryOmitsBySourceBreakdownForSingleSource(t *testing.T) {
+	overall := trackSourceStats{Hits: 3, Evaluated: 4, BuySum: 12, BuyCount: 3}
+	bySource := map[string]trackSourceStats{"watchlist": overall}
+
+	got := renderTrackSummary(i18n.EN, overall, bySource)
+
+	if !strings.Contains(got, "3/4") {
+		t.Errorf("renderTrackSummary() missing hit rate, got:\n%s", got)
+	}
+	if strings.Contains(got, "By source") {
+		t.Errorf("renderTrackSummary() with a single source should omit the by-source breakdown, got:\n%s", got)
+	}
+}
+
+func TestRenderTrackSummaryIncludesBySourceBreakdownForMultipleSources(t *testing.T) {
+	overall := trackSourceStats{Hits: 3, Evaluated: 4}
+	bySource := map[string]trackSourceStats{
+		"watchlist": {Hits: 1, Evaluated: 2},
+		"scan":      {Hits: 2, Evaluated: 2},
+	}
+
+	got := renderTrackSummary(i18n.EN, overall, bySource)
+
+	if !strings.Contains(got, "By source") {
+		t.Errorf("renderTrackSummary() with 2 sources should include the by-source breakdown, got:\n%s", got)
+	}
+	if !strings.Contains(got, "watchlist") || !strings.Contains(got, "scan") {
+		t.Errorf("renderTrackSummary() missing a source name, got:\n%s", got)
+	}
+}
+
+func TestRenderEarningsPreviewFiltersByWindowAndSorts(t *testing.T) {
+	in3Days := time.Now().In(cst).AddDate(0, 0, 3).Format("2006-01-02")
+	in1Day := time.Now().In(cst).AddDate(0, 0, 1).Format("2006-01-02")
+	in30Days := time.Now().In(cst).AddDate(0, 0, 30).Format("2006-01-02")
+	yesterday := time.Now().In(cst).AddDate(0, 0, -1).Format("2006-01-02")
+
+	earnings := map[string]data.EarningsEvent{
+		"AAPL": {Ticker: "AAPL", Date: in3Days},
+		"MSFT": {Ticker: "MSFT", Date: in1Day},
+		"NVDA": {Ticker: "NVDA", Date: in30Days}, // outside the 7-day window
+		"OLD":  {Ticker: "OLD", Date: yesterday}, // already past
+	}
+
+	got := renderEarningsPreview(i18n.EN, earnings, 7)
+
+	if strings.Contains(got, "NVDA") || strings.Contains(got, "OLD") {
+		t.Errorf("renderEarningsPreview() should exclude out-of-window tickers, got:\n%s", got)
+	}
+	msftIdx := strings.Index(got, "MSFT")
+	aaplIdx := strings.Index(got, "AAPL")
+	if msftIdx == -1 || aaplIdx == -1 || msftIdx > aaplIdx {
+		t.Errorf("renderEarningsPreview() should sort soonest-first (MSFT before AAPL), got:\n%s", got)
+	}
+}
+
+func TestRenderEarningsPreviewEmptyWhenNothingInWindow(t *testing.T) {
+	if got := renderEarningsPreview(i18n.EN, nil, 7); got != "" {
+		t.Errorf("renderEarningsPreview() with no earnings = %q, want \"\"", got)
+	}
+}

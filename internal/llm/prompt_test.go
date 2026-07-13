@@ -85,6 +85,47 @@ func TestBuildInsightPromptRendersThesisAndVsSPY(t *testing.T) {
 	}
 }
 
+func TestBuildWeeklyReviewPromptIncludesTrackSummaryWhenPresent(t *testing.T) {
+	positions := []StockData{
+		{Quote: &data.Quote{Ticker: "AAPL", Price: 200}, Position: &Position{Shares: 10, AvgCost: 150}},
+	}
+
+	prompt := buildWeeklyReviewPrompt(i18n.EN, positions, 0, false, "Hit rate: 3/5 (60%)")
+
+	if !strings.Contains(prompt, "Hit rate: 3/5 (60%)") {
+		t.Errorf("buildWeeklyReviewPrompt() missing track summary text, got:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "This week's recommendation tracking") {
+		t.Errorf("buildWeeklyReviewPrompt() missing track summary header, got:\n%s", prompt)
+	}
+}
+
+func TestBuildWeeklyReviewPromptOmitsTrackSectionWhenEmpty(t *testing.T) {
+	positions := []StockData{
+		{Quote: &data.Quote{Ticker: "AAPL", Price: 200}, Position: &Position{Shares: 10, AvgCost: 150}},
+	}
+
+	prompt := buildWeeklyReviewPrompt(i18n.EN, positions, 0, false, "")
+
+	if strings.Contains(prompt, "This week's recommendation tracking") {
+		t.Errorf("buildWeeklyReviewPrompt() with empty trackSummary should omit the track section entirely, got:\n%s", prompt)
+	}
+}
+
+func TestBuildWeeklyReviewPromptTotalValueAndCashLine(t *testing.T) {
+	positions := []StockData{
+		{Quote: &data.Quote{Ticker: "AAPL", Price: 200}, Position: &Position{Shares: 10, AvgCost: 150}},
+		{Quote: &data.Quote{Ticker: "MSFT", Price: 300}, Position: &Position{Shares: 5, AvgCost: 250}},
+	}
+
+	prompt := buildWeeklyReviewPrompt(i18n.EN, positions, 500, true, "")
+
+	// Total position value: 10*200 + 5*300 = 3500; grand total with cash: 4000.
+	if !strings.Contains(prompt, "3500.00") || !strings.Contains(prompt, "500.00") || !strings.Contains(prompt, "4000.00") {
+		t.Errorf("buildWeeklyReviewPrompt() missing total/cash/grand-total values, got:\n%s", prompt)
+	}
+}
+
 func TestWriteStockSectionOmitsThesisAndVsSPYWhenNil(t *testing.T) {
 	var sb strings.Builder
 	writeStockSection(&sb, i18n.EN, StockData{Quote: &data.Quote{Ticker: "AAPL", Price: 200}})

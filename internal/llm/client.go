@@ -112,6 +112,17 @@ func (c *Client) InsightPortfolio(ctx context.Context, positions []StockData, ca
 	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
 }
 
+// WeeklyReview performs Phase 3.6 PR2's Sunday portfolio review: the same
+// per-position rendering as InsightPortfolio, plus this week's /track
+// summary (trackSummary; empty string when there's no recommendation
+// history yet) folded into the same prompt so the model's portfolio
+// judgment and its comment on recommendation accuracy come out of one
+// coherent call. Reuses checkModel, same reasoning as InsightPortfolio.
+func (c *Client) WeeklyReview(ctx context.Context, positions []StockData, cash float64, haveCash bool, trackSummary string) (string, error) {
+	prompt := buildWeeklyReviewPrompt(c.lang, positions, cash, haveCash, trackSummary)
+	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+}
+
 // Chat sends text on the client's persistent chat session, starting one on
 // the first call. Unlike GenerateRecommendations/CheckStock, the session
 // stays open across calls so the agent remembers earlier turns.

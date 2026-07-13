@@ -164,6 +164,9 @@ func main() {
 	sched.AddUniverseScan(ctx, func(ctx context.Context) {
 		telegramBot.RunUniverseScan(ctx)
 	})
+	sched.AddWeeklyReview(ctx, func(ctx context.Context) {
+		telegramBot.RunWeeklyReview(ctx)
+	})
 	sched.AddLogRotation(func() {
 		if err := logFile.Rotate(); err != nil {
 			log.Printf("log rotation: %v", err)
