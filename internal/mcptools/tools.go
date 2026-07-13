@@ -196,7 +196,7 @@ func (ts *toolset) getQuote(ctx context.Context, _ *mcp.CallToolRequest, in tick
 func (ts *toolset) getHistory(ctx context.Context, _ *mcp.CallToolRequest, in tickerInput) (*mcp.CallToolResult, any, error) {
 	ticker := normalizeTicker(in.Ticker)
 	result, err := ts.withCache(ctx, "get_history:"+ticker, longCacheTTL, func() (*mcp.CallToolResult, error) {
-		closes, err := ts.history.GetHistory(ticker)
+		closes, _, err := ts.history.GetHistory(ticker)
 		if err != nil || len(closes) == 0 {
 			return nil, ts.mcpErr(i18n.KeyMCPNoHistory, ticker)
 		}
