@@ -121,10 +121,12 @@ func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommen
 	}
 }
 
-// fetchStockData fetches quote+news for each ticker. Fundamentals are only
-// attached when includeFundamentals is set (watchlist tickers, not the
-// broad market-mover candidate list) to stay well under Finnhub's free-tier
-// 60-requests/minute limit when a candidate list has a dozen-plus tickers.
+// fetchStockData fetches quote+news for each ticker. Fundamentals and
+// AnalystRating (Phase 3.7) are only attached when includeFundamentals is set
+// (watchlist tickers, not the broad market-mover candidate list) to stay well
+// under Finnhub's free-tier 60-requests/minute limit when a candidate list
+// has a dozen-plus tickers — /stock/recommendation is a per-ticker call just
+// like /stock/metric, so it shares the same gate rather than getting its own.
 // Technicals (RSI/MACD/moving averages, via computeTechnicals) has no such
 // gate — Yahoo's history endpoint carries no rate-limit concern, and
 // candidates are exactly where the model most needs trend context before
@@ -154,6 +156,13 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 				log.Printf("fundamentals %s: %v", t, err)
 			} else {
 				stock.Fundamentals = fd
+			}
+		}
+		if includeFundamentals && b.analystRating != nil {
+			if ar, err := b.analystRating.GetAnalystRating(t); err != nil {
+				log.Printf("analyst rating %s: %v", t, err)
+			} else {
+				stock.AnalystRating = ar
 			}
 		}
 		stock.Technicals = b.computeTechnicals(t)

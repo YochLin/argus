@@ -144,6 +144,13 @@ func (b *Bot) handleCheck(ctx context.Context, ticker string) {
 			stock.Statement = st
 		}
 	}
+	if b.analystRating != nil {
+		if ar, err := b.analystRating.GetAnalystRating(ticker); err != nil {
+			log.Printf("analyst rating %s: %v", ticker, err)
+		} else {
+			stock.AnalystRating = ar
+		}
+	}
 	stock.Technicals = b.computeTechnicals(ticker)
 
 	result, err := b.llm.CheckStock(ctx, stock)
