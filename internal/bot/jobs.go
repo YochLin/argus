@@ -162,37 +162,24 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 
 	b.Send(i18n.T(b.lang, i18n.KeyDailyReportStart))
 
-	tickers, err := b.db.GetWatchlist()
+	in, err := b.gatherRecommendationInputs()
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyWatchlistQueryFailed, err))
 		return
 	}
 
-	candidateTickers, err := b.provider.GetMarketMovers()
-	if err != nil {
-		log.Printf("market movers: %v", err)
-	}
-	scanHits := b.loadScanHits()
-	dedupedCandidates := mergeCandidates(candidateTickers, scanHits, tickers)
-	allTickers := append(append([]string{}, tickers...), dedupedCandidates...)
-
-	positions := b.loadPositions()
-	earnings := b.loadEarnings(allTickers)
-	b.checkEarningsAlerts(tickers, earnings)
-	marketNews := b.loadMarketNews()
-	prevRecs := b.loadPrevRecs(allTickers)
+	b.checkEarningsAlerts(in.watchlistTickers, in.earnings)
 
 	// Detect signals on watchlist
 	var allSignals []signals.Signal
-	watchlist := b.fetchStockData(tickers, true, positions, earnings, nil, prevRecs)
-	prices := make(map[string]float64, len(watchlist))
-	for _, s := range watchlist {
+	prices := make(map[string]float64, len(in.watchlist))
+	for _, s := range in.watchlist {
 		if s.Quote != nil {
 			prices[s.Quote.Ticker] = s.Quote.Price
 			allSignals = append(allSignals, b.detector.CheckQuote(s.Quote)...)
 		}
 	}
-	for _, t := range tickers {
+	for _, t := range in.watchlistTickers {
 		closes, err := b.history.GetHistory(t)
 		if err != nil {
 			log.Printf("history %s: %v", t, err)
@@ -207,13 +194,11 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 	// Exit-discipline checks (Phase 3.8): rule-based, independent of the LLM
 	// call below, so a down LLM provider doesn't suppress them. Daily-report
 	// only, by design — no intraday/at-price monitoring (see PLAN.md).
-	positionList := positionsSlice(positions)
+	positionList := positionsSlice(in.positions)
 	b.checkStopLossAlerts(positionList, prices)
 	b.checkTrailingStopAlerts(positionList, prices)
 
-	candidates := b.fetchStockData(dedupedCandidates, false, positions, earnings, scanHits, prevRecs)
-
-	summary, recs, err := b.llm.GenerateRecommendations(ctx, watchlist, candidates, marketNews)
+	summary, recs, err := b.llm.GenerateRecommendations(ctx, in.watchlist, in.candidates, in.marketNews)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyLLMFailed, err))
 		return
@@ -224,8 +209,8 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 		return
 	}
 
-	sources := recommendationSources(tickers, dedupedCandidates, scanHits)
-	b.sendAndSaveRecommendations(summary, recs, sources, watchlist, candidates)
+	sources := recommendationSources(in.watchlistTickers, in.candidateTickers, in.scanHits)
+	b.sendAndSaveRecommendations(summary, recs, sources, in.watchlist, in.candidates)
 }
 
 // checkStatefulSignals runs the RSI/MACD checks that diff against the last

@@ -70,26 +70,47 @@ type Bot struct {
 	chatQueue chan *tgbotapi.Message
 }
 
-func New(token string, chatID int64, database *db.DB, provider data.Provider, fundamentals data.FundamentalsProvider, earnings data.EarningsProvider, marketNews data.MarketNewsProvider, history data.HistoryProvider, llmClient *llm.Client, lang i18n.Lang, stopLossPct, trailingStopPct float64) (*Bot, error) {
-	api, err := tgbotapi.NewBotAPI(token)
+// Config bundles New's construction inputs. Replaces New's former 12
+// positional parameters (grown by one or two per phase — stopLossPct/
+// trailingStopPct most recently), which had gotten hard to read at call
+// sites and error-prone to extend — see docs/refactor-internal-bot.md. This
+// is deliberately not the 架構債 "設定整理" item (centralized env parsing/
+// validation in main.go); it only fixes this constructor's signature.
+type Config struct {
+	Token           string
+	ChatID          int64
+	DB              *db.DB
+	Provider        data.Provider
+	Fundamentals    data.FundamentalsProvider // nil if FINNHUB_API_KEY isn't set
+	Earnings        data.EarningsProvider     // nil if FINNHUB_API_KEY isn't set
+	MarketNews      data.MarketNewsProvider   // nil if FINNHUB_API_KEY isn't set
+	History         data.HistoryProvider
+	LLM             *llm.Client
+	Lang            i18n.Lang
+	StopLossPct     float64 // STOP_LOSS_PCT env; 0 disables the check
+	TrailingStopPct float64 // TRAILING_STOP_PCT env; 0 disables the check
+}
+
+func New(cfg Config) (*Bot, error) {
+	api, err := tgbotapi.NewBotAPI(cfg.Token)
 	if err != nil {
 		return nil, fmt.Errorf("telegram: %w", err)
 	}
 	log.Printf("Telegram bot authorized: @%s", api.Self.UserName)
 	return &Bot{
 		api:             api,
-		db:              database,
-		provider:        provider,
-		fundamentals:    fundamentals,
-		earnings:        earnings,
-		marketNews:      marketNews,
-		history:         history,
-		llm:             llmClient,
-		detector:        signals.NewDetector(lang),
-		chatID:          chatID,
-		lang:            lang,
-		stopLossPct:     stopLossPct,
-		trailingStopPct: trailingStopPct,
+		db:              cfg.DB,
+		provider:        cfg.Provider,
+		fundamentals:    cfg.Fundamentals,
+		earnings:        cfg.Earnings,
+		marketNews:      cfg.MarketNews,
+		history:         cfg.History,
+		llm:             cfg.LLM,
+		detector:        signals.NewDetector(cfg.Lang),
+		chatID:          cfg.ChatID,
+		lang:            cfg.Lang,
+		stopLossPct:     cfg.StopLossPct,
+		trailingStopPct: cfg.TrailingStopPct,
 		chatQueue:       make(chan *tgbotapi.Message, 32),
 	}, nil
 }

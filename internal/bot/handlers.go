@@ -95,29 +95,13 @@ func (b *Bot) handleStatus(ticker string) {
 func (b *Bot) handleRecommend(ctx context.Context) {
 	b.Send(i18n.T(b.lang, i18n.KeyAnalyzing))
 
-	tickers, err := b.db.GetWatchlist()
+	in, err := b.gatherRecommendationInputs()
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyWatchlistQueryFailed, err))
 		return
 	}
 
-	candidateTickers, err := b.provider.GetMarketMovers()
-	if err != nil {
-		log.Printf("market movers: %v", err)
-	}
-	scanHits := b.loadScanHits()
-	dedupedCandidates := mergeCandidates(candidateTickers, scanHits, tickers)
-	allTickers := append(append([]string{}, tickers...), dedupedCandidates...)
-
-	positions := b.loadPositions()
-	earnings := b.loadEarnings(allTickers)
-	marketNews := b.loadMarketNews()
-	prevRecs := b.loadPrevRecs(allTickers)
-
-	watchlist := b.fetchStockData(tickers, true, positions, earnings, nil, prevRecs)
-	candidates := b.fetchStockData(dedupedCandidates, false, positions, earnings, scanHits, prevRecs)
-
-	summary, recs, err := b.llm.GenerateRecommendations(ctx, watchlist, candidates, marketNews)
+	summary, recs, err := b.llm.GenerateRecommendations(ctx, in.watchlist, in.candidates, in.marketNews)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyLLMFailed, err))
 		return
@@ -128,8 +112,8 @@ func (b *Bot) handleRecommend(ctx context.Context) {
 		return
 	}
 
-	sources := recommendationSources(tickers, dedupedCandidates, scanHits)
-	b.sendAndSaveRecommendations(summary, recs, sources, watchlist, candidates)
+	sources := recommendationSources(in.watchlistTickers, in.candidateTickers, in.scanHits)
+	b.sendAndSaveRecommendations(summary, recs, sources, in.watchlist, in.candidates)
 }
 
 func (b *Bot) handleCheck(ctx context.Context, ticker string) {

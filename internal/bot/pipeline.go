@@ -12,6 +12,66 @@ import (
 	"argus/internal/signals"
 )
 
+// recommendationInputs bundles everything handleRecommend and RunDailyReport
+// both need to build their llm.GenerateRecommendations call — assembled once
+// by gatherRecommendationInputs so a new prompt input gets wired in exactly
+// one place instead of both call sites having to stay in lockstep by hand
+// (see docs/refactor-internal-bot.md). Each caller's own middle (daily
+// report's earnings/signal/stop-loss checks) reads straight off these
+// fields rather than this struct performing them, since only RunDailyReport
+// wants them.
+type recommendationInputs struct {
+	watchlistTickers []string
+	candidateTickers []string // deduped, watchlist tickers excluded
+	scanHits         map[string]string
+	positions        map[string]db.Position
+	earnings         map[string]data.EarningsEvent
+	marketNews       []data.NewsItem
+	prevRecs         map[string]db.Recommendation
+	watchlist        []llm.StockData // fetchStockData output for watchlistTickers
+	candidates       []llm.StockData // fetchStockData output for candidateTickers
+}
+
+// gatherRecommendationInputs assembles the watchlist ∪ market-mover/scan-hit
+// candidate set, the positions/earnings/market-news/prior-recommendation
+// context that feeds the LLM prompt, and the resulting []llm.StockData for
+// both ticker sets. Returns the db.GetWatchlist error verbatim (both callers
+// render it via the same KeyWatchlistQueryFailed message and abort).
+func (b *Bot) gatherRecommendationInputs() (recommendationInputs, error) {
+	tickers, err := b.db.GetWatchlist()
+	if err != nil {
+		return recommendationInputs{}, err
+	}
+
+	candidateTickers, err := b.provider.GetMarketMovers()
+	if err != nil {
+		log.Printf("market movers: %v", err)
+	}
+	scanHits := b.loadScanHits()
+	dedupedCandidates := mergeCandidates(candidateTickers, scanHits, tickers)
+	allTickers := append(append([]string{}, tickers...), dedupedCandidates...)
+
+	positions := b.loadPositions()
+	earnings := b.loadEarnings(allTickers)
+	marketNews := b.loadMarketNews()
+	prevRecs := b.loadPrevRecs(allTickers)
+
+	watchlist := b.fetchStockData(tickers, true, positions, earnings, nil, prevRecs)
+	candidates := b.fetchStockData(dedupedCandidates, false, positions, earnings, scanHits, prevRecs)
+
+	return recommendationInputs{
+		watchlistTickers: tickers,
+		candidateTickers: dedupedCandidates,
+		scanHits:         scanHits,
+		positions:        positions,
+		earnings:         earnings,
+		marketNews:       marketNews,
+		prevRecs:         prevRecs,
+		watchlist:        watchlist,
+		candidates:       candidates,
+	}, nil
+}
+
 // sendAndSaveRecommendations formats LLM recommendations for Telegram and
 // persists them dated today, each with its ticker's current price looked up
 // from the already-fetched stock data — /track later compares that stored

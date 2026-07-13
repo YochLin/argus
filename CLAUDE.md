@@ -277,7 +277,7 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
 - `internal/render` — Telegram/chat-facing text formatting shared between `internal/bot` and
   `internal/mcptools`: `Fundamentals`/`FinancialStatement`/`Commaf`, depending only on `internal/data` +
   `internal/i18n` (same constraint `internal/mcptools` needs — see that package's entry below). Pulled
-  out of a 2026-07 `internal/bot` refactor (架構債, see below) that retired a hand-synced duplicate: the
+  out of a 2026-07 `internal/bot` refactor (see docs/refactor-internal-bot.md) that retired a hand-synced duplicate: the
   same ~15-line field-by-field assembly used to live once in `bot.go` and once in `mcptools/tools.go`
   because `mcptools` can't import `internal/bot`, with a CLAUDE.md/PLAN note to keep them in sync by
   hand. `internal/bot`'s `/fundamentals` command and `internal/mcptools`'s `get_fundamentals`/
@@ -286,7 +286,20 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
 - `internal/bot` — Telegram command dispatch (`/add`, `/remove`, `/list`, `/status`, `/recommend`,
   `/check`, `/track`, `/buy`, `/sell`, `/portfolio`, `/dailyreport`, `/fundamentals`, `/universe`,
   `/reset`) plus three scheduler-invoked jobs: `RunDailyReport` (23:30 CST, ~1–2h into the US session), `RunClosingSnapshot`
-  (05:30 CST Tue–Sat, post-close), and `RunUniverseScan` (05:45 CST Tue–Sat — see below). The former two:
+  (05:30 CST Tue–Sat, post-close), and `RunUniverseScan` (05:45 CST Tue–Sat — see below). Split across
+  five files (2026-07 refactor, see docs/refactor-internal-bot.md; pure mechanical move, no behavior
+  change) along the transport-vs-business line: `bot.go` (the `Bot` struct, `Config`, `New`,
+  `Run`/`dispatch`/`chatWorker`/`Send`, `handleMessage`'s command routing table), `handlers.go` (the
+  command handlers and their pure helpers, e.g. `parseTradeArgs`/`trackHit`/`trackSourceStats`),
+  `jobs.go` (the three scheduler jobs and their job-only checks — signal detection, earnings alerts,
+  stop-loss/trailing-stop), `pipeline.go` (`fetchStockData` and its `load*`/`compute*` helpers,
+  `mergeCandidates`, `recommendationSources`, `gatherRecommendationInputs`,
+  `sendAndSaveRecommendations` — see `RunDailyReport`'s entry below), and `format.go` (pure
+  formatting/date helpers with no other home). The `bot.go`/`jobs.go`+`pipeline.go` boundary is drawn so
+  a future second messaging channel (a deferred item — see PLAN.md's 架構債 "訊息通道介面") has
+  somewhere to land without another reshuffle. `New` takes a `Config` struct (token, chatID, DB, the
+  four data providers, LLM client, lang, thresholds) rather than its former 12 positional parameters.
+  The former two:
   `RunClosingSnapshot` writes each watchlist ticker's completed-session OHLCV to
   `daily_snapshots` dated one day back in Taiwan terms (that's the US trading date at that hour) and
   skipping quotes whose timestamp is >12h old (US market holiday — the providers return the prior
@@ -369,10 +382,16 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   concerns don't apply — see the Pro/Max note below), so data freshness wins over the context bloat of
   repeating it each turn. `/reset`
   clears that persistent session's memory via `llm.Client.ResetChat`. `RunDailyReport` and `/recommend`
-  share almost identical logic (fetch watchlist + market-mover candidates, run signal detection, call
-  the LLM, then the shared `sendAndSaveRecommendations` tail: send results and persist ticker + action +
-  reason + current price + source to `recommendations`) — when changing one, check whether the other
-  needs the same change. The `source` value comes from `recommendationSources(watchlist, candidates,
+  used to share their data-assembly head by a hand-maintained "when changing one, check the other" note;
+  the 2026-07 `internal/bot` refactor (docs/refactor-internal-bot.md) replaced that with `pipeline.go`'s
+  `gatherRecommendationInputs`, which both call first thing and which returns a `recommendationInputs`
+  struct (watchlist ∪ candidate tickers, positions/earnings/market-news/prior-recs, and the resulting
+  `[]llm.StockData` for both ticker sets) — a new prompt input now gets wired in exactly once. Each
+  caller still owns its own middle: `RunDailyReport` runs signal detection, earnings alerts, and the
+  stop-loss/trailing-stop checks (Phase 3.8) against the struct's fields (nothing in
+  `gatherRecommendationInputs` itself has a side effect), and both share the `sendAndSaveRecommendations`
+  tail — send results and persist ticker + action + reason + current price + source to
+  `recommendations`. The `source` value comes from `recommendationSources(watchlist, candidates,
   scanHits)` (pure; called right before `sendAndSaveRecommendations` in both `handleRecommend` and
   `RunDailyReport`), which labels every ticker `"watchlist"`/`"scan"`/`"movers"` — a ticker in both
   `scanHits` and the candidate list is labeled `"scan"` (the more specific reason it was surfaced, see
@@ -438,7 +457,7 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   want the exact full-field-dump formatting `internal/bot`'s `/fundamentals` command already has, built
   from `internal/i18n`'s granular per-field keys like `KeyPE`/`KeyROE`/`KeyStatementTitle` — this used to
   be two hand-synced copies of the same ~15-line assembly (one in `bot.go`, one in `tools.go`) before the
-  2026-07 `internal/bot` refactor (see 架構債 below) pulled the shared body out into
+  2026-07 `internal/bot` refactor (docs/refactor-internal-bot.md) pulled the shared body out into
   `internal/render.Fundamentals`/`FinancialStatement`/`Commaf` (depends only on `data`+`i18n`, so both
   packages can import it); `tools.go`'s `formatFundamentals`/`formatFinancialStatement` are now thin
   wrappers that just prepend the MCP-specific ticker-header line. Every tool handler routes errors
