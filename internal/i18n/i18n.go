@@ -141,6 +141,13 @@ const (
 	KeyUniverseRemoveSuccess Key = "universe_remove_success"
 	KeyUniverseRemoveFailed  Key = "universe_remove_failed"
 
+	KeyThesisUsage      Key = "thesis_usage"
+	KeyThesisSetFailed  Key = "thesis_set_failed"
+	KeyThesisSetSuccess Key = "thesis_set_success"
+	KeyThesisNotSet     Key = "thesis_not_set"
+	KeyThesisCurrent    Key = "thesis_current"
+	KeyBuyThesisNudge   Key = "buy_thesis_nudge"
+
 	KeyQuoteLine Key = "quote_line"
 
 	KeyValuationHeader     Key = "valuation_header"
@@ -237,6 +244,8 @@ const (
 	KeyPrevRecLine             Key = "prev_rec_line"
 	KeyEarningsLine            Key = "earnings_line"
 	KeyScanHitLine             Key = "scan_hit_line"
+	KeyThesisLine              Key = "thesis_line"
+	KeyVsSPYLine               Key = "vs_spy_line"
 	KeyTechnicalsSummaryLine   Key = "technicals_summary_line"
 	KeyTechnicalsMALine        Key = "technicals_ma_line"
 	KeyTrendBullish            Key = "trend_bullish"

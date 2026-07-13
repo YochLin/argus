@@ -333,6 +333,32 @@ func TestBreachAlertDecision(t *testing.T) {
 	}
 }
 
+func TestComputeVsSPY(t *testing.T) {
+	tests := []struct {
+		name                                      string
+		currentPrice, avgCost, spyPrice, spyEntry float64
+		wantTickerPct, wantSPYPct                 float64
+	}{
+		{"beats the market", 200, 150, 550, 500, 33.333333333333336, 10},
+		{"underperforms while still up", 165, 150, 550, 500, 10, 10},
+		{"down position", 120, 150, 480, 500, -20, -4},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := computeVsSPY(tt.currentPrice, tt.avgCost, tt.spyPrice, tt.spyEntry)
+			if !floatsClose(got.TickerPct, tt.wantTickerPct) || !floatsClose(got.SPYPct, tt.wantSPYPct) {
+				t.Errorf("computeVsSPY(%v, %v, %v, %v) = %+v, want {%v %v}",
+					tt.currentPrice, tt.avgCost, tt.spyPrice, tt.spyEntry, got, tt.wantTickerPct, tt.wantSPYPct)
+			}
+		})
+	}
+}
+
+func floatsClose(a, b float64) bool {
+	d := a - b
+	return d > -1e-9 && d < 1e-9
+}
+
 func TestPositionsSlice(t *testing.T) {
 	positions := map[string]db.Position{
 		"MSFT": {Ticker: "MSFT", Shares: 1, AvgCost: 400},

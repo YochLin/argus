@@ -3,7 +3,7 @@ package i18n
 // enMessages is the English message table. Every format verb here must
 // appear in the same order as its zh.go counterpart — see the note there.
 var enMessages = map[Key]string{
-	KeyUnknownCommand:         "Unknown command. Available commands:\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [days]\n/buy <ticker> <shares> <price> [fee]\n/sell <ticker> <shares> <price> [fee]\n/portfolio\n/insight\n/cash [amount]\n/dailyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n\nSend a plain message (no leading /) to chat freely.",
+	KeyUnknownCommand:         "Unknown command. Available commands:\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [days]\n/buy <ticker> <shares> <price> [fee]\n/sell <ticker> <shares> <price> [fee]\n/portfolio\n/insight\n/cash [amount]\n/thesis <ticker> [text]\n/dailyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n\nSend a plain message (no leading /) to chat freely.",
 	KeyAddUsage:               "Usage: /add <ticker>, e.g. /add AAPL",
 	KeyAddFailed:              "Failed to add: %v",
 	KeyAddSuccess:             "Added *%s* to your watchlist.",
@@ -92,6 +92,13 @@ var enMessages = map[Key]string{
 	KeyUniverseRemoveUsage:   "Usage: /universe remove TICKER",
 	KeyUniverseRemoveSuccess: "%s removed from the scan universe.",
 	KeyUniverseRemoveFailed:  "Failed to remove %s: %v",
+
+	KeyThesisUsage:      "Usage: /thesis <ticker> [thesis text]\nTicker alone looks up the recorded thesis; adding text overwrites it.",
+	KeyThesisSetFailed:  "Failed to record thesis for %s: %v",
+	KeyThesisSetSuccess: "Recorded holding thesis for *%s*: %s",
+	KeyThesisNotSet:     "No thesis recorded for *%s* yet — add one with /thesis %s <text>.",
+	KeyThesisCurrent:    "Current thesis for *%s*: %s",
+	KeyBuyThesisNudge:   "\n💭 No thesis recorded for *%s* yet — add one with /thesis %s <text>?",
 
 	KeyQuoteLine: "*%s*  $%.2f  %s%.2f%%\nOpen: $%.2f  High: $%.2f  Low: $%.2f",
 
@@ -205,10 +212,15 @@ Keep the reply concise — under 400 words total.
 	KeyInsightCashLine:          "Cash balance: $%.2f\nTotal assets (positions + cash): $%.2f\n",
 	KeyInsightPromptTask: `
 Please analyze the whole portfolio in English (don't repeat the per-ticker data already listed — focus on portfolio-level judgment):
-1. Concentration risk: is any single position or sector too large a share of the portfolio
-2. Thesis check: against the recent news/fundamentals shown, does each holding's original rationale still hold
-3. Add/reduce/stop-loss suggestions: which positions should be added to, trimmed, or given a stop-loss, and why
-4. If a cash balance is provided, briefly comment on whether the current positions/cash split makes sense
+1. Concentration risk: is any single position or sector too large a share of the portfolio (infer sector from your own
+   knowledge of these tickers — don't wait for it to be supplied)
+2. Thesis check: where a "holding thesis" is provided, challenge it directly — against the recent news/fundamentals
+   shown, does it still hold, and what's changed; for holdings with no thesis, assess whether the likely original
+   rationale still holds
+3. Performance vs. the market: where "vs. market" data is provided, call out any holding that's actually
+   underperforming SPY — a position being up doesn't mean it was the right call
+4. Add/reduce/stop-loss suggestions: which positions should be added to, trimmed, or given a stop-loss, and why
+5. If a cash balance is provided, briefly comment on whether the current positions/cash split makes sense
 
 Keep the reply concise — under 600 words total.
 `,
@@ -226,6 +238,8 @@ Keep the reply concise — under 600 words total.
 	KeyPrevRecLine:             "- Previous call: %s @ $%.2f (%d days ago)\n",
 	KeyEarningsLine:            "- ⚠️ Earnings date: %s (in %d days) — expect volatility\n",
 	KeyScanHitLine:             "- 🔎 Scan hit: %s\n",
+	KeyThesisLine:              "- 📝 Holding thesis: %s\n",
+	KeyVsSPYLine:               "- vs. market: %+.1f%% over the holding period vs. SPY %+.1f%% over the same period\n",
 	KeyTechnicalsSummaryLine:   "- Technicals: RSI(14) %.1f | MACD %s\n",
 	KeyTechnicalsMALine:        "- %s MA%d ($%.2f)\n",
 	KeyTrendBullish:            "Bullish",

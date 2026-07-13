@@ -43,6 +43,32 @@ type StockData struct {
 	// an earlier call with no acknowledgment. Nil for a ticker recommended
 	// for the first time.
 	PrevRec *PrevRecommendation
+	// Thesis is the user's own holding rationale (see db.GetThesis/SetThesis,
+	// bot's /thesis command), attached only by handleInsight — deliberately
+	// never by fetchStockData's other callers (/recommend, RunDailyReport),
+	// per the Phase 3.6 expansion design: feeding the user's own bull case
+	// into the recommendation prompt invites the model to confirm it rather
+	// than challenge it, which is exactly the insight's job. Nil when the
+	// ticker has no thesis on record.
+	Thesis *string
+	// VsSPY is the position's holding-period return set against SPY's over
+	// the same period (see bot's per-position-vs-SPY helper), attached only
+	// by handleInsight for the same reason Position/Earnings are — nil when
+	// there's no BUY date or no same-date SPY snapshot to anchor the
+	// comparison to.
+	VsSPY *VsSPYReturn
+}
+
+// VsSPYReturn is a position's own holding-period return next to SPY's over
+// the same period, so the insight can say whether a holding is actually
+// beating the market rather than judging its price action in isolation. Both
+// percentages ignore dividends (SPY distributes too, so this is a
+// price-return-vs-price-return comparison on both sides — consistent, if not
+// total-return-precise; see docs/phase-3.6-portfolio-insight.md's dividend
+// icebox note).
+type VsSPYReturn struct {
+	TickerPct float64
+	SPYPct    float64
 }
 
 // Technicals is the subset of computed technical-indicator values an LLM
@@ -208,6 +234,14 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 
 	if pr := s.PrevRec; pr != nil {
 		fmt.Fprint(sb, i18n.T(lang, i18n.KeyPrevRecLine, pr.Action, pr.Price, pr.DaysAgo))
+	}
+
+	if th := s.Thesis; th != nil {
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyThesisLine, *th))
+	}
+
+	if v := s.VsSPY; v != nil {
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyVsSPYLine, v.TickerPct, v.SPYPct))
 	}
 
 	sb.WriteString("\n")
