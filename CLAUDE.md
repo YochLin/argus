@@ -274,6 +274,15 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   on size by itself, so this cron call to `Rotate()` is what makes it an actual daily rotation), and the
   SQLite backup (`AddBackup`, 06:00 CST daily, after the closing snapshot so each backup includes that
   day's post-close data).
+- `internal/render` — Telegram/chat-facing text formatting shared between `internal/bot` and
+  `internal/mcptools`: `Fundamentals`/`FinancialStatement`/`Commaf`, depending only on `internal/data` +
+  `internal/i18n` (same constraint `internal/mcptools` needs — see that package's entry below). Pulled
+  out of a 2026-07 `internal/bot` refactor (架構債, see below) that retired a hand-synced duplicate: the
+  same ~15-line field-by-field assembly used to live once in `bot.go` and once in `mcptools/tools.go`
+  because `mcptools` can't import `internal/bot`, with a CLAUDE.md/PLAN note to keep them in sync by
+  hand. `internal/bot`'s `/fundamentals` command and `internal/mcptools`'s `get_fundamentals`/
+  `get_financial_statements` tools both call into this package now; `mcptools`'s wrappers just prepend
+  their MCP-specific ticker-header line before calling it (see that package's entry).
 - `internal/bot` — Telegram command dispatch (`/add`, `/remove`, `/list`, `/status`, `/recommend`,
   `/check`, `/track`, `/buy`, `/sell`, `/portfolio`, `/dailyreport`, `/fundamentals`, `/universe`,
   `/reset`) plus three scheduler-invoked jobs: `RunDailyReport` (23:30 CST, ~1–2h into the US session), `RunClosingSnapshot`
@@ -422,16 +431,17 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `log` output in the `mcp` subprocess stays on its default stderr, **never** get redirected onto
   `os.Stdout` the way `main()`'s `io.MultiWriter` does for the Telegram path — `os.Stdout` here is the
   live MCP JSON-RPC stream (`mcp.StdioTransport`), and anything else written to it corrupts the protocol.
-  Keep this package's dependency graph to `internal/data` + `internal/i18n` only (no
-  `internal/db`/`internal/llm`/`internal/bot` imports) — see PLAN.md's Phase 3.5 rationale for why
-  (provider-neutral tool surface that survives an `internal/llm` provider swap). This cost something
-  concrete: `get_fundamentals`/`get_financial_statements` want the exact full-field-dump formatting
-  `internal/bot`'s `/fundamentals` command already has (`formatFundamentals`/`formatFinancialStatement` in
-  `bot.go`, built from `internal/i18n`'s granular per-field keys like `KeyPE`/`KeyROE`/`KeyStatementTitle`
-  — see that package's entry above), but can't import `internal/bot` to reuse the functions themselves, so
-  `tools.go` has its own copies of `formatFundamentals`/`formatFinancialStatement`/`commaf` that call the
-  *same* i18n keys — keep those two implementations in sync by hand if either one's field list changes;
-  don't let them drift into using different keys for the same field. Every tool handler routes errors
+  Keep this package's dependency graph narrow (`internal/data` + `internal/i18n`, plus `internal/db` for
+  the Phase 3.5 追加項 read/write DB tools and `internal/render` for shared formatting — never
+  `internal/llm`/`internal/bot`) — see PLAN.md's Phase 3.5 rationale for why (provider-neutral tool
+  surface that survives an `internal/llm` provider swap). `get_fundamentals`/`get_financial_statements`
+  want the exact full-field-dump formatting `internal/bot`'s `/fundamentals` command already has, built
+  from `internal/i18n`'s granular per-field keys like `KeyPE`/`KeyROE`/`KeyStatementTitle` — this used to
+  be two hand-synced copies of the same ~15-line assembly (one in `bot.go`, one in `tools.go`) before the
+  2026-07 `internal/bot` refactor (see 架構債 below) pulled the shared body out into
+  `internal/render.Fundamentals`/`FinancialStatement`/`Commaf` (depends only on `data`+`i18n`, so both
+  packages can import it); `tools.go`'s `formatFundamentals`/`formatFinancialStatement` are now thin
+  wrappers that just prepend the MCP-specific ticker-header line. Every tool handler routes errors
   through `ts.mcpErr(key, args...)` (an `i18n.T`-formatted `fmt.Errorf`) rather than returning a
   provider's raw Go error — the SDK's generic `AddTool` wrapper auto-packs a returned `error` into
   `CallToolResult{IsError: true}`, so a raw `err` would leak an untranslated, implementation-detail string

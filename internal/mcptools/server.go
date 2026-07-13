@@ -6,11 +6,13 @@
 // surface (only internal/data + internal/i18n, plus internal/db for the
 // Phase 3.5 "追加項" DB tools — see db.OpenReadOnly/OpenForWrites' doc
 // comments for why those imports are safe despite this package's original
-// "don't touch the DB" decision) so this stays a thin, provider-neutral
-// adapter rather than pulling in internal/llm or internal/bot — see
-// tools.go's formatFundamentals/commaf and db_tools.go's duplicated
-// track-scoring helpers for what that narrower boundary costs (small,
-// deliberate duplication instead of importing internal/bot).
+// "don't touch the DB" decision, and internal/render for shared
+// fundamentals/financial-statement formatting, which has the same
+// data+i18n-only dependency shape this package requires) so this stays a
+// thin, provider-neutral adapter rather than pulling in internal/llm or
+// internal/bot — see db_tools.go's duplicated track-scoring helpers for what
+// that narrower boundary still costs where no shared package exists yet
+// (small, deliberate duplication instead of importing internal/bot).
 package mcptools
 
 import (

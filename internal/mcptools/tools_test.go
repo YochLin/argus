@@ -368,21 +368,3 @@ func TestGetQuoteRateLimiterThrottlesCacheMisses(t *testing.T) {
 		t.Errorf("second cache-miss call should have been throttled by the rate limiter, took only %v", elapsed)
 	}
 }
-
-func TestCommaf(t *testing.T) {
-	tests := []struct {
-		in   float64
-		want string
-	}{
-		{0, "0"},
-		{999, "999"},
-		{1000, "1,000"},
-		{4321020, "4,321,020"},
-		{-4321020, "-4,321,020"},
-	}
-	for _, tt := range tests {
-		if got := commaf(tt.in); got != tt.want {
-			t.Errorf("commaf(%v) = %q, want %q", tt.in, got, tt.want)
-		}
-	}
-}

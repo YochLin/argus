@@ -12,6 +12,7 @@ import (
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
+	"argus/internal/render"
 )
 
 // cst mirrors internal/llm and internal/bot's fixed Taiwan-time zone (see
@@ -304,94 +305,14 @@ func (ts *toolset) getUpcomingEarnings(ctx context.Context, _ *mcp.CallToolReque
 	return result, nil, err
 }
 
-// formatFundamentals renders the full Fundamentals struct field-by-field,
-// reusing internal/bot's granular per-field i18n keys (KeyValuationHeader,
-// KeyPE, KeyROE, ...) — the same keys /fundamentals already uses to render
-// this exact data. Deliberately not calling into internal/bot to get that
-// formatter directly: this package's dependency boundary stays scoped to
-// internal/data + internal/i18n (see server.go), so the ~15-line assembly
-// is duplicated here rather than sharing a helper across the boundary.
+// formatFundamentals renders the full Fundamentals struct, reusing
+// internal/render's shared formatter (same one /fundamentals uses), with
+// the ticker title this MCP tool's output needs prepended.
 func formatFundamentals(lang i18n.Lang, ticker string, fd *data.Fundamentals) string {
-	var sb strings.Builder
-	sb.WriteString(i18n.T(lang, i18n.KeyFundamentalsTitle, ticker))
-
-	sb.WriteString(i18n.T(lang, i18n.KeyValuationHeader))
-	sb.WriteString(i18n.T(lang, i18n.KeyPE, fd.PE))
-	sb.WriteString(i18n.T(lang, i18n.KeyPB, fd.PB))
-	sb.WriteString(i18n.T(lang, i18n.KeyPS, fd.PS))
-	sb.WriteString(i18n.T(lang, i18n.KeyMarketCap, commaf(fd.MarketCapMillion)))
-	sb.WriteString(i18n.T(lang, i18n.KeyBeta, fd.Beta))
-	sb.WriteString(i18n.T(lang, i18n.Key52Week, fd.Week52High, fd.Week52Low))
-
-	sb.WriteString(i18n.T(lang, i18n.KeyProfitabilityHeader))
-	sb.WriteString(i18n.T(lang, i18n.KeyROE, fd.ROE))
-	sb.WriteString(i18n.T(lang, i18n.KeyROA, fd.ROA))
-	sb.WriteString(i18n.T(lang, i18n.KeyGrossMargin, fd.GrossMarginPct))
-	sb.WriteString(i18n.T(lang, i18n.KeyOperatingMargin, fd.OperatingMarginPct))
-	sb.WriteString(i18n.T(lang, i18n.KeyNetMargin, fd.NetMarginPct))
-
-	sb.WriteString(i18n.T(lang, i18n.KeyFinStructureHeader))
-	sb.WriteString(i18n.T(lang, i18n.KeyDebtToEquity, fd.DebtToEquity))
-	sb.WriteString(i18n.T(lang, i18n.KeyCurrentRatio, fd.CurrentRatio))
-	sb.WriteString(i18n.T(lang, i18n.KeyQuickRatio, fd.QuickRatio))
-
-	sb.WriteString(i18n.T(lang, i18n.KeyGrowthHeader))
-	sb.WriteString(i18n.T(lang, i18n.KeyRevenueGrowth, fd.RevenueGrowthYoY))
-	sb.WriteString(i18n.T(lang, i18n.KeyEPSGrowth, fd.EPSGrowthYoY))
-	sb.WriteString(i18n.T(lang, i18n.KeyEPS, fd.EPS))
-	sb.WriteString(i18n.T(lang, i18n.KeyBookValue, fd.BookValuePerShare))
-	sb.WriteString(i18n.T(lang, i18n.KeyDividendYield, fd.DividendYieldPct))
-	return sb.String()
+	return i18n.T(lang, i18n.KeyFundamentalsTitle, ticker) + render.Fundamentals(lang, fd)
 }
 
-// formatFinancialStatement mirrors formatFundamentals' reuse rationale —
-// same KeyStatementTitle/KeyRevenue/... keys /fundamentals already uses.
+// formatFinancialStatement mirrors formatFundamentals' reuse rationale.
 func formatFinancialStatement(lang i18n.Lang, ticker string, st *data.FinancialStatement) string {
-	var sb strings.Builder
-	sb.WriteString(i18n.T(lang, i18n.KeyMCPTickerHeader, ticker))
-	sb.WriteString(i18n.T(lang, i18n.KeyStatementTitle, st.Form, st.FiscalYear, st.PeriodEnd))
-
-	sb.WriteString(i18n.T(lang, i18n.KeyIncomeStatementHeader))
-	sb.WriteString(i18n.T(lang, i18n.KeyRevenue, commaf(st.Revenue/1e6)))
-	sb.WriteString(i18n.T(lang, i18n.KeyGrossProfit, commaf(st.GrossProfit/1e6)))
-	sb.WriteString(i18n.T(lang, i18n.KeyOperatingIncome, commaf(st.OperatingIncome/1e6)))
-	sb.WriteString(i18n.T(lang, i18n.KeyNetIncome, commaf(st.NetIncome/1e6)))
-	sb.WriteString(i18n.T(lang, i18n.KeyDilutedEPS, st.DilutedEPS))
-
-	sb.WriteString(i18n.T(lang, i18n.KeyBalanceSheetHeader))
-	sb.WriteString(i18n.T(lang, i18n.KeyTotalAssets, commaf(st.TotalAssets/1e6)))
-	sb.WriteString(i18n.T(lang, i18n.KeyTotalLiabilities, commaf(st.TotalLiabilities/1e6)))
-	sb.WriteString(i18n.T(lang, i18n.KeyTotalEquity, commaf(st.TotalEquity/1e6)))
-
-	sb.WriteString(i18n.T(lang, i18n.KeyCashFlowHeader))
-	sb.WriteString(i18n.T(lang, i18n.KeyOperatingCashFlow, commaf(st.OperatingCashFlow/1e6)))
-	sb.WriteString(i18n.T(lang, i18n.KeyCapEx, commaf(st.CapEx/1e6)))
-	sb.WriteString(i18n.T(lang, i18n.KeyFreeCashFlow, commaf(st.FreeCashFlow/1e6)))
-	return sb.String()
-}
-
-// commaf formats a float as a rounded integer with thousands separators
-// (e.g. 4321020 -> "4,321,020") — duplicated from internal/bot's identical
-// helper for the same dependency-boundary reason as formatFundamentals.
-func commaf(v float64) string {
-	n := int64(v + 0.5)
-	if v < 0 {
-		n = int64(v - 0.5)
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	s := strconv.FormatInt(n, 10)
-	var out []byte
-	for i, c := range []byte(s) {
-		if i > 0 && (len(s)-i)%3 == 0 {
-			out = append(out, ',')
-		}
-		out = append(out, c)
-	}
-	if neg {
-		return "-" + string(out)
-	}
-	return string(out)
+	return i18n.T(lang, i18n.KeyMCPTickerHeader, ticker) + render.FinancialStatement(lang, st)
 }
