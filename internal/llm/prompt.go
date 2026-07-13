@@ -18,6 +18,12 @@ type StockData struct {
 	// keep prompts compact — see writeStockSection.
 	Fundamentals *data.Fundamentals
 	Statement    *data.FinancialStatement
+	// AnalystRating is optional (nil when Finnhub isn't configured, same as
+	// Fundamentals), giving valuation numbers an external analyst-consensus
+	// anchor. Fetched only where Fundamentals is (see bot.fetchStockData's
+	// includeFundamentals gate) since it's the same Finnhub per-ticker-call
+	// rate-limit trade-off.
+	AnalystRating *data.AnalystRating
 	// Position is set when the user holds shares of this ticker, so a
 	// SELL/HOLD call has actual cost basis to reason against instead of just
 	// price action. Nil for tickers with no open position.
@@ -210,6 +216,15 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 			fd.DebtToEquity, fd.RevenueGrowthYoY, fd.EPSGrowthYoY, fd.DividendYieldPct, fd.Beta,
 			fd.EPS, fd.CurrentRatio, fd.MarketCapMillion,
 			pctFrom(q.Price, fd.Week52High), pctFrom(q.Price, fd.Week52Low)))
+	}
+
+	if ar := s.AnalystRating; ar != nil {
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyAnalystRatingLine, ar.Period, ar.StrongBuy, ar.Buy, ar.Hold, ar.Sell, ar.StrongSell))
+		if ar.HasPrev {
+			buyChange := (ar.StrongBuy + ar.Buy) - (ar.PrevStrongBuy + ar.PrevBuy)
+			sellChange := (ar.StrongSell + ar.Sell) - (ar.PrevStrongSell + ar.PrevSell)
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyAnalystRatingTrendLine, buyChange, sellChange))
+		}
 	}
 
 	if st := s.Statement; st != nil {

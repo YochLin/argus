@@ -91,7 +91,15 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   (unlike `/company-news`) isn't scoped to any ticker — it's the whole-market/macro news source for the
   `/recommend`/daily-report news summary, not per-ticker headlines. No client-side filtering logic here
   (unlike `filterEarningsCalendar`), so no dedicated test file — same as `finnhub.go`'s other simple
-  passthrough methods.
+  passthrough methods. `AnalystRatingProvider` (`analystrating.go`, Phase 3.7) is Finnhub-only for the
+  same reason as `FundamentalsProvider` — and unlike `EarningsProvider`'s calendar, `/stock/recommendation`
+  has no whole-market/unfiltered form at all, so `GetAnalystRating(ticker)` is a genuine one-ticker-per-call
+  endpoint like `GetFundamentals`, not a client-side-filtered batch call like `filterEarningsCalendar`.
+  Finnhub documents the response as most-recent-period-first but `GetAnalystRating` sorts by `period`
+  defensively anyway before picking "current" vs. "previous" month, since trusting undocumented response
+  order for that distinction is the kind of thing that fails silently. `AnalystRating.HasPrev` is false
+  when Finnhub has only one period on record (a newly-covered ticker) — the `Prev*` fields are all zero in
+  that case, and must not be read as "no analysts currently rate this stock."
 - `internal/db` — thin wrapper around `database/sql` + `modernc.org/sqlite` (pure-Go, no cgo). Owns nine
   tables: `watchlist`, `daily_snapshots`, `recommendations` (with `action` BUY/SELL/HOLD, `price` at
   recommendation time, and `source` — `"watchlist"`/`"movers"`/`"scan"`, migration 5, `""` for rows saved

@@ -41,17 +41,18 @@ const (
 )
 
 type Bot struct {
-	api          *tgbotapi.BotAPI
-	db           *db.DB
-	provider     data.Provider
-	fundamentals data.FundamentalsProvider // nil if FINNHUB_API_KEY isn't set
-	earnings     data.EarningsProvider     // nil if FINNHUB_API_KEY isn't set
-	marketNews   data.MarketNewsProvider   // nil if FINNHUB_API_KEY isn't set
-	history      data.HistoryProvider
-	llm          *llm.Client
-	detector     *signals.Detector
-	chatID       int64
-	lang         i18n.Lang
+	api           *tgbotapi.BotAPI
+	db            *db.DB
+	provider      data.Provider
+	fundamentals  data.FundamentalsProvider  // nil if FINNHUB_API_KEY isn't set
+	analystRating data.AnalystRatingProvider // nil if FINNHUB_API_KEY isn't set
+	earnings      data.EarningsProvider      // nil if FINNHUB_API_KEY isn't set
+	marketNews    data.MarketNewsProvider    // nil if FINNHUB_API_KEY isn't set
+	history       data.HistoryProvider
+	llm           *llm.Client
+	detector      *signals.Detector
+	chatID        int64
+	lang          i18n.Lang
 
 	// stopLossPct/trailingStopPct (STOP_LOSS_PCT/TRAILING_STOP_PCT env,
 	// Phase 3.8) are positive percentage thresholds for RunDailyReport's
@@ -81,9 +82,10 @@ type Config struct {
 	ChatID          int64
 	DB              *db.DB
 	Provider        data.Provider
-	Fundamentals    data.FundamentalsProvider // nil if FINNHUB_API_KEY isn't set
-	Earnings        data.EarningsProvider     // nil if FINNHUB_API_KEY isn't set
-	MarketNews      data.MarketNewsProvider   // nil if FINNHUB_API_KEY isn't set
+	Fundamentals    data.FundamentalsProvider  // nil if FINNHUB_API_KEY isn't set
+	AnalystRating   data.AnalystRatingProvider // nil if FINNHUB_API_KEY isn't set
+	Earnings        data.EarningsProvider      // nil if FINNHUB_API_KEY isn't set
+	MarketNews      data.MarketNewsProvider    // nil if FINNHUB_API_KEY isn't set
 	History         data.HistoryProvider
 	LLM             *llm.Client
 	Lang            i18n.Lang
@@ -102,6 +104,7 @@ func New(cfg Config) (*Bot, error) {
 		db:              cfg.DB,
 		provider:        cfg.Provider,
 		fundamentals:    cfg.Fundamentals,
+		analystRating:   cfg.AnalystRating,
 		earnings:        cfg.Earnings,
 		marketNews:      cfg.MarketNews,
 		history:         cfg.History,

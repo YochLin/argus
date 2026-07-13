@@ -107,12 +107,14 @@ func main() {
 	// /stock/candle entirely, so history is Yahoo-only.
 	var providers []data.Provider
 	var fundamentalsProvider data.FundamentalsProvider
+	var analystRatingProvider data.AnalystRatingProvider
 	var earningsProvider data.EarningsProvider
 	var marketNewsProvider data.MarketNewsProvider
 	if finnhubKey != "" {
 		finnhub := data.NewFinnhub(finnhubKey)
 		providers = append(providers, finnhub)
 		fundamentalsProvider = finnhub
+		analystRatingProvider = finnhub
 		earningsProvider = finnhub
 		marketNewsProvider = finnhub
 	}
@@ -139,6 +141,7 @@ func main() {
 		DB:              database,
 		Provider:        provider,
 		Fundamentals:    fundamentalsProvider,
+		AnalystRating:   analystRatingProvider,
 		Earnings:        earningsProvider,
 		MarketNews:      marketNewsProvider,
 		History:         yahoo,
