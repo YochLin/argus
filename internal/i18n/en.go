@@ -183,6 +183,13 @@ from the broad market movers, only list the ones you actually like as buys (at m
 
 When weighing each ticker's news, note whether each headline reads as bullish or bearish and fold that into your reasoning.
 
+For any BUY call, also weigh whether the current price is a reasonable entry point right now — where it sits within
+the 52-week range, whether it's above or below its moving averages, and whether analyst ratings have recently turned
+more bullish — as a read on market momentum and appetite for the stock, rather than leaning on valuation multiples or
+analyst price targets (which tend to lag price and are of limited use here). If momentum looks poor (e.g. a pullback
+right after a fresh high, or ratings turning more cautious), say so as an entry-timing concern in your reasoning even
+when fundamentals or news are otherwise positive — don't just cite improving fundamentals.
+
 If a ticker's section below shows a "Previous call" and today's action differs from it, your reasoning must
 explicitly say what changed (new information, a technical signal reversal, or the original thesis no longer
 holding) — don't just restate the same conclusion in different words.
