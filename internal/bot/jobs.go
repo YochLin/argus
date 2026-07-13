@@ -570,3 +570,122 @@ func (b *Bot) checkTrailingStopAlerts(positions []db.Position, prices map[string
 	}
 	b.Send(sb.String())
 }
+
+// weeklyNetWorthLine renders RunWeeklyReview's opening line: total position
+// value and its % change from about a week ago — net_worth_snapshots' first
+// reader since RunClosingSnapshot's recordNetWorthSnapshot started writing
+// it in Phase 2 (Phase 3.6 PR2). Returns "" (not an error) when there's no
+// snapshot yet, or no baseline from roughly a week ago to compare against
+// (e.g. a fresh install, or a holding period under a week) — skip the line
+// rather than show a misleading 0%, same "ok=false means skip" pattern
+// GetPeakClose's callers use.
+func (b *Bot) weeklyNetWorthLine(cash float64, haveCash bool) (string, error) {
+	latestDateStr, latest, ok, err := b.db.GetLatestNetWorth()
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", nil
+	}
+
+	latestDate, err := time.Parse("2006-01-02", latestDateStr)
+	if err != nil {
+		return "", err
+	}
+	weekAgo := latestDate.AddDate(0, 0, -7).Format("2006-01-02")
+
+	prior, ok, err := b.db.GetNetWorthOnOrBefore(weekAgo)
+	if err != nil {
+		return "", err
+	}
+	if !ok || prior == 0 {
+		return "", nil
+	}
+
+	pctChange := (latest - prior) / prior * 100
+	if haveCash {
+		return i18n.T(b.lang, i18n.KeyWeeklyNetWorthLineWithCash, latest, pctChange, latest+cash), nil
+	}
+	return i18n.T(b.lang, i18n.KeyWeeklyNetWorthLine, latest, pctChange), nil
+}
+
+// RunWeeklyReview is Phase 3.6 PR2's Sunday portfolio review: the same
+// per-position data assembly handleInsight uses (positions, technicals,
+// fundamentals, earnings, thesis, vs-SPY, cash), plus this week's /track
+// summary folded into the same LLM call (so the model can comment on
+// recommendation accuracy alongside its portfolio judgment — see
+// llm.Client.WeeklyReview), wrapped with a net-worth opening line and a
+// next-week earnings preview appended after. Scheduled for Sunday (US
+// markets closed) — a review rhythm, not a reactive one, deliberately below
+// the project's daily-cadence ceiling (see PLAN.md's Phase 3.6 note).
+// Wired up only after several manual /insight runs had proven the
+// underlying prompt, so an untuned prompt never lands in the push channel
+// (see docs/phase-3.6-portfolio-insight.md).
+func (b *Bot) RunWeeklyReview(ctx context.Context) {
+	defer b.recoverJobPanic("weekly review")
+
+	positions, err := b.db.GetPositions()
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
+		return
+	}
+	if len(positions) == 0 {
+		b.Send(i18n.T(b.lang, i18n.KeyPortfolioEmpty))
+		return
+	}
+
+	b.Send(i18n.T(b.lang, i18n.KeyWeeklyReviewStart))
+
+	tickers := make([]string, len(positions))
+	positionsMap := make(map[string]db.Position, len(positions))
+	for i, p := range positions {
+		tickers[i] = p.Ticker
+		positionsMap[p.Ticker] = p
+	}
+
+	earnings := b.loadEarnings(tickers)
+	stocks := b.fetchStockData(tickers, true, positionsMap, earnings, nil, nil)
+
+	theses := b.loadTheses(tickers)
+	vsSPY := b.loadVsSPY(stocks, positionsMap)
+	for i := range stocks {
+		ticker := stocks[i].Quote.Ticker
+		if th, ok := theses[ticker]; ok {
+			stocks[i].Thesis = &th
+		}
+		if v, ok := vsSPY[ticker]; ok {
+			stocks[i].VsSPY = &v
+		}
+	}
+
+	cash, haveCash, err := b.loadCash()
+	if err != nil {
+		log.Printf("weekly review: load cash: %v", err)
+	}
+
+	var trackSummary string
+	if rows, _, ok, err := b.computeTrackRows(7); err != nil {
+		log.Printf("weekly review: track rows: %v", err)
+	} else if ok {
+		overall, bySource := summarizeTrack(rows)
+		trackSummary = renderTrackSummary(b.lang, overall, bySource)
+	}
+
+	result, err := b.llm.WeeklyReview(ctx, stocks, cash, haveCash, trackSummary)
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyLLMFailed, err))
+		return
+	}
+
+	var sb strings.Builder
+	if line, err := b.weeklyNetWorthLine(cash, haveCash); err != nil {
+		log.Printf("weekly review: net worth line: %v", err)
+	} else if line != "" {
+		sb.WriteString(line)
+		sb.WriteString("\n")
+	}
+	sb.WriteString(i18n.T(b.lang, i18n.KeyWeeklyReviewResultTitle, result))
+	sb.WriteString(renderEarningsPreview(b.lang, earnings, 7))
+
+	b.Send(sb.String())
+}

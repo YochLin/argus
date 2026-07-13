@@ -131,7 +131,14 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `daily_snapshots` closes on/after the ticker's first BUY date rather than maintained as a running column
   — `GetPeakClose` returns `ok=false` (via `sql.NullFloat64`, since `MAX()` on zero matching rows returns
   SQL NULL, not zero rows) when there's no snapshot in range yet, and callers must treat that as "skip the
-  check," not as a peak of 0.
+  check," not as a peak of 0. `GetLatestNetWorth` (most recent `net_worth_snapshots` row regardless of
+  date) and `GetNetWorthOnOrBefore(date)` (most recent row with `date <=` the given date, e.g. a
+  weekend/holiday with no snapshot of its own) are Phase 3.6 PR2's first readers of a table that had
+  none before — `bot.weeklyNetWorthLine` uses both together to diff "now" against "about a week ago"
+  for the weekly review's opening line. `GetNetWorthOnOrBefore` uses a plain `ORDER BY date DESC LIMIT 1`
+  (not `MAX()`), so it returns `sql.ErrNoRows` — not a NULL row — when nothing matches; unlike
+  `GetPeakClose` it maps that to `ok=false` via an explicit `err == sql.ErrNoRows` check rather than
+  `sql.NullFloat64`.
 - `internal/i18n` — every user/LLM-facing string in the project, split into exactly two files by design:
   `zh.go` (Traditional Chinese, the original default) and `en.go` (English), both keyed by the `Key`
   constants declared in `i18n.go`. `T(lang, key, args...)` does the lookup + `fmt.Sprintf`. This covers two
@@ -247,7 +254,14 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   an action out of), and `DaysAgo` is precomputed by the caller exactly like `Earnings.DaysUntil` so this
   package still does no date math of its own. `KeyRecTaskBlock`'s prompt text was extended (no new `%s`
   verbs, same four in the same order) to tell the model that a reversal from `PrevRec.Action` needs an
-  explicit "what changed" in its reasoning, not just a restated conclusion.
+  explicit "what changed" in its reasoning, not just a restated conclusion. `Client.WeeklyReview`
+  (Phase 3.6 PR2) is the same one-shot-session shape as `InsightPortfolio` (Phase 3.6's portfolio-level
+  analysis behind `/insight` — concentration risk, thesis check, add/reduce/stop-loss suggestions across
+  every held position) and reuses `checkModel` for the same reason — it takes the same `positions`/
+  `cash`/`haveCash` arguments as `InsightPortfolio` plus one more, `trackSummary` (a pre-rendered
+  hit-rate/avg-return string, `""` when there's no recommendation history yet), folded into
+  `buildWeeklyReviewPrompt` as its own section so the model's comment on recommendation accuracy comes
+  out of the same call as its portfolio judgment rather than a second LLM round-trip.
 - `internal/signals` — pure functions/struct for rule-based technical signals (price % threshold, RSI,
   MACD) independent of Telegram/LLM/DB. That purity is preserved for the stateful checks too:
   `CheckRSIState` and `CheckMACDCross` take the previously persisted state as a parameter and return the
@@ -264,16 +278,19 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   as everything in `internal/bot` — don't hardcode a new message string here either.
 - `internal/scheduler` — thin wrapper around `robfig/cron` fixed to `time.FixedZone("CST", 8*3600)`
   (Taiwan time) rather than a loaded `time.Location`, specifically so it works in the `alpine` Docker
-  image without needing the `tzdata` package installed. Five jobs: the daily report (23:30 CST daily —
+  image without needing the `tzdata` package installed. Six jobs: the daily report (23:30 CST daily —
   at least an hour into the US session, see `AddDailyReport`'s doc comment for why 23:30 specifically),
   the closing snapshot (05:30 CST Tue–Sat — a US session ends at 04:00 or 05:00 CST the next morning
   depending on daylight saving, so 05:30 is past the close in both; Sun/Mon mornings follow no US
   session and are excluded at the cron level, while US holidays are handled by the job itself skipping
   stale quotes), the universe scan (`AddUniverseScan`, 05:45 CST Tue–Sat — after the closing snapshot,
-  before the backup), log rotation (`AddLogRotation`, 00:00 CST daily — `lumberjack.Logger` only rotates
-  on size by itself, so this cron call to `Rotate()` is what makes it an actual daily rotation), and the
-  SQLite backup (`AddBackup`, 06:00 CST daily, after the closing snapshot so each backup includes that
-  day's post-close data).
+  before the backup), the weekly review (`AddWeeklyReview`, Phase 3.6 PR2, 09:00 CST Sunday — no
+  market-open/close time to align with since it's a weekend read rather than a reactive alert; by
+  Sunday morning the most recent `net_worth_snapshots`/`daily_snapshots` row is already Friday's close,
+  written by Saturday's 05:30 closing-snapshot run), log rotation (`AddLogRotation`, 00:00 CST daily —
+  `lumberjack.Logger` only rotates on size by itself, so this cron call to `Rotate()` is what makes it
+  an actual daily rotation), and the SQLite backup (`AddBackup`, 06:00 CST daily, after the closing
+  snapshot so each backup includes that day's post-close data).
 - `internal/render` — Telegram/chat-facing text formatting shared between `internal/bot` and
   `internal/mcptools`: `Fundamentals`/`FinancialStatement`/`Commaf`, depending only on `internal/data` +
   `internal/i18n` (same constraint `internal/mcptools` needs — see that package's entry below). Pulled
@@ -429,7 +446,32 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   loop — same one-call-not-N-calls principle as `loadEarnings`), and `fetchStockData` attaches it as
   `llm.StockData.PrevRec` for both `/recommend` and `RunDailyReport` (unlike the stop-loss checks, this
   is prompt input, not a proactive push, so both call sites get it) — see `internal/llm`'s entry below
-  for the rendering side.
+  for the rendering side. `RunWeeklyReview` (Phase 3.6 PR2, `jobs.go`) is a fourth scheduler-invoked job
+  (09:00 CST Sunday): the same per-position data assembly `handleInsight` uses (positions, technicals,
+  fundamentals, earnings, thesis, vs-SPY, cash — `/insight`'s command handler), wrapped with a
+  `weeklyNetWorthLine` opening line and a `renderEarningsPreview` block appended after the LLM's reply.
+  `computeTrackRows(days)` (`pipeline.go`) is `handleTrack`'s core computation pulled out into its own
+  method precisely so this job could reuse it: it returns both `rows` (for `summarizeTrack`) and `lines`
+  (the full per-recommendation display `/track` itself renders) so neither caller repeats the
+  quote/SPY-fetching logic — `handleTrack` is now a thin wrapper that renders `lines` verbatim and
+  appends `renderTrackSummary(rows)`'s output, while `RunWeeklyReview` only needs `rows`, discarding
+  `lines` (same "compute once, let callers use what they need" shape as `fetchStockData`).
+  `renderTrackSummary` (pure, `format.go`) is the hit-rate/avg-return/by-source block factored out of
+  `handleTrack` so both call sites render it identically; it returns `""` when nothing's been
+  evaluated yet, so `RunWeeklyReview` can tell "no track data" apart from "data says nothing hit" and
+  feed an empty `trackSummary` into `llm.Client.WeeklyReview` rather than an empty section header.
+  `renderEarningsPreview(earnings, days)` (pure, `pipeline.go`) is deliberately not the same rendering
+  `writeStockSection` already does per-position (`llm.StockData.Earnings`) — it's a consolidated,
+  soonest-first list across every holding in one block, a distinct "plan for the coming week" view from
+  `checkEarningsAlerts`'s narrower 3-day proactive alert (see `earningsAlertDays` above); returns `""`
+  when nothing falls in the window so the block is skipped entirely rather than shown empty.
+  `weeklyNetWorthLine` (`jobs.go`) reads `db.GetLatestNetWorth`/`GetNetWorthOnOrBefore` to diff the
+  latest `net_worth_snapshots` value against roughly a week prior, returning `""` (skip, not a
+  misleading 0%) when either read comes up empty — e.g. a fresh install, or the very first week after
+  `RunClosingSnapshot` started writing snapshots. This job was deliberately wired up only after several
+  manual `/insight` runs had proven the underlying prompt (see docs/phase-3.6-portfolio-insight.md) —
+  an unproven prompt landing straight in an automatic Sunday push was the one thing the two-PR split
+  for this phase was designed to avoid.
 - `internal/mcptools` — Phase 3.5's read-only MCP (Model Context Protocol) tool surface for chat, using
   the official `github.com/modelcontextprotocol/go-sdk`. `NewServer(lang, provider, history, fundamentals,
   earnings)` builds an `*mcp.Server` and registers seven tools (`tools.go`'s `registerTools`): `get_quote`/

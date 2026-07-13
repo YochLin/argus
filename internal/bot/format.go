@@ -62,6 +62,29 @@ func todayDate() string {
 	return time.Now().In(cst).Format("2006-01-02")
 }
 
+// renderTrackSummary formats the hit-rate/avg-return/by-source breakdown —
+// shared by /track's own display (handleTrack) and RunWeeklyReview's
+// strategy-feedback block, which additionally asks the model to comment on
+// it. Returns "" when nothing's been evaluated yet (no BUY/SELL row with a
+// resolvable price), so callers can skip the block entirely rather than
+// show an empty summary.
+func renderTrackSummary(lang i18n.Lang, overall trackSourceStats, bySource map[string]trackSourceStats) string {
+	if overall.Evaluated == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString(i18n.T(lang, i18n.KeyTrackSummary, overall.Hits, overall.Evaluated, overall.HitRate()))
+	sb.WriteString(i18n.T(lang, i18n.KeyTrackAvgReturnLine, overall.AvgBuyPct(), overall.BuyCount, overall.AvgSellPct(), overall.SellCount))
+	if len(bySource) > 1 {
+		sb.WriteString(i18n.T(lang, i18n.KeyTrackBySourceHeader))
+		for _, source := range sortedSourceKeys(bySource) {
+			s := bySource[source]
+			sb.WriteString(i18n.T(lang, i18n.KeyTrackBySourceLine, source, s.Hits, s.Evaluated, s.HitRate()))
+		}
+	}
+	return sb.String()
+}
+
 // dedup returns tickers in a that are not present in b.
 func dedup(a, b []string) []string {
 	set := make(map[string]bool, len(b))

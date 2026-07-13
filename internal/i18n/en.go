@@ -63,6 +63,13 @@ var enMessages = map[Key]string{
 
 	KeyInsightResultTitle: "💡 *Portfolio Insight*\n\n%s",
 
+	KeyWeeklyReviewStart:          "📅 Generating this week's portfolio review...",
+	KeyWeeklyReviewResultTitle:    "📅 *Weekly Portfolio Review*\n\n%s",
+	KeyWeeklyNetWorthLine:         "📈 Total value: $%.2f (%+.1f%% vs a week ago)\n",
+	KeyWeeklyNetWorthLineWithCash: "📈 Total value: $%.2f (%+.1f%% vs a week ago) | Total assets incl. cash: $%.2f\n",
+	KeyWeeklyEarningsPreviewTitle: "\n📅 *Next Week's Earnings*\n",
+	KeyWeeklyEarningsPreviewLine:  "- %s: %s (in %d days)\n",
+
 	KeyCashUsage:      "Usage: /cash <amount> (omit the amount to check the current value)",
 	KeyCashCurrent:    "Declared cash: $%.2f",
 	KeyCashNotSet:     "Cash balance not set yet. Use /cash <amount> to set it.",
@@ -221,6 +228,26 @@ Please analyze the whole portfolio in English (don't repeat the per-ticker data 
    underperforming SPY — a position being up doesn't mean it was the right call
 4. Add/reduce/stop-loss suggestions: which positions should be added to, trimmed, or given a stop-loss, and why
 5. If a cash balance is provided, briefly comment on whether the current positions/cash split makes sense
+
+Keep the reply concise — under 600 words total.
+`,
+
+	KeyWeeklyReviewPromptIntro: "You are a US equities analyst. Give this week's portfolio review for the whole set of holdings below (not a repeat of each ticker's individual analysis).\n\n",
+	KeyWeeklyReviewTrackHeader: "\nThis week's recommendation tracking:\n",
+	KeyWeeklyReviewPromptTask: `
+Please analyze the whole portfolio in English (don't repeat the per-ticker data already listed — focus on portfolio-level judgment):
+1. Concentration risk: is any single position or sector too large a share of the portfolio (infer sector from your own
+   knowledge of these tickers — don't wait for it to be supplied)
+2. Thesis check: where a "holding thesis" is provided, challenge it directly — against the recent news/fundamentals
+   shown, does it still hold, and what's changed; for holdings with no thesis, assess whether the likely original
+   rationale still holds
+3. Performance vs. the market: where "vs. market" data is provided, call out any holding that's actually
+   underperforming SPY — a position being up doesn't mean it was the right call
+4. Add/reduce/stop-loss suggestions: which positions should be added to, trimmed, or given a stop-loss, and why
+5. If a cash balance is provided, briefly comment on whether the current positions/cash split makes sense
+6. If "this week's recommendation tracking" data is provided above, briefly comment on which kind of call (by
+   action BUY/SELL, or by source watchlist/movers/scan) has been most/least accurate lately; skip this point if
+   that data isn't present
 
 Keep the reply concise — under 600 words total.
 `,

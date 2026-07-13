@@ -82,6 +82,23 @@ func (s *Scheduler) AddUniverseScan(ctx context.Context, fn JobFunc) {
 	log.Println("scheduler: universe scan registered at 05:45 CST (Tue–Sat)")
 }
 
+// AddWeeklyReview schedules Phase 3.6 PR2's Sunday portfolio review at 09:00
+// CST — a weekend read, not a reactive alert, so unlike AddDailyReport/
+// AddClosingSnapshot there's no market-open/close time to align with. By
+// Sunday morning the most recent net_worth_snapshots/daily_snapshots row is
+// already Friday's close (written by Saturday's 05:30 AddClosingSnapshot
+// run), so this job needs no fresher data than what's already on disk.
+func (s *Scheduler) AddWeeklyReview(ctx context.Context, fn JobFunc) {
+	_, err := s.c.AddFunc("0 0 9 * * 0", func() {
+		log.Println("scheduler: running weekly review")
+		fn(ctx)
+	})
+	if err != nil {
+		log.Fatalf("scheduler: add weekly review: %v", err)
+	}
+	log.Println("scheduler: weekly review registered at 09:00 CST (Sun)")
+}
+
 // AddLogRotation schedules fn (typically a rotating log writer's Rotate
 // method) at midnight CST daily. lumberjack.Logger only rotates on size by
 // itself, so this is what turns that into an actual daily rotation; MaxAge/

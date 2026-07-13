@@ -286,6 +286,39 @@ func buildInsightPrompt(lang i18n.Lang, positions []StockData, cash float64, hav
 	return sb.String()
 }
 
+// buildWeeklyReviewPrompt is Phase 3.6 PR2's Sunday weekly review prompt:
+// the same per-position rendering and portfolio-value/cash lines as
+// buildInsightPrompt, plus this week's /track summary (trackSummary, empty
+// when there's no recommendation history yet — see bot.computeTrackData)
+// folded into the same prompt so the model's portfolio judgment and its
+// comment on recommendation accuracy come from a single coherent call
+// rather than two.
+func buildWeeklyReviewPrompt(lang i18n.Lang, positions []StockData, cash float64, haveCash bool, trackSummary string) string {
+	var sb strings.Builder
+	sb.WriteString(i18n.T(lang, i18n.KeyWeeklyReviewPromptIntro))
+
+	var totalValue float64
+	for _, s := range positions {
+		if s.Quote != nil && s.Position != nil {
+			totalValue += s.Quote.Price * s.Position.Shares
+		}
+		writeStockSection(&sb, lang, s)
+	}
+
+	sb.WriteString(i18n.T(lang, i18n.KeyInsightPositionValueLine, totalValue))
+	if haveCash {
+		sb.WriteString(i18n.T(lang, i18n.KeyInsightCashLine, cash, totalValue+cash))
+	}
+
+	if trackSummary != "" {
+		sb.WriteString(i18n.T(lang, i18n.KeyWeeklyReviewTrackHeader))
+		sb.WriteString(trackSummary)
+	}
+
+	sb.WriteString(i18n.T(lang, i18n.KeyWeeklyReviewPromptTask))
+	return sb.String()
+}
+
 // maLabel renders whether price sits above or below a moving average as an
 // already-localized string, so writeStockSection never builds display text
 // outside of internal/i18n.

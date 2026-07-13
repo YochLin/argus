@@ -111,6 +111,13 @@ const (
 
 	KeyInsightResultTitle Key = "insight_result_title"
 
+	KeyWeeklyReviewStart          Key = "weekly_review_start"
+	KeyWeeklyReviewResultTitle    Key = "weekly_review_result_title"
+	KeyWeeklyNetWorthLine         Key = "weekly_net_worth_line"
+	KeyWeeklyNetWorthLineWithCash Key = "weekly_net_worth_line_with_cash"
+	KeyWeeklyEarningsPreviewTitle Key = "weekly_earnings_preview_title"
+	KeyWeeklyEarningsPreviewLine  Key = "weekly_earnings_preview_line"
+
 	KeyCashUsage      Key = "cash_usage"
 	KeyCashCurrent    Key = "cash_current"
 	KeyCashNotSet     Key = "cash_not_set"
@@ -230,6 +237,10 @@ const (
 	KeyInsightPositionValueLine Key = "insight_position_value_line"
 	KeyInsightCashLine          Key = "insight_cash_line"
 	KeyInsightPromptTask        Key = "insight_prompt_task"
+
+	KeyWeeklyReviewPromptIntro Key = "weekly_review_prompt_intro"
+	KeyWeeklyReviewTrackHeader Key = "weekly_review_track_header"
+	KeyWeeklyReviewPromptTask  Key = "weekly_review_prompt_task"
 
 	KeyStockHeader             Key = "stock_header"
 	KeyPriceLine               Key = "price_line"

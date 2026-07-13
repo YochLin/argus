@@ -66,6 +66,13 @@ var zhMessages = map[Key]string{
 
 	KeyInsightResultTitle: "💡 *投資組合見解*\n\n%s",
 
+	KeyWeeklyReviewStart:          "📅 正在產生本週組合回顧...",
+	KeyWeeklyReviewResultTitle:    "📅 *每週組合回顧*\n\n%s",
+	KeyWeeklyNetWorthLine:         "📈 總市值：$%.2f（較一週前 %+.1f%%）\n",
+	KeyWeeklyNetWorthLineWithCash: "📈 總市值：$%.2f（較一週前 %+.1f%%）｜含現金總資產：$%.2f\n",
+	KeyWeeklyEarningsPreviewTitle: "\n📅 *下週財報前瞻*\n",
+	KeyWeeklyEarningsPreviewLine:  "- %s：%s（%d 天後）\n",
+
 	KeyCashUsage:      "用法：/cash <金額>（查詢請不帶參數）",
 	KeyCashCurrent:    "目前登記現金：$%.2f",
 	KeyCashNotSet:     "尚未登記現金水位，使用 /cash <金額> 設定。",
@@ -219,6 +226,22 @@ var zhMessages = map[Key]string{
 3. 相對大盤表現：若附有「相對大盤」數據，指出哪些持倉其實在跑輸 SPY，光是上漲不代表這筆投資是對的
 4. 加碼／減碼／停損建議：哪些部位該加碼、該減碼、或該設停損，並說明理由
 5. 若有提供現金水位，簡短評論目前的持倉／現金配置是否合理
+
+回覆請簡潔，總字數控制在 600 字以內。
+`,
+
+	KeyWeeklyReviewPromptIntro: "你是一位美股分析師，請針對以下整體持倉組合給出本週回顧（不是逐檔重複個股分析）。\n\n",
+	KeyWeeklyReviewTrackHeader: "\n本週推薦追蹤成效：\n",
+	KeyWeeklyReviewPromptTask: `
+請用繁體中文分析整個投資組合（不要逐檔重複已列出的數據，聚焦組合層級的判斷）：
+1. 集中度風險：單一持股或單一產業是否佔比過高（產業請根據你自己對這些標的的認識判斷，不用等資料提供）
+2. 持有理由檢視：若某檔附有「持有論點」，請直接挑戰它——對照近期新聞與基本面，這個論點是否還站得住腳，
+   哪裡已經變了；沒有附論點的標的，則檢視當初可能的持有邏輯是否仍然成立
+3. 相對大盤表現：若附有「相對大盤」數據，指出哪些持倉其實在跑輸 SPY，光是上漲不代表這筆投資是對的
+4. 加碼／減碼／停損建議：哪些部位該加碼、該減碼、或該設停損，並說明理由
+5. 若有提供現金水位，簡短評論目前的持倉／現金配置是否合理
+6. 若上方附有「本週推薦追蹤成效」數據，簡短點評哪一類建議（可依動作 BUY/SELL 或來源 watchlist/movers/scan
+   區分）最準、哪一類最不準；若沒有這項數據則略過此點
 
 回覆請簡潔，總字數控制在 600 字以內。
 `,
