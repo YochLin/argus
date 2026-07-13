@@ -95,15 +95,12 @@ func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommen
 		}
 	}
 
+	watchlistRecs, candidateRecs := splitRecsBySource(recs, sources)
+
 	var sb strings.Builder
 	sb.WriteString(i18n.T(b.lang, i18n.KeyRecommendationsTitle))
-	for i, r := range recs {
-		if r.Action != "" {
-			fmt.Fprintf(&sb, "%d. *%s* — %s\n%s\n\n", i+1, r.Ticker, r.Action, r.Reason)
-		} else {
-			fmt.Fprintf(&sb, "%d. *%s*\n%s\n\n", i+1, r.Ticker, r.Reason)
-		}
-	}
+	writeRecGroup(&sb, b.lang, i18n.KeyRecWatchlistSectionTitle, watchlistRecs)
+	writeRecGroup(&sb, b.lang, i18n.KeyRecCandidatesSectionTitle, candidateRecs)
 	b.Send(sb.String())
 
 	var dbRecs []db.Recommendation
@@ -118,6 +115,44 @@ func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommen
 	}
 	if err := b.db.SaveRecommendations(todayDate(), dbRecs); err != nil {
 		log.Printf("save recommendations: %v", err)
+	}
+}
+
+// splitRecsBySource divides recs into watchlist/held picks vs. new-candidate
+// picks (sources classifies each ticker "watchlist"/"movers"/"scan" — see
+// recommendationSources) so sendAndSaveRecommendations' message reads as two
+// distinct groups instead of one flat list mixing "how's what I already
+// have doing" with "here's something new to consider". A ticker missing
+// from sources (shouldn't happen — sources is built from the same recs right
+// before this call) falls into the candidates group rather than panicking on
+// a nil map lookup.
+func splitRecsBySource(recs []llm.Recommendation, sources map[string]string) (watchlistRecs, candidateRecs []llm.Recommendation) {
+	for _, r := range recs {
+		if sources[r.Ticker] == "watchlist" {
+			watchlistRecs = append(watchlistRecs, r)
+		} else {
+			candidateRecs = append(candidateRecs, r)
+		}
+	}
+	return watchlistRecs, candidateRecs
+}
+
+// writeRecGroup renders one section of sendAndSaveRecommendations' message:
+// a title followed by each recommendation in the group, numbered from 1
+// within that group (not continuing the other group's count). Writes
+// nothing at all — title included — when recs is empty, so a day with no
+// new-candidate picks doesn't leave a dangling header with nothing under it.
+func writeRecGroup(sb *strings.Builder, lang i18n.Lang, titleKey i18n.Key, recs []llm.Recommendation) {
+	if len(recs) == 0 {
+		return
+	}
+	sb.WriteString(i18n.T(lang, titleKey))
+	for i, r := range recs {
+		if r.Action != "" {
+			fmt.Fprintf(sb, "%d. *%s* — %s\n%s\n\n", i+1, r.Ticker, r.Action, r.Reason)
+		} else {
+			fmt.Fprintf(sb, "%d. *%s*\n%s\n\n", i+1, r.Ticker, r.Reason)
+		}
 	}
 }
 

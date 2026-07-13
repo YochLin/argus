@@ -2,6 +2,7 @@ package bot
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
+	"argus/internal/llm"
 )
 
 func TestDedup(t *testing.T) {
@@ -371,6 +373,73 @@ func TestRecommendationSources(t *testing.T) {
 			t.Errorf("recommendationSources()[%s] = %q, want %q", ticker, got[ticker], wantSource)
 		}
 	}
+}
+
+func TestSplitRecsBySource(t *testing.T) {
+	recs := []llm.Recommendation{
+		{Ticker: "AAPL", Action: "HOLD"},
+		{Ticker: "NVDA", Action: "BUY"},
+		{Ticker: "TSLA", Action: "BUY"},
+		{Ticker: "ZZZZ", Action: "BUY"}, // missing from sources
+	}
+	sources := map[string]string{
+		"AAPL": "watchlist",
+		"NVDA": "scan",
+		"TSLA": "movers",
+	}
+
+	gotWatchlist, gotCandidates := splitRecsBySource(recs, sources)
+
+	wantWatchlist := []llm.Recommendation{{Ticker: "AAPL", Action: "HOLD"}}
+	if !reflect.DeepEqual(gotWatchlist, wantWatchlist) {
+		t.Errorf("splitRecsBySource() watchlist = %+v, want %+v", gotWatchlist, wantWatchlist)
+	}
+
+	wantCandidates := []llm.Recommendation{
+		{Ticker: "NVDA", Action: "BUY"},
+		{Ticker: "TSLA", Action: "BUY"},
+		{Ticker: "ZZZZ", Action: "BUY"},
+	}
+	if !reflect.DeepEqual(gotCandidates, wantCandidates) {
+		t.Errorf("splitRecsBySource() candidates = %+v, want %+v", gotCandidates, wantCandidates)
+	}
+}
+
+func TestWriteRecGroup(t *testing.T) {
+	t.Run("empty recs writes nothing, not even the title", func(t *testing.T) {
+		var sb strings.Builder
+		writeRecGroup(&sb, i18n.EN, i18n.KeyRecWatchlistSectionTitle, nil)
+		if sb.String() != "" {
+			t.Errorf("writeRecGroup() = %q, want empty", sb.String())
+		}
+	})
+
+	t.Run("numbers from 1 within the group and includes the title", func(t *testing.T) {
+		var sb strings.Builder
+		recs := []llm.Recommendation{
+			{Ticker: "AAPL", Action: "HOLD", Reason: "fairly valued."},
+			{Ticker: "MSFT", Action: "BUY", Reason: "cloud growth."},
+		}
+		writeRecGroup(&sb, i18n.EN, i18n.KeyRecWatchlistSectionTitle, recs)
+		got := sb.String()
+		want := i18n.T(i18n.EN, i18n.KeyRecWatchlistSectionTitle) +
+			"1. *AAPL* — HOLD\nfairly valued.\n\n" +
+			"2. *MSFT* — BUY\ncloud growth.\n\n"
+		if got != want {
+			t.Errorf("writeRecGroup() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("empty action omits the action separator", func(t *testing.T) {
+		var sb strings.Builder
+		recs := []llm.Recommendation{{Ticker: "AAPL", Reason: "no action line."}}
+		writeRecGroup(&sb, i18n.EN, i18n.KeyRecCandidatesSectionTitle, recs)
+		got := sb.String()
+		want := i18n.T(i18n.EN, i18n.KeyRecCandidatesSectionTitle) + "1. *AAPL*\nno action line.\n\n"
+		if got != want {
+			t.Errorf("writeRecGroup() = %q, want %q", got, want)
+		}
+	})
 }
 
 func TestTrackHit(t *testing.T) {
