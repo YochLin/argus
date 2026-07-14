@@ -111,27 +111,28 @@ func (y *Yahoo) GetQuote(ticker string) (*Quote, error) {
 	return q, nil
 }
 
-// GetHistory returns ~1 year of daily closes and volumes, oldest first —
-// enough closes for a 200-period moving average (MA200 needs ~200 trading
-// days) and still plenty of room for a 14-period RSI or a 12/26/9 MACD,
-// which only read the tail of the slice regardless of how much extra
-// history is in front of it. Volumes are index-aligned with closes.
-func (y *Yahoo) GetHistory(ticker string) ([]float64, []int64, error) {
+// GetHistory returns ~1 year of daily closes/highs/lows/volumes, oldest
+// first — enough closes for a 200-period moving average (MA200 needs ~200
+// trading days) and still plenty of room for a 14-period RSI/ATR or a
+// 12/26/9 MACD, which only read the tail of the slice regardless of how much
+// extra history is in front of it. highs/lows/volumes are index-aligned
+// with closes.
+func (y *Yahoo) GetHistory(ticker string) (closes, highs, lows []float64, volumes []int64, err error) {
 	url := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&range=1y", ticker)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0")
 
 	resp, err := y.client.Do(req)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("yahoo history: status %d for %s", resp.StatusCode, ticker)
+		return nil, nil, nil, nil, fmt.Errorf("yahoo history: status %d for %s", resp.StatusCode, ticker)
 	}
 
 	var result struct {
@@ -140,6 +141,8 @@ func (y *Yahoo) GetHistory(ticker string) ([]float64, []int64, error) {
 				Indicators struct {
 					Quote []struct {
 						Close  []float64 `json:"close"`
+						High   []float64 `json:"high"`
+						Low    []float64 `json:"low"`
 						Volume []int64   `json:"volume"`
 					} `json:"quote"`
 				} `json:"indicators"`
@@ -148,23 +151,31 @@ func (y *Yahoo) GetHistory(ticker string) ([]float64, []int64, error) {
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	if len(result.Chart.Result) == 0 || len(result.Chart.Result[0].Indicators.Quote) == 0 {
-		return nil, nil, fmt.Errorf("yahoo history: no data for %s", ticker)
+		return nil, nil, nil, nil, fmt.Errorf("yahoo history: no data for %s", ticker)
 	}
 
 	// Yahoo leaves a null (decoded as 0) hole for days without a trade
-	// (e.g. halts); drop them rather than feeding a false price into RSI/MACD.
-	// volumes is kept index-aligned with closes by dropping the same days.
+	// (e.g. halts); drop them rather than feeding a false price into
+	// RSI/MACD/ATR. highs/lows/volumes are kept index-aligned with closes by
+	// dropping the same days.
 	quote := result.Chart.Result[0].Indicators.Quote[0]
-	var closes []float64
-	var volumes []int64
 	for i, c := range quote.Close {
 		if c == 0 {
 			continue
 		}
 		closes = append(closes, c)
+		var h, l float64
+		if i < len(quote.High) {
+			h = quote.High[i]
+		}
+		if i < len(quote.Low) {
+			l = quote.Low[i]
+		}
+		highs = append(highs, h)
+		lows = append(lows, l)
 		var v int64
 		if i < len(quote.Volume) {
 			v = quote.Volume[i]
@@ -172,9 +183,9 @@ func (y *Yahoo) GetHistory(ticker string) ([]float64, []int64, error) {
 		volumes = append(volumes, v)
 	}
 	if len(closes) == 0 {
-		return nil, nil, fmt.Errorf("yahoo history: no valid closes for %s", ticker)
+		return nil, nil, nil, nil, fmt.Errorf("yahoo history: no valid closes for %s", ticker)
 	}
-	return closes, volumes, nil
+	return closes, highs, lows, volumes, nil
 }
 
 func (y *Yahoo) GetNews(ticker string, limit int) ([]NewsItem, error) {

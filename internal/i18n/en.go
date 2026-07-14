@@ -283,6 +283,7 @@ Keep the reply concise — under 600 words total.
 	KeyTechnicalsSummaryLine:   "- Technicals: RSI(14) %.1f | MACD %s\n",
 	KeyTechnicalsMALine:        "- %s MA%d ($%.2f)\n",
 	KeyVolumeRatioLine:         "- Volume: %.1fx 20-day avg\n",
+	KeyATRLine:                 "- ATR(14): $%.2f (%.1f%% of price)\n",
 	KeyTrendBullish:            "Bullish",
 	KeyTrendBearish:            "Bearish",
 	KeyTrendUnknown:            "insufficient data",

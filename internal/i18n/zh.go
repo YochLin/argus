@@ -274,6 +274,7 @@ var zhMessages = map[Key]string{
 	KeyTechnicalsSummaryLine:   "- 技術面：RSI(14) %.1f｜MACD %s\n",
 	KeyTechnicalsMALine:        "- %s MA%d ($%.2f)\n",
 	KeyVolumeRatioLine:         "- 量能：近20日均量的 %.1f 倍\n",
+	KeyATRLine:                 "- 波動度 ATR(14)：$%.2f（現價的 %.1f%%）\n",
 	KeyTrendBullish:            "多頭",
 	KeyTrendBearish:            "空頭",
 	KeyTrendUnknown:            "數據不足",

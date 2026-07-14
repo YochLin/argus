@@ -135,6 +135,33 @@ func VolumeRatio(volumes []int64, period int) float64 {
 	return float64(latest) / avg
 }
 
+// ATR returns the Average True Range over the trailing period days (14 is
+// the textbook default), or 0 if there isn't enough history yet. True range
+// for a day is the largest of high-low, |high-prevClose|, and
+// |low-prevClose| — the extra two terms catch a gap open that a plain
+// high-low range would miss. This averages the trailing true ranges with a
+// plain mean rather than Wilder's smoothing, same simplicity tradeoff as MA
+// being an SMA instead of an EMA. highs/lows/closes must be index-aligned
+// and oldest-first, the same convention HistoryProvider.GetHistory returns.
+func ATR(highs, lows, closes []float64, period int) float64 {
+	n := len(closes)
+	if len(highs) < n || len(lows) < n || n < period+1 {
+		return 0
+	}
+	var sum float64
+	for i := n - period; i < n; i++ {
+		tr := highs[i] - lows[i]
+		if v := math.Abs(highs[i] - closes[i-1]); v > tr {
+			tr = v
+		}
+		if v := math.Abs(lows[i] - closes[i-1]); v > tr {
+			tr = v
+		}
+		sum += tr
+	}
+	return sum / float64(period)
+}
+
 // CheckRSIState is the deduplicated version of CheckRSI: it only returns a
 // signal when RSI newly enters overbought/oversold territory relative to
 // prevState (the state persisted after the previous check; "" reads as

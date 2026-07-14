@@ -91,6 +91,60 @@ func TestVolumeRatio(t *testing.T) {
 	})
 }
 
+func TestATR(t *testing.T) {
+	t.Run("insufficient data returns 0", func(t *testing.T) {
+		highs := []float64{10, 11, 12}
+		lows := []float64{9, 10, 11}
+		closes := []float64{9.5, 10.5, 11.5}
+		if got := ATR(highs, lows, closes, 5); got != 0 {
+			t.Errorf("ATR() = %v, want 0", got)
+		}
+	})
+
+	t.Run("flat range with no gaps averages high-low", func(t *testing.T) {
+		// Every day has a high-low range of 2, no gaps between days, so the
+		// true range collapses to the plain high-low range every day.
+		n := 20
+		highs := make([]float64, n)
+		lows := make([]float64, n)
+		closes := make([]float64, n)
+		for i := 0; i < n; i++ {
+			highs[i] = 101
+			lows[i] = 99
+			closes[i] = 100
+		}
+		if got := ATR(highs, lows, closes, 14); !almostEqual(got, 2) {
+			t.Errorf("ATR() = %v, want 2", got)
+		}
+	})
+
+	t.Run("a gap widens true range beyond the day's own high-low", func(t *testing.T) {
+		// Flat range of 2 every day except the last, which gaps down hard:
+		// prevClose 100, that day's low 90 — |low-prevClose| = 10 dwarfs its
+		// own 3-wide high-low range (93-90), so the average must reflect the
+		// gap, not just the day's own range.
+		n := 15
+		highs := make([]float64, n)
+		lows := make([]float64, n)
+		closes := make([]float64, n)
+		for i := 0; i < n; i++ {
+			highs[i] = 101
+			lows[i] = 99
+			closes[i] = 100
+		}
+		highs[n-1] = 93
+		lows[n-1] = 90
+		closes[n-1] = 91
+		got := ATR(highs, lows, closes, 14)
+		// 13 normal days at true range 2, one gap day at true range 10
+		// (|90-100|), averaged over the trailing 14.
+		want := (13*2.0 + 10.0) / 14.0
+		if !almostEqual(got, want) {
+			t.Errorf("ATR() = %v, want %v", got, want)
+		}
+	})
+}
+
 func TestEmaSeries(t *testing.T) {
 	got := emaSeries([]float64{1, 2, 3, 4}, 3)
 	want := []float64{1, 1.5, 2.25, 3.125}
