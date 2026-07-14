@@ -308,4 +308,11 @@ Keep the reply concise — under 600 words total.
 
 	KeyMCPNoMovers:     "No market movers data available right now.",
 	KeyMCPMoversResult: "Current market movers: %s\n",
+
+	KeyMCPRecentRecsTitle:       "🗒 *Past recommendations (last %d days, newest first)*\n\n",
+	KeyMCPRecentRecsTitleTicker: "🗒 *Past recommendations for %s (last %d days, newest first)*\n\n",
+	KeyMCPRecentRecsTruncated:   "(showing the most recent %d of %d)\n\n",
+	KeyMCPRecentRecLine:         "• %s *%s* %s @ $%.2f (source: %s)\n  %s\n\n",
+	KeyMCPRecentRecLineNoPrice:  "• %s *%s* %s (source: %s)\n  %s\n\n",
+	KeyMCPRecentRecsEmptyTicker: "No recommendations recorded for %s in the past %d days.",
 }

@@ -301,4 +301,11 @@ const (
 
 	KeyMCPNoMovers     Key = "mcp_no_movers"
 	KeyMCPMoversResult Key = "mcp_movers_result"
+
+	KeyMCPRecentRecsTitle       Key = "mcp_recent_recs_title"
+	KeyMCPRecentRecsTitleTicker Key = "mcp_recent_recs_title_ticker"
+	KeyMCPRecentRecsTruncated   Key = "mcp_recent_recs_truncated"
+	KeyMCPRecentRecLine         Key = "mcp_recent_rec_line"
+	KeyMCPRecentRecLineNoPrice  Key = "mcp_recent_rec_line_no_price"
+	KeyMCPRecentRecsEmptyTicker Key = "mcp_recent_recs_empty_ticker"
 )

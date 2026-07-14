@@ -124,6 +124,71 @@ func TestGetRecommendationStatsEmpty(t *testing.T) {
 	}
 }
 
+func TestGetRecentRecommendations(t *testing.T) {
+	d := newTestDB(t)
+	today := time.Now().In(cst).Format("2006-01-02")
+	if err := d.SaveRecommendations(today, []db.Recommendation{
+		{Date: today, Ticker: "AAPL", Action: "BUY", Reason: "strong momentum", Price: 150, Source: "watchlist"},
+		{Date: today, Ticker: "NVDA", Action: "HOLD", Reason: "wait for earnings", Price: 900, Source: "movers"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := &toolset{lang: i18n.EN, provider: &fakeProvider{}, history: &fakeHistory{}, db: d}
+	session := connectTool(t, ts)
+
+	text, isError := callText(t, session, "get_recent_recommendations", map[string]any{"days": 90})
+	if isError {
+		t.Fatalf("get_recent_recommendations returned an error result: %s", text)
+	}
+	for _, want := range []string{"AAPL", "BUY", "150.00", "strong momentum", "NVDA", "HOLD", "wait for earnings", "movers"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("get_recent_recommendations result missing %q, got:\n%s", want, text)
+		}
+	}
+}
+
+func TestGetRecentRecommendationsTickerFilter(t *testing.T) {
+	d := newTestDB(t)
+	today := time.Now().In(cst).Format("2006-01-02")
+	if err := d.SaveRecommendations(today, []db.Recommendation{
+		{Date: today, Ticker: "AAPL", Action: "BUY", Reason: "strong momentum", Price: 150, Source: "watchlist"},
+		{Date: today, Ticker: "NVDA", Action: "HOLD", Reason: "wait for earnings", Price: 900, Source: "movers"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := &toolset{lang: i18n.EN, provider: &fakeProvider{}, history: &fakeHistory{}, db: d}
+	session := connectTool(t, ts)
+
+	text, isError := callText(t, session, "get_recent_recommendations", map[string]any{"days": 90, "ticker": "nvda"})
+	if isError {
+		t.Fatalf("get_recent_recommendations returned an error result: %s", text)
+	}
+	if !strings.Contains(text, "NVDA") {
+		t.Errorf("filtered result missing NVDA, got:\n%s", text)
+	}
+	if strings.Contains(text, "AAPL") {
+		t.Errorf("filtered result should not include AAPL, got:\n%s", text)
+	}
+
+	_, isError = callText(t, session, "get_recent_recommendations", map[string]any{"days": 90, "ticker": "TSLA"})
+	if !isError {
+		t.Fatal("get_recent_recommendations with a ticker that has no rows should return IsError")
+	}
+}
+
+func TestGetRecentRecommendationsEmpty(t *testing.T) {
+	d := newTestDB(t)
+	ts := &toolset{lang: i18n.EN, provider: &fakeProvider{}, history: &fakeHistory{}, db: d}
+	session := connectTool(t, ts)
+
+	_, isError := callText(t, session, "get_recent_recommendations", map[string]any{})
+	if !isError {
+		t.Fatal("get_recent_recommendations with no recommendations in window should return IsError")
+	}
+}
+
 func TestGetUniverseSummary(t *testing.T) {
 	d := newTestDB(t)
 	if err := d.AddUniverseTicker("ZZZZ", "manual"); err != nil {
@@ -154,7 +219,7 @@ func TestDBToolsNotRegisteredWithoutDB(t *testing.T) {
 	for _, tool := range res.Tools {
 		names[tool.Name] = true
 	}
-	for _, notWant := range []string{"get_watchlist", "get_portfolio", "get_recommendation_stats", "get_universe_summary"} {
+	for _, notWant := range []string{"get_watchlist", "get_portfolio", "get_recommendation_stats", "get_recent_recommendations", "get_universe_summary"} {
 		if names[notWant] {
 			t.Errorf("tools/list should not advertise %q when db is nil", notWant)
 		}

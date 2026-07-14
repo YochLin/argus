@@ -61,7 +61,7 @@ const (
 // runMCPServer), so a DB hiccup takes down only the tools that depend on
 // the connection that failed, not the whole MCP server. The two are
 // deliberately separate connections/parameters, not one dual-purpose one —
-// see db.OpenForWrites' doc comment for why the four read-only query tools
+// see db.OpenForWrites' doc comment for why the five read-only query tools
 // keep a hard DB-level guarantee that they can never write.
 //
 // Every tool handler is routed through a shared per-process TTL cache and
