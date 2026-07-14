@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"argus/internal/data"
 	"argus/internal/db"
@@ -118,12 +119,77 @@ func New(cfg Config) (*Bot, error) {
 	}, nil
 }
 
+// telegramMaxMessageLen is a conservative cap on outgoing message length.
+// Telegram's actual sendMessage limit is 4096 characters; this project stays
+// well under it since splitMessage counts runes (not the UTF-16 code units
+// Telegram's limit is really specified in — astral-plane emoji like 📊 need
+// two of those per rune) and BotAPI.Send returns "message is too long" as a
+// plain error that Send only logs, never surfaces to the user. /track is the
+// command most likely to hit this: its length grows with
+// watchlist-size × lookback-days (see handleTrack), so even a modest
+// watchlist can produce a multi-thousand-character report after a week of
+// daily reports.
+const telegramMaxMessageLen = 3500
+
 func (b *Bot) Send(text string) {
-	msg := tgbotapi.NewMessage(b.chatID, text)
-	msg.ParseMode = "Markdown"
-	if _, err := b.api.Send(msg); err != nil {
-		log.Printf("send error: %v", err)
+	for _, chunk := range splitMessage(text, telegramMaxMessageLen) {
+		msg := tgbotapi.NewMessage(b.chatID, chunk)
+		msg.ParseMode = "Markdown"
+		if _, err := b.api.Send(msg); err != nil {
+			log.Printf("send error: %v", err)
+		}
 	}
+}
+
+// splitMessage breaks text into chunks of at most limit runes, splitting
+// only at line boundaries so a Markdown entity opened and closed within a
+// single line (e.g. "*AAPL*") never gets split across two messages — every
+// i18n line template in this package opens and closes its own markdown
+// within one line, so this preserves valid Markdown per chunk. A single line
+// longer than limit on its own (shouldn't happen with today's templates) is
+// hard-split by rune as a last resort, so content is never silently dropped.
+func splitMessage(text string, limit int) []string {
+	if utf8.RuneCountInString(text) <= limit {
+		return []string{text}
+	}
+
+	var chunks []string
+	var current strings.Builder
+	currentLen := 0
+	flush := func() {
+		if current.Len() > 0 {
+			chunks = append(chunks, current.String())
+			current.Reset()
+			currentLen = 0
+		}
+	}
+
+	for _, line := range strings.SplitAfter(text, "\n") {
+		if line == "" {
+			continue
+		}
+		lineLen := utf8.RuneCountInString(line)
+		if lineLen > limit {
+			flush()
+			runes := []rune(line)
+			for len(runes) > 0 {
+				n := limit
+				if n > len(runes) {
+					n = len(runes)
+				}
+				chunks = append(chunks, string(runes[:n]))
+				runes = runes[n:]
+			}
+			continue
+		}
+		if currentLen+lineLen > limit {
+			flush()
+		}
+		current.WriteString(line)
+		currentLen += lineLen
+	}
+	flush()
+	return chunks
 }
 
 func (b *Bot) Run(ctx context.Context) {
