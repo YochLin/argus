@@ -299,4 +299,11 @@ var zhMessages = map[Key]string{
 
 	KeyMCPNoMovers:     "目前沒有市場熱門標的資料。",
 	KeyMCPMoversResult: "目前市場熱門標的：%s\n",
+
+	KeyMCPRecentRecsTitle:       "🗒 *歷史推薦記錄（過去 %d 天，由新到舊）*\n\n",
+	KeyMCPRecentRecsTitleTicker: "🗒 *%s 的歷史推薦記錄（過去 %d 天，由新到舊）*\n\n",
+	KeyMCPRecentRecsTruncated:   "（僅顯示最近 %d 筆，共 %d 筆）\n\n",
+	KeyMCPRecentRecLine:         "• %s *%s* %s @ $%.2f（來源：%s）\n  %s\n\n",
+	KeyMCPRecentRecLineNoPrice:  "• %s *%s* %s（來源：%s）\n  %s\n\n",
+	KeyMCPRecentRecsEmptyTicker: "%s 在過去 %d 天內沒有推薦記錄。",
 }

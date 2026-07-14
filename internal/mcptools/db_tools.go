@@ -27,14 +27,20 @@ const (
 	// window a human typing /track would.
 	trackDefaultDays = 7
 	trackMaxDays     = 90
+
+	// recentRecsMaxRows caps get_recent_recommendations output — each row
+	// carries a full LLM-written reason paragraph, so an uncapped 90-day
+	// dump could flood the chat model's context.
+	recentRecsMaxRows = 50
 )
 
 // registerDBTools adds the Phase 3.5 "追加項" read-only DB query tools —
-// get_watchlist/get_portfolio/get_recommendation_stats/get_universe_summary
-// — when ts.db is non-nil (see db.OpenReadOnly's doc comment for why this
-// package is now allowed to hold a DB connection at all, and NewServer's
-// doc comment for the nil-degrade contract: a failed open takes down these
-// four tools only, not the whole MCP server).
+// get_watchlist/get_portfolio/get_recommendation_stats/
+// get_recent_recommendations/get_universe_summary — when ts.db is non-nil
+// (see db.OpenReadOnly's doc comment for why this package is now allowed to
+// hold a DB connection at all, and NewServer's doc comment for the
+// nil-degrade contract: a failed open takes down these five tools only, not
+// the whole MCP server).
 func registerDBTools(s *mcp.Server, ts *toolset) {
 	if ts.db == nil {
 		return
@@ -54,6 +60,11 @@ func registerDBTools(s *mcp.Server, ts *toolset) {
 		Name:        "get_recommendation_stats",
 		Description: "Get hit-rate and average-return statistics for past BUY/SELL recommendations over a look-back window (same scoring /track uses: relative to SPY's same-period move when available), broken down by candidate source (watchlist/movers/scan) when more than one appears in the window.",
 	}, ts.getRecommendationStats)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get_recent_recommendations",
+		Description: "List the individual BUY/SELL/HOLD recommendations the bot itself has made — date, ticker, action, price at recommendation time, candidate source, and the full reasoning — over a look-back window, newest first, optionally filtered to one ticker. Use this to answer what was recommended and why; for hit-rate/return scoring of those calls use get_recommendation_stats instead.",
+	}, ts.getRecentRecommendations)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_universe_summary",
@@ -237,6 +248,83 @@ func (ts *toolset) getRecommendationStats(ctx context.Context, _ *mcp.CallToolRe
 					s := bySource[source]
 					sb.WriteString(i18n.T(ts.lang, i18n.KeyTrackBySourceLine, source, s.Hits, s.Evaluated, s.HitRate()))
 				}
+			}
+		}
+		return textResult(sb.String()), nil
+	})
+	return result, nil, err
+}
+
+type recentRecommendationsInput struct {
+	Days   int    `json:"days,omitempty" jsonschema:"look-back window in days (default 7, max 90)"`
+	Ticker string `json:"ticker,omitempty" jsonschema:"optional ticker to filter by, e.g. AAPL"`
+}
+
+// getRecentRecommendations lists the raw recommendations rows —
+// get_recommendation_stats' unaggregated counterpart, and the chat-side
+// answer to "what did you recommend and why" (the /recommend path already
+// sees this history via llm.StockData.PrevRec; the chat session otherwise
+// has no view of it at all). days is clamped, not rejected, for the same
+// no-way-to-retype reason as getRecommendationStats. Output is rendered
+// newest first and capped at recentRecsMaxRows (reasons are full LLM
+// paragraphs — see the const's doc comment).
+func (ts *toolset) getRecentRecommendations(ctx context.Context, _ *mcp.CallToolRequest, in recentRecommendationsInput) (*mcp.CallToolResult, any, error) {
+	days := in.Days
+	if days <= 0 {
+		days = trackDefaultDays
+	}
+	if days > trackMaxDays {
+		days = trackMaxDays
+	}
+	ticker := strings.ToUpper(strings.TrimSpace(in.Ticker))
+
+	key := fmt.Sprintf("get_recent_recommendations:%d:%s", days, ticker)
+	result, err := ts.withCache(ctx, key, shortCacheTTL, func() (*mcp.CallToolResult, error) {
+		fromDate := time.Now().In(cst).AddDate(0, 0, -days).Format("2006-01-02")
+		recs, err := ts.db.GetRecommendationsSince(fromDate)
+		if err != nil {
+			return nil, ts.mcpErr(i18n.KeyQueryFailed, err)
+		}
+		if ticker != "" {
+			filtered := recs[:0]
+			for _, r := range recs {
+				if r.Ticker == ticker {
+					filtered = append(filtered, r)
+				}
+			}
+			recs = filtered
+		}
+		if len(recs) == 0 {
+			if ticker != "" {
+				return nil, ts.mcpErr(i18n.KeyMCPRecentRecsEmptyTicker, ticker, days)
+			}
+			return nil, ts.mcpErr(i18n.KeyTrackEmpty, days)
+		}
+
+		total := len(recs)
+		if total > recentRecsMaxRows {
+			recs = recs[total-recentRecsMaxRows:] // GetRecommendationsSince is oldest-first; keep the newest
+		}
+
+		var sb strings.Builder
+		if ticker != "" {
+			sb.WriteString(i18n.T(ts.lang, i18n.KeyMCPRecentRecsTitleTicker, ticker, days))
+		} else {
+			sb.WriteString(i18n.T(ts.lang, i18n.KeyMCPRecentRecsTitle, days))
+		}
+		if len(recs) < total {
+			sb.WriteString(i18n.T(ts.lang, i18n.KeyMCPRecentRecsTruncated, len(recs), total))
+		}
+		for i := len(recs) - 1; i >= 0; i-- {
+			r := recs[i]
+			action := r.Action
+			if action == "" {
+				action = "—"
+			}
+			if r.Price != 0 {
+				sb.WriteString(i18n.T(ts.lang, i18n.KeyMCPRecentRecLine, r.Date, r.Ticker, action, r.Price, displaySource(r.Source), r.Reason))
+			} else {
+				sb.WriteString(i18n.T(ts.lang, i18n.KeyMCPRecentRecLineNoPrice, r.Date, r.Ticker, action, displaySource(r.Source), r.Reason))
 			}
 		}
 		return textResult(sb.String()), nil
