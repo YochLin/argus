@@ -264,6 +264,7 @@ const (
 	KeyTechnicalsSummaryLine   Key = "technicals_summary_line"
 	KeyTechnicalsMALine        Key = "technicals_ma_line"
 	KeyVolumeRatioLine         Key = "volume_ratio_line"
+	KeyATRLine                 Key = "atr_line"
 	KeyTrendBullish            Key = "trend_bullish"
 	KeyTrendBearish            Key = "trend_bearish"
 	KeyTrendUnknown            Key = "trend_unknown"

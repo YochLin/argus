@@ -39,12 +39,14 @@ func (f *fakeProvider) GetMarketMovers() ([]string, error)           { return f.
 
 type fakeHistory struct {
 	closes  []float64
+	highs   []float64
+	lows    []float64
 	volumes []int64
 	err     error
 }
 
-func (f *fakeHistory) GetHistory(string) ([]float64, []int64, error) {
-	return f.closes, f.volumes, f.err
+func (f *fakeHistory) GetHistory(string) ([]float64, []float64, []float64, []int64, error) {
+	return f.closes, f.highs, f.lows, f.volumes, f.err
 }
 
 type fakeFundamentals struct {

@@ -229,7 +229,7 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 // rate-limit concern like Finnhub's, so the duplicate call is an accepted
 // trade-off rather than an oversight.
 func (b *Bot) computeTechnicals(ticker string) *llm.Technicals {
-	closes, volumes, err := b.history.GetHistory(ticker)
+	closes, highs, lows, volumes, err := b.history.GetHistory(ticker)
 	if err != nil {
 		log.Printf("history %s: %v", ticker, err)
 		return nil
@@ -241,6 +241,7 @@ func (b *Bot) computeTechnicals(ticker string) *llm.Technicals {
 		MA50:        signals.MA(closes, 50),
 		MA200:       signals.MA(closes, 200),
 		VolumeRatio: signals.VolumeRatio(volumes, 20),
+		ATR14:       signals.ATR(highs, lows, closes, 14),
 	}
 	if len(volumes) > 0 {
 		t.Volume = volumes[len(volumes)-1]

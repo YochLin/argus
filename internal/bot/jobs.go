@@ -180,7 +180,7 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 		}
 	}
 	for _, t := range in.watchlistTickers {
-		closes, _, err := b.history.GetHistory(t)
+		closes, _, _, _, err := b.history.GetHistory(t)
 		if err != nil {
 			log.Printf("history %s: %v", t, err)
 			continue
@@ -336,7 +336,7 @@ func (b *Bot) RunUniverseScan(ctx context.Context) {
 		default:
 		}
 
-		closes, _, err := b.history.GetHistory(t)
+		closes, _, _, _, err := b.history.GetHistory(t)
 		if err != nil {
 			log.Printf("universe scan: history %s: %v", t, err)
 			continue

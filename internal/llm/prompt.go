@@ -87,13 +87,17 @@ type VsSPYReturn struct {
 // is always 0 for a Finnhub-quoted ticker (Finnhub's /quote has no volume
 // field), so this is the only reliable volume source. VolumeRatio is 0 when
 // there isn't ~21 days of history yet (see signals.VolumeRatio); 0 renders
-// as "no data", not "no volume".
+// as "no data", not "no volume". ATR14 (Average True Range, 14-day) is a
+// volatility read from the daily high/low range rather than the closing
+// price alone; like VolumeRatio, 0 means "not enough history yet", not
+// "zero volatility".
 type Technicals struct {
 	RSI14             float64
 	MACDTrend         string
 	MA20, MA50, MA200 float64
 	Volume            int64
 	VolumeRatio       float64
+	ATR14             float64
 }
 
 // Position is the subset of a db.Position an LLM prompt needs: shares held
@@ -214,6 +218,9 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 		}
 		if t.VolumeRatio > 0 {
 			fmt.Fprint(sb, i18n.T(lang, i18n.KeyVolumeRatioLine, t.VolumeRatio))
+		}
+		if t.ATR14 > 0 && q.Price > 0 {
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyATRLine, t.ATR14, t.ATR14/q.Price*100))
 		}
 	}
 

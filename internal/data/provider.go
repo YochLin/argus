@@ -15,10 +15,10 @@ type Quote struct {
 }
 
 type NewsItem struct {
-	Headline  string
-	Summary   string
-	Source    string
-	URL       string
+	Headline    string
+	Summary     string
+	Source      string
+	URL         string
 	PublishedAt time.Time
 }
 
@@ -35,15 +35,17 @@ type Provider interface {
 // unlike Provider this has no Finnhub implementation or Multi wrapper —
 // Yahoo's chart endpoint is the only source, same one GetQuote already uses.
 type HistoryProvider interface {
-	// GetHistory returns ~1 year of daily closes and volumes for ticker, both
-	// oldest first and index-aligned (closes[i] and volumes[i] are the same
-	// trading day) — enough closes for a 200-day moving average, and enough
-	// volumes for a trailing-average "unusual volume" read (see
-	// signals.VolumeRatio). Volume for Finnhub-quoted tickers is otherwise
-	// unavailable (Finnhub's /quote has no volume field at all — see
-	// Finnhub.GetQuote), so this is the only reliable volume source in the
-	// system, not just a technicals convenience.
-	GetHistory(ticker string) (closes []float64, volumes []int64, err error)
+	// GetHistory returns ~1 year of daily closes/highs/lows/volumes for
+	// ticker, all oldest first and index-aligned (closes[i]/highs[i]/lows[i]/
+	// volumes[i] are the same trading day) — enough closes for a 200-day
+	// moving average, and enough volumes for a trailing-average "unusual
+	// volume" read (see signals.VolumeRatio). highs/lows exist for
+	// signals.ATR, which needs the daily range (and the previous day's
+	// close), not just the closing price. Volume for Finnhub-quoted tickers
+	// is otherwise unavailable (Finnhub's /quote has no volume field at
+	// all — see Finnhub.GetQuote), so this is the only reliable volume
+	// source in the system, not just a technicals convenience.
+	GetHistory(ticker string) (closes, highs, lows []float64, volumes []int64, err error)
 }
 
 // Multi is a provider that tries each provider in order, falling back on error.
