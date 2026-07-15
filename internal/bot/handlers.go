@@ -15,6 +15,7 @@ import (
 	"argus/internal/i18n"
 	"argus/internal/llm"
 	"argus/internal/render"
+	"argus/internal/webfetch"
 )
 
 func (b *Bot) handleAdd(ticker string) {
@@ -745,6 +746,11 @@ func (b *Bot) handleThesis(args string) {
 // free-form questions like "我自選股裡最近跌最多的是哪檔" are answerable
 // without giving the ACP session any tools.
 func (b *Bot) handleChat(ctx context.Context, text string) {
+	if url, ok := webfetch.ExtractURL(text); ok {
+		b.handleChatArticle(ctx, text, url)
+		return
+	}
+
 	b.Send(i18n.T(b.lang, i18n.KeyThinking))
 
 	if ctxBlock := b.buildChatContext(); ctxBlock != "" {
@@ -752,6 +758,41 @@ func (b *Bot) handleChat(ctx context.Context, text string) {
 	}
 
 	reply, err := b.llm.Chat(ctx, text)
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyChatFailed, err))
+		return
+	}
+	b.Send(reply)
+}
+
+// handleChatArticle is handleChat's "article digestion" path (Phase 3): the
+// user pasted a URL, possibly alongside their own comment/question in text.
+// The page is fetched and its text extracted bot-side (the ACP chat session
+// has no tools of its own — see internal/llm's acp_provider.go), then
+// wrapped in KeyArticleTaskBlock and sent through the same persistent chat
+// session as an ordinary message, so the digestion happens inline in the
+// conversation rather than as a separate one-shot analysis call. A fetch
+// failure (dead link, paywall, JS-only page — see webfetch.Fetch) is
+// reported directly rather than forwarded to the LLM, since there's nothing
+// useful for it to reason about without the article text.
+func (b *Bot) handleChatArticle(ctx context.Context, text, url string) {
+	b.Send(i18n.T(b.lang, i18n.KeyFetchingArticle))
+
+	article, err := webfetch.Fetch(ctx, url)
+	if err != nil {
+		log.Printf("chat: article fetch %s: %v", url, err)
+		b.Send(i18n.T(b.lang, i18n.KeyArticleFetchFailed, err))
+		return
+	}
+
+	b.Send(i18n.T(b.lang, i18n.KeyThinking))
+
+	prompt := i18n.T(b.lang, i18n.KeyArticleTaskBlock, article.Title, url, article.Text, text)
+	if ctxBlock := b.buildChatContext(); ctxBlock != "" {
+		prompt = ctxBlock + prompt
+	}
+
+	reply, err := b.llm.Chat(ctx, prompt)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyChatFailed, err))
 		return

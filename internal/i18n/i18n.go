@@ -137,6 +137,10 @@ const (
 	KeyChatContextPositionLine Key = "chat_context_position_line"
 	KeyChatContextFooter       Key = "chat_context_footer"
 
+	KeyFetchingArticle    Key = "fetching_article"
+	KeyArticleFetchFailed Key = "article_fetch_failed"
+	KeyArticleTaskBlock   Key = "article_task_block"
+
 	KeyEarningsAlertTitle Key = "earnings_alert_title"
 	KeyEarningsAlertLine  Key = "earnings_alert_line"
 
