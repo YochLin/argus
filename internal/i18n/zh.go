@@ -92,6 +92,10 @@ var zhMessages = map[Key]string{
 	KeyChatContextPositionLine: "- %s：%s 收盤 $%.2f (%+.2f%%)｜持倉 %g 股，均價 $%.2f，未實現損益 %+.2f%%\n",
 	KeyChatContextFooter:       "[背景資料結束，請針對以下訊息回覆]\n\n",
 
+	KeyFetchingArticle:    "正在讀取文章內容，請稍候...",
+	KeyArticleFetchFailed: "無法擷取這個網址的內容：%v\n（可能是付費牆或該網站阻擋自動存取，也可以直接把文章內文貼給我）",
+	KeyArticleTaskBlock:   "使用者在聊天中分享了一篇文章連結。請先用 3-5 句摘要文章重點，再說明這篇文章跟使用者的自選股/持倉有沒有關聯、有什麼潛在影響——如果沒有實質關聯，直接說沒有即可，不要牽強附會。\n\n標題：%s\n網址：%s\n\n內文：\n%s\n\n使用者的訊息：%s\n",
+
 	KeyEarningsAlertTitle: "📅 *財報日提醒*\n\n",
 	KeyEarningsAlertLine:  "• *%s* 將於 %s 公布財報（%d 天內）\n",
 

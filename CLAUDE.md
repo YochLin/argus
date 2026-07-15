@@ -308,6 +308,22 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   hand. `internal/bot`'s `/fundamentals` command and `internal/mcptools`'s `get_fundamentals`/
   `get_financial_statements` tools both call into this package now; `mcptools`'s wrappers just prepend
   their MCP-specific ticker-header line before calling it (see that package's entry).
+- `internal/webfetch` — Phase 3's "article digestion" chat mode: `ExtractURL(text)` (pure, regex-based)
+  finds the first `http(s)` URL in a chat message, and `Fetch(ctx, url)` downloads and extracts that
+  page's readable text via `golang.org/x/net/html`, skipping `script`/`style`/`nav`/`header`/`footer`/
+  `aside`/etc. subtrees. This is bot-side fetching by design, same principle as `internal/data`'s
+  providers — chat's ACP session runs with `disableBuiltInTools: true` (see `internal/llm`), so the
+  agent has no network access of its own and never will; a second messaging channel or a future ACP
+  tool-enabled mode doesn't change that, `internal/bot` still has to fetch and hand over plain text.
+  `Fetch` treats extracted text under ~200 characters as a failure (`webfetch: extracted content too
+  short`), not a successful-but-empty result — that's the observed signature of a paywall or a
+  JS-rendered page whose initial HTML is mostly chrome with no article body; a non-2xx status and a
+  non-`text/html` content type are also errors. Callers must treat any `Fetch` error as "couldn't read
+  this page" and degrade gracefully rather than surfacing the raw error to the LLM (see `internal/bot`
+  below) — there's no article text for the model to reason about in that case, so forwarding it wastes a
+  call and invites the model to fabricate a summary. Extracted text is capped at `maxArticleRunes`
+  (20,000 chars) — Claude via ACP has no metered per-token cost, but an unbounded page still means an
+  unbounded, slower prompt.
 - `internal/bot` — Telegram command dispatch (`/add`, `/remove`, `/list`, `/status`, `/recommend`,
   `/check`, `/track`, `/buy`, `/sell`, `/portfolio`, `/dailyreport`, `/fundamentals`, `/universe`,
   `/reset`) plus three scheduler-invoked jobs: `RunDailyReport` (23:30 CST, ~1–2h into the US session), `RunClosingSnapshot`
@@ -405,7 +421,15 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   message would add real latency to a conversational flow — and deliberately prefixes *every* message
   rather than injecting once per session, since ACP auth has no metered token cost (ordinary API pricing
   concerns don't apply — see the Pro/Max note below), so data freshness wins over the context bloat of
-  repeating it each turn. `/reset`
+  repeating it each turn. `handleChat` also checks every message for a URL via `webfetch.ExtractURL`
+  first (Phase 3's article digestion mode) and, if found, branches to `handleChatArticle` instead:
+  `webfetch.Fetch` pulls the page's text, wraps it in `i18n.KeyArticleTaskBlock` (title/URL/content/the
+  user's original message, so a comment alongside the link like "這對 NVDA 有沒有影響" still reaches the
+  model) and sends *that* through the same persistent session in place of the raw message — still one
+  chat turn, not a separate one-shot call, so the digestion stays in the conversation's memory for
+  follow-up questions. A `webfetch.Fetch` error (dead link, paywall, JS-only page) is reported straight
+  to the user via `KeyArticleFetchFailed` and never reaches the LLM — see `internal/webfetch`'s entry
+  above for why. `/reset`
   clears that persistent session's memory via `llm.Client.ResetChat`. `RunDailyReport` and `/recommend`
   used to share their data-assembly head by a hand-maintained "when changing one, check the other" note;
   the 2026-07 `internal/bot` refactor (docs/refactor-internal-bot.md) replaced that with `pipeline.go`'s

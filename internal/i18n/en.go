@@ -89,6 +89,10 @@ var enMessages = map[Key]string{
 	KeyChatContextPositionLine: "- %s: %s close $%.2f (%+.2f%%) | holding %g shares, avg cost $%.2f, unrealized %+.2f%%\n",
 	KeyChatContextFooter:       "[End of background info — reply to the message below]\n\n",
 
+	KeyFetchingArticle:    "Fetching the article, please wait...",
+	KeyArticleFetchFailed: "Couldn't fetch that URL: %v\n(it may be paywalled or blocking automated access — you can also just paste the article text directly)",
+	KeyArticleTaskBlock:   "The user shared an article link in chat. First summarize the article in 3-5 sentences, then explain whether and how it's relevant to the user's watchlist/holdings — if there's no real connection, just say so rather than forcing one.\n\nTitle: %s\nURL: %s\n\nContent:\n%s\n\nUser's message: %s\n",
+
 	KeyEarningsAlertTitle: "📅 *Earnings Reminder*\n\n",
 	KeyEarningsAlertLine:  "• *%s* reports earnings on %s (in %d days)\n",
 
