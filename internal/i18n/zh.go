@@ -116,6 +116,14 @@ var zhMessages = map[Key]string{
 	KeyThesisCurrent:    "*%s* 目前的持有論點：%s",
 	KeyBuyThesisNudge:   "\n💭 *%s* 還沒有記錄持有論點，要不要用 /thesis %s <文字> 補一句？",
 
+	KeyConfirmButton:                "✅ 確認",
+	KeyRejectButton:                 "❌ 取消",
+	KeyPendingBuyConfirm:            "📝 *交易提案待確認*\n買入 *%s* %g 股 @ $%.2f（手續費 $%.2f，日期 %s）\n請按下方按鈕確認或取消：",
+	KeyPendingSellConfirm:           "📝 *交易提案待確認*\n賣出 *%s* %g 股 @ $%.2f（手續費 $%.2f，日期 %s）\n請按下方按鈕確認或取消：",
+	KeyPendingActionRejected:        "已取消，未記錄任何交易。",
+	KeyPendingActionAlreadyResolved: "這筆提案已經處理過了，不會重複執行。",
+	KeyPendingActionExecFailed:      "提案內容解析失敗，未執行任何動作，請改用 /buy 或 /sell 手動記錄。",
+
 	KeyQuoteLine: "*%s*  $%.2f  %s%.2f%%\n開: $%.2f　高: $%.2f　低: $%.2f",
 
 	KeyValuationHeader:     "*估值*\n",
@@ -310,4 +318,9 @@ var zhMessages = map[Key]string{
 	KeyMCPRecentRecLine:         "• %s *%s* %s @ $%.2f（來源：%s）\n  %s\n\n",
 	KeyMCPRecentRecLineNoPrice:  "• %s *%s* %s（來源：%s）\n  %s\n\n",
 	KeyMCPRecentRecsEmptyTicker: "%s 在過去 %d 天內沒有推薦記錄。",
+
+	KeyMCPTradeInvalidInput:   "交易提案輸入無效：ticker、股數、價格皆須為有效正數，日期（若有提供）格式須為 YYYY-MM-DD。",
+	KeyMCPTradeProposalFailed: "建立交易提案失敗：%v",
+	KeyMCPTradeProposalBuy:    "已建立買入提案：*%s* %g 股 @ $%.2f（提案 #%d）。這只是提案，需要使用者在 Telegram 上按下確認鍵才會真正入帳，不算已經完成。",
+	KeyMCPTradeProposalSell:   "已建立賣出提案：*%s* %g 股 @ $%.2f（提案 #%d）。這只是提案，需要使用者在 Telegram 上按下確認鍵才會真正入帳，不算已經完成。",
 }

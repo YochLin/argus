@@ -113,6 +113,14 @@ var enMessages = map[Key]string{
 	KeyThesisCurrent:    "Current thesis for *%s*: %s",
 	KeyBuyThesisNudge:   "\n💭 No thesis recorded for *%s* yet — add one with /thesis %s <text>?",
 
+	KeyConfirmButton:                "✅ Confirm",
+	KeyRejectButton:                 "❌ Reject",
+	KeyPendingBuyConfirm:            "📝 *Trade proposal awaiting confirmation*\nBUY *%s* %g shares @ $%.2f (fee $%.2f, date %s)\nTap a button below to confirm or reject:",
+	KeyPendingSellConfirm:           "📝 *Trade proposal awaiting confirmation*\nSELL *%s* %g shares @ $%.2f (fee $%.2f, date %s)\nTap a button below to confirm or reject:",
+	KeyPendingActionRejected:        "Rejected — nothing was recorded.",
+	KeyPendingActionAlreadyResolved: "This proposal has already been resolved and won't be executed again.",
+	KeyPendingActionExecFailed:      "Couldn't parse this proposal, so nothing was executed — use /buy or /sell to record it manually.",
+
 	KeyQuoteLine: "*%s*  $%.2f  %s%.2f%%\nOpen: $%.2f  High: $%.2f  Low: $%.2f",
 
 	KeyValuationHeader:     "*Valuation*\n",
@@ -319,4 +327,9 @@ Keep the reply concise — under 600 words total.
 	KeyMCPRecentRecLine:         "• %s *%s* %s @ $%.2f (source: %s)\n  %s\n\n",
 	KeyMCPRecentRecLineNoPrice:  "• %s *%s* %s (source: %s)\n  %s\n\n",
 	KeyMCPRecentRecsEmptyTicker: "No recommendations recorded for %s in the past %d days.",
+
+	KeyMCPTradeInvalidInput:   "Invalid trade proposal input: ticker, shares, and price must all be valid positive numbers, and date (if given) must be YYYY-MM-DD.",
+	KeyMCPTradeProposalFailed: "Failed to create trade proposal: %v",
+	KeyMCPTradeProposalBuy:    "Created a BUY proposal: *%s* %g shares @ $%.2f (proposal #%d). This is only a proposal — the user still has to tap Confirm on Telegram before it's actually recorded, so don't treat it as done yet.",
+	KeyMCPTradeProposalSell:   "Created a SELL proposal: *%s* %g shares @ $%.2f (proposal #%d). This is only a proposal — the user still has to tap Confirm on Telegram before it's actually recorded, so don't treat it as done yet.",
 }

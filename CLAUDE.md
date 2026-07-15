@@ -147,6 +147,19 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   (not `MAX()`), so it returns `sql.ErrNoRows` — not a NULL row — when nothing matches; unlike
   `GetPeakClose` it maps that to `ok=false` via an explicit `err == sql.ErrNoRows` check rather than
   `sql.NullFloat64`.
+  `pending_actions` (migration 8, `pending_actions.go`) backs Phase 4's write-gating infrastructure: a
+  write tool running in the MCP subprocess (`internal/mcptools`) has no Telegram bot of its own to ask
+  for confirmation, so it can only leave a proposal here (`CreatePendingAction`) as `PendingActionStatusPending`.
+  Status moves through exactly `pending → sent → confirmed|rejected`; `MarkPendingActionSent`/
+  `ResolvePendingAction` are both `UPDATE ... WHERE id=? AND status=<expected-current>`, and the caller
+  must check `RowsAffected() > 0` (returned as the method's `ok` bool) — this is the *only* guard against
+  a double-tap on the same Telegram inline button (or a callback arriving after the row was already
+  resolved some other way) executing the underlying trade twice; there is no separate locking mechanism.
+  `PendingActionRecordBuy`/`PendingActionRecordSell` (the `action_type` strings) are declared here rather
+  than in `internal/mcptools` (which creates rows) or `internal/bot` (which interprets them) specifically
+  because both of those packages already import `internal/db` — unlike this codebase's other
+  can't-share-an-import duplication (e.g. `formatFundamentals`), a hand-synced pair of string constants
+  here would be a real footgun. See [docs/phase-4-write-gating.md](docs/phase-4-write-gating.md).
 - `internal/i18n` — every user/LLM-facing string in the project, split into exactly two files by design:
   `zh.go` (Traditional Chinese, the original default) and `en.go` (English), both keyed by the `Key`
   constants declared in `i18n.go`. `T(lang, key, args...)` does the lookup + `fmt.Sprintf`. This covers two
@@ -503,7 +516,23 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `RunClosingSnapshot` started writing snapshots. This job was deliberately wired up only after several
   manual `/insight` runs had proven the underlying prompt (see docs/phase-3.6-portfolio-insight.md) —
   an unproven prompt landing straight in an automatic Sunday push was the one thing the two-PR split
-  for this phase was designed to avoid.
+  for this phase was designed to avoid. `pending_actions.go` (Phase 4) is the bot-side half of the
+  write-gating flow whose MCP-side half is `internal/mcptools`'s `record_buy`/`record_sell`: `Run`'s
+  update loop now branches `update.CallbackQuery != nil` to `handleCallbackQuery` before falling through
+  to ordinary message dispatch — the first non-`Message` update type this project handles.
+  `sendPendingActionPrompts` is called from `handleChat`/`handleChatArticle` right after the LLM reply is
+  sent (the only point in the chat flow where a tool call could have run that turn); it queries
+  `db.GetPendingActionsByStatus(PendingActionStatusPending)`, sends each one a confirm/reject inline
+  keyboard, and marks it `sent`. `handleCallbackQuery` always answers the callback (clears Telegram's
+  button spinner) before doing anything else, then edits the original message in place with the outcome
+  rather than sending a new one. `resolvePendingAction` does the atomic `sent → confirmed|rejected`
+  transition via `db.ResolvePendingAction` and, only on a winning confirm, calls `executePendingAction`,
+  which dispatches on `action_type` to `recordBuy`/`recordSell` — the same two methods `handleBuy`/
+  `handleSell` call, pulled out of those handlers specifically so a confirmed chat-tool trade produces
+  byte-identical confirmation text to typing `/buy`/`/sell` directly rather than a second implementation
+  that could drift from the first. `tradePayload` here is `internal/mcptools`'s own copy with matching
+  `json` tags (decode side, not encode) — same can't-share-an-import duplication as `formatFundamentals`.
+  See [docs/phase-4-write-gating.md](docs/phase-4-write-gating.md).
 - `internal/mcptools` — Phase 3.5's read-only MCP (Model Context Protocol) tool surface for chat, using
   the official `github.com/modelcontextprotocol/go-sdk`. `NewServer(lang, provider, history, fundamentals,
   earnings)` builds an `*mcp.Server` and registers seven tools (`tools.go`'s `registerTools`): `get_quote`/
@@ -552,6 +581,13 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   provider should go through this same helper rather than calling the provider directly, or it bypasses
   both the cache and the Finnhub rate-limit protection. See
   [docs/phase-3.5-mcp-rate-limit.md](docs/phase-3.5-mcp-rate-limit.md) for the full rationale.
+  `record_buy`/`record_sell` (`trade_write_tools.go`, Phase 4) are gated on `ts.writeDB != nil` like the
+  watchlist write pilot, but unlike those two, they never call a `db.RecordBuy`/`RecordSell`-shaped
+  write directly — they only validate input and call `db.CreatePendingAction`, reporting the new
+  `db.PendingAction` id back to the model as a proposal awaiting Telegram confirmation. This MCP
+  subprocess has no Telegram bot of its own to show a confirm/reject keyboard with; `internal/bot` picks
+  up `pending`-status rows after the chat turn that created them (see that package's entry). See
+  [docs/phase-4-write-gating.md](docs/phase-4-write-gating.md).
 
 ## Key behaviors to preserve
 

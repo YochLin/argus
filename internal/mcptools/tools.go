@@ -134,6 +134,7 @@ func registerTools(s *mcp.Server, ts *toolset) {
 
 	registerDBTools(s, ts)
 	registerWriteTools(s, ts)
+	registerTradeWriteTools(s, ts)
 }
 
 type tickerInput struct {

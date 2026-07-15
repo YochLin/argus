@@ -207,6 +207,10 @@ func (b *Bot) Run(ctx context.Context) {
 			if !ok {
 				return
 			}
+			if update.CallbackQuery != nil {
+				go b.handleCallbackQuery(update.CallbackQuery)
+				continue
+			}
 			if update.Message == nil {
 				continue
 			}
