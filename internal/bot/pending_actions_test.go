@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -75,7 +76,7 @@ func TestResolvePendingActionConfirmExecutesBuy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result := b.resolvePendingAction(id, true)
+	result := b.resolvePendingAction(context.Background(), id, true)
 	if !strings.Contains(result, "AAPL") {
 		t.Errorf("resolvePendingAction(confirm) = %q, want text mentioning AAPL", result)
 	}
@@ -102,7 +103,7 @@ func TestResolvePendingActionRejectDoesNotExecute(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result := b.resolvePendingAction(id, false)
+	result := b.resolvePendingAction(context.Background(), id, false)
 	if result != i18n.T(i18n.EN, i18n.KeyPendingActionRejected) {
 		t.Errorf("resolvePendingAction(reject) = %q, want the rejected message", result)
 	}
@@ -123,11 +124,11 @@ func TestResolvePendingActionDoubleTapGuard(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	first := b.resolvePendingAction(id, true)
+	first := b.resolvePendingAction(context.Background(), id, true)
 	if !strings.Contains(first, "AAPL") {
 		t.Fatalf("first resolvePendingAction() = %q, want success text", first)
 	}
-	second := b.resolvePendingAction(id, true)
+	second := b.resolvePendingAction(context.Background(), id, true)
 	if second != i18n.T(i18n.EN, i18n.KeyPendingActionAlreadyResolved) {
 		t.Errorf("second resolvePendingAction() = %q, want the already-resolved message", second)
 	}
@@ -148,7 +149,7 @@ func TestResolvePendingActionNotYetSent(t *testing.T) {
 	// Deliberately not calling MarkPendingActionSent — simulates a stale
 	// callback arriving before/without the confirmation ever being sent.
 
-	result := b.resolvePendingAction(id, true)
+	result := b.resolvePendingAction(context.Background(), id, true)
 	if result != i18n.T(i18n.EN, i18n.KeyPendingActionAlreadyResolved) {
 		t.Errorf("resolvePendingAction() on a still-pending row = %q, want the already-resolved message", result)
 	}
@@ -159,7 +160,7 @@ func TestResolvePendingActionNotYetSent(t *testing.T) {
 
 func TestExecutePendingActionUnknownType(t *testing.T) {
 	b := &Bot{lang: i18n.EN}
-	result := b.executePendingAction(db.PendingAction{ActionType: "unknown_type", Payload: "{}"})
+	result := b.executePendingAction(context.Background(), db.PendingAction{ActionType: "unknown_type", Payload: "{}"})
 	if result != i18n.T(i18n.EN, i18n.KeyPendingActionExecFailed) {
 		t.Errorf("executePendingAction(unknown type) = %q, want the exec-failed message", result)
 	}
@@ -167,7 +168,7 @@ func TestExecutePendingActionUnknownType(t *testing.T) {
 
 func TestExecutePendingActionMalformedPayload(t *testing.T) {
 	b := &Bot{lang: i18n.EN}
-	result := b.executePendingAction(db.PendingAction{ActionType: db.PendingActionRecordSell, Payload: "not json"})
+	result := b.executePendingAction(context.Background(), db.PendingAction{ActionType: db.PendingActionRecordSell, Payload: "not json"})
 	if result != i18n.T(i18n.EN, i18n.KeyPendingActionExecFailed) {
 		t.Errorf("executePendingAction(malformed payload) = %q, want the exec-failed message", result)
 	}

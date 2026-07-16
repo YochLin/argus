@@ -217,7 +217,7 @@ func (b *Bot) Run(ctx context.Context) {
 				return
 			}
 			if update.CallbackQuery != nil {
-				go b.handleCallbackQuery(update.CallbackQuery)
+				go b.handleCallbackQuery(ctx, update.CallbackQuery)
 				continue
 			}
 			if update.Message == nil {
@@ -283,7 +283,7 @@ func (b *Bot) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 	case "buy":
 		b.handleBuy(args)
 	case "sell":
-		b.handleSell(args)
+		b.handleSell(ctx, args)
 	case "portfolio":
 		b.handlePortfolio()
 	case "insight":
@@ -298,6 +298,8 @@ func (b *Bot) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 		b.handleUniverse(args)
 	case "thesis":
 		b.handleThesis(args)
+	case "review":
+		b.handleReview(ctx, args)
 	case "reset":
 		b.handleReset()
 	default:

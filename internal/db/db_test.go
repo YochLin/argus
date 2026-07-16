@@ -804,3 +804,90 @@ func TestScanHitsGroupedByTicker(t *testing.T) {
 		t.Errorf("GetScanHits()[YYYY] = %q, want %q", got["YYYY"], "RSI oversold (25.1)")
 	}
 }
+
+func TestGetTransactions(t *testing.T) {
+	d := newTestDB(t)
+
+	if txs, err := d.GetTransactions("AAPL"); err != nil || len(txs) != 0 {
+		t.Fatalf("GetTransactions() before any trade: txs = %v, err = %v; want empty, nil", txs, err)
+	}
+
+	if _, err := d.RecordBuy("AAPL", 10, 200, 1, "2026-07-01"); err != nil {
+		t.Fatalf("RecordBuy() error = %v", err)
+	}
+	if _, _, err := d.RecordSell("AAPL", 4, 220, 0.5, "2026-07-10"); err != nil {
+		t.Fatalf("RecordSell() error = %v", err)
+	}
+	// A different ticker's trades must not leak in.
+	if _, err := d.RecordBuy("MSFT", 5, 300, 0, "2026-07-05"); err != nil {
+		t.Fatalf("RecordBuy() error = %v", err)
+	}
+
+	txs, err := d.GetTransactions("AAPL")
+	if err != nil {
+		t.Fatalf("GetTransactions() error = %v", err)
+	}
+	if len(txs) != 2 {
+		t.Fatalf("GetTransactions() len = %d, want 2", len(txs))
+	}
+	if txs[0].Side != "BUY" || txs[0].Shares != 10 || txs[0].Price != 200 {
+		t.Errorf("GetTransactions()[0] = %+v, want the BUY leg first (oldest date)", txs[0])
+	}
+	if txs[1].Side != "SELL" || txs[1].Shares != 4 || txs[1].Price != 220 {
+		t.Errorf("GetTransactions()[1] = %+v, want the SELL leg second", txs[1])
+	}
+}
+
+func TestGetCloseExtremes(t *testing.T) {
+	d := newTestDB(t)
+
+	if _, _, ok, err := d.GetCloseExtremes("AAPL", "2026-07-01", "2026-07-10"); err != nil || ok {
+		t.Fatalf("GetCloseExtremes() before any snapshot: ok = %v, err = %v; want false, nil", ok, err)
+	}
+
+	for _, s := range []DailySnapshot{
+		{Ticker: "AAPL", Date: "2026-06-25", Close: 999}, // before the window, must be excluded
+		{Ticker: "AAPL", Date: "2026-07-01", Close: 200},
+		{Ticker: "AAPL", Date: "2026-07-03", Close: 230},
+		{Ticker: "AAPL", Date: "2026-07-05", Close: 190},
+		{Ticker: "AAPL", Date: "2026-07-15", Close: 999}, // after the window, must be excluded
+	} {
+		if err := d.SaveSnapshot(s); err != nil {
+			t.Fatalf("SaveSnapshot() error = %v", err)
+		}
+	}
+
+	high, low, ok, err := d.GetCloseExtremes("AAPL", "2026-07-01", "2026-07-10")
+	if err != nil || !ok || high != 230 || low != 190 {
+		t.Errorf("GetCloseExtremes() = %v, %v, %v, %v; want 230, 190, true, nil", high, low, ok, err)
+	}
+}
+
+func TestGetRecommendationsForTicker(t *testing.T) {
+	d := newTestDB(t)
+
+	if recs, err := d.GetRecommendationsForTicker("AAPL", "2026-07-01", "2026-07-10"); err != nil || len(recs) != 0 {
+		t.Fatalf("GetRecommendationsForTicker() before any rec: recs = %v, err = %v; want empty, nil", recs, err)
+	}
+
+	if err := d.SaveRecommendations("2026-06-20", []Recommendation{{Ticker: "AAPL", Action: "BUY", Reason: "early"}}); err != nil {
+		t.Fatalf("SaveRecommendations() error = %v", err)
+	}
+	if err := d.SaveRecommendations("2026-07-05", []Recommendation{
+		{Ticker: "AAPL", Action: "HOLD", Reason: "in range"},
+		{Ticker: "MSFT", Action: "BUY", Reason: "other ticker"},
+	}); err != nil {
+		t.Fatalf("SaveRecommendations() error = %v", err)
+	}
+	if err := d.SaveRecommendations("2026-07-20", []Recommendation{{Ticker: "AAPL", Action: "SELL", Reason: "too late"}}); err != nil {
+		t.Fatalf("SaveRecommendations() error = %v", err)
+	}
+
+	recs, err := d.GetRecommendationsForTicker("AAPL", "2026-07-01", "2026-07-10")
+	if err != nil {
+		t.Fatalf("GetRecommendationsForTicker() error = %v", err)
+	}
+	if len(recs) != 1 || recs[0].Action != "HOLD" || recs[0].Reason != "in range" {
+		t.Errorf("GetRecommendationsForTicker() = %+v, want exactly the in-window AAPL HOLD row", recs)
+	}
+}

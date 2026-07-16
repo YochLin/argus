@@ -6,7 +6,7 @@ package i18n
 // sites pass positional args once and reuse them for whichever table T
 // picks.
 var zhMessages = map[Key]string{
-	KeyUnknownCommand:            "未知指令。可用指令：\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [天數]\n/buy <ticker> <股數> <價格> [手續費]\n/sell <ticker> <股數> <價格> [手續費]\n/portfolio\n/insight\n/cash [金額]\n/thesis <ticker> [論點文字]\n/dailyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n\n直接傳一般訊息（不加 / 開頭）則會跟我自由對話。",
+	KeyUnknownCommand:            "未知指令。可用指令：\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [天數]\n/buy <ticker> <股數> <價格> [手續費]\n/sell <ticker> <股數> <價格> [手續費]\n/portfolio\n/insight\n/cash [金額]\n/thesis <ticker> [論點文字]\n/review <ticker>\n/dailyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n\n直接傳一般訊息（不加 / 開頭）則會跟我自由對話。",
 	KeyAddUsage:                  "用法：/add <ticker>，例如 /add AAPL",
 	KeyAddFailed:                 "新增失敗：%v",
 	KeyAddSuccess:                "已將 *%s* 加入自選股。",
@@ -116,6 +116,10 @@ var zhMessages = map[Key]string{
 	KeyThesisNotSet:     "*%s* 目前沒有記錄論點，用 /thesis %s <文字> 補上。",
 	KeyThesisCurrent:    "*%s* 目前的持有論點：%s",
 	KeyBuyThesisNudge:   "\n💭 *%s* 還沒有記錄持有論點，要不要用 /thesis %s <文字> 補一句？",
+
+	KeyReviewUsage:            "用法：/review <ticker>，查詢該檔最近一次已了結交易的復盤",
+	KeyReviewNoClosedTrade:    "*%s* 目前沒有已了結的交易紀錄可供復盤。",
+	KeyTradeReviewResultTitle: "📓 *交易復盤：%s*\n\n%s",
 
 	KeyConfirmButton:                "✅ 確認",
 	KeyRejectButton:                 "❌ 取消",
@@ -265,6 +269,25 @@ var zhMessages = map[Key]string{
    區分）最準、哪一類最不準；若沒有這項數據則略過此點
 
 回覆請簡潔，總字數控制在 600 字以內。
+`,
+
+	KeyTradeReviewPromptIntro: "你是一位美股分析師，請針對以下這筆已了結的 *%s* 交易做覆盤分析。\n\n",
+	KeyTradeReviewLegLine:     "• %s %g 股 @ $%.2f（%s）\n",
+	KeyTradeReviewPnLLine:     "已實現損益：%+.2f｜持有天數：%d 天\n",
+	KeyTradeReviewRangeLine:   "持有期間價格區間：最高 $%.2f／最低 $%.2f\n",
+	KeyTradeReviewRecsHeader:  "\n持有期間的推薦紀錄：\n",
+	KeyTradeReviewRecLine:     "- %s %s：%s\n",
+	KeyTradeReviewPromptTask: `
+請用繁體中文做誠實、不粉飾的覆盤，結果賺錢但過程判斷有誤時也要照樣指出：
+1. 進出場時點：買進、賣出的價位相對於持有期間的最高／最低點分別落在哪裡？是否因為出場
+   太早而少賺、或出場太晚而多虧？
+2. 論點對照：若上方附有「持有論點」，實際結果是否兌現了這個論點？即使賺錢，若理由跟
+   論點無關，也要指出來；沒有附論點則略過此點。
+3. 建議對照：若上方附有持有期間的推薦紀錄，這些建議與使用者實際的買賣動作是否一致
+   （例如系統說 SELL 卻抱了兩週、或系統說 HOLD 卻賣掉了）；沒有附推薦紀錄則略過此點。
+4. 收斂成一條具體、可執行的教訓，不要空泛的「要更謹慎」之類的話。
+
+回覆請簡潔，總字數控制在 300 字以內。
 `,
 
 	KeyStockHeader:             "### %s\n",

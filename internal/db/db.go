@@ -694,6 +694,81 @@ func (d *DB) GetPeakClose(ticker, sinceDate string) (float64, bool, error) {
 	return peak.Float64, true, nil
 }
 
+// GetTransactions returns every recorded buy/sell for ticker, oldest first —
+// transactions has been write-only (RecordBuy/RecordSell) until Phase 3.8's
+// sell-review feature needed to read the full history back to segment it
+// into trade rounds (see bot.lastClosedRound).
+func (d *DB) GetTransactions(ticker string) ([]Transaction, error) {
+	rows, err := d.conn.Query(`
+		SELECT id, ticker, side, shares, price, fee, date, realized_pnl, created_at
+		FROM transactions WHERE ticker = ? ORDER BY date, id`,
+		ticker,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var txs []Transaction
+	for rows.Next() {
+		var t Transaction
+		if err := rows.Scan(&t.ID, &t.Ticker, &t.Side, &t.Shares, &t.Price, &t.Fee, &t.Date, &t.RealizedPnL, &t.CreatedAt); err != nil {
+			return nil, err
+		}
+		txs = append(txs, t)
+	}
+	return txs, rows.Err()
+}
+
+// GetCloseExtremes returns the highest and lowest daily_snapshots close for
+// ticker within [from, to] inclusive, or ok=false if there's no snapshot in
+// that range. Unlike GetPeakClose (which only has a lower bound — right for
+// a still-open position's running high), a closed trade's review needs both
+// ends of a bounded window so a ticker that's kept trading (and setting new
+// highs) after the position was closed doesn't leak into "how far the exit
+// was from the period's high."
+func (d *DB) GetCloseExtremes(ticker, from, to string) (high, low float64, ok bool, err error) {
+	var h, l sql.NullFloat64
+	err = d.conn.QueryRow(
+		`SELECT MAX(close), MIN(close) FROM daily_snapshots WHERE ticker = ? AND date BETWEEN ? AND ?`,
+		ticker, from, to,
+	).Scan(&h, &l)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	if !h.Valid {
+		return 0, 0, false, nil
+	}
+	return h.Float64, l.Float64, true, nil
+}
+
+// GetRecommendationsForTicker returns ticker's recommendations dated within
+// [from, to] inclusive, oldest first — a single-ticker, bounded-window
+// counterpart to GetRecommendationsSince (which is whole-table and only has
+// a lower bound, right for /track's rolling-window scan but not for a closed
+// trade's fixed holding period).
+func (d *DB) GetRecommendationsForTicker(ticker, from, to string) ([]Recommendation, error) {
+	rows, err := d.conn.Query(
+		`SELECT id, date, ticker, action, reason, price, source FROM recommendations
+		 WHERE ticker = ? AND date BETWEEN ? AND ? ORDER BY date, id`,
+		ticker, from, to,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var recs []Recommendation
+	for rows.Next() {
+		var r Recommendation
+		if err := rows.Scan(&r.ID, &r.Date, &r.Ticker, &r.Action, &r.Reason, &r.Price, &r.Source); err != nil {
+			return nil, err
+		}
+		recs = append(recs, r)
+	}
+	return recs, rows.Err()
+}
+
 // GetRealizedPnL sums realized_pnl across every SELL transaction ever
 // recorded, for /portfolio's cumulative realized P&L line.
 func (d *DB) GetRealizedPnL() (float64, error) {

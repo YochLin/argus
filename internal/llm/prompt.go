@@ -136,6 +136,50 @@ type Recommendation struct {
 	Reason string
 }
 
+// TradeLeg is one buy or sell within a ClosedTrade's round trip, oldest
+// first. Side is the literal "BUY"/"SELL" (not localized — same convention
+// as Recommendation.Action and the BUY/SELL/HOLD literals in
+// KeyRecTaskBlock's expected output).
+type TradeLeg struct {
+	Side   string
+	Shares float64
+	Price  float64
+	Date   string
+}
+
+// TradeRecommendation is one recommendation issued on a ticker during a
+// ClosedTrade's holding period, so the review prompt can compare what the
+// model said against what the user actually did.
+type TradeRecommendation struct {
+	Date   string
+	Action string
+	Reason string
+}
+
+// ClosedTrade is Phase 3.8 追加項's sell-review input (see
+// docs/phase-3.8-sell-review.md): everything the review prompt needs about
+// one fully closed round trip in a ticker. Package-local, not importing
+// internal/db, same convention as Position/Earnings/PrevRecommendation.
+// HoldingDays is precomputed by the caller (bot.reviewClosedTrade) so this
+// package doesn't do date math against "now", same reasoning as
+// Earnings.DaysUntil. VsSPY reuses the existing VsSPYReturn pair (ticker's
+// own return next to SPY's over the same period) rather than a new type —
+// nil when there's no same-period SPY close on either end to compare
+// against (e.g. a buy that predates snapshotBenchmark, or a backdated date
+// that wasn't a trading day). PeriodHigh/PeriodLow are 0 when there's no
+// snapshot data in range at all.
+type ClosedTrade struct {
+	Ticker          string
+	Legs            []TradeLeg
+	RealizedPnL     float64
+	HoldingDays     int
+	VsSPY           *VsSPYReturn
+	PeriodHigh      float64
+	PeriodLow       float64
+	Thesis          *string
+	Recommendations []TradeRecommendation
+}
+
 func buildRecommendationPrompt(lang i18n.Lang, watchlist []StockData, candidates []StockData, marketNews []data.NewsItem) string {
 	var sb strings.Builder
 
@@ -355,6 +399,44 @@ func buildWeeklyReviewPrompt(lang i18n.Lang, positions []StockData, cash float64
 	}
 
 	sb.WriteString(i18n.T(lang, i18n.KeyWeeklyReviewPromptTask))
+	return sb.String()
+}
+
+// buildTradeReviewPrompt is Phase 3.8 追加項's sell-review prompt (see
+// docs/phase-3.8-sell-review.md): a one-shot look back at a single fully
+// closed round trip — every leg, the realized P&L, how the exit compares to
+// the period's own high/low and to SPY over the same window, whether the
+// user's own thesis panned out, and what the model itself said along the
+// way. Each optional section (VsSPY/Thesis/period high-low/recommendations)
+// is only rendered when data is actually available, same degrade-per-field
+// convention as writeStockSection.
+func buildTradeReviewPrompt(lang i18n.Lang, trade ClosedTrade) string {
+	var sb strings.Builder
+	sb.WriteString(i18n.T(lang, i18n.KeyTradeReviewPromptIntro, trade.Ticker))
+
+	for _, leg := range trade.Legs {
+		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyTradeReviewLegLine, leg.Side, leg.Shares, leg.Price, leg.Date))
+	}
+	fmt.Fprint(&sb, i18n.T(lang, i18n.KeyTradeReviewPnLLine, trade.RealizedPnL, trade.HoldingDays))
+
+	if trade.PeriodHigh > 0 && trade.PeriodLow > 0 {
+		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyTradeReviewRangeLine, trade.PeriodHigh, trade.PeriodLow))
+	}
+	if trade.VsSPY != nil {
+		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyVsSPYLine, trade.VsSPY.TickerPct, trade.VsSPY.SPYPct))
+	}
+	if trade.Thesis != nil {
+		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyThesisLine, *trade.Thesis))
+	}
+
+	if len(trade.Recommendations) > 0 {
+		sb.WriteString(i18n.T(lang, i18n.KeyTradeReviewRecsHeader))
+		for _, r := range trade.Recommendations {
+			fmt.Fprint(&sb, i18n.T(lang, i18n.KeyTradeReviewRecLine, r.Date, r.Action, r.Reason))
+		}
+	}
+
+	sb.WriteString(i18n.T(lang, i18n.KeyTradeReviewPromptTask))
 	return sb.String()
 }
 

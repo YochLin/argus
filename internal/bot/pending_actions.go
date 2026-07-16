@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -119,7 +120,7 @@ func (b *Bot) sendPendingActionConfirmation(id int64, text string) error {
 // original message in place to show the result instead of sending a new
 // message — so the chat doesn't accumulate a stray "confirmed"/"rejected"
 // line under the original proposal.
-func (b *Bot) handleCallbackQuery(cq *tgbotapi.CallbackQuery) {
+func (b *Bot) handleCallbackQuery(ctx context.Context, cq *tgbotapi.CallbackQuery) {
 	if cq.Message == nil || cq.Message.Chat == nil || cq.Message.Chat.ID != b.chatID {
 		return
 	}
@@ -133,7 +134,7 @@ func (b *Bot) handleCallbackQuery(cq *tgbotapi.CallbackQuery) {
 		log.Printf("pending actions: answer callback: %v", err)
 	}
 
-	resultText := b.resolvePendingAction(id, confirm)
+	resultText := b.resolvePendingAction(ctx, id, confirm)
 	edit := tgbotapi.NewEditMessageText(cq.Message.Chat.ID, cq.Message.MessageID, resultText)
 	if _, err := b.api.Send(edit); err != nil {
 		log.Printf("pending actions: edit confirmation message: %v", err)
@@ -163,7 +164,7 @@ func parseCallbackData(data string) (id int64, confirm bool, ok bool) {
 // against a double-tap or a tap on an already-resolved message — see
 // db.ResolvePendingAction) and, if confirmed, executes it. Returns the text
 // to show in place of the original confirmation message.
-func (b *Bot) resolvePendingAction(id int64, confirm bool) string {
+func (b *Bot) resolvePendingAction(ctx context.Context, id int64, confirm bool) string {
 	action, ok, err := b.db.GetPendingAction(id)
 	if err != nil {
 		return i18n.T(b.lang, i18n.KeyQueryFailed, err)
@@ -189,13 +190,16 @@ func (b *Bot) resolvePendingAction(id int64, confirm bool) string {
 	if !confirm {
 		return i18n.T(b.lang, i18n.KeyPendingActionRejected)
 	}
-	return b.executePendingAction(action)
+	return b.executePendingAction(ctx, action)
 }
 
 // executePendingAction runs the confirmed action, reusing exactly the same
 // code path (and confirmation text) /buy and /sell themselves use — see
-// recordBuy/recordSell in handlers.go.
-func (b *Bot) executePendingAction(action db.PendingAction) string {
+// recordBuy/recordSell in handlers.go. A confirmed record_sell that fully
+// closes the position triggers Phase 3.8's sell-review exactly like /sell
+// itself does, so a chat-confirmed sell gets the same follow-up as a manual
+// one.
+func (b *Bot) executePendingAction(ctx context.Context, action db.PendingAction) string {
 	switch action.ActionType {
 	case db.PendingActionRecordBuy:
 		p, ok := decodeTradePayload(action.Payload)
@@ -208,7 +212,11 @@ func (b *Bot) executePendingAction(action db.PendingAction) string {
 		if !ok {
 			return i18n.T(b.lang, i18n.KeyPendingActionExecFailed)
 		}
-		return b.recordSell(p.Ticker, p.Shares, p.Price, p.Fee, p.Date)
+		msg, closed := b.recordSell(p.Ticker, p.Shares, p.Price, p.Fee, p.Date)
+		if closed {
+			go b.reviewClosedTrade(ctx, p.Ticker)
+		}
+		return msg
 	default:
 		return i18n.T(b.lang, i18n.KeyPendingActionExecFailed)
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"regexp"
 	"sort"
 	"strconv"
@@ -432,7 +433,13 @@ func (b *Bot) thesisNudge(ticker string) string {
 // handleSell records a sale against an existing position and reports the
 // realized P&L. It does not remove the ticker from the watchlist even when
 // the position is fully closed out — the user may still want to watch it.
-func (b *Bot) handleSell(args string) {
+// When the sell fully closes the position, it kicks off Phase 3.8's
+// sell-review (reviewClosedTrade) as a second message after the success
+// reply — in its own goroutine so the (slow) LLM call never delays the
+// immediate confirmation, and log-only on failure since the user already has
+// their sell confirmation and doesn't need a second alert about the review
+// itself failing.
+func (b *Bot) handleSell(ctx context.Context, args string) {
 	ticker, shares, price, fee, date, err := parseTradeArgs(args)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeySellUsage))
@@ -441,25 +448,237 @@ func (b *Bot) handleSell(args string) {
 	if date == "" {
 		date = todayDate()
 	}
-	b.Send(b.recordSell(ticker, shares, price, fee, date))
+	msg, closed := b.recordSell(ticker, shares, price, fee, date)
+	b.Send(msg)
+	if closed {
+		go b.reviewClosedTrade(ctx, ticker)
+	}
 }
 
 // recordSell is handleSell's core, pulled out for the same reason as
 // recordBuy — a confirmed Phase 4 pending-action proposal (record_sell)
 // reuses this instead of duplicating the RecordSell call and error mapping.
-func (b *Bot) recordSell(ticker string, shares, price, fee float64, date string) string {
+// closed reports whether this sell fully closed out the position (shares
+// returned to 0), so callers can decide whether to trigger a sell-review;
+// it's always false on an error path, since nothing was recorded.
+func (b *Bot) recordSell(ticker string, shares, price, fee float64, date string) (msg string, closed bool) {
 	pos, realizedPnL, err := b.db.RecordSell(ticker, shares, price, fee, date)
 	if err != nil {
 		switch {
 		case errors.Is(err, db.ErrNoPosition):
-			return i18n.T(b.lang, i18n.KeySellNoPosition, ticker)
+			return i18n.T(b.lang, i18n.KeySellNoPosition, ticker), false
 		case errors.Is(err, db.ErrInsufficientShares):
-			return i18n.T(b.lang, i18n.KeySellInsufficientShares, ticker)
+			return i18n.T(b.lang, i18n.KeySellInsufficientShares, ticker), false
 		default:
-			return i18n.T(b.lang, i18n.KeySellFailed, err)
+			return i18n.T(b.lang, i18n.KeySellFailed, err), false
 		}
 	}
-	return i18n.T(b.lang, i18n.KeySellSuccess, ticker, shares, price, fee, realizedPnL, pos.Shares)
+	return i18n.T(b.lang, i18n.KeySellSuccess, ticker, shares, price, fee, realizedPnL, pos.Shares), pos.Shares == 0
+}
+
+// tradeRound is a fully closed round trip in a ticker's transaction history:
+// the share balance went from 0 up to some positive amount (via one or more
+// BUYs) and back down to 0 (via one or more SELLs), possibly with several
+// buys and partial sells interleaved. Legs holds every transaction in that
+// round, oldest first.
+type tradeRound struct {
+	Legs      []db.Transaction
+	StartDate string // the first BUY's date
+	EndDate   string // the date the balance returned to 0
+}
+
+// lastClosedRound segments txs (expected sorted oldest-first, as
+// db.GetTransactions returns them) into round trips by walking the running
+// share balance, and returns the most recent one that closed back to 0 —
+// deliberately not db.GetEarliestBuyDate's all-time MIN(date), which would
+// anchor to an earlier round if the ticker was fully closed out and later
+// re-entered (see docs/phase-3.8-sell-review.md's note on this exact
+// conflict). ok is false when there's no closed round at all (never traded,
+// or the only round on record is still open). A round still open at the end
+// of txs is simply not returned — /review reviews what's actually finished,
+// not an in-progress position. Balances within 1e-9 of 0 count as closed,
+// the same float-dust threshold db.RecordSell uses to decide whether a sell
+// fully closes a position.
+func lastClosedRound(txs []db.Transaction) (tradeRound, bool) {
+	var last tradeRound
+	found := false
+
+	balance := 0.0
+	start := -1
+	for i, tx := range txs {
+		if start == -1 {
+			start = i
+		}
+		switch tx.Side {
+		case "BUY":
+			balance += tx.Shares
+		case "SELL":
+			balance -= tx.Shares
+		}
+		if math.Abs(balance) < 1e-9 {
+			last = tradeRound{
+				Legs:      append([]db.Transaction{}, txs[start:i+1]...),
+				StartDate: txs[start].Date,
+				EndDate:   tx.Date,
+			}
+			found = true
+			start = -1
+			balance = 0
+		}
+	}
+	return last, found
+}
+
+// weightedAvgPrice returns the shares-weighted average price across every
+// leg in legs matching side ("BUY" or "SELL"), or 0 if there are none — the
+// same weighted-average shape db.RecordBuy uses for cost basis, just over a
+// fixed slice of legs instead of an incremental running update. Used to
+// reduce a multi-leg round trip's entry/exit down to single reference prices
+// for the vs-SPY comparison.
+func weightedAvgPrice(legs []db.Transaction, side string) float64 {
+	var shares, cost float64
+	for _, l := range legs {
+		if l.Side == side {
+			shares += l.Shares
+			cost += l.Shares * l.Price
+		}
+	}
+	if shares == 0 {
+		return 0
+	}
+	return cost / shares
+}
+
+// buildClosedTradeReview assembles Phase 3.8 追加項's sell-review input (see
+// docs/phase-3.8-sell-review.md) for ticker's most recent fully closed round
+// trip (lastClosedRound) — realized P&L, holding days, the period's own
+// high/low, a vs-SPY comparison (nil if either end's SPY close is missing),
+// the recorded thesis (nil if none), and every recommendation issued during
+// the holding window. ok is false when there's no closed round to review at
+// all (never traded, or still open); every other per-field lookup degrades
+// individually (logged, left at its zero value) rather than failing the
+// whole review — same "attach what's available" convention as
+// fetchStockData's optional StockData fields.
+func (b *Bot) buildClosedTradeReview(ticker string) (llm.ClosedTrade, bool, error) {
+	txs, err := b.db.GetTransactions(ticker)
+	if err != nil {
+		return llm.ClosedTrade{}, false, err
+	}
+	round, ok := lastClosedRound(txs)
+	if !ok {
+		return llm.ClosedTrade{}, false, nil
+	}
+
+	legs := make([]llm.TradeLeg, len(round.Legs))
+	var realizedPnL float64
+	for i, tx := range round.Legs {
+		legs[i] = llm.TradeLeg{Side: tx.Side, Shares: tx.Shares, Price: tx.Price, Date: tx.Date}
+		realizedPnL += tx.RealizedPnL
+	}
+
+	holdingDays := 0
+	if start, serr := time.Parse("2006-01-02", round.StartDate); serr == nil {
+		if end, eerr := time.Parse("2006-01-02", round.EndDate); eerr == nil {
+			holdingDays = int(end.Sub(start).Hours() / 24)
+		}
+	}
+
+	trade := llm.ClosedTrade{
+		Ticker:      ticker,
+		Legs:        legs,
+		RealizedPnL: realizedPnL,
+		HoldingDays: holdingDays,
+	}
+
+	if high, low, ok, err := b.db.GetCloseExtremes(ticker, round.StartDate, round.EndDate); err != nil {
+		log.Printf("review %s: close extremes: %v", ticker, err)
+	} else if ok {
+		trade.PeriodHigh = high
+		trade.PeriodLow = low
+	}
+
+	if entryPrice := weightedAvgPrice(round.Legs, "BUY"); entryPrice > 0 {
+		exitPrice := weightedAvgPrice(round.Legs, "SELL")
+		spyStart, startOK, startErr := b.db.GetSnapshotClose(benchmarkTicker, round.StartDate)
+		spyEnd, endOK, endErr := b.db.GetSnapshotClose(benchmarkTicker, round.EndDate)
+		if startErr != nil || endErr != nil {
+			log.Printf("review %s: spy close: start err=%v end err=%v", ticker, startErr, endErr)
+		} else if startOK && endOK {
+			vs := computeVsSPY(exitPrice, entryPrice, spyEnd, spyStart)
+			trade.VsSPY = &vs
+		}
+	}
+
+	if thesis, ok, err := b.db.GetThesis(ticker); err != nil {
+		log.Printf("review %s: thesis: %v", ticker, err)
+	} else if ok {
+		trade.Thesis = &thesis
+	}
+
+	if recs, err := b.db.GetRecommendationsForTicker(ticker, round.StartDate, round.EndDate); err != nil {
+		log.Printf("review %s: recommendations: %v", ticker, err)
+	} else {
+		for _, r := range recs {
+			trade.Recommendations = append(trade.Recommendations, llm.TradeRecommendation{Date: r.Date, Action: r.Action, Reason: r.Reason})
+		}
+	}
+
+	return trade, true, nil
+}
+
+// reviewClosedTrade is the automatic sell-review path, triggered by
+// handleSell/executePendingAction right after a sell fully closes a
+// position. Log-only on any failure — the user already has their sell
+// confirmation, so a second failure alert about the review itself would be
+// noise for something that isn't the trade record. See handleReview for the
+// manual /review TICKER path, which reports failures to the user instead.
+func (b *Bot) reviewClosedTrade(ctx context.Context, ticker string) {
+	trade, ok, err := b.buildClosedTradeReview(ticker)
+	if err != nil {
+		log.Printf("review %s: %v", ticker, err)
+		return
+	}
+	if !ok {
+		log.Printf("review %s: no closed round found right after closing (unexpected)", ticker)
+		return
+	}
+	result, err := b.llm.ReviewTrade(ctx, trade)
+	if err != nil {
+		log.Printf("review %s: LLM: %v", ticker, err)
+		return
+	}
+	b.Send(i18n.T(b.lang, i18n.KeyTradeReviewResultTitle, ticker, result))
+}
+
+// handleReview is /review TICKER's manual entry point: review the most
+// recent fully closed round trip for ticker, regardless of when it closed
+// (unlike the automatic path, which only fires right after a closing sell).
+// Mirrors /check's placeholder-then-result shape since this is also a
+// one-shot LLM call.
+func (b *Bot) handleReview(ctx context.Context, args string) {
+	ticker := strings.ToUpper(strings.TrimSpace(args))
+	if ticker == "" {
+		b.Send(i18n.T(b.lang, i18n.KeyReviewUsage))
+		return
+	}
+
+	trade, ok, err := b.buildClosedTradeReview(ticker)
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
+		return
+	}
+	if !ok {
+		b.Send(i18n.T(b.lang, i18n.KeyReviewNoClosedTrade, ticker))
+		return
+	}
+
+	b.Send(i18n.T(b.lang, i18n.KeyAnalyzingTicker, ticker))
+	result, err := b.llm.ReviewTrade(ctx, trade)
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyLLMFailed, err))
+		return
+	}
+	b.Send(i18n.T(b.lang, i18n.KeyTradeReviewResultTitle, ticker, result))
 }
 
 // handlePortfolio shows every open position's current market value and

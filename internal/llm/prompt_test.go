@@ -135,3 +135,60 @@ func TestWriteStockSectionOmitsThesisAndVsSPYWhenNil(t *testing.T) {
 		t.Errorf("writeStockSection() should omit thesis/vs-SPY lines when both are nil, got:\n%s", got)
 	}
 }
+
+func TestBuildTradeReviewPromptMinimal(t *testing.T) {
+	trade := ClosedTrade{
+		Ticker: "AAPL",
+		Legs: []TradeLeg{
+			{Side: "BUY", Shares: 10, Price: 150, Date: "2026-06-01"},
+			{Side: "SELL", Shares: 10, Price: 180, Date: "2026-06-20"},
+		},
+		RealizedPnL: 300,
+		HoldingDays: 19,
+	}
+
+	prompt := buildTradeReviewPrompt(i18n.EN, trade)
+
+	if !strings.Contains(prompt, "AAPL") {
+		t.Errorf("buildTradeReviewPrompt() missing ticker, got:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "BUY 10") || !strings.Contains(prompt, "SELL 10") {
+		t.Errorf("buildTradeReviewPrompt() missing leg lines, got:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "+300.00") || !strings.Contains(prompt, "19 days") {
+		t.Errorf("buildTradeReviewPrompt() missing P&L/holding-days line, got:\n%s", prompt)
+	}
+	for _, absent := range []string{"Price range", "vs. market", "Holding thesis", "Recommendations during"} {
+		if strings.Contains(prompt, absent) {
+			t.Errorf("buildTradeReviewPrompt() should omit %q when no data is set, got:\n%s", absent, prompt)
+		}
+	}
+}
+
+func TestBuildTradeReviewPromptFull(t *testing.T) {
+	thesis := "long-term compounder"
+	trade := ClosedTrade{
+		Ticker: "AAPL",
+		Legs: []TradeLeg{
+			{Side: "BUY", Shares: 10, Price: 150, Date: "2026-06-01"},
+			{Side: "SELL", Shares: 10, Price: 180, Date: "2026-06-20"},
+		},
+		RealizedPnL: 300,
+		HoldingDays: 19,
+		VsSPY:       &VsSPYReturn{TickerPct: 20, SPYPct: 5},
+		PeriodHigh:  195,
+		PeriodLow:   145,
+		Thesis:      &thesis,
+		Recommendations: []TradeRecommendation{
+			{Date: "2026-06-15", Action: "HOLD", Reason: "still above support"},
+		},
+	}
+
+	prompt := buildTradeReviewPrompt(i18n.EN, trade)
+
+	for _, want := range []string{"195.00", "145.00", "+20.0%", "+5.0%", thesis, "HOLD", "still above support"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("buildTradeReviewPrompt() missing %q, got:\n%s", want, prompt)
+		}
+	}
+}

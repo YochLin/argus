@@ -123,6 +123,18 @@ func (c *Client) WeeklyReview(ctx context.Context, positions []StockData, cash f
 	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
 }
 
+// ReviewTrade performs Phase 3.8 追加項's sell-review: a one-shot look back
+// at a single fully closed round trip (see ClosedTrade and
+// docs/phase-3.8-sell-review.md) — entry/exit timing against the period's
+// own high/low, whether the thesis panned out, and how bot recommendations
+// during the holding period compared to what was actually done. Reuses
+// checkModel, same reasoning as InsightPortfolio/WeeklyReview: a rarely
+// invoked one-shot call doesn't warrant its own model tier.
+func (c *Client) ReviewTrade(ctx context.Context, trade ClosedTrade) (string, error) {
+	prompt := buildTradeReviewPrompt(c.lang, trade)
+	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+}
+
 // Chat sends text on the client's persistent chat session, starting one on
 // the first call. Unlike GenerateRecommendations/CheckStock, the session
 // stays open across calls so the agent remembers earlier turns.

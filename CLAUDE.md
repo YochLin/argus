@@ -160,6 +160,20 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   because both of those packages already import `internal/db` — unlike this codebase's other
   can't-share-an-import duplication (e.g. `formatFundamentals`), a hand-synced pair of string constants
   here would be a real footgun. See [docs/phase-4-write-gating.md](docs/phase-4-write-gating.md).
+  `GetTransactions(ticker)`/`GetCloseExtremes(ticker, from, to)`/`GetRecommendationsForTicker(ticker, from,
+  to)` (Phase 3.8 追加項's sell-review, `bot.buildClosedTradeReview`) are `transactions`'/`daily_snapshots`'/
+  `recommendations`' first per-ticker bounded-window readers — `transactions` had been write-only
+  (`RecordBuy`/`RecordSell`) until this feature needed the full history back to segment it into round
+  trips (see `bot.lastClosedRound`). `GetCloseExtremes` deliberately isn't `GetPeakClose` reused with an
+  upper bound bolted on: `GetPeakClose`'s only-a-lower-bound shape is right for a still-open position's
+  running high, but a *closed* trade's review needs both ends of a fixed window, or a ticker that kept
+  trading (and setting new highs) after the position closed would leak into "how far the exit was from
+  the period's high." Same reasoning for `GetRecommendationsForTicker` not reusing
+  `GetRecommendationsSince` (whole-table, lower-bound-only — right for `/track`'s rolling window, wrong
+  for one ticker's fixed holding period). Note this also corrects an earlier design assumption of using
+  `GetEarliestBuyDate` (which is all-time `MIN(date)`) to anchor a review's holding period — a ticker
+  that was fully closed out and later re-entered would incorrectly anchor to the *first* round's start;
+  `lastClosedRound`'s own segmentation is the only correct source for a round's start/end dates.
 - `internal/i18n` — every user/LLM-facing string in the project, split into exactly two files by design:
   `zh.go` (Traditional Chinese, the original default) and `en.go` (English), both keyed by the `Key`
   constants declared in `i18n.go`. `T(lang, key, args...)` does the lookup + `fmt.Sprintf`. This covers two
@@ -282,7 +296,20 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `cash`/`haveCash` arguments as `InsightPortfolio` plus one more, `trackSummary` (a pre-rendered
   hit-rate/avg-return string, `""` when there's no recommendation history yet), folded into
   `buildWeeklyReviewPrompt` as its own section so the model's comment on recommendation accuracy comes
-  out of the same call as its portfolio judgment rather than a second LLM round-trip.
+  out of the same call as its portfolio judgment rather than a second LLM round-trip. `Client.ReviewTrade`
+  (Phase 3.8 追加項's sell-review) is the same one-shot-session shape again, reusing `checkModel` for the
+  same low-frequency-command reason — its input, `ClosedTrade` (`prompt.go`), is a package-local mini-struct
+  for one fully closed round trip in a ticker (legs, realized P&L, holding days, period high/low, an
+  optional thesis, and every recommendation issued during the holding window), same
+  not-importing-`internal/db` convention as `Position`/`Earnings`/`PrevRecommendation` — `bot.
+  buildClosedTradeReview` does the DB assembly and date math (`HoldingDays`), this package only renders.
+  `ClosedTrade.VsSPY` deliberately reuses the existing `VsSPYReturn` pair rather than a new type: the same
+  `computeVsSPY(currentPrice, avgCost, spyPrice, spyEntryClose)` pure function `bot`'s per-position
+  vs-SPY line already uses works unchanged for a closed trade's exit/entry prices instead of a live
+  quote/cost-basis pair — it's just percentage math, the argument *meaning* is the only thing that
+  changes at the call site. `buildTradeReviewPrompt` reuses two already-existing per-line keys verbatim
+  (`KeyVsSPYLine`, `KeyThesisLine`) rather than minting trade-review-specific duplicates of the same
+  content shape.
 - `internal/signals` — pure functions/struct for rule-based technical signals (price % threshold, RSI,
   MACD) independent of Telegram/LLM/DB. That purity is preserved for the stateful checks too:
   `CheckRSIState` and `CheckMACDCross` take the previously persisted state as a parameter and return the
@@ -532,7 +559,36 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   byte-identical confirmation text to typing `/buy`/`/sell` directly rather than a second implementation
   that could drift from the first. `tradePayload` here is `internal/mcptools`'s own copy with matching
   `json` tags (decode side, not encode) — same can't-share-an-import duplication as `formatFundamentals`.
-  See [docs/phase-4-write-gating.md](docs/phase-4-write-gating.md).
+  See [docs/phase-4-write-gating.md](docs/phase-4-write-gating.md). `recordSell` (`handlers.go`) now
+  returns `(msg string, closed bool)` instead of a bare string — `closed` is `pos.Shares == 0` from
+  `db.RecordSell`'s own return, always `false` on any error path since nothing was recorded — so both of
+  its callers (`handleSell` and `executePendingAction`'s `record_sell` branch) can trigger Phase 3.8
+  追加項's sell-review (`reviewClosedTrade`) only when a round trip actually just finished, not on every
+  sell. This is why `handleCallbackQuery`/`resolvePendingAction`/`executePendingAction` all gained a
+  `context.Context` parameter (threaded from `Run`'s own `ctx`) that they didn't need before — reviewing a
+  trade is a `Client.ReviewTrade` LLM call, which needs one. `reviewClosedTrade` runs in its own goroutine
+  off `handleSell`/`executePendingAction` (the sell's own success message is sent first, immediately, same
+  reasoning as every other placeholder-avoiding pattern in this package) and is log-only on failure — the
+  user already has their sell confirmation, so a second Telegram alert about the review itself failing
+  would be noise about something that isn't the trade record. `lastClosedRound` (`handlers.go`, pure) is
+  the segmentation this depends on: it walks a ticker's full `db.GetTransactions` history by running share
+  balance and returns the most recent 0→positive→0 round trip (`tradeRound{Legs, StartDate, EndDate}`),
+  treating a balance within `1e-9` of zero as closed — same float-dust threshold `db.RecordSell` already
+  uses to decide whether a sell empties a position. It deliberately returns the *last* closed round, not
+  the first — a ticker that was fully closed out and later re-entered must review the most recent round,
+  not an old one — and a round still open at the end of the history simply isn't returned (there's nothing
+  finished to review yet). `bot.buildClosedTradeReview` (shared by the automatic path and `/review`'s
+  manual one) assembles `llm.ClosedTrade` from that round: per-field DB lookups (`GetCloseExtremes`,
+  `GetSnapshotClose` for both round endpoints via `computeVsSPY`, `GetThesis`, `GetRecommendationsForTicker`)
+  each degrade independently (logged, left at zero/nil) rather than failing the whole review, same
+  attach-what's-available convention as `fetchStockData`'s optional `StockData` fields — only
+  `GetTransactions` itself failing, or there being no closed round at all, aborts the review. `/review
+  TICKER` (`handleReview`) is the manual entry point for any ticker's most recent closed round regardless
+  of when it closed (unlike the automatic path, which only fires right after a closing sell) — mirrors
+  `/check`'s placeholder-then-result shape (`KeyAnalyzing`-family placeholder, `KeyLLMFailed` on failure)
+  since it's also a one-shot LLM call, and reports `KeyReviewNoClosedTrade` rather than silently doing
+  nothing when the ticker has never had a fully closed trade. See
+  [docs/phase-3.8-sell-review.md](docs/phase-3.8-sell-review.md).
 - `internal/mcptools` — Phase 3.5's read-only MCP (Model Context Protocol) tool surface for chat, using
   the official `github.com/modelcontextprotocol/go-sdk`. `NewServer(lang, provider, history, fundamentals,
   earnings)` builds an `*mcp.Server` and registers seven tools (`tools.go`'s `registerTools`): `get_quote`/
