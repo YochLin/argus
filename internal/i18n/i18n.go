@@ -120,6 +120,10 @@ const (
 	KeyWeeklyEarningsPreviewTitle Key = "weekly_earnings_preview_title"
 	KeyWeeklyEarningsPreviewLine  Key = "weekly_earnings_preview_line"
 
+	KeyReviewUsage            Key = "review_usage"
+	KeyReviewNoClosedTrade    Key = "review_no_closed_trade"
+	KeyTradeReviewResultTitle Key = "trade_review_result_title"
+
 	KeyCashUsage      Key = "cash_usage"
 	KeyCashCurrent    Key = "cash_current"
 	KeyCashNotSet     Key = "cash_not_set"
@@ -267,6 +271,14 @@ const (
 	KeyWeeklyReviewPromptIntro Key = "weekly_review_prompt_intro"
 	KeyWeeklyReviewTrackHeader Key = "weekly_review_track_header"
 	KeyWeeklyReviewPromptTask  Key = "weekly_review_prompt_task"
+
+	KeyTradeReviewPromptIntro Key = "trade_review_prompt_intro"
+	KeyTradeReviewLegLine     Key = "trade_review_leg_line"
+	KeyTradeReviewPnLLine     Key = "trade_review_pnl_line"
+	KeyTradeReviewRangeLine   Key = "trade_review_range_line"
+	KeyTradeReviewRecsHeader  Key = "trade_review_recs_header"
+	KeyTradeReviewRecLine     Key = "trade_review_rec_line"
+	KeyTradeReviewPromptTask  Key = "trade_review_prompt_task"
 
 	KeyStockHeader             Key = "stock_header"
 	KeyPriceLine               Key = "price_line"

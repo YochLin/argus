@@ -3,7 +3,7 @@ package i18n
 // enMessages is the English message table. Every format verb here must
 // appear in the same order as its zh.go counterpart — see the note there.
 var enMessages = map[Key]string{
-	KeyUnknownCommand:            "Unknown command. Available commands:\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [days]\n/buy <ticker> <shares> <price> [fee]\n/sell <ticker> <shares> <price> [fee]\n/portfolio\n/insight\n/cash [amount]\n/thesis <ticker> [text]\n/dailyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n\nSend a plain message (no leading /) to chat freely.",
+	KeyUnknownCommand:            "Unknown command. Available commands:\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [days]\n/buy <ticker> <shares> <price> [fee]\n/sell <ticker> <shares> <price> [fee]\n/portfolio\n/insight\n/cash [amount]\n/thesis <ticker> [text]\n/review <ticker>\n/dailyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n\nSend a plain message (no leading /) to chat freely.",
 	KeyAddUsage:                  "Usage: /add <ticker>, e.g. /add AAPL",
 	KeyAddFailed:                 "Failed to add: %v",
 	KeyAddSuccess:                "Added *%s* to your watchlist.",
@@ -113,6 +113,10 @@ var enMessages = map[Key]string{
 	KeyThesisNotSet:     "No thesis recorded for *%s* yet — add one with /thesis %s <text>.",
 	KeyThesisCurrent:    "Current thesis for *%s*: %s",
 	KeyBuyThesisNudge:   "\n💭 No thesis recorded for *%s* yet — add one with /thesis %s <text>?",
+
+	KeyReviewUsage:            "Usage: /review <ticker> — review the most recent fully closed trade for that ticker",
+	KeyReviewNoClosedTrade:    "*%s* has no fully closed trade on record to review yet.",
+	KeyTradeReviewResultTitle: "📓 *Trade Review: %s*\n\n%s",
 
 	KeyConfirmButton:                "✅ Confirm",
 	KeyRejectButton:                 "❌ Reject",
@@ -285,6 +289,26 @@ Please analyze the whole portfolio in English (don't repeat the per-ticker data 
    that data isn't present
 
 Keep the reply concise — under 600 words total.
+`,
+
+	KeyTradeReviewPromptIntro: "You are a US equities analyst. Review this fully closed *%s* trade below.\n\n",
+	KeyTradeReviewLegLine:     "• %s %g shares @ $%.2f (%s)\n",
+	KeyTradeReviewPnLLine:     "Realized P&L: %+.2f | Holding period: %d days\n",
+	KeyTradeReviewRangeLine:   "Price range over the holding period: high $%.2f / low $%.2f\n",
+	KeyTradeReviewRecsHeader:  "\nRecommendations during the holding period:\n",
+	KeyTradeReviewRecLine:     "- %s %s: %s\n",
+	KeyTradeReviewPromptTask: `
+Give an honest, unvarnished review in English — even if the trade made money, call out any judgment errors along the way:
+1. Entry/exit timing: where did the buy and sell prices land relative to the holding period's own high/low? Did
+   exiting too early leave money on the table, or too late give back gains?
+2. Thesis check: if a "holding thesis" is shown above, did the actual outcome bear it out? Even a profitable trade
+   should be called out if the reason it worked had nothing to do with the thesis; skip this point if no thesis was recorded.
+3. Recommendation check: if recommendations from the holding period are shown above, did they match what the user
+   actually did (e.g. the system said SELL but the position was held for two more weeks, or said HOLD but was sold)?
+   Skip this point if no recommendations are shown.
+4. Distill one concrete, actionable lesson — not a vague "be more careful."
+
+Keep the reply concise — under 300 words total.
 `,
 
 	KeyStockHeader:             "### %s\n",
