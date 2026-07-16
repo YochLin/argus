@@ -126,10 +126,11 @@ const (
 	KeyCashSetSuccess Key = "cash_set_success"
 	KeyCashSetFailed  Key = "cash_set_failed"
 
-	KeyStopLossAlertTitle     Key = "stop_loss_alert_title"
-	KeyStopLossAlertLine      Key = "stop_loss_alert_line"
-	KeyTrailingStopAlertTitle Key = "trailing_stop_alert_title"
-	KeyTrailingStopAlertLine  Key = "trailing_stop_alert_line"
+	KeyStopLossAlertTitle       Key = "stop_loss_alert_title"
+	KeyStopLossAlertLine        Key = "stop_loss_alert_line"
+	KeyTrailingStopAlertTitle   Key = "trailing_stop_alert_title"
+	KeyTrailingStopAlertLine    Key = "trailing_stop_alert_line"
+	KeyTrailingStopAlertLineATR Key = "trailing_stop_alert_line_atr"
 
 	KeyChatContextHeader       Key = "chat_context_header"
 	KeyChatContextTickerNoData Key = "chat_context_ticker_no_data"

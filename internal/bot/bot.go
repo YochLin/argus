@@ -59,8 +59,15 @@ type Bot struct {
 	// Phase 3.8) are positive percentage thresholds for RunDailyReport's
 	// rule-based exit-discipline checks (checkStopLossAlerts/
 	// checkTrailingStopAlerts) — 0 disables the corresponding check entirely.
-	stopLossPct     float64
-	trailingStopPct float64
+	// trailingStopATRMult (TRAILING_STOP_ATR_MULT env, Phase 3.8 追加項) is an
+	// opt-in ATR(14) multiplier that tightens the trailing-stop distance for
+	// lower-volatility tickers — see trailingStopThreshold and
+	// docs/phase-3.8-atr-trailing-stop.md; <= 0 (the default) leaves
+	// trailingStopPct as the sole threshold, unchanged from before this field
+	// existed.
+	stopLossPct         float64
+	trailingStopPct     float64
+	trailingStopATRMult float64
 
 	// chatQueue feeds chatWorker, which answers plain-text messages one at a
 	// time and in the order they arrived — unlike commands, chat shares one
@@ -79,19 +86,20 @@ type Bot struct {
 // is deliberately not the 架構債 "設定整理" item (centralized env parsing/
 // validation in main.go); it only fixes this constructor's signature.
 type Config struct {
-	Token           string
-	ChatID          int64
-	DB              *db.DB
-	Provider        data.Provider
-	Fundamentals    data.FundamentalsProvider  // nil if FINNHUB_API_KEY isn't set
-	AnalystRating   data.AnalystRatingProvider // nil if FINNHUB_API_KEY isn't set
-	Earnings        data.EarningsProvider      // nil if FINNHUB_API_KEY isn't set
-	MarketNews      data.MarketNewsProvider    // nil if FINNHUB_API_KEY isn't set
-	History         data.HistoryProvider
-	LLM             *llm.Client
-	Lang            i18n.Lang
-	StopLossPct     float64 // STOP_LOSS_PCT env; 0 disables the check
-	TrailingStopPct float64 // TRAILING_STOP_PCT env; 0 disables the check
+	Token               string
+	ChatID              int64
+	DB                  *db.DB
+	Provider            data.Provider
+	Fundamentals        data.FundamentalsProvider  // nil if FINNHUB_API_KEY isn't set
+	AnalystRating       data.AnalystRatingProvider // nil if FINNHUB_API_KEY isn't set
+	Earnings            data.EarningsProvider      // nil if FINNHUB_API_KEY isn't set
+	MarketNews          data.MarketNewsProvider    // nil if FINNHUB_API_KEY isn't set
+	History             data.HistoryProvider
+	LLM                 *llm.Client
+	Lang                i18n.Lang
+	StopLossPct         float64 // STOP_LOSS_PCT env; 0 disables the check
+	TrailingStopPct     float64 // TRAILING_STOP_PCT env; 0 disables the check
+	TrailingStopATRMult float64 // TRAILING_STOP_ATR_MULT env; <= 0 disables the ATR-based distance
 }
 
 func New(cfg Config) (*Bot, error) {
@@ -101,21 +109,22 @@ func New(cfg Config) (*Bot, error) {
 	}
 	log.Printf("Telegram bot authorized: @%s", api.Self.UserName)
 	return &Bot{
-		api:             api,
-		db:              cfg.DB,
-		provider:        cfg.Provider,
-		fundamentals:    cfg.Fundamentals,
-		analystRating:   cfg.AnalystRating,
-		earnings:        cfg.Earnings,
-		marketNews:      cfg.MarketNews,
-		history:         cfg.History,
-		llm:             cfg.LLM,
-		detector:        signals.NewDetector(cfg.Lang),
-		chatID:          cfg.ChatID,
-		lang:            cfg.Lang,
-		stopLossPct:     cfg.StopLossPct,
-		trailingStopPct: cfg.TrailingStopPct,
-		chatQueue:       make(chan *tgbotapi.Message, 32),
+		api:                 api,
+		db:                  cfg.DB,
+		provider:            cfg.Provider,
+		fundamentals:        cfg.Fundamentals,
+		analystRating:       cfg.AnalystRating,
+		earnings:            cfg.Earnings,
+		marketNews:          cfg.MarketNews,
+		history:             cfg.History,
+		llm:                 cfg.LLM,
+		detector:            signals.NewDetector(cfg.Lang),
+		chatID:              cfg.ChatID,
+		lang:                cfg.Lang,
+		stopLossPct:         cfg.StopLossPct,
+		trailingStopPct:     cfg.TrailingStopPct,
+		trailingStopATRMult: cfg.TrailingStopATRMult,
+		chatQueue:           make(chan *tgbotapi.Message, 32),
 	}, nil
 }
 

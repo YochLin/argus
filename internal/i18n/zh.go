@@ -81,10 +81,11 @@ var zhMessages = map[Key]string{
 	KeyCashSetSuccess: "已將現金水位設為 $%.2f。",
 	KeyCashSetFailed:  "設定現金水位失敗：%v",
 
-	KeyStopLossAlertTitle:     "🛑 *停損提醒*\n\n",
-	KeyStopLossAlertLine:      "• *%s* 成本 $%.2f → 現價 $%.2f，未實現損失 %.1f%%，已達停損門檻\n",
-	KeyTrailingStopAlertTitle: "📉 *移動停損提醒*\n\n",
-	KeyTrailingStopAlertLine:  "• *%s* 持有期間最高收盤 $%.2f → 現價 $%.2f，回落 %.1f%%，已達移動停損門檻\n",
+	KeyStopLossAlertTitle:       "🛑 *停損提醒*\n\n",
+	KeyStopLossAlertLine:        "• *%s* 成本 $%.2f → 現價 $%.2f，未實現損失 %.1f%%，已達停損門檻\n",
+	KeyTrailingStopAlertTitle:   "📉 *移動停損提醒*\n\n",
+	KeyTrailingStopAlertLine:    "• *%s* 持有期間最高收盤 $%.2f → 現價 $%.2f，回落 %.1f%%，已達移動停損門檻\n",
+	KeyTrailingStopAlertLineATR: "• *%s* 持有期間最高收盤 $%.2f → 現價 $%.2f，回落 %.1f%%，已達移動停損門檻（門檻 %.1f%%，%.1f×ATR）\n",
 
 	KeyChatContextHeader:       "[背景資料，非即時報價，僅供參考]\n",
 	KeyChatContextTickerNoData: "- %s：尚無收盤資料\n",

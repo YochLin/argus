@@ -78,10 +78,11 @@ var enMessages = map[Key]string{
 	KeyCashSetSuccess: "Cash balance set to $%.2f.",
 	KeyCashSetFailed:  "Failed to set cash balance: %v",
 
-	KeyStopLossAlertTitle:     "🛑 *Stop-Loss Alert*\n\n",
-	KeyStopLossAlertLine:      "• *%s* cost $%.2f → price $%.2f, unrealized loss %.1f%% — stop-loss threshold hit\n",
-	KeyTrailingStopAlertTitle: "📉 *Trailing-Stop Alert*\n\n",
-	KeyTrailingStopAlertLine:  "• *%s* peak close since entry $%.2f → price $%.2f, down %.1f%% from peak — trailing-stop threshold hit\n",
+	KeyStopLossAlertTitle:       "🛑 *Stop-Loss Alert*\n\n",
+	KeyStopLossAlertLine:        "• *%s* cost $%.2f → price $%.2f, unrealized loss %.1f%% — stop-loss threshold hit\n",
+	KeyTrailingStopAlertTitle:   "📉 *Trailing-Stop Alert*\n\n",
+	KeyTrailingStopAlertLine:    "• *%s* peak close since entry $%.2f → price $%.2f, down %.1f%% from peak — trailing-stop threshold hit\n",
+	KeyTrailingStopAlertLineATR: "• *%s* peak close since entry $%.2f → price $%.2f, down %.1f%% from peak — trailing-stop threshold hit (%.1f%% threshold, %.1f×ATR)\n",
 
 	KeyChatContextHeader:       "[Background info, not real-time, for reference only]\n",
 	KeyChatContextTickerNoData: "- %s: no closing data yet\n",
