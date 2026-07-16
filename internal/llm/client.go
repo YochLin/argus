@@ -80,9 +80,11 @@ func (c *Client) AddFallback(provider Provider, recommendModel, checkModel, chat
 // configured language (c.lang), plus a market-news summary when marketNews is
 // non-empty (empty string otherwise — e.g. Finnhub isn't configured). Both
 // are extracted from the single underlying LLM reply, not two separate
-// calls — see parseMarketSummary/parseRecommendations.
-func (c *Client) GenerateRecommendations(ctx context.Context, watchlist []StockData, candidates []StockData, marketNews []data.NewsItem) (summary string, recs []Recommendation, err error) {
-	prompt := buildRecommendationPrompt(c.lang, watchlist, candidates, marketNews)
+// calls — see parseMarketSummary/parseRecommendations. market is Phase 3.7
+// 追加項's broad-market regime context (nil skips the block entirely, prompt
+// unchanged from before this parameter existed — see MarketContext).
+func (c *Client) GenerateRecommendations(ctx context.Context, watchlist []StockData, candidates []StockData, marketNews []data.NewsItem, market *MarketContext) (summary string, recs []Recommendation, err error) {
+	prompt := buildRecommendationPrompt(c.lang, watchlist, candidates, marketNews, market)
 	raw, err := c.prompt(ctx, prompt, func(b backend) string { return b.recommendModel })
 	if err != nil {
 		return "", nil, err

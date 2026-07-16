@@ -182,6 +182,14 @@ var enMessages = map[Key]string{
 	KeySystemPromptChat:    "You are the user's personal assistant. Talk naturally in English and remember what was said earlier in this conversation. You have no tools available and need none.",
 
 	KeyRecPromptIntro:      "You are a US equities analyst. Based on the market data below, give today's action recommendations.\n\n",
+	KeyMarketRegimeHeader:  "## Market Regime\n\n",
+	KeyMarketRegimeSPYLine: "• SPY price $%.2f, MA200 $%.2f, MA50 $%.2f — %s\n",
+	KeyMarketRegimeVIXLine: "• VIX %.2f — %s\n",
+	KeyRiskOn:              "risk-on (price above MA200)",
+	KeyRiskOff:             "risk-off (price below MA200)",
+	KeyVIXCalm:             "calm",
+	KeyVIXNormal:           "normal",
+	KeyVIXPanic:            "high panic",
 	KeyRecMarketNewsHeader: "## Broad Market News\n\n",
 	KeyRecWatchlistHeader:  "## My Watchlist\n\n",
 	KeyRecNoWatchlist:      "(No watchlist tickers)\n\n",
@@ -214,6 +222,9 @@ improving fundamentals.
 If a ticker's section below shows a "Previous call" and today's action differs from it, your reasoning must
 explicitly say what changed (new information, a technical signal reversal, or the original thesis no longer
 holding) — don't just restate the same conclusion in different words.
+
+If a Market Regime block appears above, weigh it when calling new BUYs: hold new positions to a higher bar in a
+risk-off regime or when VIX is elevated rather than applying the same standard regardless of market conditions.
 
 Strictly follow this output structure, one block per ticker, with no extra text:
 

@@ -30,8 +30,9 @@ type recommendationInputs struct {
 	earnings         map[string]data.EarningsEvent
 	marketNews       []data.NewsItem
 	prevRecs         map[string]db.Recommendation
-	watchlist        []llm.StockData // fetchStockData output for watchlistTickers
-	candidates       []llm.StockData // fetchStockData output for candidateTickers
+	marketContext    *llm.MarketContext // nil if SPY history and VIX quote both failed
+	watchlist        []llm.StockData    // fetchStockData output for watchlistTickers
+	candidates       []llm.StockData    // fetchStockData output for candidateTickers
 }
 
 // gatherRecommendationInputs assembles the watchlist ∪ market-mover/scan-hit
@@ -57,6 +58,7 @@ func (b *Bot) gatherRecommendationInputs() (recommendationInputs, error) {
 	earnings := b.loadEarnings(allTickers)
 	marketNews := b.loadMarketNews()
 	prevRecs := b.loadPrevRecs(allTickers)
+	marketContext := b.computeMarketRegime()
 
 	watchlist := b.fetchStockData(tickers, true, positions, earnings, nil, prevRecs)
 	candidates := b.fetchStockData(dedupedCandidates, false, positions, earnings, scanHits, prevRecs)
@@ -69,6 +71,7 @@ func (b *Bot) gatherRecommendationInputs() (recommendationInputs, error) {
 		earnings:         earnings,
 		marketNews:       marketNews,
 		prevRecs:         prevRecs,
+		marketContext:    marketContext,
 		watchlist:        watchlist,
 		candidates:       candidates,
 	}, nil
@@ -247,6 +250,41 @@ func (b *Bot) computeTechnicals(ticker string) *llm.Technicals {
 		t.Volume = volumes[len(volumes)-1]
 	}
 	return t
+}
+
+// computeMarketRegime builds Phase 3.7 追加項's broad-market context block
+// (see docs/phase-3.7-market-regime.md and llm.MarketContext): SPY's own
+// trend (last close from a single GetHistory call, no separate GetQuote) and
+// ^VIX's latest level (via the ordinary Multi quote chain — Finnhub returns
+// an error-shaped-but-200 body for CFD indices it doesn't support, which
+// decodes as an all-zero quote and falls through to Yahoo exactly like any
+// other "no data" quote, confirmed by live testing, see the design doc).
+// Either half failing just logs and leaves that half's fields at 0 (skipped
+// by writeMarketContext's per-field rendering); both failing returns nil so
+// gatherRecommendationInputs's caller sees "no regime data" rather than an
+// all-zero struct.
+func (b *Bot) computeMarketRegime() *llm.MarketContext {
+	var m llm.MarketContext
+
+	closes, _, _, _, err := b.history.GetHistory(benchmarkTicker)
+	if err != nil {
+		log.Printf("market regime: %s history: %v", benchmarkTicker, err)
+	} else if len(closes) > 0 {
+		m.SPYPrice = closes[len(closes)-1]
+		m.SPYMA50 = signals.MA(closes, 50)
+		m.SPYMA200 = signals.MA(closes, 200)
+	}
+
+	if q, err := b.provider.GetQuote(vixTicker); err != nil {
+		log.Printf("market regime: %s quote: %v", vixTicker, err)
+	} else {
+		m.VIX = q.Price
+	}
+
+	if m.SPYPrice == 0 && m.VIX == 0 {
+		return nil
+	}
+	return &m
 }
 
 // loadPositions returns every open position keyed by ticker, for attaching

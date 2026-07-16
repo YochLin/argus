@@ -180,10 +180,80 @@ type ClosedTrade struct {
 	Recommendations []TradeRecommendation
 }
 
-func buildRecommendationPrompt(lang i18n.Lang, watchlist []StockData, candidates []StockData, marketNews []data.NewsItem) string {
+// MarketContext is Phase 3.7 追加項's broad-market regime block (see
+// docs/phase-3.7-market-regime.md): SPY's own trend (vs its MA50/MA200) and
+// ^VIX's level, so a BUY call in a bull market isn't held to the same bar as
+// one in a bear market. Package-local, not imported from internal/data, same
+// attach-and-render convention as Position/Earnings/Technicals. 0 on any
+// field means "couldn't be fetched" — writeMarketContext skips that field's
+// line rather than rendering a misleading 0, same sentinel convention as
+// Technicals' MA fields.
+type MarketContext struct {
+	SPYPrice, SPYMA50, SPYMA200 float64
+	VIX                         float64
+}
+
+// vixCalmThreshold/vixPanicThreshold are fixed, not env-configurable — 15/25
+// are the market's own conventional coarse VIX bands, not a user preference
+// (see the design doc's rejected-alternatives section).
+const (
+	vixCalmThreshold  = 15
+	vixPanicThreshold = 25
+)
+
+// regimeLabel returns the risk-on/risk-off i18n key for SPY's current price
+// against its MA200 — the coarsest-grained trend fact the prompt can give the
+// model. Pure so it's unit-testable without a full StockData/MarketContext.
+func regimeLabel(price, ma200 float64) i18n.Key {
+	if price > ma200 {
+		return i18n.KeyRiskOn
+	}
+	return i18n.KeyRiskOff
+}
+
+// vixLabel returns the coarse VIX-band i18n key for a given VIX level (see
+// vixCalmThreshold/vixPanicThreshold above).
+func vixLabel(vix float64) i18n.Key {
+	switch {
+	case vix < vixCalmThreshold:
+		return i18n.KeyVIXCalm
+	case vix > vixPanicThreshold:
+		return i18n.KeyVIXPanic
+	default:
+		return i18n.KeyVIXNormal
+	}
+}
+
+// writeMarketContext renders the market-regime block (nil market, or a
+// market with both SPYPrice/SPYMA200 and VIX unavailable, renders nothing —
+// see MarketContext's 0-sentinel convention). Each of the SPY line and VIX
+// line is independently skipped when its own inputs aren't available, same
+// per-field degradation as writeStockSection's MA lines.
+func writeMarketContext(sb *strings.Builder, lang i18n.Lang, m *MarketContext) {
+	if m == nil {
+		return
+	}
+	haveSPY := m.SPYPrice > 0 && m.SPYMA200 > 0
+	haveVIX := m.VIX > 0
+	if !haveSPY && !haveVIX {
+		return
+	}
+
+	sb.WriteString(i18n.T(lang, i18n.KeyMarketRegimeHeader))
+	if haveSPY {
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyMarketRegimeSPYLine, m.SPYPrice, m.SPYMA200, m.SPYMA50, i18n.T(lang, regimeLabel(m.SPYPrice, m.SPYMA200))))
+	}
+	if haveVIX {
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyMarketRegimeVIXLine, m.VIX, i18n.T(lang, vixLabel(m.VIX))))
+	}
+	sb.WriteString("\n")
+}
+
+func buildRecommendationPrompt(lang i18n.Lang, watchlist []StockData, candidates []StockData, marketNews []data.NewsItem, market *MarketContext) string {
 	var sb strings.Builder
 
 	sb.WriteString(i18n.T(lang, i18n.KeyRecPromptIntro))
+	writeMarketContext(&sb, lang, market)
 
 	if len(marketNews) > 0 {
 		sb.WriteString(i18n.T(lang, i18n.KeyRecMarketNewsHeader))

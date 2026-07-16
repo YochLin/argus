@@ -185,6 +185,14 @@ var zhMessages = map[Key]string{
 	KeySystemPromptChat:    "你是使用者的個人助理，請用繁體中文自然對話，記住這段對話中先前提到的內容。你沒有任何工具可用，也不需要使用工具。",
 
 	KeyRecPromptIntro:      "你是一位美股分析師，請根據以下市場數據給出今日操作建議。\n\n",
+	KeyMarketRegimeHeader:  "## 大盤情境\n\n",
+	KeyMarketRegimeSPYLine: "• SPY 現價 $%.2f，MA200 $%.2f，MA50 $%.2f — %s\n",
+	KeyMarketRegimeVIXLine: "• VIX %.2f — %s\n",
+	KeyRiskOn:              "多頭（現價站上 MA200）",
+	KeyRiskOff:             "空頭（現價跌破 MA200）",
+	KeyVIXCalm:             "平靜",
+	KeyVIXNormal:           "正常",
+	KeyVIXPanic:            "高恐慌",
 	KeyRecMarketNewsHeader: "## 大盤新聞\n\n",
 	KeyRecWatchlistHeader:  "## 我的自選股\n\n",
 	KeyRecNoWatchlist:      "（無自選股）\n\n",
@@ -212,6 +220,9 @@ var zhMessages = map[Key]string{
 
 若某檔下方列出了「上次建議」，且這次的動作與上次不同，請在原因中明確說明是什麼改變了
 （新資訊、技術訊號翻轉、或原本的論點已經站不住腳），不要只是換個說法重複同一個結論。
+
+若上方出現「大盤情境」區塊，請將其納入新倉 BUY 建議的判斷：空頭或 VIX 偏高時，對新倉
+應採用更保守的標準，而不是不論大盤情境一律套用同一套門檻。
 
 輸出格式請嚴格遵守以下結構，每檔一個區塊，不要有額外文字：
 
