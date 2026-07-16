@@ -202,7 +202,7 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 	b.checkStopLossAlerts(positionList, prices)
 	b.checkTrailingStopAlerts(positionList, prices, atrs)
 
-	summary, recs, err := b.llm.GenerateRecommendations(ctx, in.watchlist, in.candidates, in.marketNews)
+	summary, recs, err := b.llm.GenerateRecommendations(ctx, in.watchlist, in.candidates, in.marketNews, in.marketContext)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyLLMFailed, err))
 		return
