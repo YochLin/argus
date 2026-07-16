@@ -393,16 +393,23 @@ func (b *Bot) handleBuy(args string) {
 	if date == "" {
 		date = todayDate()
 	}
+	b.Send(b.recordBuy(ticker, shares, price, fee, date))
+}
 
+// recordBuy is handleBuy's core, pulled out so a confirmed Phase 4
+// pending-action proposal (record_buy, see internal/mcptools'
+// trade_write_tools.go) can execute the exact same logic and produce the
+// exact same confirmation text as typing /buy directly — see
+// executePendingAction.
+func (b *Bot) recordBuy(ticker string, shares, price, fee float64, date string) string {
 	pos, err := b.db.RecordBuy(ticker, shares, price, fee, date)
 	if err != nil {
-		b.Send(i18n.T(b.lang, i18n.KeyBuyFailed, err))
-		return
+		return i18n.T(b.lang, i18n.KeyBuyFailed, err)
 	}
 	if err := b.db.AddTicker(ticker); err != nil {
 		log.Printf("buy: add %s to watchlist: %v", ticker, err)
 	}
-	b.Send(i18n.T(b.lang, i18n.KeyBuySuccess, ticker, shares, price, fee, pos.Shares, pos.AvgCost) + b.thesisNudge(ticker))
+	return i18n.T(b.lang, i18n.KeyBuySuccess, ticker, shares, price, fee, pos.Shares, pos.AvgCost) + b.thesisNudge(ticker)
 }
 
 // thesisNudge returns a one-line nudge to record a holding thesis when
@@ -434,20 +441,25 @@ func (b *Bot) handleSell(args string) {
 	if date == "" {
 		date = todayDate()
 	}
+	b.Send(b.recordSell(ticker, shares, price, fee, date))
+}
 
+// recordSell is handleSell's core, pulled out for the same reason as
+// recordBuy — a confirmed Phase 4 pending-action proposal (record_sell)
+// reuses this instead of duplicating the RecordSell call and error mapping.
+func (b *Bot) recordSell(ticker string, shares, price, fee float64, date string) string {
 	pos, realizedPnL, err := b.db.RecordSell(ticker, shares, price, fee, date)
 	if err != nil {
 		switch {
 		case errors.Is(err, db.ErrNoPosition):
-			b.Send(i18n.T(b.lang, i18n.KeySellNoPosition, ticker))
+			return i18n.T(b.lang, i18n.KeySellNoPosition, ticker)
 		case errors.Is(err, db.ErrInsufficientShares):
-			b.Send(i18n.T(b.lang, i18n.KeySellInsufficientShares, ticker))
+			return i18n.T(b.lang, i18n.KeySellInsufficientShares, ticker)
 		default:
-			b.Send(i18n.T(b.lang, i18n.KeySellFailed, err))
+			return i18n.T(b.lang, i18n.KeySellFailed, err)
 		}
-		return
 	}
-	b.Send(i18n.T(b.lang, i18n.KeySellSuccess, ticker, shares, price, fee, realizedPnL, pos.Shares))
+	return i18n.T(b.lang, i18n.KeySellSuccess, ticker, shares, price, fee, realizedPnL, pos.Shares)
 }
 
 // handlePortfolio shows every open position's current market value and
@@ -763,6 +775,7 @@ func (b *Bot) handleChat(ctx context.Context, text string) {
 		return
 	}
 	b.Send(reply)
+	b.sendPendingActionPrompts()
 }
 
 // handleChatArticle is handleChat's "article digestion" path (Phase 3): the
@@ -798,6 +811,7 @@ func (b *Bot) handleChatArticle(ctx context.Context, text, url string) {
 		return
 	}
 	b.Send(reply)
+	b.sendPendingActionPrompts()
 }
 
 // buildChatContext composes formatChatContext's input from the DB: the

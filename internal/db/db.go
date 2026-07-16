@@ -25,21 +25,21 @@ type DB struct {
 }
 
 type Watchlist struct {
-	Ticker    string
-	AddedAt   time.Time
+	Ticker  string
+	AddedAt time.Time
 }
 
 type DailySnapshot struct {
-	ID          int64
-	Ticker      string
-	Date        string
-	Open        float64
-	Close       float64
-	High        float64
-	Low         float64
-	Volume      int64
+	ID            int64
+	Ticker        string
+	Date          string
+	Open          float64
+	Close         float64
+	High          float64
+	Low           float64
+	Volume        int64
 	ChangePercent float64
-	CreatedAt   time.Time
+	CreatedAt     time.Time
 }
 
 type Recommendation struct {
@@ -295,6 +295,24 @@ var migrations = []string{
 		ticker TEXT PRIMARY KEY,
 		thesis TEXT NOT NULL,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	`,
+	// 8: pending_actions backs Phase 4's write-gating infrastructure (see
+	// pending_actions.go) — a write tool running in the MCP subprocess (e.g.
+	// record_buy/record_sell) has no Telegram bot of its own to ask for
+	// confirmation, so it can only leave a proposal here; status moves
+	// pending -> sent -> confirmed/rejected, driven by the main bot process.
+	// No foreign key to any other table: action_type plus a free-form JSON
+	// payload is enough for the bot to know what to execute once confirmed,
+	// which keeps this table reusable for any future write-gated action
+	// type, not just trades.
+	`
+	CREATE TABLE IF NOT EXISTS pending_actions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		action_type TEXT NOT NULL,
+		payload TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'pending',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	`,
 }

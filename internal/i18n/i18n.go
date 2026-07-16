@@ -161,6 +161,17 @@ const (
 	KeyThesisCurrent    Key = "thesis_current"
 	KeyBuyThesisNudge   Key = "buy_thesis_nudge"
 
+	// Phase 4 write-gating (db.PendingAction): a chat tool call (record_buy/
+	// record_sell) only creates a proposal; these render the Telegram
+	// confirm/reject message and the outcome once the user taps a button.
+	KeyConfirmButton                Key = "confirm_button"
+	KeyRejectButton                 Key = "reject_button"
+	KeyPendingBuyConfirm            Key = "pending_buy_confirm"
+	KeyPendingSellConfirm           Key = "pending_sell_confirm"
+	KeyPendingActionRejected        Key = "pending_action_rejected"
+	KeyPendingActionAlreadyResolved Key = "pending_action_already_resolved"
+	KeyPendingActionExecFailed      Key = "pending_action_exec_failed"
+
 	KeyQuoteLine Key = "quote_line"
 
 	KeyValuationHeader     Key = "valuation_header"
@@ -312,4 +323,14 @@ const (
 	KeyMCPRecentRecLine         Key = "mcp_recent_rec_line"
 	KeyMCPRecentRecLineNoPrice  Key = "mcp_recent_rec_line_no_price"
 	KeyMCPRecentRecsEmptyTicker Key = "mcp_recent_recs_empty_ticker"
+
+	// record_buy/record_sell (Phase 4 "寫入把關基建"'s first write tools
+	// beyond the watchlist pilot) never write a transaction directly — they
+	// create a db.PendingAction and report that back, since the confirm/
+	// reject step happens over Telegram, which this MCP subprocess has no
+	// access to (see internal/bot's pending-action handling).
+	KeyMCPTradeInvalidInput   Key = "mcp_trade_invalid_input"
+	KeyMCPTradeProposalFailed Key = "mcp_trade_proposal_failed"
+	KeyMCPTradeProposalBuy    Key = "mcp_trade_proposal_buy"
+	KeyMCPTradeProposalSell   Key = "mcp_trade_proposal_sell"
 )
