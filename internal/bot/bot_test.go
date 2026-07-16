@@ -284,6 +284,38 @@ func TestBreachAlertDecision(t *testing.T) {
 	}
 }
 
+func TestTrailingStopThreshold(t *testing.T) {
+	tests := []struct {
+		name              string
+		fixedPct, atrMult float64
+		atr, peak         float64
+		wantThresholdPct  float64
+		wantATRBased      bool
+		wantOK            bool
+	}{
+		{"fixed only, mult disabled (default)", 15, 0, 2, 100, 15, false, true},
+		{"fixed only, mult set but ATR unavailable", 15, 3, 0, 100, 15, false, true},
+		{"fixed only, mult set but no peak", 15, 3, 2, 0, 15, false, true},
+		{"low volatility: ATR tightens below fixed", 15, 3, 2, 100, 6, true, true},       // 3*2/100*100=6 < 15
+		{"high volatility: fixed caps the ATR distance", 15, 3, 8, 100, 15, false, true}, // 3*8/100*100=24 > 15
+		{"pure ATR, fixed disabled", 0, 3, 2, 100, 6, true, true},
+		{"fixed disabled, ATR unavailable: no usable threshold", 0, 3, 0, 100, 0, false, false},
+		{"both disabled: check off entirely", 0, 0, 2, 100, 0, false, false},
+		{"negative fixed treated as disabled", -5, 3, 2, 100, 6, true, true},
+		{"negative mult treated as disabled", 15, -3, 2, 100, 15, false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotThreshold, gotATRBased, gotOK := trailingStopThreshold(tt.fixedPct, tt.atrMult, tt.atr, tt.peak)
+			if gotOK != tt.wantOK || gotATRBased != tt.wantATRBased || (gotOK && gotThreshold != tt.wantThresholdPct) {
+				t.Errorf("trailingStopThreshold(%v, %v, %v, %v) = %v, %v, %v; want %v, %v, %v",
+					tt.fixedPct, tt.atrMult, tt.atr, tt.peak,
+					gotThreshold, gotATRBased, gotOK, tt.wantThresholdPct, tt.wantATRBased, tt.wantOK)
+			}
+		})
+	}
+}
+
 func TestComputeVsSPY(t *testing.T) {
 	tests := []struct {
 		name                                      string

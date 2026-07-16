@@ -53,6 +53,10 @@ func main() {
 	// that /track is the intended feedback loop for tuning these later.
 	stopLossPct := envOrFloat("STOP_LOSS_PCT", 10)
 	trailingStopPct := envOrFloat("TRAILING_STOP_PCT", 15)
+	// TRAILING_STOP_ATR_MULT defaults to 0 (disabled): opt-in, not
+	// presence-gated, since it changes when a real-money alert fires — see
+	// docs/phase-3.8-atr-trailing-stop.md.
+	trailingStopATRMult := envOrFloat("TRAILING_STOP_ATR_MULT", 0)
 
 	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
 	if err != nil {
@@ -136,19 +140,20 @@ func main() {
 	defer llmClient.Close() // kills any still-open persistent chat session's subprocess
 
 	telegramBot, err := bot.New(bot.Config{
-		Token:           telegramToken,
-		ChatID:          chatID,
-		DB:              database,
-		Provider:        provider,
-		Fundamentals:    fundamentalsProvider,
-		AnalystRating:   analystRatingProvider,
-		Earnings:        earningsProvider,
-		MarketNews:      marketNewsProvider,
-		History:         yahoo,
-		LLM:             llmClient,
-		Lang:            lang,
-		StopLossPct:     stopLossPct,
-		TrailingStopPct: trailingStopPct,
+		Token:               telegramToken,
+		ChatID:              chatID,
+		DB:                  database,
+		Provider:            provider,
+		Fundamentals:        fundamentalsProvider,
+		AnalystRating:       analystRatingProvider,
+		Earnings:            earningsProvider,
+		MarketNews:          marketNewsProvider,
+		History:             yahoo,
+		LLM:                 llmClient,
+		Lang:                lang,
+		StopLossPct:         stopLossPct,
+		TrailingStopPct:     trailingStopPct,
+		TrailingStopATRMult: trailingStopATRMult,
 	})
 	if err != nil {
 		log.Fatalf("init bot: %v", err)
