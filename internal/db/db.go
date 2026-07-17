@@ -324,6 +324,25 @@ var migrations = []string{
 	// deleting; GetUniverse/seedSP500's count check both then need to filter
 	// or ignore it appropriately (see their own doc comments).
 	`ALTER TABLE universe ADD COLUMN removed INTEGER NOT NULL DEFAULT 0;`,
+	// 10: trade_lessons backs Phase 3.9's reflect-then-inject feedback loop
+	// (see docs/research-tradingagents.md's "反思回饋迴路" section) — the
+	// short, distilled takeaway ReviewTrade's prompt already asks for (see
+	// KeyLessonMarker) gets parsed out and stored here, so a later
+	// /recommend/daily report can inject it back into the prompt instead of
+	// it only ever living in a Telegram message history. One row per
+	// closed-trade review (both the automatic post-sell path and manual
+	// /review both write here) — no uniqueness constraint, since re-running
+	// /review on the same round is expected to produce a fresh row rather
+	// than silently no-op.
+	`
+	CREATE TABLE IF NOT EXISTS trade_lessons (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		ticker TEXT NOT NULL,
+		date TEXT NOT NULL,
+		lesson TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	`,
 }
 
 func (d *DB) migrate() error {

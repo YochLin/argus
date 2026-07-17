@@ -287,3 +287,63 @@ func TestWriteMarketContext(t *testing.T) {
 		}
 	})
 }
+
+func TestWriteRecentLessonsEmpty(t *testing.T) {
+	var sb strings.Builder
+	writeRecentLessons(&sb, i18n.EN, nil)
+	if sb.String() != "" {
+		t.Errorf("writeRecentLessons(nil) = %q, want empty", sb.String())
+	}
+}
+
+func TestWriteRecentLessonsRendersEachLesson(t *testing.T) {
+	var sb strings.Builder
+	writeRecentLessons(&sb, i18n.EN, []PastLesson{
+		{Ticker: "AAPL", Date: "2026-06-01", Lesson: "exited too early"},
+		{Ticker: "MSFT", Date: "2026-06-15", Lesson: "held through an earnings miss"},
+	})
+	got := sb.String()
+	for _, want := range []string{"AAPL", "exited too early", "MSFT", "held through an earnings miss"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("writeRecentLessons() missing %q, got:\n%s", want, got)
+		}
+	}
+}
+
+func TestWriteStockSectionOmitsPastLessonsWhenEmpty(t *testing.T) {
+	var sb strings.Builder
+	writeStockSection(&sb, i18n.EN, StockData{Quote: &data.Quote{Ticker: "AAPL", Price: 200}})
+	if strings.Contains(sb.String(), "Past lessons") {
+		t.Errorf("writeStockSection() should omit past-lessons block when empty, got:\n%s", sb.String())
+	}
+}
+
+func TestWriteStockSectionRendersPastLessons(t *testing.T) {
+	var sb strings.Builder
+	writeStockSection(&sb, i18n.EN, StockData{
+		Quote: &data.Quote{Ticker: "AAPL", Price: 200},
+		PastLessons: []PastLesson{
+			{Ticker: "AAPL", Date: "2026-05-01", Lesson: "sold too early last time"},
+		},
+	})
+	got := sb.String()
+	if !strings.Contains(got, "Past lessons") || !strings.Contains(got, "sold too early last time") {
+		t.Errorf("writeStockSection() missing past-lessons content, got:\n%s", got)
+	}
+}
+
+func TestBuildRecommendationPromptRendersRecentLessons(t *testing.T) {
+	prompt := buildRecommendationPrompt(i18n.EN, nil, nil, nil, nil, []PastLesson{
+		{Ticker: "NVDA", Date: "2026-06-20", Lesson: "chased a breakout too late"},
+	})
+	if !strings.Contains(prompt, "NVDA") || !strings.Contains(prompt, "chased a breakout too late") {
+		t.Errorf("buildRecommendationPrompt() missing recent-lessons content, got:\n%s", prompt)
+	}
+}
+
+func TestBuildRecommendationPromptOmitsRecentLessonsWhenEmpty(t *testing.T) {
+	prompt := buildRecommendationPrompt(i18n.EN, nil, nil, nil, nil, nil)
+	if strings.Contains(prompt, "Recent Trade Lessons") {
+		t.Errorf("buildRecommendationPrompt() should omit recent-lessons block when empty, got:\n%s", prompt)
+	}
+}
