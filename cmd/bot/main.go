@@ -175,6 +175,9 @@ func main() {
 	sched.AddWeeklyReview(ctx, func(ctx context.Context) {
 		telegramBot.RunWeeklyReview(ctx)
 	})
+	sched.AddMonthlyReport(ctx, func(ctx context.Context) {
+		telegramBot.RunMonthlyReport(ctx)
+	})
 	sched.AddLogRotation(func() {
 		if err := logFile.Rotate(); err != nil {
 			log.Printf("log rotation: %v", err)

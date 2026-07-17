@@ -85,6 +85,84 @@ func renderTrackSummary(lang i18n.Lang, overall trackSourceStats, bySource map[s
 	return sb.String()
 }
 
+// sparklineChars are sparkline's 8 Unicode block levels, low to high.
+var sparklineChars = []rune("▁▂▃▄▅▆▇█")
+
+// sparkline renders values (e.g. a month's daily net-worth totals) as a
+// single line of block characters via min-max normalization — Phase 3.6
+// 追加項's monthly report (see docs/phase-3.6-monthly-report.md) deliberately
+// doesn't pull in a charting dependency; a monospace Telegram line already
+// conveys the month's shape. Returns "" for an empty slice. A flat series
+// (max == min, which includes the single-point case) renders every
+// character at the middle level rather than dividing by zero.
+func sparkline(values []float64) string {
+	if len(values) == 0 {
+		return ""
+	}
+	min, max := values[0], values[0]
+	for _, v := range values[1:] {
+		if v < min {
+			min = v
+		}
+		if v > max {
+			max = v
+		}
+	}
+
+	runes := make([]rune, len(values))
+	if max == min {
+		mid := sparklineChars[len(sparklineChars)/2]
+		for i := range runes {
+			runes[i] = mid
+		}
+		return string(runes)
+	}
+	for i, v := range values {
+		idx := int((v - min) / (max - min) * float64(len(sparklineChars)-1))
+		runes[i] = sparklineChars[idx]
+	}
+	return string(runes)
+}
+
+// maxDrawdownPct returns the largest peak-to-trough decline within values,
+// as a positive percentage — 0 for fewer than 2 points or a series that
+// never dips below its running high. Tracks a running peak and keeps the
+// worst drawdown seen from it at any later point, rather than just
+// comparing the first and last values (which would miss a mid-month dip
+// that had already recovered by month-end).
+func maxDrawdownPct(values []float64) float64 {
+	if len(values) < 2 {
+		return 0
+	}
+	peak := values[0]
+	var maxDD float64
+	for _, v := range values[1:] {
+		if v > peak {
+			peak = v
+			continue
+		}
+		if peak == 0 {
+			continue
+		}
+		if dd := (peak - v) / peak * 100; dd > maxDD {
+			maxDD = dd
+		}
+	}
+	return maxDD
+}
+
+// monthRange returns the [from, to] date-string bounds (YYYY-MM-DD,
+// inclusive) of the full calendar month immediately before now's month —
+// RunMonthlyReport's "last complete month" window. AddDate's own calendar
+// arithmetic handles the January-rolls-back-to-December-of-the-prior-year
+// case with no special-casing needed.
+func monthRange(now time.Time) (from, to string) {
+	firstOfThisMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	firstOfLastMonth := firstOfThisMonth.AddDate(0, -1, 0)
+	lastOfLastMonth := firstOfThisMonth.AddDate(0, 0, -1)
+	return firstOfLastMonth.Format("2006-01-02"), lastOfLastMonth.Format("2006-01-02")
+}
+
 // dedup returns tickers in a that are not present in b.
 func dedup(a, b []string) []string {
 	set := make(map[string]bool, len(b))

@@ -394,6 +394,115 @@ func TestGetNetWorthOnOrBefore(t *testing.T) {
 	})
 }
 
+func TestGetNetWorthRange(t *testing.T) {
+	d := newTestDB(t)
+
+	if err := d.SaveNetWorthSnapshot("2026-06-30", 900); err != nil { // outside range
+		t.Fatalf("SaveNetWorthSnapshot() error = %v", err)
+	}
+	if err := d.SaveNetWorthSnapshot("2026-07-01", 1000); err != nil {
+		t.Fatalf("SaveNetWorthSnapshot() error = %v", err)
+	}
+	if err := d.SaveNetWorthSnapshot("2026-07-15", 1100); err != nil {
+		t.Fatalf("SaveNetWorthSnapshot() error = %v", err)
+	}
+	if err := d.SaveNetWorthSnapshot("2026-08-01", 1200); err != nil { // outside range
+		t.Fatalf("SaveNetWorthSnapshot() error = %v", err)
+	}
+
+	got, err := d.GetNetWorthRange("2026-07-01", "2026-07-31")
+	if err != nil {
+		t.Fatalf("GetNetWorthRange() error = %v", err)
+	}
+	want := []NetWorthPoint{{Date: "2026-07-01", Total: 1000}, {Date: "2026-07-15", Total: 1100}}
+	if len(got) != len(want) {
+		t.Fatalf("GetNetWorthRange() = %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("GetNetWorthRange()[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestGetNetWorthRangeEmpty(t *testing.T) {
+	d := newTestDB(t)
+	got, err := d.GetNetWorthRange("2026-07-01", "2026-07-31")
+	if err != nil {
+		t.Fatalf("GetNetWorthRange() error = %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("GetNetWorthRange() on empty table = %+v, want empty", got)
+	}
+}
+
+func TestGetTransactionStats(t *testing.T) {
+	d := newTestDB(t)
+
+	if _, err := d.RecordBuy("AAPL", 10, 100, 0, "2026-06-15"); err != nil { // outside range
+		t.Fatalf("RecordBuy() error = %v", err)
+	}
+	if _, err := d.RecordBuy("AAPL", 10, 100, 0, "2026-07-01"); err != nil {
+		t.Fatalf("RecordBuy() error = %v", err)
+	}
+	if _, _, err := d.RecordSell("AAPL", 5, 120, 0, "2026-07-10"); err != nil {
+		t.Fatalf("RecordSell() error = %v", err)
+	}
+
+	t.Run("month with a buy and a sell", func(t *testing.T) {
+		count, sellCount, realized, err := d.GetTransactionStats("2026-07-01", "2026-07-31")
+		if err != nil {
+			t.Fatalf("GetTransactionStats() error = %v", err)
+		}
+		wantRealized := (120.0 - 100.0) * 5
+		if count != 2 || sellCount != 1 || realized != wantRealized {
+			t.Errorf("GetTransactionStats() = %d, %d, %v; want 2, 1, %v", count, sellCount, realized, wantRealized)
+		}
+	})
+
+	t.Run("month with no transactions", func(t *testing.T) {
+		count, sellCount, realized, err := d.GetTransactionStats("2026-09-01", "2026-09-30")
+		if err != nil {
+			t.Fatalf("GetTransactionStats() error = %v", err)
+		}
+		if count != 0 || sellCount != 0 || realized != 0 {
+			t.Errorf("GetTransactionStats() = %d, %d, %v; want 0, 0, 0", count, sellCount, realized)
+		}
+	})
+}
+
+func TestGetSnapshotCloseRange(t *testing.T) {
+	d := newTestDB(t)
+
+	snap := func(date string, close float64) {
+		t.Helper()
+		if err := d.SaveSnapshot(DailySnapshot{Ticker: "SPY", Date: date, Close: close}); err != nil {
+			t.Fatalf("SaveSnapshot(%s) error = %v", date, err)
+		}
+	}
+	snap("2026-06-30", 500) // outside range
+	snap("2026-07-01", 510)
+	snap("2026-07-15", 520)
+	snap("2026-07-31", 530)
+
+	t.Run("multiple snapshots in range", func(t *testing.T) {
+		first, last, ok, err := d.GetSnapshotCloseRange("SPY", "2026-07-01", "2026-07-31")
+		if err != nil || !ok || first != 510 || last != 530 {
+			t.Errorf("GetSnapshotCloseRange() = %v, %v, %v, %v; want 510, 530, true, nil", first, last, ok, err)
+		}
+	})
+
+	t.Run("fewer than two snapshots in range", func(t *testing.T) {
+		_, _, ok, err := d.GetSnapshotCloseRange("SPY", "2026-08-01", "2026-08-31")
+		if err != nil {
+			t.Fatalf("GetSnapshotCloseRange() error = %v", err)
+		}
+		if ok {
+			t.Error("GetSnapshotCloseRange() with < 2 rows in range should return ok=false")
+		}
+	})
+}
+
 func TestGetSettingUnsetKeyIsNotFound(t *testing.T) {
 	d := newTestDB(t)
 

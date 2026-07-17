@@ -120,6 +120,15 @@ const (
 	KeyWeeklyEarningsPreviewTitle Key = "weekly_earnings_preview_title"
 	KeyWeeklyEarningsPreviewLine  Key = "weekly_earnings_preview_line"
 
+	KeyMonthlyReportTitle         Key = "monthly_report_title"
+	KeyMonthlyReportSparklineLine Key = "monthly_report_sparkline_line"
+	KeyMonthlyReportChangeLine    Key = "monthly_report_change_line"
+	KeyMonthlyReportDrawdownLine  Key = "monthly_report_drawdown_line"
+	KeyMonthlyReportRealizedLine  Key = "monthly_report_realized_line"
+	KeyMonthlyReportSPYLine       Key = "monthly_report_spy_line"
+	KeyMonthlyReportTxCountLine   Key = "monthly_report_tx_count_line"
+	KeyMonthlyReportCashLine      Key = "monthly_report_cash_line"
+
 	KeyReviewUsage            Key = "review_usage"
 	KeyReviewNoClosedTrade    Key = "review_no_closed_trade"
 	KeyTradeReviewResultTitle Key = "trade_review_result_title"

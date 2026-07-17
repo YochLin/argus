@@ -833,3 +833,82 @@ func (b *Bot) RunWeeklyReview(ctx context.Context) {
 
 	b.Send(sb.String())
 }
+
+// RunMonthlyReport is Phase 3.6 追加項's net-worth monthly report (see
+// docs/phase-3.6-monthly-report.md): a deliberately non-LLM data archive for
+// the prior full calendar month — deterministic (same DB contents always
+// produce the same report) and unaffected by the LLM provider chain being
+// down, unlike RunWeeklyReview's judgment-based prose. Sends nothing at all
+// (log-only) when there's no net_worth_snapshots row anywhere in the month
+// — a fresh install's first month has no series worth archiving; every
+// other input is optional and just skips its own line instead (see the
+// design doc's per-block degrade rules).
+func (b *Bot) RunMonthlyReport(ctx context.Context) {
+	defer b.recoverJobPanic("monthly report")
+
+	from, to := monthRange(time.Now().In(cst))
+
+	points, err := b.db.GetNetWorthRange(from, to)
+	if err != nil {
+		log.Printf("monthly report: net worth range: %v", err)
+		return
+	}
+	if len(points) == 0 {
+		log.Printf("monthly report: no net worth snapshots for %s..%s, skipping", from, to)
+		return
+	}
+
+	values := make([]float64, len(points))
+	for i, p := range points {
+		values[i] = p.Total
+	}
+	latest := values[len(values)-1]
+
+	var sb strings.Builder
+	sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportTitle, from[:7]))
+	sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportSparklineLine, sparkline(values)))
+
+	// Monthly return convention is "prior month-end vs. this month-end" (not
+	// this month's first row, which would miss the change on the very first
+	// trading day of the month). Falls back to this month's own first value
+	// when there's no prior-month baseline yet (e.g. the first month on
+	// record); if that's the only point too, there's nothing to diff
+	// against, so the line is skipped entirely.
+	fromDate, _ := time.Parse("2006-01-02", from)
+	priorMonthEnd := fromDate.AddDate(0, 0, -1).Format("2006-01-02")
+	baseline, haveBaseline, err := b.db.GetNetWorthOnOrBefore(priorMonthEnd)
+	if err != nil {
+		log.Printf("monthly report: baseline net worth: %v", err)
+	}
+	if !haveBaseline && len(values) > 1 {
+		baseline, haveBaseline = values[0], true
+	}
+	if haveBaseline && baseline != 0 {
+		sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportChangeLine, latest, (latest-baseline)/baseline*100))
+	}
+
+	sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportDrawdownLine, maxDrawdownPct(values)))
+
+	if count, sellCount, realized, err := b.db.GetTransactionStats(from, to); err != nil {
+		log.Printf("monthly report: transaction stats: %v", err)
+	} else {
+		if sellCount > 0 {
+			sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportRealizedLine, realized))
+		}
+		sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportTxCountLine, count))
+	}
+
+	if first, last, ok, err := b.db.GetSnapshotCloseRange(benchmarkTicker, from, to); err != nil {
+		log.Printf("monthly report: spy range: %v", err)
+	} else if ok && first != 0 {
+		sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportSPYLine, (last-first)/first*100))
+	}
+
+	if cash, haveCash, err := b.loadCash(); err != nil {
+		log.Printf("monthly report: load cash: %v", err)
+	} else if haveCash {
+		sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportCashLine, latest+cash, cash))
+	}
+
+	b.Send(sb.String())
+}
