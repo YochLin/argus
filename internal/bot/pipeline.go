@@ -159,12 +159,56 @@ func writeRecGroup(sb *strings.Builder, lang i18n.Lang, titleKey i18n.Key, recs 
 	}
 }
 
+// maxScanHitFundamentals caps how many scan-hit candidates fetchStockData
+// will fetch fundamentals/analyst rating for on any single run (see
+// capScanHitTickers). Scan hits are normally 0-a few a day, but the
+// theoretical worst case is the whole day's universe-scan chunk (~100
+// tickers) hitting at once — uncapped, that's +200 Finnhub requests in one
+// run. This is a safety cap, not a tunable policy knob (like scanChunkCount/
+// benchmarkTicker), so it's a plain const rather than an env var — see
+// docs/phase-3.7-scanhit-fundamentals.md.
+const maxScanHitFundamentals = 5
+
+// capScanHitTickers selects up to max tickers from scanReasons' keys — in
+// lexical order, for determinism (a same-day re-run of /recommend picks the
+// same batch) — to receive the watchlist-grade fundamentals/analyst-rating
+// fetch normally reserved for includeFundamentals callers (see
+// docs/phase-3.7-scanhit-fundamentals.md). Tickers beyond max are logged and
+// left out, not dropped from the candidate list entirely — they still carry
+// their ScanReason/Technicals, just without fundamentals this run.
+func capScanHitTickers(scanReasons map[string]string, max int) map[string]bool {
+	if len(scanReasons) == 0 {
+		return nil
+	}
+	tickers := make([]string, 0, len(scanReasons))
+	for t := range scanReasons {
+		tickers = append(tickers, t)
+	}
+	sort.Strings(tickers)
+
+	out := make(map[string]bool, max)
+	for i, t := range tickers {
+		if i >= max {
+			log.Printf("scan-hit fundamentals: skipping %s (over cap of %d)", t, max)
+			continue
+		}
+		out[t] = true
+	}
+	return out
+}
+
 // fetchStockData fetches quote+news for each ticker. Fundamentals and
 // AnalystRating (Phase 3.7) are only attached when includeFundamentals is set
 // (watchlist tickers, not the broad market-mover candidate list) to stay well
 // under Finnhub's free-tier 60-requests/minute limit when a candidate list
 // has a dozen-plus tickers — /stock/recommendation is a per-ticker call just
 // like /stock/metric, so it shares the same gate rather than getting its own.
+// The one exception (Phase 3.7 追加項, docs/phase-3.7-scanhit-fundamentals.md):
+// up to maxScanHitFundamentals scan-hit candidates also get fundamentals/
+// analyst rating even when includeFundamentals is false, since those are the
+// tickers the model is most likely to call a fresh BUY on with otherwise the
+// thinnest data — watchlist's scanReasons argument is always nil so this is a
+// no-op there.
 // Technicals (RSI/MACD/moving averages, via computeTechnicals) has no such
 // gate — Yahoo's history endpoint carries no rate-limit concern, and
 // candidates are exactly where the model most needs trend context before
@@ -180,6 +224,8 @@ func writeRecGroup(sb *strings.Builder, lang i18n.Lang, titleKey i18n.Key, recs 
 // omitted) is skipped rather than rendering a blank line. Pass nil for any
 // of the four if there's nothing to attach.
 func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positions map[string]db.Position, earnings map[string]data.EarningsEvent, scanReasons map[string]string, prevRecs map[string]db.Recommendation) []llm.StockData {
+	extraFundamentals := capScanHitTickers(scanReasons, maxScanHitFundamentals)
+
 	var result []llm.StockData
 	for _, t := range tickers {
 		q, err := b.provider.GetQuote(t)
@@ -189,14 +235,15 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 		}
 		news, _ := b.provider.GetNews(t, 5)
 		stock := llm.StockData{Quote: q, News: news}
-		if includeFundamentals && b.fundamentals != nil {
+		fetchFundamentals := includeFundamentals || extraFundamentals[t]
+		if fetchFundamentals && b.fundamentals != nil {
 			if fd, err := b.fundamentals.GetFundamentals(t); err != nil {
 				log.Printf("fundamentals %s: %v", t, err)
 			} else {
 				stock.Fundamentals = fd
 			}
 		}
-		if includeFundamentals && b.analystRating != nil {
+		if fetchFundamentals && b.analystRating != nil {
 			if ar, err := b.analystRating.GetAnalystRating(t); err != nil {
 				log.Printf("analyst rating %s: %v", t, err)
 			} else {
