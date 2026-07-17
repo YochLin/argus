@@ -136,6 +136,35 @@ func TestWriteStockSectionOmitsThesisAndVsSPYWhenNil(t *testing.T) {
 	}
 }
 
+func TestWriteStockSectionOmitsBollingerWhenNil(t *testing.T) {
+	var sb strings.Builder
+	writeStockSection(&sb, i18n.EN, StockData{
+		Quote:      &data.Quote{Ticker: "AAPL", Price: 200},
+		Technicals: &Technicals{RSI14: 55}, // BollingerPctB left nil
+	})
+
+	if got := sb.String(); strings.Contains(got, "Bollinger") {
+		t.Errorf("writeStockSection() should omit the Bollinger line when BollingerPctB is nil, got:\n%s", got)
+	}
+}
+
+func TestWriteStockSectionRendersBollingerWhenPresent(t *testing.T) {
+	pctB := 0.0 // a legitimate reading (price at the lower band), must still render
+	var sb strings.Builder
+	writeStockSection(&sb, i18n.EN, StockData{
+		Quote:      &data.Quote{Ticker: "AAPL", Price: 200},
+		Technicals: &Technicals{RSI14: 55, BollingerPctB: &pctB},
+	})
+
+	got := sb.String()
+	if !strings.Contains(got, "Bollinger") {
+		t.Errorf("writeStockSection() should render the Bollinger line when BollingerPctB is set (even to 0), got:\n%s", got)
+	}
+	if !strings.Contains(got, "0%") {
+		t.Errorf("writeStockSection() Bollinger line should show 0%%, got:\n%s", got)
+	}
+}
+
 func TestBuildTradeReviewPromptMinimal(t *testing.T) {
 	trade := ClosedTrade{
 		Ticker: "AAPL",
