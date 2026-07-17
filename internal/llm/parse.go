@@ -95,6 +95,75 @@ func parseRecommendations(lang i18n.Lang, raw string) []Recommendation {
 	return recs
 }
 
+// parseExploreNominations parses Phase 2.6 解凍's two-stage LLM exploration
+// reply (see docs/phase-2.6-two-stage-llm-exploration.md). Expected format:
+//
+//	[EXPLORE: NVDA]
+//	<reason marker> ...
+//
+// same block-then-reason-lines shape as parseRecommendations, but with only
+// a ticker and a reason (no action line) — reusing KeyReasonMarker for the
+// reason prefix, same as the prompt side reuses it rather than minting a
+// second marker. Ticker values are trimmed, upper-cased, and stripped of a
+// leading "$" (models sometimes format tickers as "$NVDA") before being
+// kept. Zero matches returns an empty slice rather than an error — same
+// permissive-degrade shape as parseMarketSummary/parseRecommendations, since
+// "the model nominated nothing usable" is an ordinary outcome, not a
+// failure. Results beyond maxExploreNominations are dropped defensively, in
+// case the model ignores the prompt's stated cap.
+func parseExploreNominations(lang i18n.Lang, raw string) []ExploreNomination {
+	marker := i18n.T(lang, i18n.KeyExploreMarker)
+	reasonPrefix := i18n.T(lang, i18n.KeyReasonMarker)
+
+	var noms []ExploreNomination
+	lines := strings.Split(raw, "\n")
+	var currentTicker string
+	var reasonParts []string
+
+	flush := func() {
+		if currentTicker != "" {
+			noms = append(noms, ExploreNomination{
+				Ticker: currentTicker,
+				Reason: strings.TrimSpace(strings.Join(reasonParts, " ")),
+			})
+		}
+	}
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, marker) && strings.HasSuffix(line, "]") {
+			flush()
+			ticker := strings.TrimSuffix(strings.TrimPrefix(line, marker), "]")
+			currentTicker = normalizeExploreTicker(ticker)
+			reasonParts = nil
+			continue
+		}
+		if strings.HasPrefix(line, reasonPrefix) {
+			reason := strings.TrimPrefix(line, reasonPrefix)
+			reasonParts = append(reasonParts, strings.TrimSpace(reason))
+			continue
+		}
+		if currentTicker != "" && len(reasonParts) > 0 && line != "" {
+			reasonParts = append(reasonParts, line)
+		}
+	}
+	flush()
+
+	if len(noms) > maxExploreNominations {
+		noms = noms[:maxExploreNominations]
+	}
+	return noms
+}
+
+// normalizeExploreTicker trims whitespace, strips a leading "$" (a common
+// model formatting habit), and upper-cases the result — permissive parsing
+// on a value that IsUSEquitySymbol/GetQuote will verify for real downstream.
+func normalizeExploreTicker(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "$")
+	return strings.ToUpper(strings.TrimSpace(s))
+}
+
 // parseAction normalizes an action-line value to BUY/SELL/HOLD, returning ""
 // for anything else so downstream consumers (display, /track hit-rate) never
 // see a made-up action word.

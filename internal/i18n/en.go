@@ -242,6 +242,22 @@ Watchlist tickers come first; within each group, order by conviction with your h
 	KeyActionMarker:        "Action:",
 	KeyMarketSummaryMarker: "[MARKET SUMMARY]",
 
+	KeyExplorePromptIntro: "You are a US equities analyst. Based on the market news above, nominate US-listed tickers not already on the lists below that these news items make worth watching.\n\n",
+	KeyExploreExcludeLine: "The following tickers are already on a list — do not nominate them again: %s\n\n",
+	KeyExploreTaskBlock: `
+## Task
+
+Nominate up to %d US-equity tickers mentioned above that are not on the exclude list (real, existing US tickers only — do not invent one).
+If nothing in the news is worth nominating, output nothing.
+
+Strictly follow this output format, one block per ticker, with no extra text:
+
+%s TICKER]
+%s one-sentence reason this ticker is worth watching (under 50 words)
+`,
+	KeyExploreMarker:      "[EXPLORE:",
+	KeyExploreReasonLabel: "LLM nomination: %s",
+
 	KeyCheckPromptIntro: "You are a US equities analyst. Give an instant market read on the ticker below.\n\n",
 	KeyCheckPromptTask: `
 Please analyze in English:

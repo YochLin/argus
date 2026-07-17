@@ -421,23 +421,42 @@ func TestRecommendationSources(t *testing.T) {
 	// MSFT also appears as a candidate — shouldn't happen in practice since
 	// mergeCandidates already excludes watchlist tickers, but recommendationSources
 	// guards it anyway: watchlist attribution must win regardless.
-	candidates := []string{"MSFT", "NVDA", "TSLA"}
+	candidates := []string{"MSFT", "NVDA", "TSLA", "SNOW"}
 	scanHits := map[string]string{
 		"NVDA": "RSI oversold (28.0)",
 	}
+	explore := map[string]string{
+		"SNOW": "LLM nomination: named in a cloud-spend story",
+	}
 
-	got := recommendationSources(watchlist, candidates, scanHits)
+	got := recommendationSources(watchlist, candidates, scanHits, explore)
 
 	want := map[string]string{
 		"AAPL": "watchlist",
 		"MSFT": "watchlist",
 		"NVDA": "scan",
 		"TSLA": "movers",
+		"SNOW": "explore",
 	}
 	for ticker, wantSource := range want {
 		if got[ticker] != wantSource {
 			t.Errorf("recommendationSources()[%s] = %q, want %q", ticker, got[ticker], wantSource)
 		}
+	}
+}
+
+func TestRecommendationSourcesScanBeatsExplore(t *testing.T) {
+	// Shouldn't happen in practice — exploreCandidates' dedup step already
+	// excludes anything already a candidate — but scan must win over explore
+	// defensively, same reasoning as watchlist winning over both.
+	candidates := []string{"NVDA"}
+	scanHits := map[string]string{"NVDA": "MACD golden cross"}
+	explore := map[string]string{"NVDA": "LLM nomination: also mentioned in the news"}
+
+	got := recommendationSources(nil, candidates, scanHits, explore)
+
+	if got["NVDA"] != "scan" {
+		t.Errorf("recommendationSources()[NVDA] = %q, want %q", got["NVDA"], "scan")
 	}
 }
 

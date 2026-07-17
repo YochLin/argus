@@ -650,13 +650,22 @@ func mergeCandidates(movers []string, scanHits map[string]string, exclude []stri
 }
 
 // recommendationSources maps every ticker eligible for today's LLM call to
-// where it came from ("watchlist"/"scan"/"movers"), for Phase 3.8's /track
-// breakdown by candidate-sourcing path. candidates is the already-deduped
-// list returned by mergeCandidates; a ticker present in both scanHits and
-// that list is attributed to "scan" rather than "movers" — that's the more
+// where it came from ("watchlist"/"scan"/"explore"/"movers"), for Phase
+// 3.8's /track breakdown by candidate-sourcing path. candidates is the
+// already-deduped list returned by mergeCandidates, with Phase 2.6 解凍's
+// exploreCandidates results already appended by RunDailyReport (nil/empty
+// explore for handleRecommend, which doesn't run that step — see
+// docs/phase-2.6-two-stage-llm-exploration.md). Priority is watchlist > scan
+// > explore > movers: a ticker present in both scanHits and that list is
+// attributed to "scan" rather than "movers" or "explore" — that's the most
 // specific signal that actually surfaced it with a stated reason (see
-// llm.StockData.ScanReason), even if it also happened to be trending.
-func recommendationSources(watchlist, candidates []string, scanHits map[string]string) map[string]string {
+// llm.StockData.ScanReason), even if it also happened to be trending or
+// LLM-nominated; scan beats explore because scan hit is our own concrete
+// technical signal, explore is just a one-line model nomination (in
+// practice these shouldn't overlap at all — exploreCandidates' dedup step
+// already excludes anything already a candidate — this ordering is a
+// defensive guard, not an expected case).
+func recommendationSources(watchlist, candidates []string, scanHits map[string]string, explore map[string]string) map[string]string {
 	out := make(map[string]string, len(watchlist)+len(candidates))
 	for _, t := range watchlist {
 		out[t] = "watchlist"
@@ -664,14 +673,16 @@ func recommendationSources(watchlist, candidates []string, scanHits map[string]s
 	for _, t := range candidates {
 		// mergeCandidates already excludes watchlist tickers from candidates
 		// in normal use, so this shouldn't fire in practice — kept as a
-		// defensive guard so "watchlist" always wins over "movers"/"scan"
-		// for a ticker present in both, rather than depending on which loop
-		// ran last.
+		// defensive guard so "watchlist" always wins over "movers"/"scan"/
+		// "explore" for a ticker present in both, rather than depending on
+		// which loop ran last.
 		if out[t] == "watchlist" {
 			continue
 		}
 		if _, ok := scanHits[t]; ok {
 			out[t] = "scan"
+		} else if _, ok := explore[t]; ok {
+			out[t] = "explore"
 		} else {
 			out[t] = "movers"
 		}

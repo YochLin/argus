@@ -113,7 +113,11 @@ func (b *Bot) handleRecommend(ctx context.Context) {
 		return
 	}
 
-	sources := recommendationSources(in.watchlistTickers, in.candidateTickers, in.scanHits)
+	// explore is nil: two-stage LLM exploration only runs from RunDailyReport
+	// (see exploreCandidates and docs/phase-2.6-two-stage-llm-exploration.md)
+	// — an interactive /recommend doesn't get a second one-shot LLM call
+	// tacked onto its latency.
+	sources := recommendationSources(in.watchlistTickers, in.candidateTickers, in.scanHits, nil)
 	b.sendAndSaveRecommendations(summary, recs, sources, in.watchlist, in.candidates)
 }
 

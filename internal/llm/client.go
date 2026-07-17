@@ -137,6 +137,43 @@ func (c *Client) ReviewTrade(ctx context.Context, trade ClosedTrade) (string, er
 	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
 }
 
+// ExploreNomination is one candidate proposed by Phase 2.6 解凍's two-stage
+// LLM exploration (see docs/phase-2.6-two-stage-llm-exploration.md): a
+// ticker not on any existing list that the model nominated based on market
+// news, paired with its one-line reason. Unverified — this package has no
+// data.Provider to check it against, so the caller (bot.exploreCandidates)
+// runs the shape-check/dedup/GetQuote validation chain before treating a
+// nomination as a real candidate.
+type ExploreNomination struct {
+	Ticker string
+	Reason string
+}
+
+// maxExploreNominations caps how many tickers the exploration prompt asks
+// the model to nominate, and — defensively — how many parseExploreNominations
+// keeps if the model ignores that cap. A plain const rather than an env var:
+// ACP's Pro/Max auth means there's no per-call billing pressure to tune this
+// against, and PLAN.md already has an open "設定整理" debt item against
+// piling on more env knobs (see the design doc's rejected alternatives).
+const maxExploreNominations = 3
+
+// ExploreCandidates is Phase 2.6 解凍's two-stage LLM exploration: a
+// one-shot call (checkModel — a ticker nomination is a one-line pointer, not
+// full analysis, same reasoning as InsightPortfolio/WeeklyReview/ReviewTrade
+// reusing checkModel) that asks the model to nominate up to
+// maxExploreNominations US-equity tickers not already in exclude, based on
+// marketNews. Returns the model's raw, unverified claims — see
+// ExploreNomination's doc comment for why verification lives in
+// internal/bot instead.
+func (c *Client) ExploreCandidates(ctx context.Context, marketNews []data.NewsItem, exclude []string) ([]ExploreNomination, error) {
+	prompt := buildExplorePrompt(c.lang, marketNews, exclude)
+	raw, err := c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+	if err != nil {
+		return nil, err
+	}
+	return parseExploreNominations(c.lang, raw), nil
+}
+
 // Chat sends text on the client's persistent chat session, starting one on
 // the first call. Unlike GenerateRecommendations/CheckStock, the session
 // stays open across calls so the agent remembers earlier turns.

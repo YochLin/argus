@@ -260,6 +260,12 @@ const (
 	KeyActionMarker         Key = "action_marker"
 	KeyMarketSummaryMarker  Key = "market_summary_marker"
 
+	KeyExplorePromptIntro Key = "explore_prompt_intro"
+	KeyExploreExcludeLine Key = "explore_exclude_line"
+	KeyExploreTaskBlock   Key = "explore_task_block"
+	KeyExploreMarker      Key = "explore_marker"
+	KeyExploreReasonLabel Key = "explore_reason_label"
+
 	KeyCheckPromptIntro Key = "check_prompt_intro"
 	KeyCheckPromptTask  Key = "check_prompt_task"
 

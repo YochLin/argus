@@ -108,6 +108,65 @@ func TestParseRecommendations(t *testing.T) {
 	})
 }
 
+func TestParseExploreNominations(t *testing.T) {
+	t.Run("english single nomination", func(t *testing.T) {
+		raw := "[EXPLORE: NVDA]\nReason: named in a supply-chain story about AI chip demand.\n"
+		got := parseExploreNominations(i18n.EN, raw)
+		want := []ExploreNomination{{Ticker: "NVDA", Reason: "named in a supply-chain story about AI chip demand."}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("parseExploreNominations() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("chinese marker and reason", func(t *testing.T) {
+		raw := "[EXPLORE: 2454.TW]\n原因: 供應鏈新聞點名的二線受惠股。\n"
+		got := parseExploreNominations(i18n.ZH, raw)
+		want := []ExploreNomination{{Ticker: "2454.TW", Reason: "供應鏈新聞點名的二線受惠股。"}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("parseExploreNominations() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("no marker yields no nominations", func(t *testing.T) {
+		got := parseExploreNominations(i18n.EN, "just some prose with no structure")
+		if len(got) != 0 {
+			t.Errorf("parseExploreNominations() = %+v, want empty", got)
+		}
+	})
+
+	t.Run("ticker normalized: trimmed, upper-cased, leading $ stripped", func(t *testing.T) {
+		raw := "[EXPLORE:  $nvda ]\nReason: lowercase and dollar-prefixed by the model.\n"
+		got := parseExploreNominations(i18n.EN, raw)
+		want := []ExploreNomination{{Ticker: "NVDA", Reason: "lowercase and dollar-prefixed by the model."}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("parseExploreNominations() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("more than maxExploreNominations is truncated", func(t *testing.T) {
+		raw := "[EXPLORE: AAA]\nReason: one.\n[EXPLORE: BBB]\nReason: two.\n[EXPLORE: CCC]\nReason: three.\n[EXPLORE: DDD]\nReason: four.\n"
+		got := parseExploreNominations(i18n.EN, raw)
+		if len(got) != maxExploreNominations {
+			t.Fatalf("parseExploreNominations() returned %d nominations, want %d", len(got), maxExploreNominations)
+		}
+		want := []ExploreNomination{
+			{Ticker: "AAA", Reason: "one."},
+			{Ticker: "BBB", Reason: "two."},
+			{Ticker: "CCC", Reason: "three."},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("parseExploreNominations() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("empty input yields no nominations", func(t *testing.T) {
+		got := parseExploreNominations(i18n.EN, "")
+		if len(got) != 0 {
+			t.Errorf("parseExploreNominations() = %+v, want empty", got)
+		}
+	})
+}
+
 func TestParseMarketSummary(t *testing.T) {
 	marker := "[MARKET SUMMARY]"
 

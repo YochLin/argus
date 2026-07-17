@@ -202,6 +202,8 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 	b.checkStopLossAlerts(positionList, prices)
 	b.checkTrailingStopAlerts(positionList, prices, atrs)
 
+	explore := b.exploreCandidates(ctx, &in)
+
 	summary, recs, err := b.llm.GenerateRecommendations(ctx, in.watchlist, in.candidates, in.marketNews, in.marketContext)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyLLMFailed, err))
@@ -213,8 +215,87 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 		return
 	}
 
-	sources := recommendationSources(in.watchlistTickers, in.candidateTickers, in.scanHits)
+	sources := recommendationSources(in.watchlistTickers, in.candidateTickers, in.scanHits, explore)
 	b.sendAndSaveRecommendations(summary, recs, sources, in.watchlist, in.candidates)
+}
+
+// exploreCandidates is Phase 2.6 解凍's two-stage LLM exploration (see
+// docs/phase-2.6-two-stage-llm-exploration.md), called only from
+// RunDailyReport — /recommend doesn't get this extra one-shot LLM call, per
+// the design doc's interactive-latency trade-off. Skips entirely (nil, no
+// LLM call) when in.marketNews is empty: a nomination with no news basis is
+// pure model prior, the highest hallucination risk for the least
+// information. The model's raw nominations are validated in three steps
+// before being trusted, each failure logged and dropped rather than
+// aborting the whole batch: symbol shape (data.IsUSEquitySymbol), dedup
+// against every existing list (watchlist ∪ candidates ∪ positions), and a
+// real GetQuote (Yahoo/Finnhub both return an all-zero-but-200 response for
+// an invalid/delisted ticker, which the existing quote parsing already
+// treats as "no data" — a hallucinated or delisted ticker fails here).
+// Valid nominations are appended directly into in's candidate fields so
+// GenerateRecommendations/sendAndSaveRecommendations need zero changes to
+// pick them up, and returned as a ticker->reason map for
+// recommendationSources to label "explore".
+func (b *Bot) exploreCandidates(ctx context.Context, in *recommendationInputs) map[string]string {
+	if len(in.marketNews) == 0 {
+		return nil
+	}
+
+	excludeSet := make(map[string]bool, len(in.watchlistTickers)+len(in.candidateTickers)+len(in.positions))
+	var exclude []string
+	addExclude := func(t string) {
+		if !excludeSet[t] {
+			excludeSet[t] = true
+			exclude = append(exclude, t)
+		}
+	}
+	for _, t := range in.watchlistTickers {
+		addExclude(t)
+	}
+	for _, t := range in.candidateTickers {
+		addExclude(t)
+	}
+	for t := range in.positions {
+		addExclude(t)
+	}
+
+	noms, err := b.llm.ExploreCandidates(ctx, in.marketNews, exclude)
+	if err != nil {
+		log.Printf("explore candidates: %v", err)
+		return nil
+	}
+
+	var valid []string
+	reasons := make(map[string]string, len(noms))
+	for _, n := range noms {
+		if !data.IsUSEquitySymbol(n.Ticker) {
+			log.Printf("explore candidates: rejecting %q: not a plain US-equity symbol shape", n.Ticker)
+			continue
+		}
+		if excludeSet[n.Ticker] {
+			log.Printf("explore candidates: rejecting %s: already on an existing list", n.Ticker)
+			continue
+		}
+		if _, err := b.provider.GetQuote(n.Ticker); err != nil {
+			log.Printf("explore candidates: rejecting %s: quote failed: %v", n.Ticker, err)
+			continue
+		}
+		valid = append(valid, n.Ticker)
+		reasons[n.Ticker] = i18n.T(b.lang, i18n.KeyExploreReasonLabel, n.Reason)
+		excludeSet[n.Ticker] = true // guards against the model repeating a ticker across its own nominations
+	}
+	if len(valid) == 0 {
+		return nil
+	}
+
+	earnings := b.loadEarnings(valid)
+	prevRecs := b.loadPrevRecs(valid)
+	stocks := b.fetchStockData(valid, false, in.positions, earnings, reasons, prevRecs)
+
+	in.candidateTickers = append(in.candidateTickers, valid...)
+	in.candidates = append(in.candidates, stocks...)
+
+	return reasons
 }
 
 // checkStatefulSignals runs the RSI/MACD checks that diff against the last
