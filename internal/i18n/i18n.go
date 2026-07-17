@@ -167,6 +167,8 @@ const (
 	KeyUniverseRemoveUsage   Key = "universe_remove_usage"
 	KeyUniverseRemoveSuccess Key = "universe_remove_success"
 	KeyUniverseRemoveFailed  Key = "universe_remove_failed"
+	KeyUniverseDelistedTitle Key = "universe_delisted_title"
+	KeyUniverseDelistedLine  Key = "universe_delisted_line"
 
 	KeyThesisUsage      Key = "thesis_usage"
 	KeyThesisSetFailed  Key = "thesis_set_failed"

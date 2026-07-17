@@ -2,6 +2,7 @@ package db
 
 import (
 	_ "embed"
+	"sort"
 	"strings"
 	"time"
 )
@@ -27,9 +28,11 @@ type UniverseEntry struct {
 // the first time it's ever called against a given database (checked via a
 // count query, not a migration step, since it's data not schema). It's
 // deliberately *not* re-synced on every startup — a user's manual
-// `/universe remove` of a seeded ticker should stick, and refreshing the
-// S&P 500 list against Wikipedia is a separate, not-yet-built feature (see
-// PLAN.md).
+// `/universe remove` of a seeded ticker should stick; refreshing against a
+// newer embedded list is SyncSP500's job, called separately from main(). The
+// count query deliberately doesn't filter out tombstoned (removed=1) rows —
+// a tombstoned row still counts as "already seeded once," and TestSeedSP500
+// depends on that to keep a removed ticker from coming back here.
 func (d *DB) seedSP500() error {
 	var count int
 	if err := d.conn.QueryRow(`SELECT COUNT(*) FROM universe WHERE source = 'sp500'`).Scan(&count); err != nil {
@@ -59,20 +62,38 @@ func (d *DB) seedSP500() error {
 
 // AddUniverseTicker adds ticker to the scan pool under source (e.g. "manual"
 // for /universe add). A ticker already present keeps its existing source.
+// Re-adding a previously tombstoned (removed=1) ticker clears the tombstone
+// so it becomes active again — without the ON CONFLICT clause, the ticker's
+// existing row would make this a silent no-op (Add would report success
+// while the ticker stayed absent from GetUniverse's active pool).
 func (d *DB) AddUniverseTicker(ticker, source string) error {
-	_, err := d.conn.Exec(`INSERT OR IGNORE INTO universe (ticker, source) VALUES (?, ?)`, ticker, source)
+	_, err := d.conn.Exec(`
+		INSERT INTO universe (ticker, source) VALUES (?, ?)
+		ON CONFLICT(ticker) DO UPDATE SET removed = 0`,
+		ticker, source,
+	)
 	return err
 }
 
-// RemoveUniverseTicker removes ticker from the scan pool regardless of source.
+// RemoveUniverseTicker soft-deletes ticker (sets removed=1) rather than
+// hard-deleting the row, regardless of source — see docs/phase-2.6-universe-
+// refresh.md. A tombstoned row is what lets SyncSP500 tell "the user
+// removed this" apart from "this ticker was never seeded" once a future
+// embedded-list refresh no longer contains it; a hard DELETE would erase
+// that distinction. Applying this uniformly to 'manual' tickers too (rather
+// than branching on source) costs nothing — no reader treats a tombstoned
+// manual row specially — and avoids a code path with no behavioral payoff.
 func (d *DB) RemoveUniverseTicker(ticker string) error {
-	_, err := d.conn.Exec(`DELETE FROM universe WHERE ticker = ?`, ticker)
+	_, err := d.conn.Exec(`UPDATE universe SET removed = 1 WHERE ticker = ?`, ticker)
 	return err
 }
 
-// GetUniverse returns every ticker in the scan pool, ordered by ticker.
+// GetUniverse returns every active (non-tombstoned) ticker in the scan
+// pool, ordered by ticker. RunUniverseScan and /universe's summary are its
+// only two readers, and both want "today's actual scan pool" — a
+// removed=1 row must not appear in either.
 func (d *DB) GetUniverse() ([]UniverseEntry, error) {
-	rows, err := d.conn.Query(`SELECT ticker, source, added_at FROM universe ORDER BY ticker`)
+	rows, err := d.conn.Query(`SELECT ticker, source, added_at FROM universe WHERE removed = 0 ORDER BY ticker`)
 	if err != nil {
 		return nil, err
 	}
@@ -87,6 +108,100 @@ func (d *DB) GetUniverse() ([]UniverseEntry, error) {
 		entries = append(entries, e)
 	}
 	return entries, rows.Err()
+}
+
+// SyncSP500 diffs the embedded S&P 500 ticker list against universe's
+// existing rows (see docs/phase-2.6-universe-refresh.md), called once at
+// startup (after seedSP500, which only runs on a fresh install) rather than
+// on a cron — a re-synced embedded list only ever changes via a merged PR,
+// and the daily-scheduled deploy already restarts the process on every
+// such merge, so an on-restart diff is bound by deploy latency (at most a
+// day) without needing a dedicated schedule of its own.
+//
+// added: an embedded ticker entirely absent from universe (any source) is
+// auto-inserted with source='sp500' and returned here — nothing for the
+// user to decide, a new index constituent is unambiguously worth scanning.
+//
+// delisted: an un-removed 'sp500' row whose ticker is no longer in the
+// embedded list is returned here but the row itself is never touched —
+// dropped from the index isn't the same as delisted/dead, and whether to
+// stop scanning it is the user's call (via /universe remove), not this
+// method's. 'manual' rows are never candidates for delisted, regardless of
+// whether they happen to also appear in the embedded list.
+//
+// Tombstoned (removed=1) rows are skipped by this diff entirely, whatever
+// their source or embedded-list membership — that's what makes a manual
+// /universe remove of a seeded ticker stick against a future SyncSP500 call.
+//
+// A no-op run (added and delisted both empty) is the overwhelmingly common
+// case, since deploy restarts happen far more often than the embedded list
+// actually changes — callers must render that as complete silence (see
+// bot.SyncUniverse), not a Telegram message, or a daily-restart deploy
+// cadence would mean a near-daily notification about nothing.
+func (d *DB) SyncSP500() (added, delisted []string, err error) {
+	embedded := make(map[string]bool)
+	for _, line := range strings.Split(strings.TrimSpace(sp500Tickers), "\n") {
+		if ticker := strings.TrimSpace(line); ticker != "" {
+			embedded[ticker] = true
+		}
+	}
+
+	rows, err := d.conn.Query(`SELECT ticker, source, removed FROM universe`)
+	if err != nil {
+		return nil, nil, err
+	}
+	type existingRow struct {
+		source  string
+		removed bool
+	}
+	existing := make(map[string]existingRow)
+	for rows.Next() {
+		var ticker, source string
+		var removed bool
+		if err := rows.Scan(&ticker, &source, &removed); err != nil {
+			rows.Close()
+			return nil, nil, err
+		}
+		existing[ticker] = existingRow{source, removed}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, nil, err
+	}
+	rows.Close()
+
+	for t := range embedded {
+		if _, ok := existing[t]; !ok {
+			added = append(added, t)
+		}
+	}
+	sort.Strings(added)
+
+	for t, e := range existing {
+		if e.source == "sp500" && !e.removed && !embedded[t] {
+			delisted = append(delisted, t)
+		}
+	}
+	sort.Strings(delisted)
+
+	if len(added) == 0 {
+		return added, delisted, nil
+	}
+
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return nil, nil, err
+	}
+	defer tx.Rollback()
+	for _, t := range added {
+		if _, err := tx.Exec(`INSERT INTO universe (ticker, source) VALUES (?, 'sp500')`, t); err != nil {
+			return nil, nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, nil, err
+	}
+	return added, delisted, nil
 }
 
 // SaveScanHit logs that ticker's daily universe scan found reason (a signal

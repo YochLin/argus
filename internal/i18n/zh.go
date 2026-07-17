@@ -118,6 +118,8 @@ var zhMessages = map[Key]string{
 	KeyUniverseRemoveUsage:   "用法：/universe remove TICKER",
 	KeyUniverseRemoveSuccess: "已將 %s 從掃描池移除。",
 	KeyUniverseRemoveFailed:  "移除 %s 失敗：%v",
+	KeyUniverseDelistedTitle: "📉 *S&P 500 成分股異動*\n\n以下標的已不在最新 S&P 500 清單中，是否要從掃描池移除由你決定：\n\n",
+	KeyUniverseDelistedLine:  "• %s（可用 /universe remove %s 移除）\n",
 
 	KeyThesisUsage:      "用法：/thesis <ticker> [論點文字]\n只帶 ticker 會查詢目前記錄的論點；帶文字會覆寫設定。",
 	KeyThesisSetFailed:  "記錄 %s 的論點失敗：%v",

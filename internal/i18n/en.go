@@ -115,6 +115,8 @@ var enMessages = map[Key]string{
 	KeyUniverseRemoveUsage:   "Usage: /universe remove TICKER",
 	KeyUniverseRemoveSuccess: "%s removed from the scan universe.",
 	KeyUniverseRemoveFailed:  "Failed to remove %s: %v",
+	KeyUniverseDelistedTitle: "📉 *S&P 500 Constituent Changes*\n\nThe following tickers are no longer in the latest S&P 500 list. Whether to remove them from the scan pool is up to you:\n\n",
+	KeyUniverseDelistedLine:  "• %s (use /universe remove %s to remove it)\n",
 
 	KeyThesisUsage:      "Usage: /thesis <ticker> [thesis text]\nTicker alone looks up the recorded thesis; adding text overwrites it.",
 	KeyThesisSetFailed:  "Failed to record thesis for %s: %v",

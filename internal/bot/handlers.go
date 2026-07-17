@@ -931,6 +931,42 @@ func (b *Bot) sendUniverseSummary() {
 	b.Send(sb.String())
 }
 
+// SyncUniverse is Phase 2.6 追加項's S&P 500 refresh entry point (see
+// docs/phase-2.6-universe-refresh.md), called once from main() right after
+// New() (after seedSP500's fresh-install path has already run, so a brand
+// new DB syncs to a no-op immediately). New constituents are inserted
+// silently — log-only, no Telegram — since there's nothing for the user to
+// decide about a new index addition worth scanning. Constituents dropped
+// from the embedded list are never auto-removed (being cut from the index
+// isn't the same as delisted/dead), so they're surfaced as one consolidated
+// Telegram suggestion instead; a query failure also just logs, since this
+// runs unattended at startup with no command context to report an error
+// against. A fully quiet run (nothing added, nothing delisted) is the
+// overwhelmingly common case — the daily-scheduled deploy restarts this
+// process far more often than the embedded ticker list actually changes —
+// so silence here is a hard requirement, not an edge case: anything else
+// would mean a near-daily Telegram notification about nothing.
+func (b *Bot) SyncUniverse() {
+	added, delisted, err := b.db.SyncSP500()
+	if err != nil {
+		log.Printf("sync universe: %v", err)
+		return
+	}
+	if len(added) > 0 {
+		log.Printf("sync universe: added %d new S&P 500 ticker(s): %s", len(added), strings.Join(added, ", "))
+	}
+	if len(delisted) == 0 {
+		return
+	}
+
+	var sb strings.Builder
+	sb.WriteString(i18n.T(b.lang, i18n.KeyUniverseDelistedTitle))
+	for _, t := range delisted {
+		sb.WriteString(i18n.T(b.lang, i18n.KeyUniverseDelistedLine, t, t))
+	}
+	b.Send(sb.String())
+}
+
 // handleThesis manages the Phase 3.6 expansion's holding-thesis journal:
 // "/thesis TICKER" alone queries the currently recorded rationale, "/thesis
 // TICKER free text" sets/overwrites it wholesale (see db.SetThesis's doc
