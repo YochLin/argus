@@ -201,3 +201,45 @@ func TestParseMarketSummary(t *testing.T) {
 		}
 	})
 }
+
+func TestParseLesson(t *testing.T) {
+	t.Run("english marker inline with the lesson text", func(t *testing.T) {
+		raw := "1. Entry/exit timing: fine.\n2. Thesis check: held up.\n\nLesson: Sold too early into strength; should have trimmed instead of exiting fully.\n"
+		got := parseLesson(i18n.EN, raw)
+		want := "Sold too early into strength; should have trimmed instead of exiting fully."
+		if got != want {
+			t.Errorf("parseLesson() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("chinese marker", func(t *testing.T) {
+		raw := "1. 進出場時點：尚可。\n\n教訓: 賣得太早，應該分批減碼而不是清倉。\n"
+		got := parseLesson(i18n.ZH, raw)
+		want := "賣得太早，應該分批減碼而不是清倉。"
+		if got != want {
+			t.Errorf("parseLesson() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("lesson wraps across multiple lines after the marker", func(t *testing.T) {
+		raw := "Lesson: Exited too early\nand missed the rest of the move.\n"
+		got := parseLesson(i18n.EN, raw)
+		want := "Exited too early and missed the rest of the move."
+		if got != want {
+			t.Errorf("parseLesson() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("marker absent (model omitted it) yields empty", func(t *testing.T) {
+		raw := "1. Entry/exit timing: fine.\n2. Thesis check: held up.\n"
+		if got := parseLesson(i18n.EN, raw); got != "" {
+			t.Errorf("parseLesson() = %q, want empty", got)
+		}
+	})
+
+	t.Run("empty input yields empty lesson", func(t *testing.T) {
+		if got := parseLesson(i18n.EN, ""); got != "" {
+			t.Errorf("parseLesson() = %q, want empty", got)
+		}
+	})
+}

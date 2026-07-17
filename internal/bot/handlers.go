@@ -102,7 +102,7 @@ func (b *Bot) handleRecommend(ctx context.Context) {
 		return
 	}
 
-	summary, recs, err := b.llm.GenerateRecommendations(ctx, in.watchlist, in.candidates, in.marketNews, in.marketContext)
+	summary, recs, err := b.llm.GenerateRecommendations(ctx, in.watchlist, in.candidates, in.marketNews, in.marketContext, in.recentLessons)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyLLMFailed, err))
 		return
@@ -646,11 +646,12 @@ func (b *Bot) reviewClosedTrade(ctx context.Context, ticker string) {
 		log.Printf("review %s: no closed round found right after closing (unexpected)", ticker)
 		return
 	}
-	result, err := b.llm.ReviewTrade(ctx, trade)
+	result, lesson, err := b.llm.ReviewTrade(ctx, trade)
 	if err != nil {
 		log.Printf("review %s: LLM: %v", ticker, err)
 		return
 	}
+	b.saveLesson(ticker, lesson)
 	b.Send(i18n.T(b.lang, i18n.KeyTradeReviewResultTitle, ticker, result))
 }
 
@@ -677,12 +678,29 @@ func (b *Bot) handleReview(ctx context.Context, args string) {
 	}
 
 	b.Send(i18n.T(b.lang, i18n.KeyAnalyzingTicker, ticker))
-	result, err := b.llm.ReviewTrade(ctx, trade)
+	result, lesson, err := b.llm.ReviewTrade(ctx, trade)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyLLMFailed, err))
 		return
 	}
+	b.saveLesson(ticker, lesson)
 	b.Send(i18n.T(b.lang, i18n.KeyTradeReviewResultTitle, ticker, result))
+}
+
+// saveLesson persists Phase 3.9's parsed trade-review takeaway (see
+// llm.Client.ReviewTrade's lesson return value) under today's date. A no-op
+// when lesson is "" (the model omitted the marker) rather than storing an
+// empty row; a save failure only logs — the user already has the full
+// review text either way, so a second Telegram message about a storage
+// failure would be noise about something that doesn't affect what they
+// just read.
+func (b *Bot) saveLesson(ticker, lesson string) {
+	if lesson == "" {
+		return
+	}
+	if err := b.db.SaveLesson(ticker, todayDate(), lesson); err != nil {
+		log.Printf("save lesson %s: %v", ticker, err)
+	}
 }
 
 // handlePortfolio shows every open position's current market value and
@@ -752,7 +770,7 @@ func (b *Bot) handleInsight(ctx context.Context) {
 	}
 
 	earnings := b.loadEarnings(tickers)
-	stocks := b.fetchStockData(tickers, true, positionsMap, earnings, nil, nil)
+	stocks := b.fetchStockData(tickers, true, positionsMap, earnings, nil, nil, nil)
 
 	theses := b.loadTheses(tickers)
 	vsSPY := b.loadVsSPY(stocks, positionsMap)

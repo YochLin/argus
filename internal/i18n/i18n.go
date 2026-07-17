@@ -296,6 +296,12 @@ const (
 	KeyTradeReviewRecsHeader  Key = "trade_review_recs_header"
 	KeyTradeReviewRecLine     Key = "trade_review_rec_line"
 	KeyTradeReviewPromptTask  Key = "trade_review_prompt_task"
+	KeyLessonMarker           Key = "lesson_marker"
+
+	KeyPastLessonsHeader   Key = "past_lessons_header"
+	KeyPastLessonLine      Key = "past_lesson_line"
+	KeyRecentLessonsHeader Key = "recent_lessons_header"
+	KeyRecentLessonLine    Key = "recent_lesson_line"
 
 	KeyStockHeader             Key = "stock_header"
 	KeyPriceLine               Key = "price_line"

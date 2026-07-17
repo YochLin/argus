@@ -63,6 +63,29 @@ type StockData struct {
 	// there's no BUY date or no same-date SPY snapshot to anchor the
 	// comparison to.
 	VsSPY *VsSPYReturn
+	// PastLessons is Phase 3.9's reflect-then-inject feedback loop (see
+	// docs/research-tradingagents.md's "反思回饋迴路" section and
+	// bot.loadPastLessons): every past closed-trade review lesson on record
+	// for this specific ticker, oldest first. Nil/empty for a ticker with no
+	// closed-trade review history yet. This is the "same ticker: bring all
+	// of them" half of the loop; the "cross ticker: recent N, general" half
+	// is a separate, prompt-wide input (see GenerateRecommendations'
+	// recentLessons parameter) rather than a per-ticker field, since it
+	// isn't about any one ticker.
+	PastLessons []PastLesson
+}
+
+// PastLesson is one row from Phase 3.9's trade-review feedback loop: a
+// short, distilled takeaway parsed out of a past ReviewTrade reply (see
+// llm.Client.ReviewTrade's lesson return value and db.Lesson). Ticker is
+// included even though StockData.PastLessons is already scoped to one
+// ticker, because the same struct is reused for GenerateRecommendations'
+// cross-ticker recentLessons parameter, where showing which ticker a
+// general lesson came from is the point.
+type PastLesson struct {
+	Ticker string
+	Date   string
+	Lesson string
 }
 
 // VsSPYReturn is a position's own holding-period return next to SPY's over
@@ -255,11 +278,12 @@ func writeMarketContext(sb *strings.Builder, lang i18n.Lang, m *MarketContext) {
 	sb.WriteString("\n")
 }
 
-func buildRecommendationPrompt(lang i18n.Lang, watchlist []StockData, candidates []StockData, marketNews []data.NewsItem, market *MarketContext) string {
+func buildRecommendationPrompt(lang i18n.Lang, watchlist []StockData, candidates []StockData, marketNews []data.NewsItem, market *MarketContext, recentLessons []PastLesson) string {
 	var sb strings.Builder
 
 	sb.WriteString(i18n.T(lang, i18n.KeyRecPromptIntro))
 	writeMarketContext(&sb, lang, market)
+	writeRecentLessons(&sb, lang, recentLessons)
 
 	if len(marketNews) > 0 {
 		sb.WriteString(i18n.T(lang, i18n.KeyRecMarketNewsHeader))
@@ -406,6 +430,30 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 		fmt.Fprint(sb, i18n.T(lang, i18n.KeyVsSPYLine, v.TickerPct, v.SPYPct))
 	}
 
+	if len(s.PastLessons) > 0 {
+		sb.WriteString(i18n.T(lang, i18n.KeyPastLessonsHeader))
+		for _, l := range s.PastLessons {
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyPastLessonLine, l.Date, l.Lesson))
+		}
+	}
+
+	sb.WriteString("\n")
+}
+
+// writeRecentLessons renders Phase 3.9's cross-ticker "recent N lessons,
+// general" block (see docs/research-tradingagents.md's "反思回饋迴路"
+// section) — prompt-wide context, not per-ticker, so it's written once near
+// the top of buildRecommendationPrompt rather than inside writeStockSection.
+// Writes nothing at all when lessons is empty, so a fresh install (no
+// closed-trade reviews yet) doesn't leave a dangling empty header.
+func writeRecentLessons(sb *strings.Builder, lang i18n.Lang, lessons []PastLesson) {
+	if len(lessons) == 0 {
+		return
+	}
+	sb.WriteString(i18n.T(lang, i18n.KeyRecentLessonsHeader))
+	for _, l := range lessons {
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyRecentLessonLine, l.Ticker, l.Date, l.Lesson))
+	}
 	sb.WriteString("\n")
 }
 
@@ -535,7 +583,7 @@ func buildTradeReviewPrompt(lang i18n.Lang, trade ClosedTrade) string {
 		}
 	}
 
-	sb.WriteString(i18n.T(lang, i18n.KeyTradeReviewPromptTask))
+	sb.WriteString(i18n.T(lang, i18n.KeyTradeReviewPromptTask, i18n.T(lang, i18n.KeyLessonMarker)))
 	return sb.String()
 }
 

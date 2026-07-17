@@ -31,6 +31,7 @@ type recommendationInputs struct {
 	marketNews       []data.NewsItem
 	prevRecs         map[string]db.Recommendation
 	marketContext    *llm.MarketContext // nil if SPY history and VIX quote both failed
+	recentLessons    []llm.PastLesson   // Phase 3.9 cross-ticker feed, see loadRecentLessons
 	watchlist        []llm.StockData    // fetchStockData output for watchlistTickers
 	candidates       []llm.StockData    // fetchStockData output for candidateTickers
 }
@@ -59,9 +60,11 @@ func (b *Bot) gatherRecommendationInputs() (recommendationInputs, error) {
 	marketNews := b.loadMarketNews()
 	prevRecs := b.loadPrevRecs(allTickers)
 	marketContext := b.computeMarketRegime()
+	pastLessons := b.loadPastLessons(allTickers)
+	recentLessons := b.loadRecentLessons()
 
-	watchlist := b.fetchStockData(tickers, true, positions, earnings, nil, prevRecs)
-	candidates := b.fetchStockData(dedupedCandidates, false, positions, earnings, scanHits, prevRecs)
+	watchlist := b.fetchStockData(tickers, true, positions, earnings, nil, prevRecs, pastLessons)
+	candidates := b.fetchStockData(dedupedCandidates, false, positions, earnings, scanHits, prevRecs, pastLessons)
 
 	return recommendationInputs{
 		watchlistTickers: tickers,
@@ -72,6 +75,7 @@ func (b *Bot) gatherRecommendationInputs() (recommendationInputs, error) {
 		marketNews:       marketNews,
 		prevRecs:         prevRecs,
 		marketContext:    marketContext,
+		recentLessons:    recentLessons,
 		watchlist:        watchlist,
 		candidates:       candidates,
 	}, nil
@@ -221,9 +225,14 @@ func capScanHitTickers(scanReasons map[string]string, max int) map[string]bool {
 // was surfaced. prevRecs (ticker -> last recommendation on record) is looked
 // up via loadPrevRecs and attaches Phase 3.8's recommendation-continuity
 // line; a row with an empty Action (pre-Phase-1 data, or a call the model
-// omitted) is skipped rather than rendering a blank line. Pass nil for any
-// of the four if there's nothing to attach.
-func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positions map[string]db.Position, earnings map[string]data.EarningsEvent, scanReasons map[string]string, prevRecs map[string]db.Recommendation) []llm.StockData {
+// omitted) is skipped rather than rendering a blank line. pastLessons
+// (ticker -> that ticker's own trade-review lessons, oldest first) is
+// looked up via loadPastLessons and attaches Phase 3.9's reflect-then-inject
+// feedback loop (see docs/research-tradingagents.md) — the "same ticker:
+// bring all of them" half; the cross-ticker "recent N, general" half is a
+// separate, prompt-wide GenerateRecommendations parameter, not attached
+// here. Pass nil for any of the five if there's nothing to attach.
+func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positions map[string]db.Position, earnings map[string]data.EarningsEvent, scanReasons map[string]string, prevRecs map[string]db.Recommendation, pastLessons map[string][]db.Lesson) []llm.StockData {
 	extraFundamentals := capScanHitTickers(scanReasons, maxScanHitFundamentals)
 
 	var result []llm.StockData
@@ -262,6 +271,12 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 		}
 		if pr, ok := prevRecs[t]; ok && pr.Action != "" {
 			stock.PrevRec = &llm.PrevRecommendation{Action: pr.Action, Date: pr.Date, Price: pr.Price, DaysAgo: -daysUntil(pr.Date)}
+		}
+		if lessons, ok := pastLessons[t]; ok {
+			stock.PastLessons = make([]llm.PastLesson, len(lessons))
+			for i, l := range lessons {
+				stock.PastLessons[i] = llm.PastLesson{Ticker: l.Ticker, Date: l.Date, Lesson: l.Lesson}
+			}
 		}
 		result = append(result, stock)
 	}
@@ -378,6 +393,52 @@ func (b *Bot) loadPrevRecs(tickers []string) map[string]db.Recommendation {
 		return nil
 	}
 	return recs
+}
+
+// maxRecentLessons caps how many cross-ticker general lessons
+// loadRecentLessons feeds into every /recommend/daily-report prompt (Phase
+// 3.9's "跨 ticker 最近 N 筆通用教訓" — see
+// docs/research-tradingagents.md). A plain const, not an env var, same
+// reasoning as maxExploreNominations: this is a prompt-size/relevance
+// trade-off, not a user preference, and ACP's Pro/Max auth means there's no
+// per-call billing pressure to tune it against.
+const maxRecentLessons = 5
+
+// loadPastLessons returns every trade-review lesson on record for any
+// ticker in tickers, keyed by ticker — the "same ticker: bring all of them"
+// half of Phase 3.9's feedback loop (see docs/research-tradingagents.md and
+// llm.StockData.PastLessons). Degrades to nil (not an error) on a query
+// failure or an empty ticker list — same optional-data pattern as
+// fundamentals/earnings/positions; a prompt without past-lesson context is
+// still useful.
+func (b *Bot) loadPastLessons(tickers []string) map[string][]db.Lesson {
+	if len(tickers) == 0 {
+		return nil
+	}
+	lessons, err := b.db.GetLessonsForTickers(tickers)
+	if err != nil {
+		log.Printf("load past lessons: %v", err)
+		return nil
+	}
+	return lessons
+}
+
+// loadRecentLessons returns the most recent maxRecentLessons trade-review
+// lessons across every ticker — the "cross ticker: recent N, general" half
+// of Phase 3.9's feedback loop (see loadPastLessons above and
+// llm.GenerateRecommendations' recentLessons parameter). Degrades to nil on
+// a query failure, same optional-data pattern as the rest of this file.
+func (b *Bot) loadRecentLessons() []llm.PastLesson {
+	rows, err := b.db.GetRecentLessons(maxRecentLessons)
+	if err != nil {
+		log.Printf("load recent lessons: %v", err)
+		return nil
+	}
+	out := make([]llm.PastLesson, len(rows))
+	for i, l := range rows {
+		out[i] = llm.PastLesson{Ticker: l.Ticker, Date: l.Date, Lesson: l.Lesson}
+	}
+	return out
 }
 
 // loadEarnings returns each ticker's next scheduled earnings date within

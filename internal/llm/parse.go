@@ -164,6 +164,38 @@ func normalizeExploreTicker(s string) string {
 	return strings.ToUpper(strings.TrimSpace(s))
 }
 
+// parseLesson extracts Phase 3.9's short closed-trade takeaway from a
+// ReviewTrade reply (see docs/research-tradingagents.md's "反思回饋迴路"
+// section): buildTradeReviewPrompt instructs the model to end its review
+// with a line starting with the lesson marker (KeyLessonMarker), same
+// prompt-and-parser-share-a-marker convention as KeyReasonMarker/
+// KeyActionMarker. Unlike parseMarketSummary (marker alone on its own line,
+// content on subsequent lines), the marker here is expected inline with the
+// lesson text on the same line — so this also picks up any further
+// non-empty lines after the marker line, in case the model wraps the
+// lesson across more than one line. Returns "" if the marker never appears
+// (model omitted it, or an older/malformed reply) — same permissive-degrade
+// shape as parseMarketSummary/parseRecommendations, so a missing lesson
+// doesn't stop reviewClosedTrade from at least sending the full review text.
+func parseLesson(lang i18n.Lang, raw string) string {
+	marker := i18n.T(lang, i18n.KeyLessonMarker)
+	lines := strings.Split(raw, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, marker) {
+			continue
+		}
+		parts := []string{strings.TrimSpace(strings.TrimPrefix(trimmed, marker))}
+		for _, rest := range lines[i+1:] {
+			if rest = strings.TrimSpace(rest); rest != "" {
+				parts = append(parts, rest)
+			}
+		}
+		return strings.TrimSpace(strings.Join(parts, " "))
+	}
+	return ""
+}
+
 // parseAction normalizes an action-line value to BUY/SELL/HOLD, returning ""
 // for anything else so downstream consumers (display, /track hit-rate) never
 // see a made-up action word.

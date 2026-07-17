@@ -204,7 +204,7 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 
 	explore := b.exploreCandidates(ctx, &in)
 
-	summary, recs, err := b.llm.GenerateRecommendations(ctx, in.watchlist, in.candidates, in.marketNews, in.marketContext)
+	summary, recs, err := b.llm.GenerateRecommendations(ctx, in.watchlist, in.candidates, in.marketNews, in.marketContext, in.recentLessons)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyLLMFailed, err))
 		return
@@ -290,7 +290,7 @@ func (b *Bot) exploreCandidates(ctx context.Context, in *recommendationInputs) m
 
 	earnings := b.loadEarnings(valid)
 	prevRecs := b.loadPrevRecs(valid)
-	stocks := b.fetchStockData(valid, false, in.positions, earnings, reasons, prevRecs)
+	stocks := b.fetchStockData(valid, false, in.positions, earnings, reasons, prevRecs, nil)
 
 	in.candidateTickers = append(in.candidateTickers, valid...)
 	in.candidates = append(in.candidates, stocks...)
@@ -788,7 +788,7 @@ func (b *Bot) RunWeeklyReview(ctx context.Context) {
 	}
 
 	earnings := b.loadEarnings(tickers)
-	stocks := b.fetchStockData(tickers, true, positionsMap, earnings, nil, nil)
+	stocks := b.fetchStockData(tickers, true, positionsMap, earnings, nil, nil, nil)
 
 	theses := b.loadTheses(tickers)
 	vsSPY := b.loadVsSPY(stocks, positionsMap)

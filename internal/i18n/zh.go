@@ -329,8 +329,17 @@ var zhMessages = map[Key]string{
    （例如系統說 SELL 卻抱了兩週、或系統說 HOLD 卻賣掉了）；沒有附推薦紀錄則略過此點。
 4. 收斂成一條具體、可執行的教訓，不要空泛的「要更謹慎」之類的話。
 
+回覆最後另起一行，開頭必須是：
+%s <這條教訓，2–4 句話以內>
+
 回覆請簡潔，總字數控制在 300 字以內。
 `,
+	KeyLessonMarker: "教訓:",
+
+	KeyPastLessonsHeader:   "- 過去這檔的交易教訓：\n",
+	KeyPastLessonLine:      "  · %s：%s\n",
+	KeyRecentLessonsHeader: "## 近期交易教訓（跨標的，僅供參考）\n\n",
+	KeyRecentLessonLine:    "- %s（%s）：%s\n",
 
 	KeyStockHeader:             "### %s\n",
 	KeyPriceLine:               "- 現價: $%.2f　漲跌幅: %.2f%%\n",

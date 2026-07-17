@@ -83,8 +83,11 @@ func (c *Client) AddFallback(provider Provider, recommendModel, checkModel, chat
 // calls — see parseMarketSummary/parseRecommendations. market is Phase 3.7
 // 追加項's broad-market regime context (nil skips the block entirely, prompt
 // unchanged from before this parameter existed — see MarketContext).
-func (c *Client) GenerateRecommendations(ctx context.Context, watchlist []StockData, candidates []StockData, marketNews []data.NewsItem, market *MarketContext) (summary string, recs []Recommendation, err error) {
-	prompt := buildRecommendationPrompt(c.lang, watchlist, candidates, marketNews, market)
+// recentLessons is Phase 3.9's cross-ticker "recent N lessons, general" feed
+// (see docs/research-tradingagents.md and PastLesson) — empty skips that
+// block the same way market/marketNews do when unavailable.
+func (c *Client) GenerateRecommendations(ctx context.Context, watchlist []StockData, candidates []StockData, marketNews []data.NewsItem, market *MarketContext, recentLessons []PastLesson) (summary string, recs []Recommendation, err error) {
+	prompt := buildRecommendationPrompt(c.lang, watchlist, candidates, marketNews, market, recentLessons)
 	raw, err := c.prompt(ctx, prompt, func(b backend) string { return b.recommendModel })
 	if err != nil {
 		return "", nil, err
@@ -132,9 +135,23 @@ func (c *Client) WeeklyReview(ctx context.Context, positions []StockData, cash f
 // during the holding period compared to what was actually done. Reuses
 // checkModel, same reasoning as InsightPortfolio/WeeklyReview: a rarely
 // invoked one-shot call doesn't warrant its own model tier.
-func (c *Client) ReviewTrade(ctx context.Context, trade ClosedTrade) (string, error) {
+//
+// lesson is Phase 3.9's addition (see docs/research-tradingagents.md's
+// "反思回饋迴路" section): the model is instructed to end result with a
+// clearly marked one-line takeaway (see KeyLessonMarker), extracted here via
+// parseLesson the same way GenerateRecommendations extracts its market
+// summary — one underlying LLM reply, two things pulled out of it, not two
+// calls. lesson is "" if the model omitted the marker; result (the full
+// review text sent to Telegram) is unaffected either way, and the caller
+// (bot.reviewClosedTrade/handleReview) is what actually persists lesson via
+// db.SaveLesson.
+func (c *Client) ReviewTrade(ctx context.Context, trade ClosedTrade) (result string, lesson string, err error) {
 	prompt := buildTradeReviewPrompt(c.lang, trade)
-	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+	result, err = c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+	if err != nil {
+		return "", "", err
+	}
+	return result, parseLesson(c.lang, result), nil
 }
 
 // ExploreNomination is one candidate proposed by Phase 2.6 解凍's two-stage

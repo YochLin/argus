@@ -340,8 +340,17 @@ Give an honest, unvarnished review in English — even if the trade made money, 
    Skip this point if no recommendations are shown.
 4. Distill one concrete, actionable lesson — not a vague "be more careful."
 
+End your reply with one final line starting with exactly:
+%s <the lesson, 2-4 sentences max>
+
 Keep the reply concise — under 300 words total.
 `,
+	KeyLessonMarker: "Lesson:",
+
+	KeyPastLessonsHeader:   "- Past lessons from this ticker:\n",
+	KeyPastLessonLine:      "  · %s: %s\n",
+	KeyRecentLessonsHeader: "## Recent Trade Lessons (across tickers, for reference)\n\n",
+	KeyRecentLessonLine:    "- %s (%s): %s\n",
 
 	KeyStockHeader:             "### %s\n",
 	KeyPriceLine:               "- Price: $%.2f  Change: %.2f%%\n",
