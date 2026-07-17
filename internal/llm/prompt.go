@@ -400,6 +400,26 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 	sb.WriteString("\n")
 }
 
+// buildExplorePrompt is Phase 2.6 解凍's two-stage LLM exploration prompt
+// (see docs/phase-2.6-two-stage-llm-exploration.md): market news only (no
+// per-ticker StockData — the model is nominating tickers, not analyzing
+// ones already in hand) plus the exclude list (watchlist ∪ candidates ∪
+// positions) so the model doesn't waste a nomination on something already
+// covered. Reuses KeyNewsItem/KeyReasonMarker verbatim rather than minting
+// exploration-specific duplicates of the same content shape, same
+// convention as buildTradeReviewPrompt reusing KeyVsSPYLine/KeyThesisLine.
+func buildExplorePrompt(lang i18n.Lang, marketNews []data.NewsItem, exclude []string) string {
+	var sb strings.Builder
+	sb.WriteString(i18n.T(lang, i18n.KeyExplorePromptIntro))
+	for i, n := range marketNews {
+		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyNewsItem, i+1, n.Source, n.Headline))
+	}
+	sb.WriteString("\n")
+	sb.WriteString(i18n.T(lang, i18n.KeyExploreExcludeLine, strings.Join(exclude, ", ")))
+	sb.WriteString(i18n.T(lang, i18n.KeyExploreTaskBlock, maxExploreNominations, i18n.T(lang, i18n.KeyExploreMarker), i18n.T(lang, i18n.KeyReasonMarker)))
+	return sb.String()
+}
+
 func buildCheckPrompt(lang i18n.Lang, s StockData) string {
 	var sb strings.Builder
 	sb.WriteString(i18n.T(lang, i18n.KeyCheckPromptIntro))

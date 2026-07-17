@@ -26,8 +26,8 @@ func TestIsUSEquitySymbol(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if got := isUSEquitySymbol(tt.symbol); got != tt.want {
-			t.Errorf("isUSEquitySymbol(%q) = %v, want %v", tt.symbol, got, tt.want)
+		if got := IsUSEquitySymbol(tt.symbol); got != tt.want {
+			t.Errorf("IsUSEquitySymbol(%q) = %v, want %v", tt.symbol, got, tt.want)
 		}
 	}
 }

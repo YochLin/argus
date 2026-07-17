@@ -268,7 +268,7 @@ func (y *Yahoo) GetMarketMovers() ([]string, error) {
 	var tickers []string
 	if len(result.Finance.Result) > 0 {
 		for _, q := range result.Finance.Result[0].Quotes {
-			if isUSEquitySymbol(q.Symbol) {
+			if IsUSEquitySymbol(q.Symbol) {
 				tickers = append(tickers, q.Symbol)
 			}
 		}
@@ -276,12 +276,16 @@ func (y *Yahoo) GetMarketMovers() ([]string, error) {
 	return tickers, nil
 }
 
-// isUSEquitySymbol filters Yahoo's /trending endpoint down to plain US
+// IsUSEquitySymbol filters Yahoo's /trending endpoint down to plain US
 // equity tickers. Yahoo's trending API doesn't expose an asset-class field,
 // so this relies on symbol shape: crypto pairs look like "BTC-USD" and
 // foreign listings look like "SHOP.TO" — both contain characters a plain US
-// ticker never does.
-func isUSEquitySymbol(symbol string) bool {
+// ticker never does. Exported (Phase 2.6 解凍's two-stage LLM exploration,
+// docs/phase-2.6-two-stage-llm-exploration.md) for a second caller,
+// bot.exploreCandidates' validation chain, which runs the same shape check
+// against LLM-nominated tickers before trusting them enough to spend a
+// GetQuote call on.
+func IsUSEquitySymbol(symbol string) bool {
 	if symbol == "" || len(symbol) > 5 {
 		return false
 	}

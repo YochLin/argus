@@ -240,6 +240,22 @@ var zhMessages = map[Key]string{
 	KeyActionMarker:        "動作:",
 	KeyMarketSummaryMarker: "[MARKET SUMMARY]",
 
+	KeyExplorePromptIntro: "你是一位美股分析師，請根據以上市場新聞，提名目前不在下列清單上、但可能因為這些新聞而值得留意的美股標的。\n\n",
+	KeyExploreExcludeLine: "以下標的已經在清單上，請勿重複提名：%s\n\n",
+	KeyExploreTaskBlock: `
+## 任務
+
+請提名最多 %d 檔上面新聞提到、但不在排除清單上的美股標的（真實存在的美股 ticker，不要虛構）。
+如果新聞中沒有值得提名的標的，就不要輸出任何區塊。
+
+輸出格式請嚴格遵守以下結構，每檔一個區塊，不要有額外文字：
+
+%s TICKER]
+%s 一句話說明為什麼這檔標的值得留意（50字以內）
+`,
+	KeyExploreMarker:      "[EXPLORE:",
+	KeyExploreReasonLabel: "LLM 提名: %s",
+
 	KeyCheckPromptIntro: "你是一位美股分析師，請針對以下標的給出即時市場分析。\n\n",
 	KeyCheckPromptTask: `
 請用繁體中文分析：
