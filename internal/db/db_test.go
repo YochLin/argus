@@ -686,6 +686,180 @@ func TestUniverseAddRemove(t *testing.T) {
 	}
 }
 
+// TestUniverseRemoveIsTombstoneNotDelete verifies migration 9's soft-delete:
+// RemoveUniverseTicker must not erase the row (SyncSP500's stick guarantee
+// depends on the tombstone still being there to check against).
+func TestUniverseRemoveIsTombstoneNotDelete(t *testing.T) {
+	d := newTestDB(t)
+
+	if err := d.AddUniverseTicker("ZZZZ", "manual"); err != nil {
+		t.Fatalf("AddUniverseTicker() error = %v", err)
+	}
+	if err := d.RemoveUniverseTicker("ZZZZ"); err != nil {
+		t.Fatalf("RemoveUniverseTicker() error = %v", err)
+	}
+
+	var removed bool
+	if err := d.conn.QueryRow(`SELECT removed FROM universe WHERE ticker = 'ZZZZ'`).Scan(&removed); err != nil {
+		t.Fatalf("row for ZZZZ should still exist after RemoveUniverseTicker(): %v", err)
+	}
+	if !removed {
+		t.Error("ZZZZ's removed flag should be 1 after RemoveUniverseTicker()")
+	}
+
+	// Adding it back must clear the tombstone, not silently no-op.
+	if err := d.AddUniverseTicker("ZZZZ", "manual"); err != nil {
+		t.Fatalf("AddUniverseTicker() (re-add) error = %v", err)
+	}
+	entries, err := d.GetUniverse()
+	if err != nil {
+		t.Fatalf("GetUniverse() error = %v", err)
+	}
+	found := false
+	for _, e := range entries {
+		if e.Ticker == "ZZZZ" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("ZZZZ should be active again in GetUniverse() after re-adding a tombstoned ticker")
+	}
+}
+
+func TestSyncSP500NewTickerAutoAdded(t *testing.T) {
+	d := newTestDB(t)
+
+	entries, err := d.GetUniverse()
+	if err != nil {
+		t.Fatalf("GetUniverse() error = %v", err)
+	}
+	missingTicker := entries[0].Ticker
+	if _, err := d.conn.Exec(`DELETE FROM universe WHERE ticker = ?`, missingTicker); err != nil {
+		t.Fatalf("simulating a never-seeded ticker: %v", err)
+	}
+
+	added, delisted, err := d.SyncSP500()
+	if err != nil {
+		t.Fatalf("SyncSP500() error = %v", err)
+	}
+	if len(delisted) != 0 {
+		t.Errorf("SyncSP500() delisted = %v, want empty", delisted)
+	}
+	found := false
+	for _, ticker := range added {
+		if ticker == missingTicker {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("SyncSP500() added = %v, want it to contain %q", added, missingTicker)
+	}
+
+	after, err := d.GetUniverse()
+	if err != nil {
+		t.Fatalf("GetUniverse() error = %v", err)
+	}
+	if len(after) != len(entries) {
+		t.Errorf("GetUniverse() len after sync = %d, want %d (missing ticker restored)", len(after), len(entries))
+	}
+}
+
+func TestSyncSP500TombstonedTickerSticks(t *testing.T) {
+	d := newTestDB(t)
+
+	entries, err := d.GetUniverse()
+	if err != nil {
+		t.Fatalf("GetUniverse() error = %v", err)
+	}
+	removedTicker := entries[0].Ticker
+	if err := d.RemoveUniverseTicker(removedTicker); err != nil {
+		t.Fatalf("RemoveUniverseTicker() error = %v", err)
+	}
+
+	added, delisted, err := d.SyncSP500()
+	if err != nil {
+		t.Fatalf("SyncSP500() error = %v", err)
+	}
+	for _, ticker := range added {
+		if ticker == removedTicker {
+			t.Fatalf("SyncSP500() added = %v, must not re-add a tombstoned ticker (%q)", added, removedTicker)
+		}
+	}
+	for _, ticker := range delisted {
+		if ticker == removedTicker {
+			t.Fatalf("SyncSP500() delisted = %v, a tombstoned ticker must be skipped by the diff entirely (%q)", delisted, removedTicker)
+		}
+	}
+
+	after, err := d.GetUniverse()
+	if err != nil {
+		t.Fatalf("GetUniverse() error = %v", err)
+	}
+	for _, e := range after {
+		if e.Ticker == removedTicker {
+			t.Errorf("GetUniverse() after SyncSP500() should still exclude the tombstoned ticker %q", removedTicker)
+		}
+	}
+}
+
+func TestSyncSP500DelistedReportedButRowNotDeleted(t *testing.T) {
+	d := newTestDB(t)
+
+	if _, err := d.conn.Exec(`INSERT INTO universe (ticker, source) VALUES ('FAKEDELISTED', 'sp500')`); err != nil {
+		t.Fatalf("inserting a fake sp500-sourced ticker: %v", err)
+	}
+
+	added, delisted, err := d.SyncSP500()
+	if err != nil {
+		t.Fatalf("SyncSP500() error = %v", err)
+	}
+	for _, ticker := range added {
+		if ticker == "FAKEDELISTED" {
+			t.Fatalf("SyncSP500() added = %v, should not include an already-present ticker", added)
+		}
+	}
+	found := false
+	for _, ticker := range delisted {
+		if ticker == "FAKEDELISTED" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("SyncSP500() delisted = %v, want it to contain FAKEDELISTED", delisted)
+	}
+
+	var removed bool
+	if err := d.conn.QueryRow(`SELECT removed FROM universe WHERE ticker = 'FAKEDELISTED'`).Scan(&removed); err != nil {
+		t.Fatalf("FAKEDELISTED row should still exist after SyncSP500(): %v", err)
+	}
+	if removed {
+		t.Error("SyncSP500() must never set removed on a delisted ticker — only the user's /universe remove does that")
+	}
+}
+
+func TestSyncSP500Idempotent(t *testing.T) {
+	d := newTestDB(t)
+
+	// Fresh DB is seeded to exactly match the embedded list — no drift at
+	// all — so the first call should already be a no-op, and a second call
+	// must agree.
+	added1, delisted1, err := d.SyncSP500()
+	if err != nil {
+		t.Fatalf("SyncSP500() (first run) error = %v", err)
+	}
+	if len(added1) != 0 || len(delisted1) != 0 {
+		t.Fatalf("SyncSP500() (first run) = %v, %v, want both empty on a freshly seeded DB", added1, delisted1)
+	}
+
+	added2, delisted2, err := d.SyncSP500()
+	if err != nil {
+		t.Fatalf("SyncSP500() (second run) error = %v", err)
+	}
+	if len(added2) != 0 || len(delisted2) != 0 {
+		t.Fatalf("SyncSP500() (second run) = %v, %v, want both empty (idempotent)", added2, delisted2)
+	}
+}
+
 func TestGetLatestRecommendations(t *testing.T) {
 	d := newTestDB(t)
 

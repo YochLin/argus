@@ -159,6 +159,11 @@ func main() {
 		log.Fatalf("init bot: %v", err)
 	}
 
+	// Phase 2.6 追加項's S&P 500 refresh (see docs/phase-2.6-universe-refresh.md):
+	// runs once per process start, right after seedSP500's fresh-install
+	// path (inside bot.New -> db.New) has already had its chance to run.
+	telegramBot.SyncUniverse()
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 

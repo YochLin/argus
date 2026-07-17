@@ -315,6 +315,15 @@ var migrations = []string{
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	`,
+	// 9: universe gains a soft-delete flag for Phase 2.6 追加項's S&P 500
+	// refresh (see docs/phase-2.6-universe-refresh.md and SyncSP500) — a
+	// user's manual /universe remove must "stick" against a future re-sync
+	// of the embedded ticker list, but a hard DELETE leaves no way to tell
+	// "the user removed this" apart from "this ticker was never seeded" once
+	// the row is gone. RemoveUniverseTicker now sets removed=1 instead of
+	// deleting; GetUniverse/seedSP500's count check both then need to filter
+	// or ignore it appropriately (see their own doc comments).
+	`ALTER TABLE universe ADD COLUMN removed INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func (d *DB) migrate() error {
