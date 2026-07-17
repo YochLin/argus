@@ -237,6 +237,11 @@ holding) — don't just restate the same conclusion in different words.
 If a Market Regime block appears above, weigh it when calling new BUYs: hold new positions to a higher bar in a
 risk-off regime or when VIX is elevated rather than applying the same standard regardless of market conditions.
 
+Before calling a BUY, mentally list the strongest bearish case against it and briefly note in your reasoning why
+that case doesn't hold or matters little; for a SELL, do the reverse — list the strongest bullish case first and
+explain why it isn't enough to justify continuing to hold. This guards against only picking evidence that supports
+the conclusion you already reached and ignoring the counter-argument.
+
 Strictly follow this output structure, one block per ticker, with no extra text:
 
 [TICKER: AAPL]
