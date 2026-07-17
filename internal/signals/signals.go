@@ -162,6 +162,45 @@ func ATR(highs, lows, closes []float64, period int) float64 {
 	return sum / float64(period)
 }
 
+// BollingerPctB returns %B — where the latest close sits within its
+// Bollinger Bands (a period-day SMA ± numStdDev standard deviations of that
+// same window), as a fraction: 0 at the lower band, 1 at the upper band,
+// negative or above 1 when price has broken through a band (itself a
+// meaningful momentum read, not an error). Phase 3.9's "指標跨類別補齊" —
+// see docs/research-tradingagents.md — a volatility-class read distinct
+// from ATR (band *width* vs. price *position within* the bands).
+//
+// Returns ok=false — not a 0 value — when there isn't enough history yet or
+// the bands have zero width (a dead-flat period, division by zero
+// avoided the same way VolumeRatio treats a zero baseline): unlike MA/
+// VolumeRatio/ATR, whose 0-as-sentinel convention works because a real
+// price/volume/ATR reading is never actually 0, %B's valid range routinely
+// passes through exactly 0 (price sitting right at the lower band) — so
+// this can't reuse that convention without silently hiding a real signal
+// as "no data."
+func BollingerPctB(closes []float64, period int, numStdDev float64) (pctB float64, ok bool) {
+	if len(closes) < period {
+		return 0, false
+	}
+	window := closes[len(closes)-period:]
+	mean := MA(closes, period)
+	var variance float64
+	for _, c := range window {
+		d := c - mean
+		variance += d * d
+	}
+	stdDev := math.Sqrt(variance / float64(period))
+
+	upper := mean + numStdDev*stdDev
+	lower := mean - numStdDev*stdDev
+	width := upper - lower
+	if width == 0 {
+		return 0, false
+	}
+	latest := closes[len(closes)-1]
+	return (latest - lower) / width, true
+}
+
 // CheckRSIState is the deduplicated version of CheckRSI: it only returns a
 // signal when RSI newly enters overbought/oversold territory relative to
 // prevState (the state persisted after the previous check; "" reads as

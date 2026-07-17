@@ -91,6 +91,11 @@ type VsSPYReturn struct {
 // volatility read from the daily high/low range rather than the closing
 // price alone; like VolumeRatio, 0 means "not enough history yet", not
 // "zero volatility".
+// BollingerPctB is a pointer, unlike this struct's other fields, because 0
+// is a legitimate reading for it (price sitting exactly at the lower band)
+// — the 0-means-"not enough history" sentinel convention the other fields
+// use would silently hide that real signal. nil means not enough history
+// to compute it; see signals.BollingerPctB and bot.computeTechnicals.
 type Technicals struct {
 	RSI14             float64
 	MACDTrend         string
@@ -98,6 +103,7 @@ type Technicals struct {
 	Volume            int64
 	VolumeRatio       float64
 	ATR14             float64
+	BollingerPctB     *float64
 }
 
 // Position is the subset of a db.Position an LLM prompt needs: shares held
@@ -335,6 +341,9 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 		}
 		if t.ATR14 > 0 && q.Price > 0 {
 			fmt.Fprint(sb, i18n.T(lang, i18n.KeyATRLine, t.ATR14, t.ATR14/q.Price*100))
+		}
+		if t.BollingerPctB != nil {
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyBollingerLine, *t.BollingerPctB*100))
 		}
 	}
 

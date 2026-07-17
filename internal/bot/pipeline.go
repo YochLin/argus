@@ -278,6 +278,15 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 // and don't share a data structure, and Yahoo's history endpoint has no
 // rate-limit concern like Finnhub's, so the duplicate call is an accepted
 // trade-off rather than an oversight.
+// bollingerPeriod/bollingerNumStdDev are Bollinger's own textbook defaults
+// (20-day SMA ± 2 standard deviations) — bollingerPeriod deliberately
+// matches MA20's existing window so %B reads price position on the same
+// trailing period the prompt already shows a moving average for.
+const (
+	bollingerPeriod    = 20
+	bollingerNumStdDev = 2.0
+)
+
 func (b *Bot) computeTechnicals(ticker string) *llm.Technicals {
 	closes, highs, lows, volumes, err := b.history.GetHistory(ticker)
 	if err != nil {
@@ -295,6 +304,9 @@ func (b *Bot) computeTechnicals(ticker string) *llm.Technicals {
 	}
 	if len(volumes) > 0 {
 		t.Volume = volumes[len(volumes)-1]
+	}
+	if pctB, ok := signals.BollingerPctB(closes, bollingerPeriod, bollingerNumStdDev); ok {
+		t.BollingerPctB = &pctB
 	}
 	return t
 }

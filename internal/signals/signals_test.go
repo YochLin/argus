@@ -145,6 +145,70 @@ func TestATR(t *testing.T) {
 	})
 }
 
+func TestBollingerPctB(t *testing.T) {
+	t.Run("insufficient data returns ok=false", func(t *testing.T) {
+		if _, ok := BollingerPctB([]float64{1, 2, 3}, 20, 2); ok {
+			t.Error("BollingerPctB() ok = true, want false")
+		}
+	})
+
+	t.Run("zero-width bands (flat series) returns ok=false", func(t *testing.T) {
+		closes := make([]float64, 20)
+		for i := range closes {
+			closes[i] = 100
+		}
+		if _, ok := BollingerPctB(closes, 20, 2); ok {
+			t.Error("BollingerPctB() ok = true, want false on a flat series (zero stddev)")
+		}
+	})
+
+	t.Run("price below the lower band returns a negative pctB, not treated as unavailable", func(t *testing.T) {
+		// 19 days flat at 100, then a sharp drop — a real, meaningful
+		// breakout-below-the-band reading (ok must still be true; a
+		// negative or zero pctB is not the same thing as "no data").
+		closes := make([]float64, 20)
+		for i := 0; i < 19; i++ {
+			closes[i] = 100
+		}
+		closes[19] = 95
+		pctB, ok := BollingerPctB(closes, 20, 2)
+		if !ok {
+			t.Fatal("BollingerPctB() ok = false, want true")
+		}
+		if pctB >= 0 {
+			t.Errorf("BollingerPctB() = %v, want < 0 after a breakout below the lower band", pctB)
+		}
+	})
+
+	t.Run("price above the upper band returns > 1", func(t *testing.T) {
+		closes := make([]float64, 20)
+		for i := 0; i < 19; i++ {
+			closes[i] = 100
+		}
+		closes[19] = 130 // sharp spike, should break above the upper band
+		pctB, ok := BollingerPctB(closes, 20, 2)
+		if !ok {
+			t.Fatal("BollingerPctB() ok = false, want true")
+		}
+		if pctB <= 1 {
+			t.Errorf("BollingerPctB() = %v, want > 1 after a breakout above the upper band", pctB)
+		}
+	})
+
+	t.Run("price at the midline (mean) returns pctB == 0.5", func(t *testing.T) {
+		// A perfectly flat series has zero stddev (excluded above), so use a
+		// symmetric window whose mean equals its own last value.
+		closes := []float64{90, 110, 90, 110, 100}
+		pctB, ok := BollingerPctB(closes, 5, 2)
+		if !ok {
+			t.Fatal("BollingerPctB() ok = false, want true")
+		}
+		if !almostEqual(pctB, 0.5) {
+			t.Errorf("BollingerPctB() = %v, want 0.5 (price at the mean)", pctB)
+		}
+	})
+}
+
 func TestEmaSeries(t *testing.T) {
 	got := emaSeries([]float64{1, 2, 3, 4}, 3)
 	want := []float64{1, 1.5, 2.25, 3.125}

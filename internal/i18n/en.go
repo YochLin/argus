@@ -364,6 +364,7 @@ Keep the reply concise — under 300 words total.
 	KeyTechnicalsMALine:        "- %s MA%d ($%.2f)\n",
 	KeyVolumeRatioLine:         "- Volume: %.1fx 20-day avg\n",
 	KeyATRLine:                 "- ATR(14): $%.2f (%.1f%% of price)\n",
+	KeyBollingerLine:           "- Bollinger %%B: %.0f%% (0%% = lower band, 100%% = upper band, can go below 0%% or above 100%% on a breakout)\n",
 	KeyTrendBullish:            "Bullish",
 	KeyTrendBearish:            "Bearish",
 	KeyTrendUnknown:            "insufficient data",

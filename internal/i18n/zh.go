@@ -353,6 +353,7 @@ var zhMessages = map[Key]string{
 	KeyTechnicalsMALine:        "- %s MA%d ($%.2f)\n",
 	KeyVolumeRatioLine:         "- 量能：近20日均量的 %.1f 倍\n",
 	KeyATRLine:                 "- 波動度 ATR(14)：$%.2f（現價的 %.1f%%）\n",
+	KeyBollingerLine:           "- 布林通道位置 %%B：%.0f%%（0%%=下軌，100%%=上軌，突破區間會低於 0%% 或高於 100%%）\n",
 	KeyTrendBullish:            "多頭",
 	KeyTrendBearish:            "空頭",
 	KeyTrendUnknown:            "數據不足",
