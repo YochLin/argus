@@ -826,6 +826,96 @@ func (d *DB) GetNetWorthOnOrBefore(date string) (float64, bool, error) {
 	return total, true, nil
 }
 
+// NetWorthPoint is one date/total pair from net_worth_snapshots, returned by
+// GetNetWorthRange for Phase 3.6 追加項's monthly report (see
+// docs/phase-3.6-monthly-report.md) — the first reader to want a whole
+// range of points rather than a single latest/on-or-before value.
+type NetWorthPoint struct {
+	Date  string
+	Total float64
+}
+
+// GetNetWorthRange returns every net_worth_snapshots row with date in
+// [from, to] inclusive, date ascending — the monthly report's raw input for
+// its sparkline/drawdown calculations (both pure functions over this
+// slice, see bot.sparkline/bot.maxDrawdownPct).
+func (d *DB) GetNetWorthRange(from, to string) ([]NetWorthPoint, error) {
+	rows, err := d.conn.Query(
+		`SELECT date, total_value FROM net_worth_snapshots WHERE date BETWEEN ? AND ? ORDER BY date`,
+		from, to,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var points []NetWorthPoint
+	for rows.Next() {
+		var p NetWorthPoint
+		if err := rows.Scan(&p.Date, &p.Total); err != nil {
+			return nil, err
+		}
+		points = append(points, p)
+	}
+	return points, rows.Err()
+}
+
+// GetTransactionStats summarizes every transaction with date in [from, to]
+// inclusive, for the monthly report's trade-count and realized-P&L lines.
+// sellCount is returned separately from realized (rather than the caller
+// inferring "no sells" from realized == 0) because a month with SELLs that
+// happen to net to exactly zero must still render its realized-P&L line —
+// see docs/phase-3.6-monthly-report.md's distinction between "nothing to
+// show" (skip) and "the number is zero" (show it).
+func (d *DB) GetTransactionStats(from, to string) (count, sellCount int, realized float64, err error) {
+	var sellCountNull sql.NullInt64
+	var realizedNull sql.NullFloat64
+	err = d.conn.QueryRow(`
+		SELECT COUNT(*),
+		       SUM(CASE WHEN side = 'SELL' THEN 1 ELSE 0 END),
+		       SUM(CASE WHEN side = 'SELL' THEN realized_pnl ELSE 0 END)
+		FROM transactions WHERE date BETWEEN ? AND ?`,
+		from, to,
+	).Scan(&count, &sellCountNull, &realizedNull)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return count, int(sellCountNull.Int64), realizedNull.Float64, nil
+}
+
+// GetSnapshotCloseRange returns ticker's first and last daily_snapshots
+// close with date in [from, to] inclusive, or ok=false if fewer than two
+// rows exist in that range (a single row can't express a period change).
+// Unlike GetSnapshotClose (one exact date), this is the monthly report's
+// "SPY start vs. end of month" lookup — first/last by date, not by row
+// insertion order.
+func (d *DB) GetSnapshotCloseRange(ticker, from, to string) (first, last float64, ok bool, err error) {
+	rows, err := d.conn.Query(
+		`SELECT close FROM daily_snapshots WHERE ticker = ? AND date BETWEEN ? AND ? ORDER BY date`,
+		ticker, from, to,
+	)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	defer rows.Close()
+
+	var closes []float64
+	for rows.Next() {
+		var c float64
+		if err := rows.Scan(&c); err != nil {
+			return 0, 0, false, err
+		}
+		closes = append(closes, c)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, 0, false, err
+	}
+	if len(closes) < 2 {
+		return 0, 0, false, nil
+	}
+	return closes[0], closes[len(closes)-1], true, nil
+}
+
 // GetSetting returns the stored value for key, or ok=false if it's never
 // been set.
 func (d *DB) GetSetting(key string) (string, bool, error) {

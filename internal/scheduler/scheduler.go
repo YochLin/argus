@@ -99,6 +99,32 @@ func (s *Scheduler) AddWeeklyReview(ctx context.Context, fn JobFunc) {
 	log.Println("scheduler: weekly review registered at 09:00 CST (Sun)")
 }
 
+// AddMonthlyReport schedules Phase 3.6 追加項's net-worth monthly report
+// (see docs/phase-3.6-monthly-report.md) at 09:30 CST on the 1st of every
+// month. The day-of-month field takes "1" for the 1st; day-of-week is left
+// "*" rather than restricted, since cron's "dom AND dow both restricted
+// means OR, not AND" semantics would otherwise cause an unintended extra
+// firing. 09:30 mirrors AddWeeklyReview's 09:00 "weekend/morning read"
+// framing (no market open/close to align with) with a half-hour offset so
+// the two never land in the same minute; by then the prior month's last
+// trading day is always already snapshotted (worst case, a 1st that falls
+// on a Saturday: AddClosingSnapshot's own 05:30 run is still hours earlier
+// than 09:30). On the roughly-one-in-seven months the 1st is also a Sunday,
+// both this and the weekly review fire — that's intentional (see the design
+// doc): a purely rule-based monthly archive shouldn't skip a month just to
+// avoid two Telegram messages same morning.
+// Cron with seconds: "0 30 9 1 * *"
+func (s *Scheduler) AddMonthlyReport(ctx context.Context, fn JobFunc) {
+	_, err := s.c.AddFunc("0 30 9 1 * *", func() {
+		log.Println("scheduler: running monthly report")
+		fn(ctx)
+	})
+	if err != nil {
+		log.Fatalf("scheduler: add monthly report: %v", err)
+	}
+	log.Println("scheduler: monthly report registered at 09:30 CST (1st of month)")
+}
+
 // AddLogRotation schedules fn (typically a rotating log writer's Rotate
 // method) at midnight CST daily. lumberjack.Logger only rotates on size by
 // itself, so this is what turns that into an actual daily rotation; MaxAge/

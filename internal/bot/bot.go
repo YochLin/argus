@@ -298,6 +298,8 @@ func (b *Bot) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 		b.handleCash(args)
 	case "dailyreport":
 		b.RunDailyReport(ctx)
+	case "monthlyreport":
+		b.RunMonthlyReport(ctx)
 	case "fundamentals":
 		b.handleFundamentals(args)
 	case "universe":

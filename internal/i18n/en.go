@@ -72,6 +72,15 @@ var enMessages = map[Key]string{
 	KeyWeeklyEarningsPreviewTitle: "\n📅 *Next Week's Earnings*\n",
 	KeyWeeklyEarningsPreviewLine:  "- %s: %s (in %d days)\n",
 
+	KeyMonthlyReportTitle:         "📅 *%s Net Worth Monthly Report*\n\n",
+	KeyMonthlyReportSparklineLine: "Trend: %s\n",
+	KeyMonthlyReportChangeLine:    "Month-end net worth: $%.2f (%+.2f%% vs. last month-end)\n",
+	KeyMonthlyReportDrawdownLine:  "Max drawdown this month: %.2f%%\n",
+	KeyMonthlyReportRealizedLine:  "Realized P&L this month: $%.2f\n",
+	KeyMonthlyReportSPYLine:       "SPY over the same period: %+.2f%%\n",
+	KeyMonthlyReportTxCountLine:   "Transactions this month: %d\n",
+	KeyMonthlyReportCashLine:      "Total assets incl. cash: $%.2f (cash $%.2f)\n",
+
 	KeyCashUsage:      "Usage: /cash <amount> (omit the amount to check the current value)",
 	KeyCashCurrent:    "Declared cash: $%.2f",
 	KeyCashNotSet:     "Cash balance not set yet. Use /cash <amount> to set it.",

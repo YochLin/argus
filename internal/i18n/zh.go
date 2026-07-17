@@ -75,6 +75,15 @@ var zhMessages = map[Key]string{
 	KeyWeeklyEarningsPreviewTitle: "\n📅 *下週財報前瞻*\n",
 	KeyWeeklyEarningsPreviewLine:  "- %s：%s（%d 天後）\n",
 
+	KeyMonthlyReportTitle:         "📅 *%s 淨值月報*\n\n",
+	KeyMonthlyReportSparklineLine: "走勢：%s\n",
+	KeyMonthlyReportChangeLine:    "月底淨值：$%.2f（較上月末 %+.2f%%）\n",
+	KeyMonthlyReportDrawdownLine:  "月內最大回落：%.2f%%\n",
+	KeyMonthlyReportRealizedLine:  "當月已實現損益：$%.2f\n",
+	KeyMonthlyReportSPYLine:       "同期 SPY：%+.2f%%\n",
+	KeyMonthlyReportTxCountLine:   "當月交易筆數：%d\n",
+	KeyMonthlyReportCashLine:      "含現金總資產：$%.2f（現金 $%.2f）\n",
+
 	KeyCashUsage:      "用法：/cash <金額>（查詢請不帶參數）",
 	KeyCashCurrent:    "目前登記現金：$%.2f",
 	KeyCashNotSet:     "尚未登記現金水位，使用 /cash <金額> 設定。",
