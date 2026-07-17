@@ -383,6 +383,39 @@ func TestMergeCandidates(t *testing.T) {
 	}
 }
 
+func TestCapScanHitTickers(t *testing.T) {
+	if got := capScanHitTickers(nil, maxScanHitFundamentals); got != nil {
+		t.Errorf("capScanHitTickers(nil) = %v, want nil", got)
+	}
+	if got := capScanHitTickers(map[string]string{}, maxScanHitFundamentals); got != nil {
+		t.Errorf("capScanHitTickers(empty map) = %v, want nil", got)
+	}
+
+	underCap := map[string]string{"AAPL": "x", "MSFT": "y"}
+	got := capScanHitTickers(underCap, maxScanHitFundamentals)
+	if len(got) != 2 || !got["AAPL"] || !got["MSFT"] {
+		t.Errorf("capScanHitTickers(under cap) = %v, want all included", got)
+	}
+
+	overCap := map[string]string{
+		"AAA": "x", "BBB": "x", "CCC": "x", "DDD": "x", "EEE": "x", "FFF": "x", "GGG": "x",
+	}
+	got = capScanHitTickers(overCap, 5)
+	if len(got) != 5 {
+		t.Fatalf("capScanHitTickers(over cap) = %v, want exactly 5", got)
+	}
+	// Lexical order must pick the first 5 alphabetically, deterministically.
+	want := map[string]bool{"AAA": true, "BBB": true, "CCC": true, "DDD": true, "EEE": true}
+	for ticker := range want {
+		if !got[ticker] {
+			t.Errorf("capScanHitTickers(over cap) missing expected %s, got %v", ticker, got)
+		}
+	}
+	if got["FFF"] || got["GGG"] {
+		t.Errorf("capScanHitTickers(over cap) = %v, should exclude FFF/GGG past the cap", got)
+	}
+}
+
 func TestRecommendationSources(t *testing.T) {
 	watchlist := []string{"AAPL", "MSFT"}
 	// MSFT also appears as a candidate — shouldn't happen in practice since
