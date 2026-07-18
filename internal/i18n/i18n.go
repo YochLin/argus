@@ -325,6 +325,8 @@ const (
 	KeyVolumeRatioLine         Key = "volume_ratio_line"
 	KeyATRLine                 Key = "atr_line"
 	KeyBollingerLine           Key = "bollinger_line"
+	KeyCandlesHeader           Key = "candles_header"
+	KeyCandleLine              Key = "candle_line"
 	KeyTrendBullish            Key = "trend_bullish"
 	KeyTrendBearish            Key = "trend_bearish"
 	KeyTrendUnknown            Key = "trend_unknown"

@@ -38,15 +38,12 @@ func (f *fakeProvider) GetNews(string, int) ([]data.NewsItem, error) { return f.
 func (f *fakeProvider) GetMarketMovers() ([]string, error)           { return f.movers, f.moversErr }
 
 type fakeHistory struct {
-	closes  []float64
-	highs   []float64
-	lows    []float64
-	volumes []int64
+	candles []data.Candle
 	err     error
 }
 
-func (f *fakeHistory) GetHistory(string) ([]float64, []float64, []float64, []int64, error) {
-	return f.closes, f.highs, f.lows, f.volumes, f.err
+func (f *fakeHistory) GetHistory(string) ([]data.Candle, error) {
+	return f.candles, f.err
 }
 
 type fakeFundamentals struct {
@@ -152,10 +149,15 @@ func TestGetQuoteError(t *testing.T) {
 }
 
 func TestGetHistory(t *testing.T) {
+	day := func(d int) time.Time { return time.Date(2026, 7, d, 0, 0, 0, 0, time.UTC) }
 	ts := &toolset{
 		provider: &fakeProvider{},
-		history:  &fakeHistory{closes: []float64{100, 101.5, 99.25}},
-		lang:     i18n.ZH,
+		history: &fakeHistory{candles: []data.Candle{
+			{Date: day(1), Open: 99.5, High: 101, Low: 99, Close: 100, Volume: 1200},
+			{Date: day(2), Open: 100.25, High: 102, Low: 100, Close: 101.5, Volume: 1500},
+			{Date: day(3), Open: 101, High: 101.75, Low: 98.75, Close: 99.25, Volume: 1800},
+		}},
+		lang: i18n.ZH,
 	}
 	session := connectTool(t, ts)
 
@@ -163,7 +165,7 @@ func TestGetHistory(t *testing.T) {
 	if isError {
 		t.Fatalf("get_history returned an error result: %s", text)
 	}
-	for _, want := range []string{"MSFT", "3", "100.00", "101.50", "99.25"} {
+	for _, want := range []string{"MSFT", "3", "2026-07-03", "101.00", "101.75", "98.75", "99.25", "1800"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("get_history result missing %q, got:\n%s", want, text)
 		}

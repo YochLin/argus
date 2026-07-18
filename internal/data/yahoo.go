@@ -111,35 +111,38 @@ func (y *Yahoo) GetQuote(ticker string) (*Quote, error) {
 	return q, nil
 }
 
-// GetHistory returns ~1 year of daily closes/highs/lows/volumes, oldest
-// first — enough closes for a 200-period moving average (MA200 needs ~200
-// trading days) and still plenty of room for a 14-period RSI/ATR or a
-// 12/26/9 MACD, which only read the tail of the slice regardless of how much
-// extra history is in front of it. highs/lows/volumes are index-aligned
-// with closes.
-func (y *Yahoo) GetHistory(ticker string) (closes, highs, lows []float64, volumes []int64, err error) {
+// GetHistory returns ~1 year of daily OHLCV candles, oldest first — enough
+// closes for a 200-period moving average (MA200 needs ~200 trading days) and
+// still plenty of room for a 14-period RSI/ATR or a 12/26/9 MACD, which only
+// read the tail of the series regardless of how much extra history is in
+// front of it. Open comes from indicators.quote[0].open, same as GetQuote —
+// the chart meta has no usable open field. Date comes from the top-level
+// timestamp array, index-aligned with the quote arrays.
+func (y *Yahoo) GetHistory(ticker string) ([]Candle, error) {
 	url := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&range=1y", ticker)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, err
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0")
 
 	resp, err := y.client.Do(req)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, nil, nil, nil, fmt.Errorf("yahoo history: status %d for %s", resp.StatusCode, ticker)
+		return nil, fmt.Errorf("yahoo history: status %d for %s", resp.StatusCode, ticker)
 	}
 
 	var result struct {
 		Chart struct {
 			Result []struct {
+				Timestamp  []int64 `json:"timestamp"`
 				Indicators struct {
 					Quote []struct {
+						Open   []float64 `json:"open"`
 						Close  []float64 `json:"close"`
 						High   []float64 `json:"high"`
 						Low    []float64 `json:"low"`
@@ -151,41 +154,45 @@ func (y *Yahoo) GetHistory(ticker string) (closes, highs, lows []float64, volume
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, nil, nil, nil, err
+		return nil, err
 	}
 	if len(result.Chart.Result) == 0 || len(result.Chart.Result[0].Indicators.Quote) == 0 {
-		return nil, nil, nil, nil, fmt.Errorf("yahoo history: no data for %s", ticker)
+		return nil, fmt.Errorf("yahoo history: no data for %s", ticker)
 	}
 
 	// Yahoo leaves a null (decoded as 0) hole for days without a trade
 	// (e.g. halts); drop them rather than feeding a false price into
-	// RSI/MACD/ATR. highs/lows/volumes are kept index-aligned with closes by
-	// dropping the same days.
+	// RSI/MACD/ATR. The other fields stay aligned by being read at the same
+	// index of the same day.
+	timestamps := result.Chart.Result[0].Timestamp
 	quote := result.Chart.Result[0].Indicators.Quote[0]
+	var candles []Candle
 	for i, c := range quote.Close {
 		if c == 0 {
 			continue
 		}
-		closes = append(closes, c)
-		var h, l float64
+		candle := Candle{Close: c}
+		if i < len(timestamps) {
+			candle.Date = time.Unix(timestamps[i], 0)
+		}
+		if i < len(quote.Open) {
+			candle.Open = quote.Open[i]
+		}
 		if i < len(quote.High) {
-			h = quote.High[i]
+			candle.High = quote.High[i]
 		}
 		if i < len(quote.Low) {
-			l = quote.Low[i]
+			candle.Low = quote.Low[i]
 		}
-		highs = append(highs, h)
-		lows = append(lows, l)
-		var v int64
 		if i < len(quote.Volume) {
-			v = quote.Volume[i]
+			candle.Volume = quote.Volume[i]
 		}
-		volumes = append(volumes, v)
+		candles = append(candles, candle)
 	}
-	if len(closes) == 0 {
-		return nil, nil, nil, nil, fmt.Errorf("yahoo history: no valid closes for %s", ticker)
+	if len(candles) == 0 {
+		return nil, fmt.Errorf("yahoo history: no valid closes for %s", ticker)
 	}
-	return closes, highs, lows, volumes, nil
+	return candles, nil
 }
 
 func (y *Yahoo) GetNews(ticker string, limit int) ([]NewsItem, error) {

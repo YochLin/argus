@@ -363,6 +363,8 @@ var zhMessages = map[Key]string{
 	KeyVolumeRatioLine:         "- 量能：近20日均量的 %.1f 倍\n",
 	KeyATRLine:                 "- 波動度 ATR(14)：$%.2f（現價的 %.1f%%）\n",
 	KeyBollingerLine:           "- 布林通道位置 %%B：%.0f%%（0%%=下軌，100%%=上軌，突破區間會低於 0%% 或高於 100%%）\n",
+	KeyCandlesHeader:           "- 近 %d 個交易日 K 線（由舊到新）：\n",
+	KeyCandleLine:              "  %s 開 %.2f 高 %.2f 低 %.2f 收 %.2f 量 %d\n",
 	KeyTrendBullish:            "多頭",
 	KeyTrendBearish:            "空頭",
 	KeyTrendUnknown:            "數據不足",
@@ -374,7 +376,7 @@ var zhMessages = map[Key]string{
 	KeyMCPNoQuote: "查不到 %s 的報價資料。",
 
 	KeyMCPNoHistory:     "查不到 %s 的歷史價格資料。",
-	KeyMCPHistoryResult: "%s 近 %d 個交易日收盤價（由舊到新）：%s\n",
+	KeyMCPHistoryResult: "%s 近 %d 個交易日日 K（由舊到新）：\n%s",
 
 	KeyMCPNoNews:   "%s 目前沒有相關新聞。",
 	KeyMCPNewsItem: "%d. [%s] %s（%s）\n   %s\n",

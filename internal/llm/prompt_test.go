@@ -3,6 +3,7 @@ package llm
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"argus/internal/data"
 	"argus/internal/i18n"
@@ -133,6 +134,23 @@ func TestWriteStockSectionOmitsThesisAndVsSPYWhenNil(t *testing.T) {
 	got := sb.String()
 	if strings.Contains(got, "Holding thesis") || strings.Contains(got, "vs. market") {
 		t.Errorf("writeStockSection() should omit thesis/vs-SPY lines when both are nil, got:\n%s", got)
+	}
+}
+
+func TestWriteStockSectionRendersCandles(t *testing.T) {
+	var sb strings.Builder
+	writeStockSection(&sb, i18n.EN, StockData{
+		Quote: &data.Quote{Ticker: "AAPL", Price: 200},
+		Candles: []data.Candle{
+			{Date: time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC), Open: 198.5, High: 201, Low: 197.25, Close: 200, Volume: 54321},
+		},
+	})
+
+	got := sb.String()
+	for _, want := range []string{"2026-07-17", "198.50", "201.00", "197.25", "200.00", "54321"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("writeStockSection() candle block missing %q, got:\n%s", want, got)
+		}
 	}
 }
 

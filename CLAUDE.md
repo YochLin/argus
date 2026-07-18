@@ -75,10 +75,16 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   add more aliases if a ticker comes back with an unexpectedly-zero field rather than assuming the data
   doesn't exist. Finnhub's free tier is rate-limited to 60 req/min, so fundamentals are only fetched for
   watchlist tickers (`fetchStockData(..., includeFundamentals: true)`), never for the broad market-mover
-  candidate list, which can be 15+ tickers. `HistoryProvider` (`GetHistory`, daily closes for RSI/MACD/moving
-  averages) is the mirror image of `FundamentalsProvider`: Yahoo-only, no `Multi` wrapper, because Finnhub's
+  candidate list, which can be 15+ tickers. `HistoryProvider` (`GetHistory`, ~1 year of daily `data.Candle`
+  OHLCV bars for RSI/MACD/moving averages and the raw K-line prompt context) is the mirror image of
+  `FundamentalsProvider`: Yahoo-only, no `Multi` wrapper, because Finnhub's
   free tier blocks `/stock/candle` entirely — same constraint as the `Quote.Volume` gap above, just hitting
-  a different feature this time. `GetHistory`'s window is `range=1y` (Phase 3.7) rather than the `3mo` it
+  a different feature this time. `GetHistory` returns `[]Candle` (date/open/high/low/close/volume — `Date`
+  parsed from the chart response's top-level `timestamp` array, `Open` from `indicators.quote[0].open`,
+  the same non-meta source `GetQuote`'s open uses, live-verified to come back fully populated over a 1y
+  window); the `data.Closes`/`Highs`/`Lows`/`Volumes` helpers extract one field's plain slice for the
+  `internal/signals` functions, which still take slices. `GetHistory`'s window is `range=1y` (Phase 3.7)
+  rather than the `3mo` it
   used to be — a 200-day moving average needs ~200 trading days of closes, and the existing RSI(14)/MACD
   callers are unaffected since both only read the tail of the slice regardless of how much history sits in
   front of it. `EarningsProvider` (`earnings.go`) is Finnhub-only for the same reason as
@@ -274,7 +280,13 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   needs trend context before calling a fresh BUY and Yahoo's history endpoint carries none of Finnhub's
   rate-limit concern. `MACDTrend` is a plain string mirroring `signals.MACDTrend`'s own vocabulary
   ("bullish"/"bearish"/"" for not-enough-history) rather than an import of `internal/signals`, same
-  reasoning as Position/Earnings staying package-local mini-structs. `MA20`/`MA50`/`MA200` are each 0 when
+  reasoning as Position/Earnings staying package-local mini-structs. `StockData.Candles` (`[]data.Candle`
+  directly, no mini-struct — this package already imports `internal/data`) is the raw-bar companion to
+  `Technicals`: the most recent ~20 daily OHLCV candles (`bot`'s `promptCandleCount`, cut from the same
+  `GetHistory` call, so it's nil exactly when `Technicals` is), rendered by `writeStockSection` as a
+  `KeyCandlesHeader`/`KeyCandleLine` block so the model can read candlestick-level structure (gaps, long
+  wicks, a volume spike on a reversal day) that the pre-digested indicator values average away.
+  `MA20`/`MA50`/`MA200` are each 0 when
   there isn't enough history to compute them (`signals.MA` returns 0 as a sentinel, e.g. `MA200` on a
   recent IPO) — `writeStockSection` renders each moving-average line independently and skips any that are
   0 rather than showing a misleading `$0.00`, so `KeyTechnicalsMALine` is a single reusable
@@ -439,10 +451,12 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `loadScanHits` (today's rows) and merge them into the candidate list via the pure
   `mergeCandidates(movers, scanHits, watchlist)`, attaching the hit reason as `llm.StockData.ScanReason`
   via `fetchStockData`'s `scanReasons` parameter. `computeTechnicals` (Phase 3.7) is `fetchStockData`'s and
-  `handleCheck`'s shared helper for `llm.StockData.Technicals`: one `b.history.GetHistory(ticker)` call
-  reduced via `signals.RSI`/`signals.MACDTrend`/`signals.MA` into RSI(14), MACD trend, and MA20/50/200 —
-  a history-fetch failure logs and returns nil (degrades exactly like the fundamentals fetch beside it),
-  never aborts the ticker. This duplicates the `GetHistory` call `RunDailyReport`'s own signal-check loop
+  `handleCheck`'s shared helper for `llm.StockData.Technicals` *and* `.Candles`: one
+  `b.history.GetHistory(ticker)` call
+  reduced via `signals.RSI`/`signals.MACDTrend`/`signals.MA` into RSI(14), MACD trend, and MA20/50/200,
+  plus the last `promptCandleCount` (20) raw candles returned as a second value for the prompt's K-line
+  block — a history-fetch failure logs and returns nils (degrades exactly like the fundamentals fetch
+  beside it), never aborts the ticker. This duplicates the `GetHistory` call `RunDailyReport`'s own signal-check loop
   already makes for watchlist tickers (`checkStatefulSignals`'s stateful RSI/MACD-cross alerting) — the
   two aren't merged into one call because they serve different purposes (dedup-by-persisted-state alerts
   vs. raw values for the prompt) and Yahoo's history endpoint has no Finnhub-style rate-limit concern to
@@ -592,7 +606,9 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
 - `internal/mcptools` — Phase 3.5's read-only MCP (Model Context Protocol) tool surface for chat, using
   the official `github.com/modelcontextprotocol/go-sdk`. `NewServer(lang, provider, history, fundamentals,
   earnings)` builds an `*mcp.Server` and registers seven tools (`tools.go`'s `registerTools`): `get_quote`/
-  `get_history`/`get_news`/`get_market_movers` unconditionally, `get_fundamentals`/
+  `get_history`/`get_news`/`get_market_movers` unconditionally (`get_history` returns the full ~1y of
+  daily OHLCV candles line-per-day via `i18n.KeyCandleLine` — the same per-bar key `llm`'s prompt K-line
+  block uses — not just closes), `get_fundamentals`/
   `get_financial_statements`/`get_upcoming_earnings` only when `fundamentals`/`earnings` are non-nil —
   same nil-check-and-degrade shape as `Bot.fundamentals`, so a client's `tools/list` never advertises a
   tool that would always fail without a Finnhub key. `Run` serves the result on `mcp.StdioTransport`.

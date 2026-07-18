@@ -259,7 +259,7 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 				stock.AnalystRating = ar
 			}
 		}
-		stock.Technicals = b.computeTechnicals(t)
+		stock.Technicals, stock.Candles = b.computeTechnicals(t)
 		if p, ok := positions[t]; ok {
 			stock.Position = &llm.Position{Shares: p.Shares, AvgCost: p.AvgCost}
 		}
@@ -283,10 +283,13 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 	return result
 }
 
-// computeTechnicals fetches ticker's closing-price history and reduces it to
+// computeTechnicals fetches ticker's daily-candle history and reduces it to
 // the RSI/MACD/moving-average values an LLM prompt needs (see
-// llm.Technicals). Returns nil (not an error) on a history-fetch failure, so
-// callers degrade the same way the fundamentals fetch above does. This
+// llm.Technicals), plus the most recent promptCandleCount raw candles for
+// llm.StockData.Candles — both from the one GetHistory call, so the K-line
+// context costs no extra fetch. Returns nils (not an error) on a
+// history-fetch failure, so callers degrade the same way the fundamentals
+// fetch above does. This
 // duplicates the GetHistory call RunDailyReport's signal-check loop already
 // makes for watchlist tickers (see checkStatefulSignals) — the two serve
 // different purposes (stateful alert dedup vs. raw values for the prompt)
@@ -297,17 +300,24 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 // (20-day SMA ± 2 standard deviations) — bollingerPeriod deliberately
 // matches MA20's existing window so %B reads price position on the same
 // trailing period the prompt already shows a moving average for.
+// promptCandleCount caps how much raw K-line history reaches the prompt:
+// ~a month of trading days is enough to read candlestick-level structure
+// (gaps, long wicks, volume spikes) without bloating a prompt that can carry
+// 15+ candidate tickers.
 const (
 	bollingerPeriod    = 20
 	bollingerNumStdDev = 2.0
+	promptCandleCount  = 20
 )
 
-func (b *Bot) computeTechnicals(ticker string) *llm.Technicals {
-	closes, highs, lows, volumes, err := b.history.GetHistory(ticker)
+func (b *Bot) computeTechnicals(ticker string) (*llm.Technicals, []data.Candle) {
+	candles, err := b.history.GetHistory(ticker)
 	if err != nil {
 		log.Printf("history %s: %v", ticker, err)
-		return nil
+		return nil, nil
 	}
+	closes := data.Closes(candles)
+	volumes := data.Volumes(candles)
 	t := &llm.Technicals{
 		RSI14:       signals.RSI(closes, 14),
 		MACDTrend:   signals.MACDTrend(closes),
@@ -315,7 +325,7 @@ func (b *Bot) computeTechnicals(ticker string) *llm.Technicals {
 		MA50:        signals.MA(closes, 50),
 		MA200:       signals.MA(closes, 200),
 		VolumeRatio: signals.VolumeRatio(volumes, 20),
-		ATR14:       signals.ATR(highs, lows, closes, 14),
+		ATR14:       signals.ATR(data.Highs(candles), data.Lows(candles), closes, 14),
 	}
 	if len(volumes) > 0 {
 		t.Volume = volumes[len(volumes)-1]
@@ -323,7 +333,11 @@ func (b *Bot) computeTechnicals(ticker string) *llm.Technicals {
 	if pctB, ok := signals.BollingerPctB(closes, bollingerPeriod, bollingerNumStdDev); ok {
 		t.BollingerPctB = &pctB
 	}
-	return t
+	recent := candles
+	if len(recent) > promptCandleCount {
+		recent = recent[len(recent)-promptCandleCount:]
+	}
+	return t, recent
 }
 
 // computeMarketRegime builds Phase 3.7 追加項's broad-market context block
@@ -340,10 +354,11 @@ func (b *Bot) computeTechnicals(ticker string) *llm.Technicals {
 func (b *Bot) computeMarketRegime() *llm.MarketContext {
 	var m llm.MarketContext
 
-	closes, _, _, _, err := b.history.GetHistory(benchmarkTicker)
+	candles, err := b.history.GetHistory(benchmarkTicker)
 	if err != nil {
 		log.Printf("market regime: %s history: %v", benchmarkTicker, err)
-	} else if len(closes) > 0 {
+	} else if len(candles) > 0 {
+		closes := data.Closes(candles)
 		m.SPYPrice = closes[len(closes)-1]
 		m.SPYMA50 = signals.MA(closes, 50)
 		m.SPYMA200 = signals.MA(closes, 200)

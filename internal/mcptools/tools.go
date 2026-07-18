@@ -3,7 +3,6 @@ package mcptools
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -100,7 +99,7 @@ func registerTools(s *mcp.Server, ts *toolset) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_history",
-		Description: "Get roughly 3 months of daily closing prices for a US stock ticker, oldest first — useful for eyeballing a trend or computing an indicator not already exposed as a tool.",
+		Description: "Get roughly 1 year of daily OHLCV candles (date, open, high, low, close, volume) for a US stock ticker, oldest first — useful for reading candlestick patterns, eyeballing a trend, or computing an indicator not already exposed as a tool.",
 	}, ts.getHistory)
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -197,16 +196,17 @@ func (ts *toolset) getQuote(ctx context.Context, _ *mcp.CallToolRequest, in tick
 func (ts *toolset) getHistory(ctx context.Context, _ *mcp.CallToolRequest, in tickerInput) (*mcp.CallToolResult, any, error) {
 	ticker := normalizeTicker(in.Ticker)
 	result, err := ts.withCache(ctx, "get_history:"+ticker, longCacheTTL, func() (*mcp.CallToolResult, error) {
-		closes, _, _, _, err := ts.history.GetHistory(ticker)
-		if err != nil || len(closes) == 0 {
+		candles, err := ts.history.GetHistory(ticker)
+		if err != nil || len(candles) == 0 {
 			return nil, ts.mcpErr(i18n.KeyMCPNoHistory, ticker)
 		}
 
-		parts := make([]string, len(closes))
-		for i, c := range closes {
-			parts[i] = strconv.FormatFloat(c, 'f', 2, 64)
+		var lines strings.Builder
+		for _, c := range candles {
+			lines.WriteString(i18n.T(ts.lang, i18n.KeyCandleLine,
+				c.Date.Format("2006-01-02"), c.Open, c.High, c.Low, c.Close, c.Volume))
 		}
-		text := i18n.T(ts.lang, i18n.KeyMCPHistoryResult, ticker, len(closes), strings.Join(parts, ", "))
+		text := i18n.T(ts.lang, i18n.KeyMCPHistoryResult, ticker, len(candles), lines.String())
 		return textResult(text), nil
 	})
 	return result, nil, err
