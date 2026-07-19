@@ -36,6 +36,7 @@ var dist embed.FS
 type Config struct {
 	DB       *db.DB
 	Provider data.Provider
+	History  data.HistoryProvider
 	Lang     i18n.Lang
 }
 
@@ -44,22 +45,26 @@ type Config struct {
 // access only (Tailscale/SSH tunnel), so it deliberately has no auth/HTTPS
 // of its own.
 type Server struct {
-	db     dbReader
-	quotes quoteGetter
-	lang   i18n.Lang
-	mux    *http.ServeMux
+	db      dbReader
+	quotes  quoteGetter
+	history data.HistoryProvider
+	lang    i18n.Lang
+	mux     *http.ServeMux
 }
 
 func New(cfg Config) *Server {
 	s := &Server{
-		db:     cfg.DB,
-		quotes: newQuoteCache(cfg.Provider),
-		lang:   cfg.Lang,
+		db:      cfg.DB,
+		quotes:  newQuoteCache(cfg.Provider),
+		history: cfg.History,
+		lang:    cfg.Lang,
 	}
 	s.mux = http.NewServeMux()
 	s.mux.HandleFunc("GET /api/config", s.handleConfig)
 	s.mux.HandleFunc("GET /api/dashboard", s.handleDashboard)
 	s.mux.HandleFunc("GET /api/calendar", s.handleCalendar)
+	s.mux.HandleFunc("GET /api/rounds", s.handleRounds)
+	s.mux.HandleFunc("GET /api/round-detail", s.handleRoundDetail)
 	s.mux.Handle("/", spaHandler())
 	return s
 }

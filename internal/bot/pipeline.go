@@ -311,7 +311,7 @@ const (
 )
 
 func (b *Bot) computeTechnicals(ticker string) (*llm.Technicals, []data.Candle) {
-	candles, err := b.history.GetHistory(ticker)
+	candles, err := b.history.GetHistory(ticker, "1y")
 	if err != nil {
 		log.Printf("history %s: %v", ticker, err)
 		return nil, nil
@@ -354,7 +354,7 @@ func (b *Bot) computeTechnicals(ticker string) (*llm.Technicals, []data.Candle) 
 func (b *Bot) computeMarketRegime() *llm.MarketContext {
 	var m llm.MarketContext
 
-	candles, err := b.history.GetHistory(benchmarkTicker)
+	candles, err := b.history.GetHistory(benchmarkTicker, "1y")
 	if err != nil {
 		log.Printf("market regime: %s history: %v", benchmarkTicker, err)
 	} else if len(candles) > 0 {

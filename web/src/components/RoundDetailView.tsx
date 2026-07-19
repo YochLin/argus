@@ -1,0 +1,118 @@
+import { useEffect, useRef, useState } from "react";
+import {
+  createChart,
+  type IChartApi,
+  type ISeriesApi,
+  type SeriesMarker,
+  type Time,
+} from "lightweight-charts";
+import { fetchRoundDetail, type RoundDetail } from "../api";
+import type { Dictionary } from "../i18n";
+import { TradesTable } from "./TradesTable";
+
+interface Props {
+  dict: Dictionary;
+  ticker: string;
+  start: string;
+  onBack: () => void;
+}
+
+// Phase 5 PR3's round detail page: lightweight-charts daily candlesticks
+// (reusing the same library PR1's PnlChart introduced, per that component's
+// own doc comment anticipating this) plus buy/sell markers for every leg in
+// the round — green arrow-up below the bar for a BUY, red arrow-down above
+// for a SELL, the same profit/loss color convention as everywhere else in
+// the dashboard.
+export function RoundDetailView({ dict, ticker, start, onBack }: Props) {
+  const [detail, setDetail] = useState<RoundDetail | null>(null);
+  const [error, setError] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+
+  useEffect(() => {
+    setDetail(null);
+    setError(false);
+    if (!ticker || !start) {
+      setError(true);
+      return;
+    }
+    fetchRoundDetail(ticker, start)
+      .then(setDetail)
+      .catch(() => setError(true));
+  }, [ticker, start]);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const chart = createChart(containerRef.current, {
+      layout: { background: { color: "transparent" }, textColor: "#9AA6BC" },
+      grid: { vertLines: { color: "#26314B" }, horzLines: { color: "#26314B" } },
+      rightPriceScale: { borderColor: "#26314B" },
+      timeScale: { borderColor: "#26314B" },
+      autoSize: true,
+    });
+    const series = chart.addCandlestickSeries({
+      upColor: "#2FBF71",
+      downColor: "#E5484D",
+      borderVisible: false,
+      wickUpColor: "#2FBF71",
+      wickDownColor: "#E5484D",
+    });
+    chartRef.current = chart;
+    seriesRef.current = series;
+
+    return () => {
+      chart.remove();
+      chartRef.current = null;
+      seriesRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!seriesRef.current || !detail) return;
+    seriesRef.current.setData(
+      detail.candles.map((c) => ({
+        time: c.date as Time,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      })),
+    );
+
+    // setMarkers requires ascending time order; trades come back in
+    // db.GetAllTransactions' date order already, but sort defensively since
+    // that's an implementation detail of the API, not a documented contract.
+    const trades = [...detail.trades].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    const markers: SeriesMarker<Time>[] = trades.map((t) => ({
+      time: t.date as Time,
+      position: t.side === "BUY" ? "belowBar" : "aboveBar",
+      color: t.side === "BUY" ? "#2FBF71" : "#E5484D",
+      shape: t.side === "BUY" ? "arrowUp" : "arrowDown",
+      text: `${t.side} ${t.shares}@$${t.price.toFixed(2)}`,
+    }));
+    seriesRef.current.setMarkers(markers);
+    chartRef.current?.timeScale().fitContent();
+  }, [detail]);
+
+  return (
+    <>
+      <button className="back-link" onClick={onBack}>
+        {dict.back}
+      </button>
+      {error && <div className="error-message">{dict.error}</div>}
+      {!error && !detail && <div className="loading">{dict.loading}</div>}
+      {detail && (
+        <>
+          <div className="eyebrow round-detail-title">
+            {detail.ticker} · {detail.start} → {detail.end || dict.open}
+          </div>
+          <div className="card chart-card" ref={containerRef} />
+          <div className="card">
+            <TradesTable dict={dict} transactions={detail.trades} />
+          </div>
+        </>
+      )}
+    </>
+  );
+}

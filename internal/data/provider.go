@@ -82,16 +82,20 @@ func Volumes(candles []Candle) []int64 {
 // this has no Finnhub implementation or Multi wrapper — Yahoo's chart
 // endpoint is the only source, same one GetQuote already uses.
 type HistoryProvider interface {
-	// GetHistory returns ~1 year of daily OHLCV candles for ticker, oldest
-	// first — enough closes for a 200-day moving average, and enough volumes
-	// for a trailing-average "unusual volume" read (see signals.VolumeRatio).
-	// Highs/lows exist for signals.ATR, which needs the daily range (and the
-	// previous day's close), not just the closing price. Volume for
-	// Finnhub-quoted tickers is otherwise unavailable (Finnhub's /quote has
-	// no volume field at all — see Finnhub.GetQuote), so this is the only
-	// reliable volume source in the system, not just a technicals
-	// convenience.
-	GetHistory(ticker string) ([]Candle, error)
+	// GetHistory returns daily OHLCV candles for ticker, oldest first, over
+	// the window rangeParam selects (Yahoo chart API values, e.g. "1y"/"2y"/
+	// "5y"/"max" — empty defaults to "1y" in the Yahoo implementation).
+	// Existing prompt/technicals callers all pass "1y": enough closes for a
+	// 200-day moving average, and enough volumes for a trailing-average
+	// "unusual volume" read (see signals.VolumeRatio). Highs/lows exist for
+	// signals.ATR, which needs the daily range (and the previous day's
+	// close), not just the closing price. Volume for Finnhub-quoted tickers
+	// is otherwise unavailable (Finnhub's /quote has no volume field at all
+	// — see Finnhub.GetQuote), so this is the only reliable volume source in
+	// the system, not just a technicals convenience. internal/web's round
+	// detail page (Phase 5 PR3) is the first caller to need a wider window —
+	// an old closed-out round can predate a fixed 1y lookback.
+	GetHistory(ticker, rangeParam string) ([]Candle, error)
 }
 
 // Multi is a provider that tries each provider in order, falling back on error.
