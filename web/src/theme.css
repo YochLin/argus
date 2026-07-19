@@ -1,0 +1,180 @@
+/* Design tokens per docs/phase-5-web-dashboard.md's 2026-07-16 design
+   session — dark-only ("守望者終端"): deep blue-black, not neutral black,
+   amber accent, green-up/red-down (US convention, not Taiwan's
+   red-up/green-down), P&L always signed. Change any value here only after
+   re-running the dataviz palette validator — these are not eyeballed. */
+:root {
+  --bg: #0d1220;
+  --surface: #141c2e;
+  --border: #26314b;
+  --ink: #e8ecf2;
+  --ink-2: #9aa6bc;
+  --ink-3: #64708a;
+  --accent: #e0a13e;
+  --profit: #2fbf71;
+  --loss: #e5484d;
+  --s1: #c07f27;
+  --s2: #6b8fd8;
+  --s3: #31a08d;
+  --s4: #a06bd8;
+
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-sans: "IBM Plex Sans", "PingFang TC", "Microsoft JhengHei", "Noto Sans TC",
+    -apple-system, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+a {
+  color: inherit;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.profit {
+  color: var(--profit);
+}
+
+.loss {
+  color: var(--loss);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.status-bar {
+  font-family: var(--font-mono);
+  color: var(--accent);
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  margin-bottom: 16px;
+}
+
+.cursor {
+  display: inline-block;
+  animation: blink 1s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cursor {
+    animation: none;
+  }
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.app {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 16px 16px;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.kpi-value {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+  margin-top: 8px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: right;
+  padding: 8px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+th:first-child,
+td:first-child {
+  text-align: left;
+}
+
+th {
+  color: var(--ink-3);
+  font-weight: 400;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.chart-card {
+  margin-bottom: 16px;
+  height: 320px;
+  padding: 8px;
+}
+
+.loading,
+.error-message,
+.empty-message {
+  color: var(--ink-2);
+  padding: 32px;
+  text-align: center;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

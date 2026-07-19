@@ -748,6 +748,33 @@ func (d *DB) GetTransactions(ticker string) ([]Transaction, error) {
 	return txs, rows.Err()
 }
 
+// GetAllTransactions returns every recorded buy/sell across every ticker,
+// oldest first — the whole-table counterpart to GetTransactions(ticker).
+// internal/web's daily P&L replay engine needs this: reconstructing shares
+// held on any given day requires walking every transaction from the very
+// first one, not a bounded window (unlike GetTransactionStats' date-range
+// aggregate, which only needs a window's totals, not per-row detail).
+func (d *DB) GetAllTransactions() ([]Transaction, error) {
+	rows, err := d.conn.Query(`
+		SELECT id, ticker, side, shares, price, fee, date, realized_pnl, created_at
+		FROM transactions ORDER BY date, id`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var txs []Transaction
+	for rows.Next() {
+		var t Transaction
+		if err := rows.Scan(&t.ID, &t.Ticker, &t.Side, &t.Shares, &t.Price, &t.Fee, &t.Date, &t.RealizedPnL, &t.CreatedAt); err != nil {
+			return nil, err
+		}
+		txs = append(txs, t)
+	}
+	return txs, rows.Err()
+}
+
 // GetCloseExtremes returns the highest and lowest daily_snapshots close for
 // ticker within [from, to] inclusive, or ok=false if there's no snapshot in
 // that range. Unlike GetPeakClose (which only has a lower bound — right for
@@ -942,6 +969,49 @@ func (d *DB) GetSnapshotCloseRange(ticker, from, to string) (first, last float64
 		return 0, 0, false, nil
 	}
 	return closes[0], closes[len(closes)-1], true, nil
+}
+
+// GetDailySnapshotsForTickers returns every daily_snapshots row for any of
+// tickers dated within [from, to] inclusive, ordered by ticker then date —
+// a batched IN query (same one-call-not-N-calls principle as
+// GetLatestRecommendations/GetLessonsForTickers) rather than a per-ticker
+// loop, since internal/web's daily P&L replay engine needs the full
+// multi-ticker OHLCV series for a date range in one shot (every other
+// daily_snapshots reader in this file returns a single scalar/pair, never a
+// multi-row series across tickers). Returns nil, nil for an empty tickers.
+func (d *DB) GetDailySnapshotsForTickers(tickers []string, from, to string) ([]DailySnapshot, error) {
+	if len(tickers) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(tickers))
+	args := make([]any, 0, len(tickers)+2)
+	for i, t := range tickers {
+		placeholders[i] = "?"
+		args = append(args, t)
+	}
+	args = append(args, from, to)
+
+	query := fmt.Sprintf(`
+		SELECT id, ticker, date, open, close, high, low, volume, change_percent, created_at
+		FROM daily_snapshots
+		WHERE ticker IN (%s) AND date BETWEEN ? AND ?
+		ORDER BY ticker, date`, strings.Join(placeholders, ","))
+
+	rows, err := d.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []DailySnapshot
+	for rows.Next() {
+		var s DailySnapshot
+		if err := rows.Scan(&s.ID, &s.Ticker, &s.Date, &s.Open, &s.Close, &s.High, &s.Low, &s.Volume, &s.ChangePercent, &s.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
 }
 
 // GetSetting returns the stored value for key, or ok=false if it's never
