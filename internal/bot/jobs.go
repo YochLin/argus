@@ -184,12 +184,12 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 		}
 	}
 	for _, t := range in.watchlistTickers {
-		closes, _, _, _, err := b.history.GetHistory(t)
+		candles, err := b.history.GetHistory(t)
 		if err != nil {
 			log.Printf("history %s: %v", t, err)
 			continue
 		}
-		allSignals = append(allSignals, b.checkStatefulSignals(t, closes)...)
+		allSignals = append(allSignals, b.checkStatefulSignals(t, data.Closes(candles))...)
 	}
 	if len(allSignals) > 0 {
 		b.SendSignalAlert(allSignals)
@@ -421,12 +421,12 @@ func (b *Bot) RunUniverseScan(ctx context.Context) {
 		default:
 		}
 
-		closes, _, _, _, err := b.history.GetHistory(t)
+		candles, err := b.history.GetHistory(t)
 		if err != nil {
 			log.Printf("universe scan: history %s: %v", t, err)
 			continue
 		}
-		for _, sig := range b.checkStatefulSignals(t, closes) {
+		for _, sig := range b.checkStatefulSignals(t, data.Closes(candles)) {
 			if err := b.db.SaveScanHit(t, date, sig.Message); err != nil {
 				log.Printf("universe scan: save hit %s: %v", t, err)
 				continue
@@ -674,7 +674,7 @@ func (b *Bot) checkTrailingStopAlerts(positions []db.Position, prices map[string
 
 		atr, ok := atrs[p.Ticker]
 		if !ok && b.trailingStopATRMult > 0 {
-			if t := b.computeTechnicals(p.Ticker); t != nil {
+			if t, _ := b.computeTechnicals(p.Ticker); t != nil {
 				atr = t.ATR14
 			}
 		}

@@ -43,6 +43,14 @@ type StockData struct {
 	// trend context (RSI/MACD/moving averages) instead of just a single day's
 	// OHLCV. Nil if history couldn't be fetched.
 	Technicals *Technicals
+	// Candles is the tail of the ticker's daily OHLCV history (the most
+	// recent ~20 bars, oldest first — see bot.computeTechnicals'
+	// promptCandleCount), so the model can read candlestick-level structure
+	// (gaps, long wicks, a volume spike on a reversal day) that the
+	// pre-digested indicator values in Technicals average away. Comes from
+	// the same GetHistory call that computes Technicals, so it's nil exactly
+	// when Technicals is.
+	Candles []data.Candle
 	// PrevRec is set when this ticker has a prior recommendation on record
 	// (see bot.loadPrevRecs), so today's call comes with continuity: the
 	// prompt can ask the model to explain a reversal instead of contradicting
@@ -368,6 +376,14 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 		}
 		if t.BollingerPctB != nil {
 			fmt.Fprint(sb, i18n.T(lang, i18n.KeyBollingerLine, *t.BollingerPctB*100))
+		}
+	}
+
+	if len(s.Candles) > 0 {
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyCandlesHeader, len(s.Candles)))
+		for _, c := range s.Candles {
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyCandleLine,
+				c.Date.Format("2006-01-02"), c.Open, c.High, c.Low, c.Close, c.Volume))
 		}
 	}
 

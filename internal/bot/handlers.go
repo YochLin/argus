@@ -157,7 +157,7 @@ func (b *Bot) handleCheck(ctx context.Context, ticker string) {
 			stock.AnalystRating = ar
 		}
 	}
-	stock.Technicals = b.computeTechnicals(ticker)
+	stock.Technicals, stock.Candles = b.computeTechnicals(ticker)
 
 	result, err := b.llm.CheckStock(ctx, stock)
 	if err != nil {

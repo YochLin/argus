@@ -29,23 +29,69 @@ type Provider interface {
 	GetMarketMovers() ([]string, error) // top gainers/active tickers from S&P500/NASDAQ100
 }
 
-// HistoryProvider supplies historical closing prices for technical
-// indicators (RSI/MACD/moving averages). Finnhub's free tier blocks
-// /stock/candle entirely ("You don't have access to this resource"), so
-// unlike Provider this has no Finnhub implementation or Multi wrapper —
-// Yahoo's chart endpoint is the only source, same one GetQuote already uses.
+// Candle is one daily OHLCV bar. Date is the trading day (exchange-local
+// instant from Yahoo's timestamp array; format it as a date, don't compare
+// clock times). Open can be 0 on the rare day Yahoo has a close but no open
+// tick — render-side code should treat 0 fields as "no data", same sentinel
+// convention as Quote.
+type Candle struct {
+	Date                   time.Time
+	Open, High, Low, Close float64
+	Volume                 int64
+}
+
+// Closes/Highs/Lows/Volumes extract one field's series from candles (oldest
+// first, same order), for indicator functions (signals.RSI/MACD/MA/ATR/
+// VolumeRatio) that take plain slices rather than candles.
+func Closes(candles []Candle) []float64 {
+	out := make([]float64, len(candles))
+	for i, c := range candles {
+		out[i] = c.Close
+	}
+	return out
+}
+
+func Highs(candles []Candle) []float64 {
+	out := make([]float64, len(candles))
+	for i, c := range candles {
+		out[i] = c.High
+	}
+	return out
+}
+
+func Lows(candles []Candle) []float64 {
+	out := make([]float64, len(candles))
+	for i, c := range candles {
+		out[i] = c.Low
+	}
+	return out
+}
+
+func Volumes(candles []Candle) []int64 {
+	out := make([]int64, len(candles))
+	for i, c := range candles {
+		out[i] = c.Volume
+	}
+	return out
+}
+
+// HistoryProvider supplies historical daily bars for technical indicators
+// (RSI/MACD/moving averages) and for the raw-candle context fed to LLM
+// prompts (llm.StockData.Candles). Finnhub's free tier blocks /stock/candle
+// entirely ("You don't have access to this resource"), so unlike Provider
+// this has no Finnhub implementation or Multi wrapper — Yahoo's chart
+// endpoint is the only source, same one GetQuote already uses.
 type HistoryProvider interface {
-	// GetHistory returns ~1 year of daily closes/highs/lows/volumes for
-	// ticker, all oldest first and index-aligned (closes[i]/highs[i]/lows[i]/
-	// volumes[i] are the same trading day) — enough closes for a 200-day
-	// moving average, and enough volumes for a trailing-average "unusual
-	// volume" read (see signals.VolumeRatio). highs/lows exist for
-	// signals.ATR, which needs the daily range (and the previous day's
-	// close), not just the closing price. Volume for Finnhub-quoted tickers
-	// is otherwise unavailable (Finnhub's /quote has no volume field at
-	// all — see Finnhub.GetQuote), so this is the only reliable volume
-	// source in the system, not just a technicals convenience.
-	GetHistory(ticker string) (closes, highs, lows []float64, volumes []int64, err error)
+	// GetHistory returns ~1 year of daily OHLCV candles for ticker, oldest
+	// first — enough closes for a 200-day moving average, and enough volumes
+	// for a trailing-average "unusual volume" read (see signals.VolumeRatio).
+	// Highs/lows exist for signals.ATR, which needs the daily range (and the
+	// previous day's close), not just the closing price. Volume for
+	// Finnhub-quoted tickers is otherwise unavailable (Finnhub's /quote has
+	// no volume field at all — see Finnhub.GetQuote), so this is the only
+	// reliable volume source in the system, not just a technicals
+	// convenience.
+	GetHistory(ticker string) ([]Candle, error)
 }
 
 // Multi is a provider that tries each provider in order, falling back on error.

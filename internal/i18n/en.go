@@ -374,6 +374,8 @@ Keep the reply concise — under 300 words total.
 	KeyVolumeRatioLine:         "- Volume: %.1fx 20-day avg\n",
 	KeyATRLine:                 "- ATR(14): $%.2f (%.1f%% of price)\n",
 	KeyBollingerLine:           "- Bollinger %%B: %.0f%% (0%% = lower band, 100%% = upper band, can go below 0%% or above 100%% on a breakout)\n",
+	KeyCandlesHeader:           "- Last %d daily candles (oldest first):\n",
+	KeyCandleLine:              "  %s O %.2f H %.2f L %.2f C %.2f V %d\n",
 	KeyTrendBullish:            "Bullish",
 	KeyTrendBearish:            "Bearish",
 	KeyTrendUnknown:            "insufficient data",
@@ -385,7 +387,7 @@ Keep the reply concise — under 300 words total.
 	KeyMCPNoQuote: "No quote data available for %s.",
 
 	KeyMCPNoHistory:     "No historical price data available for %s.",
-	KeyMCPHistoryResult: "%s closing prices for the last %d trading days (oldest first): %s\n",
+	KeyMCPHistoryResult: "%s daily candles for the last %d trading days (oldest first):\n%s",
 
 	KeyMCPNoNews:   "No recent news found for %s.",
 	KeyMCPNewsItem: "%d. [%s] %s (%s)\n   %s\n",
