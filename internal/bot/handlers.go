@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/llm"
@@ -157,7 +158,11 @@ func (b *Bot) handleCheck(ctx context.Context, ticker string) {
 			stock.AnalystRating = ar
 		}
 	}
-	stock.Technicals, stock.Candles = b.computeTechnicals(ticker)
+	var spyCloses []float64
+	if spyCandles, err := b.history.GetHistory(benchmarkTicker, "1y"); err == nil {
+		spyCloses = data.Closes(spyCandles)
+	}
+	stock.Technicals, stock.Candles, stock.StrategyHits = b.computeTechnicals(ticker, spyCloses)
 
 	result, err := b.llm.CheckStock(ctx, stock)
 	if err != nil {

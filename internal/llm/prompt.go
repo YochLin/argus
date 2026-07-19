@@ -81,6 +81,14 @@ type StockData struct {
 	// recentLessons parameter) rather than a per-ticker field, since it
 	// isn't about any one ticker.
 	PastLessons []PastLesson
+	// StrategyHits (Phase 3.10) contains any strategy screen hit (squeeze_breakout
+	// or box_bottom) detected within the last 5 days.
+	StrategyHits []StrategyHitInfo
+}
+
+type StrategyHitInfo struct {
+	Name    string
+	DaysAgo int
 }
 
 // PastLesson is one row from Phase 3.9's trade-review feedback loop: a
@@ -128,13 +136,20 @@ type VsSPYReturn struct {
 // use would silently hide that real signal. nil means not enough history
 // to compute it; see signals.BollingerPctB and bot.computeTechnicals.
 type Technicals struct {
-	RSI14             float64
-	MACDTrend         string
-	MA20, MA50, MA200 float64
-	Volume            int64
-	VolumeRatio       float64
-	ATR14             float64
-	BollingerPctB     *float64
+	RSI14                        float64
+	MACDTrend                    string
+	MA5, MA20, MA50, MA60, MA200 float64
+	Volume                       int64
+	VolumeRatio                  float64
+	ATR14                        float64
+	BollingerPctB                *float64
+	StochK, StochD               *float64
+	Bandwidth                    *float64
+	MAAlign                      string
+	VolumePrice                  string
+	NewHigh20, NewHigh52w        bool
+	MACDAboveZero                *float64
+	RS63                         *float64
 }
 
 // Position is the subset of a db.Position an LLM prompt needs: shares held
@@ -327,6 +342,7 @@ func buildRecommendationPrompt(lang i18n.Lang, watchlist []StockData, candidates
 	action := i18n.T(lang, i18n.KeyActionMarker)
 	reason := i18n.T(lang, i18n.KeyReasonMarker)
 	sb.WriteString(i18n.T(lang, i18n.KeyRecTaskBlock, action, reason, action, reason))
+	sb.WriteString(i18n.T(lang, i18n.KeyTechGuidanceBlock))
 	return sb.String()
 }
 
@@ -357,26 +373,92 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 			macdLabel = i18n.T(lang, i18n.KeyTrendBearish)
 		}
 		fmt.Fprint(sb, i18n.T(lang, i18n.KeyTechnicalsSummaryLine, t.RSI14, macdLabel))
+		if t.StochK != nil && t.StochD != nil {
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyTechnicalsKDLine, *t.StochK, *t.StochD))
+		}
 		// Each MA is only rendered when there was enough history to compute
 		// it — MA returns 0 as a sentinel otherwise (e.g. MA200 on a recent
 		// IPO), and 0 would misleadingly look like a real price level.
 		for _, ma := range []struct {
 			period int
 			value  float64
-		}{{20, t.MA20}, {50, t.MA50}, {200, t.MA200}} {
+		}{{5, t.MA5}, {20, t.MA20}, {50, t.MA50}, {60, t.MA60}, {200, t.MA200}} {
 			if ma.value > 0 {
 				fmt.Fprint(sb, i18n.T(lang, i18n.KeyTechnicalsMALine, maLabel(lang, q.Price, ma.value), ma.period, ma.value))
 			}
 		}
+		if t.MAAlign != "" {
+			alignLabel := i18n.T(lang, i18n.KeyTrendUnknown)
+			if t.MAAlign == "bullish" {
+				alignLabel = i18n.T(lang, i18n.KeyTrendBullish)
+			} else if t.MAAlign == "bearish" {
+				alignLabel = i18n.T(lang, i18n.KeyTrendBearish)
+			}
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyTechnicalsMAAlignLine, alignLabel))
+		}
 		if t.VolumeRatio > 0 {
 			fmt.Fprint(sb, i18n.T(lang, i18n.KeyVolumeRatioLine, t.VolumeRatio))
+		}
+		if t.VolumePrice != "" {
+			vpKey := i18n.KeyVolUpPriceUp
+			switch t.VolumePrice {
+			case "vol_up_price_up":
+				vpKey = i18n.KeyVolUpPriceUp
+			case "vol_down_price_down":
+				vpKey = i18n.KeyVolDownPriceDown
+			case "vol_down_price_up":
+				vpKey = i18n.KeyVolDownPriceUp
+			case "vol_up_price_down":
+				vpKey = i18n.KeyVolUpPriceDown
+			}
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyTechnicalsVolumePriceLine, i18n.T(lang, vpKey)))
+		}
+		if t.NewHigh20 || t.NewHigh52w {
+			nhKey := i18n.KeyNewHigh20
+			if t.NewHigh20 && t.NewHigh52w {
+				nhKey = i18n.KeyNewHigh20And52
+			} else if t.NewHigh52w {
+				nhKey = i18n.KeyNewHigh52
+			}
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyTechnicalsNewHighLine, i18n.T(lang, nhKey)))
+		}
+		if t.MACDAboveZero != nil {
+			mzKey := i18n.KeyMACDAboveZero
+			if *t.MACDAboveZero < 0 {
+				mzKey = i18n.KeyMACDBelowZero
+			}
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyTechnicalsMACDZeroLine, i18n.T(lang, mzKey), *t.MACDAboveZero))
+		}
+		if t.RS63 != nil {
+			rsKey := i18n.KeyRSStronger
+			if *t.RS63 < 0 {
+				rsKey = i18n.KeyRSWeaker
+			}
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyTechnicalsRSLine, i18n.T(lang, rsKey), *t.RS63))
 		}
 		if t.ATR14 > 0 && q.Price > 0 {
 			fmt.Fprint(sb, i18n.T(lang, i18n.KeyATRLine, t.ATR14, t.ATR14/q.Price*100))
 		}
+		if t.Bandwidth != nil {
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyTechnicalsBandwidthLine, *t.Bandwidth*100))
+		}
 		if t.BollingerPctB != nil {
 			fmt.Fprint(sb, i18n.T(lang, i18n.KeyBollingerLine, *t.BollingerPctB*100))
 		}
+	}
+
+	for _, hit := range s.StrategyHits {
+		nameStr := hit.Name
+		if hit.Name == "squeeze_breakout" {
+			nameStr = i18n.T(lang, i18n.KeyStrategySqueezeName)
+		} else if hit.Name == "box_bottom" {
+			nameStr = i18n.T(lang, i18n.KeyStrategyBoxName)
+		}
+		daysAgoStr := i18n.T(lang, i18n.KeyDaysAgoToday)
+		if hit.DaysAgo > 0 {
+			daysAgoStr = i18n.T(lang, i18n.KeyDaysAgoN, hit.DaysAgo)
+		}
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyStrategyHitLine, nameStr, daysAgoStr))
 	}
 
 	if len(s.Candles) > 0 {
@@ -498,6 +580,7 @@ func buildCheckPrompt(lang i18n.Lang, s StockData) string {
 	sb.WriteString(i18n.T(lang, i18n.KeyCheckPromptIntro))
 	writeStockSection(&sb, lang, s)
 	sb.WriteString(i18n.T(lang, i18n.KeyCheckPromptTask))
+	sb.WriteString(i18n.T(lang, i18n.KeyTechGuidanceBlock))
 	return sb.String()
 }
 
