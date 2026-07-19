@@ -184,7 +184,7 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 		}
 	}
 	for _, t := range in.watchlistTickers {
-		candles, err := b.history.GetHistory(t)
+		candles, err := b.history.GetHistory(t, "1y")
 		if err != nil {
 			log.Printf("history %s: %v", t, err)
 			continue
@@ -421,7 +421,7 @@ func (b *Bot) RunUniverseScan(ctx context.Context) {
 		default:
 		}
 
-		candles, err := b.history.GetHistory(t)
+		candles, err := b.history.GetHistory(t, "1y")
 		if err != nil {
 			log.Printf("universe scan: history %s: %v", t, err)
 			continue

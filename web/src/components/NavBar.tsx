@@ -7,13 +7,15 @@ interface Props {
   dict: Dictionary;
 }
 
-// Two routes today (dashboard, calendar); a third (round-detail, PR3) will
-// slot in here without touching the router itself — see App.tsx's comment
-// on why this is a hand-rolled path/popstate router rather than a routing
-// library for an app this size.
+// /round (the detail page reached by clicking a row in /rounds) has no nav
+// link of its own — same reasoning as a chart drill-down page not
+// appearing in a top nav — see App.tsx's comment on why this is a
+// hand-rolled path/popstate router rather than a routing library for an
+// app this size.
 const links: Array<{ path: string; label: (dict: Dictionary) => string }> = [
   { path: "/", label: (d) => d.navDashboard },
   { path: "/calendar", label: (d) => d.navCalendar },
+  { path: "/rounds", label: (d) => d.navRounds },
 ];
 
 export function NavBar({ path, onNavigate, dict }: Props) {

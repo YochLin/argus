@@ -6,14 +6,17 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"argus/internal/data"
+	"argus/internal/db"
 	"argus/internal/i18n"
 )
 
 func testServer() *Server {
 	return &Server{
-		db:     &fakeDB{},
-		quotes: &fakeQuotes{},
-		lang:   i18n.EN,
+		db:      &fakeDB{},
+		quotes:  &fakeQuotes{},
+		history: &fakeHistory{},
+		lang:    i18n.EN,
 	}
 }
 
@@ -74,6 +77,81 @@ func TestHandleCalendar(t *testing.T) {
 	}
 	if got.Month != "2026-07" {
 		t.Errorf("Month = %q, want 2026-07", got.Month)
+	}
+}
+
+func TestHandleRounds(t *testing.T) {
+	s := testServer()
+	s.db = &fakeDB{txs: []db.Transaction{
+		tx("AAPL", "BUY", 10, 100, "2026-06-01"),
+	}}
+	s.mux = http.NewServeMux()
+	s.mux.HandleFunc("GET /api/rounds", s.handleRounds)
+
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/rounds", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	var got roundsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(got.Rounds) != 1 || got.Rounds[0].Ticker != "AAPL" {
+		t.Errorf("Rounds = %+v, want 1 open AAPL round", got.Rounds)
+	}
+}
+
+func TestHandleRoundDetail(t *testing.T) {
+	s := testServer()
+	s.db = &fakeDB{txs: []db.Transaction{
+		tx("AAPL", "BUY", 10, 100, "2026-06-01"),
+	}}
+	s.history = &fakeHistory{candles: map[string][]data.Candle{
+		"AAPL": {candle("2026-06-01", 100)},
+	}}
+	s.mux = http.NewServeMux()
+	s.mux.HandleFunc("GET /api/round-detail", s.handleRoundDetail)
+
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/round-detail?ticker=AAPL&start=2026-06-01", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	var got roundDetailResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.Ticker != "AAPL" || got.Start != "2026-06-01" {
+		t.Errorf("got = %+v, want ticker AAPL start 2026-06-01", got)
+	}
+}
+
+func TestHandleRoundDetail_MissingParams(t *testing.T) {
+	s := testServer()
+	s.mux = http.NewServeMux()
+	s.mux.HandleFunc("GET /api/round-detail", s.handleRoundDetail)
+
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/round-detail", nil))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 for missing ticker/start", rec.Code)
+	}
+}
+
+func TestHandleRoundDetail_NotFound(t *testing.T) {
+	s := testServer()
+	s.mux = http.NewServeMux()
+	s.mux.HandleFunc("GET /api/round-detail", s.handleRoundDetail)
+
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/round-detail?ticker=AAPL&start=1999-01-01", nil))
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 for a nonexistent round", rec.Code)
 	}
 }
 

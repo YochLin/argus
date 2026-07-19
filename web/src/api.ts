@@ -60,6 +60,36 @@ export interface Calendar {
   transactions: Transaction[];
 }
 
+export interface RoundSummary {
+  ticker: string;
+  start: string;
+  end: string; // "" while still open
+  open: boolean;
+  shares: number;
+  realizedPnL: number;
+}
+
+export interface Rounds {
+  rounds: RoundSummary[];
+}
+
+export interface Candle {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface RoundDetail {
+  ticker: string;
+  start: string;
+  end: string; // "" while still open
+  candles: Candle[];
+  trades: Transaction[];
+}
+
 async function getJSON<T>(url: string): Promise<T> {
   const res = await fetch(url);
   if (!res.ok) {
@@ -78,4 +108,14 @@ export function fetchDashboard(): Promise<Dashboard> {
 
 export function fetchCalendar(month: string): Promise<Calendar> {
   return getJSON<Calendar>(`/api/calendar?month=${encodeURIComponent(month)}`);
+}
+
+export function fetchRounds(): Promise<Rounds> {
+  return getJSON<Rounds>("/api/rounds");
+}
+
+export function fetchRoundDetail(ticker: string, start: string): Promise<RoundDetail> {
+  return getJSON<RoundDetail>(
+    `/api/round-detail?ticker=${encodeURIComponent(ticker)}&start=${encodeURIComponent(start)}`,
+  );
 }

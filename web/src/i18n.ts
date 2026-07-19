@@ -41,6 +41,12 @@ export interface Dictionary {
   noTransactions: string;
   today: string;
   weekdays: [string, string, string, string, string, string, string];
+  navRounds: string;
+  startDate: string;
+  endDate: string;
+  open: string;
+  noRounds: string;
+  back: string;
 }
 
 const en: Dictionary = {
@@ -74,6 +80,12 @@ const en: Dictionary = {
   noTransactions: "No transactions this day.",
   today: "Today",
   weekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+  navRounds: "Rounds",
+  startDate: "Start",
+  endDate: "End",
+  open: "OPEN",
+  noRounds: "No trade rounds yet.",
+  back: "‹ Back",
 };
 
 const zh: Dictionary = {
@@ -107,6 +119,12 @@ const zh: Dictionary = {
   noTransactions: "當天沒有交易紀錄。",
   today: "今天",
   weekdays: ["日", "一", "二", "三", "四", "五", "六"],
+  navRounds: "回合",
+  startDate: "起始",
+  endDate: "結束",
+  open: "進行中",
+  noRounds: "目前沒有交易回合。",
+  back: "‹ 返回",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

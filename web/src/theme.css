@@ -319,3 +319,30 @@ th {
 .day-detail-panel {
   margin-bottom: 16px;
 }
+
+.round-row {
+  cursor: pointer;
+}
+
+.round-row:hover {
+  background: var(--bg);
+}
+
+.back-link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 16px;
+}
+
+.back-link:hover {
+  text-decoration: underline;
+}
+
+.round-detail-title {
+  margin-bottom: 8px;
+}

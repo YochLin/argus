@@ -42,7 +42,7 @@ type fakeHistory struct {
 	err     error
 }
 
-func (f *fakeHistory) GetHistory(string) ([]data.Candle, error) {
+func (f *fakeHistory) GetHistory(string, string) ([]data.Candle, error) {
 	return f.candles, f.err
 }
 

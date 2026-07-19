@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { fetchCalendar, type Calendar, type Transaction } from "../api";
 import type { Dictionary } from "../i18n";
+import { TradesTable } from "./TradesTable";
 
 interface Props {
   dict: Dictionary;
@@ -161,50 +162,11 @@ export function CalendarView({ dict }: Props) {
           {selectedDate && (
             <div className="card day-detail-panel">
               <div className="eyebrow">{selectedDate}</div>
-              <DayTransactions
-                dict={dict}
-                transactions={transactionsByDate.get(selectedDate) ?? []}
-              />
+              <TradesTable dict={dict} transactions={transactionsByDate.get(selectedDate) ?? []} />
             </div>
           )}
         </>
       )}
     </>
-  );
-}
-
-function DayTransactions({ dict, transactions }: { dict: Dictionary; transactions: Transaction[] }) {
-  if (transactions.length === 0) {
-    return <div className="empty-message">{dict.noTransactions}</div>;
-  }
-  return (
-    <table className="mono">
-      <thead>
-        <tr>
-          <th>{dict.ticker}</th>
-          <th>{dict.side}</th>
-          <th>{dict.shares}</th>
-          <th>{dict.price}</th>
-          <th>{dict.fee}</th>
-          <th>{dict.realizedPnL}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {transactions.map((t, i) => (
-          <tr key={i}>
-            <td>{t.ticker}</td>
-            <td className={t.side === "BUY" ? "profit" : "loss"}>
-              {t.side === "BUY" ? dict.buy : dict.sell}
-            </td>
-            <td>{t.shares}</td>
-            <td>${t.price.toFixed(2)}</td>
-            <td>${t.fee.toFixed(2)}</td>
-            <td className={t.realizedPnL > 0 ? "profit" : t.realizedPnL < 0 ? "loss" : ""}>
-              {t.side === "SELL" ? fmtSigned(t.realizedPnL) : "—"}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
   );
 }
