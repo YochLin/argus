@@ -711,7 +711,7 @@ func (b *Bot) checkTrailingStopAlerts(positions []db.Position, prices map[string
 
 		atr, ok := atrs[p.Ticker]
 		if !ok && b.trailingStopATRMult > 0 {
-			if t, _ := b.computeTechnicals(p.Ticker); t != nil {
+			if t, _, _ := b.computeTechnicals(p.Ticker, nil); t != nil {
 				atr = t.ATR14
 			}
 		}

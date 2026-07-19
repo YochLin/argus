@@ -235,6 +235,11 @@ func capScanHitTickers(scanReasons map[string]string, max int) map[string]bool {
 func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positions map[string]db.Position, earnings map[string]data.EarningsEvent, scanReasons map[string]string, prevRecs map[string]db.Recommendation, pastLessons map[string][]db.Lesson) []llm.StockData {
 	extraFundamentals := capScanHitTickers(scanReasons, maxScanHitFundamentals)
 
+	var spyCloses []float64
+	if spyCandles, err := b.history.GetHistory(benchmarkTicker, "1y"); err == nil {
+		spyCloses = data.Closes(spyCandles)
+	}
+
 	var result []llm.StockData
 	for _, t := range tickers {
 		q, err := b.provider.GetQuote(t)
@@ -259,7 +264,7 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 				stock.AnalystRating = ar
 			}
 		}
-		stock.Technicals, stock.Candles = b.computeTechnicals(t)
+		stock.Technicals, stock.Candles, stock.StrategyHits = b.computeTechnicals(t, spyCloses)
 		if p, ok := positions[t]; ok {
 			stock.Position = &llm.Position{Shares: p.Shares, AvgCost: p.AvgCost}
 		}
@@ -289,55 +294,78 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 // llm.StockData.Candles — both from the one GetHistory call, so the K-line
 // context costs no extra fetch. Returns nils (not an error) on a
 // history-fetch failure, so callers degrade the same way the fundamentals
-// fetch above does. This
-// duplicates the GetHistory call RunDailyReport's signal-check loop already
-// makes for watchlist tickers (see checkStatefulSignals) — the two serve
-// different purposes (stateful alert dedup vs. raw values for the prompt)
-// and don't share a data structure, and Yahoo's history endpoint has no
-// rate-limit concern like Finnhub's, so the duplicate call is an accepted
-// trade-off rather than an oversight.
-// bollingerPeriod/bollingerNumStdDev are Bollinger's own textbook defaults
-// (20-day SMA ± 2 standard deviations) — bollingerPeriod deliberately
-// matches MA20's existing window so %B reads price position on the same
-// trailing period the prompt already shows a moving average for.
-// promptCandleCount caps how much raw K-line history reaches the prompt:
-// ~a month of trading days is enough to read candlestick-level structure
-// (gaps, long wicks, volume spikes) without bloating a prompt that can carry
-// 15+ candidate tickers.
+// fetch above does.
 const (
 	bollingerPeriod    = 20
 	bollingerNumStdDev = 2.0
-	promptCandleCount  = 20
+	promptCandleCount  = 60
 )
 
-func (b *Bot) computeTechnicals(ticker string) (*llm.Technicals, []data.Candle) {
+func (b *Bot) computeTechnicals(ticker string, spyCloses []float64) (*llm.Technicals, []data.Candle, []llm.StrategyHitInfo) {
 	candles, err := b.history.GetHistory(ticker, "1y")
 	if err != nil {
 		log.Printf("history %s: %v", ticker, err)
-		return nil, nil
+		return nil, nil, nil
 	}
 	closes := data.Closes(candles)
+	highs := data.Highs(candles)
+	lows := data.Lows(candles)
 	volumes := data.Volumes(candles)
+
 	t := &llm.Technicals{
 		RSI14:       signals.RSI(closes, 14),
 		MACDTrend:   signals.MACDTrend(closes),
+		MA5:         signals.MA(closes, 5),
 		MA20:        signals.MA(closes, 20),
 		MA50:        signals.MA(closes, 50),
+		MA60:        signals.MA(closes, 60),
 		MA200:       signals.MA(closes, 200),
 		VolumeRatio: signals.VolumeRatio(volumes, 20),
-		ATR14:       signals.ATR(data.Highs(candles), data.Lows(candles), closes, 14),
+		ATR14:       signals.ATR(highs, lows, closes, 14),
+		MAAlign:     signals.MAAlignment(closes),
+		VolumePrice: signals.VolumePriceSignal(closes, volumes),
+		NewHigh20:   signals.IsNewHigh(closes, 20),
+		NewHigh52w:  signals.IsNewHigh(closes, len(closes)),
 	}
+
+	if len(closes) >= 26+9 {
+		macdLine, _, _ := signals.MACD(closes)
+		t.MACDAboveZero = &macdLine
+	}
+
+	if k, d := signals.StochasticSeries(highs, lows, closes, 9, 3); k != nil && len(k) > 0 {
+		t.StochK = &k[len(k)-1]
+		t.StochD = &d[len(d)-1]
+	}
+
+	if bw := signals.BollingerBandwidthSeries(closes, bollingerPeriod, bollingerNumStdDev); bw != nil && len(bw) > 0 {
+		t.Bandwidth = &bw[len(bw)-1]
+	}
+
+	if rs, ok := signals.RelativeStrength(closes, spyCloses, 63); ok {
+		t.RS63 = &rs
+	}
+
 	if len(volumes) > 0 {
 		t.Volume = volumes[len(volumes)-1]
 	}
 	if pctB, ok := signals.BollingerPctB(closes, bollingerPeriod, bollingerNumStdDev); ok {
 		t.BollingerPctB = &pctB
 	}
+
+	var stratHits []llm.StrategyHitInfo
+	if hit := signals.SqueezeBreakout(candles); hit != nil {
+		stratHits = append(stratHits, llm.StrategyHitInfo{Name: hit.Name, DaysAgo: hit.DaysAgo})
+	}
+	if hit := signals.BoxBottomRebound(candles); hit != nil {
+		stratHits = append(stratHits, llm.StrategyHitInfo{Name: hit.Name, DaysAgo: hit.DaysAgo})
+	}
+
 	recent := candles
 	if len(recent) > promptCandleCount {
 		recent = recent[len(recent)-promptCandleCount:]
 	}
-	return t, recent
+	return t, recent, stratHits
 }
 
 // computeMarketRegime builds Phase 3.7 追加項's broad-market context block

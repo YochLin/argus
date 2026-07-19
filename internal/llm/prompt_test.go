@@ -394,3 +394,55 @@ func TestBuildRecommendationPromptOmitsRecentLessonsWhenEmpty(t *testing.T) {
 		t.Errorf("buildRecommendationPrompt() should omit recent-lessons block when empty, got:\n%s", prompt)
 	}
 }
+
+func TestWriteStockSectionRendersPhase310TechnicalsAndStrategyHits(t *testing.T) {
+	stochK, stochD := 75.5, 68.2
+	bandwidth := 0.085
+	macdAboveZero := 1.25
+	rs63 := 5.4
+
+	var sb strings.Builder
+	writeStockSection(&sb, i18n.EN, StockData{
+		Quote: &data.Quote{Ticker: "NVDA", Price: 120},
+		Technicals: &Technicals{
+			RSI14:         62,
+			MACDTrend:     "bullish",
+			MA5:           118,
+			MA20:          115,
+			MA50:          110,
+			MA60:          108,
+			MA200:         95,
+			StochK:        &stochK,
+			StochD:        &stochD,
+			Bandwidth:     &bandwidth,
+			MAAlign:       "bullish",
+			VolumePrice:   "vol_up_price_up",
+			NewHigh20:     true,
+			NewHigh52w:    true,
+			MACDAboveZero: &macdAboveZero,
+			RS63:          &rs63,
+		},
+		StrategyHits: []StrategyHitInfo{
+			{Name: "squeeze_breakout", DaysAgo: 0},
+			{Name: "box_bottom", DaysAgo: 2},
+		},
+	})
+
+	got := sb.String()
+	for _, want := range []string{
+		"KD(9,3,3): K=75.5, D=68.2",
+		"Above MA5 ($118.00)", "Above MA60 ($108.00)",
+		"MA Alignment (5/20/60): Bullish",
+		"Volume-Price: Vol Up Price Up (Bullish)",
+		"New High Record: 20-Day & 52-Week New High",
+		"MACD Zero-Line: Above Zero Line (Bullish Zone) (MACD=1.25)",
+		"Relative Strength RS63: Outperforming Market (vs SPY +5.4%)",
+		"Bollinger Bandwidth: 8.5%",
+		"⚠️ Strategy Hit: Squeeze Breakout (Today)",
+		"⚠️ Strategy Hit: Box Bottom Rebound (2 days ago)",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("writeStockSection() missing %q, got:\n%s", want, got)
+		}
+	}
+}
