@@ -38,7 +38,7 @@ func SqueezeBreakout(candles []data.Candle) *StrategyHit {
 			break
 		}
 		sub := candles[:evalIdx+1]
-		if checkSqueezeBreakoutExact(sub) {
+		if CheckSqueezeBreakoutExact(sub) {
 			return &StrategyHit{
 				Name:    "squeeze_breakout",
 				DaysAgo: offset,
@@ -58,7 +58,7 @@ func BoxBottomRebound(candles []data.Candle) *StrategyHit {
 			break
 		}
 		sub := candles[:evalIdx+1]
-		if checkBoxBottomReboundExact(sub) {
+		if CheckBoxBottomReboundExact(sub) {
 			return &StrategyHit{
 				Name:    "box_bottom",
 				DaysAgo: offset,
@@ -68,7 +68,7 @@ func BoxBottomRebound(candles []data.Candle) *StrategyHit {
 	return nil
 }
 
-func checkSqueezeBreakoutExact(candles []data.Candle) bool {
+func CheckSqueezeBreakoutExact(candles []data.Candle) bool {
 	n := len(candles)
 	if n < 60 {
 		return false
@@ -131,7 +131,7 @@ func checkSqueezeBreakoutExact(candles []data.Candle) bool {
 	return true
 }
 
-func checkBoxBottomReboundExact(candles []data.Candle) bool {
+func CheckBoxBottomReboundExact(candles []data.Candle) bool {
 	n := len(candles)
 	if n < 60 {
 		return false
