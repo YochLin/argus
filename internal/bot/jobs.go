@@ -183,13 +183,14 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 			atrs[s.Quote.Ticker] = s.Technicals.ATR14
 		}
 	}
+	isBear := isBearRegime(in.marketContext)
 	for _, t := range in.watchlistTickers {
 		candles, err := b.history.GetHistory(t, "1y")
 		if err != nil {
 			log.Printf("history %s: %v", t, err)
 			continue
 		}
-		allSignals = append(allSignals, b.checkStatefulSignals(t, data.Closes(candles))...)
+		allSignals = append(allSignals, b.checkStatefulSignals(t, candles, isBear)...)
 	}
 	if len(allSignals) > 0 {
 		b.SendSignalAlert(allSignals)
@@ -298,14 +299,11 @@ func (b *Bot) exploreCandidates(ctx context.Context, in *recommendationInputs) m
 	return reasons
 }
 
-// checkStatefulSignals runs the RSI/MACD checks that diff against the last
-// state persisted in signal_states: RSI only alerts when it newly enters an
-// extreme zone (no repeat alert while it stays there on consecutive days),
-// and MACD only alerts on an actual golden/death cross rather than every day
-// a trend holds. A failed state read falls back to "" — worst case one
-// duplicate alert, better than dropping the check entirely.
-func (b *Bot) checkStatefulSignals(ticker string, closes []float64) []signals.Signal {
+// checkStatefulSignals runs the RSI/MACD and strategy checks that diff against
+// the last state persisted in signal_states.
+func (b *Bot) checkStatefulSignals(ticker string, candles []data.Candle, isBearRegime bool) []signals.Signal {
 	var out []signals.Signal
+	closes := data.Closes(candles)
 
 	prevRSI, err := b.db.GetSignalState(ticker, signals.FamilyRSI)
 	if err != nil {
@@ -332,6 +330,42 @@ func (b *Bot) checkStatefulSignals(ticker string, closes []float64) []signals.Si
 	if newMACD != prevMACD {
 		if err := b.db.SetSignalState(ticker, signals.FamilyMACD, newMACD); err != nil {
 			log.Printf("signal state %s/%s: %v", ticker, signals.FamilyMACD, err)
+		}
+	}
+
+	// Strategy 1: Squeeze Breakout
+	prevSqueeze, err := b.db.GetSignalState(ticker, signals.FamilyStrategySqueeze)
+	if err != nil {
+		log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategySqueeze, err)
+	}
+	sig, newSqueeze := b.detector.CheckSqueezeBreakout(ticker, candles, prevSqueeze)
+	if sig != nil {
+		if isBearRegime {
+			sig.Message += "\n" + i18n.T(b.lang, i18n.KeyStrategyBearRegimeWarning)
+		}
+		out = append(out, *sig)
+	}
+	if newSqueeze != prevSqueeze {
+		if err := b.db.SetSignalState(ticker, signals.FamilyStrategySqueeze, newSqueeze); err != nil {
+			log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategySqueeze, err)
+		}
+	}
+
+	// Strategy 2: Box Bottom Rebound
+	prevBox, err := b.db.GetSignalState(ticker, signals.FamilyStrategyBox)
+	if err != nil {
+		log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategyBox, err)
+	}
+	sig, newBox := b.detector.CheckBoxBottom(ticker, candles, prevBox)
+	if sig != nil {
+		if isBearRegime {
+			sig.Message += "\n" + i18n.T(b.lang, i18n.KeyStrategyBearRegimeWarning)
+		}
+		out = append(out, *sig)
+	}
+	if newBox != prevBox {
+		if err := b.db.SetSignalState(ticker, signals.FamilyStrategyBox, newBox); err != nil {
+			log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategyBox, err)
 		}
 	}
 
@@ -410,6 +444,9 @@ func (b *Bot) RunUniverseScan(ctx context.Context) {
 		}
 	}
 
+	mc := b.computeMarketRegime()
+	isBear := isBearRegime(mc)
+
 	chunk := universeScanChunk(tickers, scanChunkCount, time.Now().In(cst).YearDay())
 	date := todayDate()
 	hits := 0
@@ -426,7 +463,7 @@ func (b *Bot) RunUniverseScan(ctx context.Context) {
 			log.Printf("universe scan: history %s: %v", t, err)
 			continue
 		}
-		for _, sig := range b.checkStatefulSignals(t, data.Closes(candles)) {
+		for _, sig := range b.checkStatefulSignals(t, candles, isBear) {
 			if err := b.db.SaveScanHit(t, date, sig.Message); err != nil {
 				log.Printf("universe scan: save hit %s: %v", t, err)
 				continue
