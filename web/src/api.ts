@@ -44,6 +44,22 @@ export interface Config {
   lang: string;
 }
 
+export interface Transaction {
+  date: string;
+  ticker: string;
+  side: string; // "BUY" | "SELL"
+  shares: number;
+  price: number;
+  fee: number;
+  realizedPnL: number;
+}
+
+export interface Calendar {
+  month: string; // YYYY-MM
+  days: DateValue[];
+  transactions: Transaction[];
+}
+
 async function getJSON<T>(url: string): Promise<T> {
   const res = await fetch(url);
   if (!res.ok) {
@@ -58,4 +74,8 @@ export function fetchConfig(): Promise<Config> {
 
 export function fetchDashboard(): Promise<Dashboard> {
   return getJSON<Dashboard>("/api/dashboard");
+}
+
+export function fetchCalendar(month: string): Promise<Calendar> {
+  return getJSON<Calendar>(`/api/calendar?month=${encodeURIComponent(month)}`);
 }
