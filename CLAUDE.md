@@ -660,6 +660,55 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   subprocess has no Telegram bot of its own to show a confirm/reject keyboard with; `internal/bot` picks
   up `pending`-status rows after the chat turn that created them (see that package's entry). See
   [docs/phase-4-write-gating.md](docs/phase-4-write-gating.md).
+- `internal/web` — Phase 5 PR1's read-only web dashboard (see
+  [docs/phase-5-web-dashboard.md](docs/phase-5-web-dashboard.md)): an in-process HTTP server gated by the
+  `WEB_ADDR` env var (empty = off, same presence-of-config convention as `FINNHUB_API_KEY`), started as a
+  goroutine from `main.go` alongside the scheduler and the Telegram bot — not a separate `argus web`
+  subcommand like `mcp`, specifically because it needs the same live `data.Provider` chain the bot already
+  built (a subcommand would have to rebuild one) and shares this process's `*db.DB` connection directly
+  (safe: `database/sql` connections already support concurrent use from other goroutines, so unlike
+  `internal/mcptools`'s subprocess there's no need for a second `db.OpenReadOnly` connection here). Intended
+  for VPS-private access only (Tailscale/SSH tunnel) — it has no auth/HTTPS of its own by design.
+  `pnl.go`'s `DailyPnL`/`CumulativeCurve`/`MaxDrawdownAbs`/`WinRate`/`ProfitFactor`/`Expectancy` are the
+  daily-P&L replay engine every dashboard view (KPI cards, the cumulative curve, and PR2+'s calendar/MAE-MFE
+  views) reads from — pure functions over `[]db.Transaction`/`[]db.DailySnapshot`, no DB/HTTP dependency, so
+  they're unit-tested directly. `DailyPnL`'s core formula (mark-to-market delta on shares already held
+  coming into the day, `Σ(Close(d)-Close(d-1))×openingShares`) plus a same-day correction for shares that
+  actually transacted that day (real fill price, not that day's close) is
+  docs/phase-5-web-dashboard.md's own derivation for the sell side — the buy-side correction
+  (`(Close(d)-buyPrice)×sharesBoughtToday`) is this package's own symmetric addition beyond the doc's literal
+  wording: without it, a position opened today contributes exactly 0 to today's P&L (`openingShares` is 0 on
+  the entry day), silently dropping that day's buy-to-close gain/loss from the cumulative curve forever.
+  Each ticker's mark-to-market delta is computed against *that ticker's own* previous available close (its
+  own sorted list of snapshot dates), not a shared "yesterday" index into the global date axis — deliberately,
+  so one ticker's `daily_snapshots` gap (the doc's called-out limitation: manually `/remove`'d from the
+  watchlist while still held, then re-added) can't get smeared across, or zeroed out by, another ticker
+  happening to have data on the in-between day. `MaxDrawdownAbs` is a dollar-amount sibling of
+  `bot.maxDrawdownPct`'s running-peak algorithm, not a reuse of it — a P&L curve (unlike net worth) can cross
+  zero, where a percentage drawdown off a near-zero or negative peak is meaningless. Net P&L and Max Drawdown
+  KPIs are read straight from the cumulative curve's own values (not computed independently from
+  `db.GetRealizedPnL`/live quotes) specifically so the KPI numbers and the chart visually corroborate — this
+  also means both inherit the curve's "only as far back as `daily_snapshots` has data" limitation, which is
+  accepted as-is per the design doc. Win%/Profit%/Expectancy, by contrast, sample every `SELL` transaction's
+  stored `realized_pnl` directly (`FilterSells` + the three KPI functions) — unbounded by snapshot history,
+  since that data has existed since the first trade regardless of when the dashboard started existing.
+  `db.GetAllTransactions`/`db.GetDailySnapshotsForTickers` (new, whole-table/batched-IN reads, zero
+  migration) feed the replay engine — `GetTransactions(ticker)` and `GetTransactionStats(from,to)` already
+  existed but neither returns cross-ticker per-row detail, which the replay needs to reconstruct daily share
+  balances. `quotes.go`'s `quoteCache` is a small package-local 30s TTL cache around `data.Provider.GetQuote`
+  for the positions list — deliberately not a reuse of `internal/mcptools`'s `ttlCache`/`tokenBucket` (both
+  unexported, and `withCache` is hard-wired to `*mcp.CallToolResult`); no rate limiting here either, since a
+  dashboard page load fetches each held ticker's quote at most once per request, unlike a chat session that
+  can call the same MCP tool repeatedly. The embedded frontend build lives at `internal/web/dist` (not
+  `web/dist`) because `go:embed` patterns can't reach outside their own package directory with a `..` — the
+  Vite project's source stays at the repo-root `web/` per the design doc, but `web/vite.config.ts`'s `outDir`
+  points the actual build output at `../internal/web/dist`. Only `internal/web/dist/index.html` is committed,
+  as a placeholder so `go build ./...`/`go vet ./...`/`go test ./...` work on a fresh clone with no Node.js
+  installed; CI and `deploy.yml` both run `npm ci && npm run build` (working directory `web`) before any Go
+  build step, which overwrites the placeholder with the real SPA — `internal/web/dist/assets/` (the hashed
+  build output) is gitignored, never committed. `spaHandler` in `server.go` falls back to `index.html` for
+  any request path that isn't a real file in the embedded build, so client-side routes added in later PRs
+  (e.g. PR2's calendar view) don't 404 on a hard refresh.
 
 ## Key behaviors to preserve
 

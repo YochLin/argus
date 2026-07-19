@@ -19,6 +19,7 @@ import (
 	"argus/internal/llm"
 	"argus/internal/mcptools"
 	"argus/internal/scheduler"
+	"argus/internal/web"
 	"github.com/joho/godotenv"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
@@ -47,6 +48,12 @@ func main() {
 	chatModel := envOr("CLAUDE_CHAT_MODEL", "sonnet")
 	dbPath := envOr("DB_PATH", "data/argus.db")
 	lang := i18n.Parse(envOr("BOT_LANGUAGE", "zh"))
+	// WEB_ADDR gates the read-only dashboard (Phase 5 PR1, see
+	// docs/phase-5-web-dashboard.md) — empty means off, same
+	// presence-of-config convention as FINNHUB_API_KEY, not envOr's
+	// give-a-default shape, since binding a port at all is the thing that
+	// needs to be opted into.
+	webAddr := os.Getenv("WEB_ADDR")
 	// Phase 3.8 exit-discipline thresholds: positive percentages, 0 disables
 	// the corresponding daily-report check entirely. Defaults are a starting
 	// point, not backed by any backtest yet — see PLAN.md's Phase 3.8 note
@@ -166,6 +173,21 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+
+	if webAddr != "" {
+		// In-process, not a subcommand like "mcp": the dashboard needs live
+		// quotes (data.Provider) alongside DB reads, and shares this
+		// process's *db.DB connection directly rather than opening a
+		// second db.OpenReadOnly one — unlike the MCP subprocess, this
+		// isn't a separate process, and database/sql connections already
+		// support concurrent use from other goroutines.
+		webServer := web.New(web.Config{DB: database, Provider: provider, Lang: lang})
+		go func() {
+			if err := webServer.Run(ctx, webAddr); err != nil {
+				log.Printf("web: server error: %v", err)
+			}
+		}()
+	}
 
 	sched := scheduler.New()
 	sched.AddDailyReport(ctx, func(ctx context.Context) {

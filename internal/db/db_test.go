@@ -1174,3 +1174,78 @@ func TestGetRecommendationsForTicker(t *testing.T) {
 		t.Errorf("GetRecommendationsForTicker() = %+v, want exactly the in-window AAPL HOLD row", recs)
 	}
 }
+
+func TestGetAllTransactions(t *testing.T) {
+	d := newTestDB(t)
+
+	if txs, err := d.GetAllTransactions(); err != nil || len(txs) != 0 {
+		t.Fatalf("GetAllTransactions() before any trade: txs = %v, err = %v; want empty, nil", txs, err)
+	}
+
+	if _, err := d.RecordBuy("MSFT", 5, 300, 0, "2026-07-05"); err != nil {
+		t.Fatalf("RecordBuy() error = %v", err)
+	}
+	if _, err := d.RecordBuy("AAPL", 10, 200, 1, "2026-07-01"); err != nil {
+		t.Fatalf("RecordBuy() error = %v", err)
+	}
+	if _, _, err := d.RecordSell("AAPL", 4, 220, 0.5, "2026-07-10"); err != nil {
+		t.Fatalf("RecordSell() error = %v", err)
+	}
+
+	txs, err := d.GetAllTransactions()
+	if err != nil {
+		t.Fatalf("GetAllTransactions() error = %v", err)
+	}
+	if len(txs) != 3 {
+		t.Fatalf("GetAllTransactions() len = %d, want 3 (across every ticker)", len(txs))
+	}
+	// Ordered by date across tickers, not grouped by ticker: AAPL BUY
+	// (07-01) before MSFT BUY (07-05) before AAPL SELL (07-10).
+	if txs[0].Ticker != "AAPL" || txs[0].Side != "BUY" || txs[0].Date != "2026-07-01" {
+		t.Errorf("GetAllTransactions()[0] = %+v, want AAPL BUY 2026-07-01 (oldest date first)", txs[0])
+	}
+	if txs[1].Ticker != "MSFT" || txs[1].Date != "2026-07-05" {
+		t.Errorf("GetAllTransactions()[1] = %+v, want MSFT 2026-07-05", txs[1])
+	}
+	if txs[2].Ticker != "AAPL" || txs[2].Side != "SELL" || txs[2].Date != "2026-07-10" {
+		t.Errorf("GetAllTransactions()[2] = %+v, want AAPL SELL 2026-07-10", txs[2])
+	}
+}
+
+func TestGetDailySnapshotsForTickers(t *testing.T) {
+	d := newTestDB(t)
+
+	if got, err := d.GetDailySnapshotsForTickers(nil, "2026-07-01", "2026-07-31"); err != nil || got != nil {
+		t.Fatalf("GetDailySnapshotsForTickers(nil tickers) = %v, %v; want nil, nil", got, err)
+	}
+
+	snaps := []DailySnapshot{
+		{Ticker: "AAPL", Date: "2026-07-01", Close: 200},
+		{Ticker: "AAPL", Date: "2026-07-02", Close: 205},
+		{Ticker: "MSFT", Date: "2026-07-01", Close: 300},
+		{Ticker: "MSFT", Date: "2026-07-15", Close: 310}, // outside the queried window
+		{Ticker: "NVDA", Date: "2026-07-01", Close: 900}, // not in the tickers filter
+	}
+	for _, s := range snaps {
+		if err := d.SaveSnapshot(s); err != nil {
+			t.Fatalf("SaveSnapshot(%+v) error = %v", s, err)
+		}
+	}
+
+	got, err := d.GetDailySnapshotsForTickers([]string{"AAPL", "MSFT"}, "2026-07-01", "2026-07-05")
+	if err != nil {
+		t.Fatalf("GetDailySnapshotsForTickers() error = %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("GetDailySnapshotsForTickers() len = %d, want 3 (AAPL x2, MSFT x1 in-window; NVDA excluded, MSFT 07-15 out of range)", len(got))
+	}
+	if got[0].Ticker != "AAPL" || got[0].Date != "2026-07-01" || got[0].Close != 200 {
+		t.Errorf("GetDailySnapshotsForTickers()[0] = %+v, want AAPL 2026-07-01 close 200 (ordered by ticker, date)", got[0])
+	}
+	if got[1].Ticker != "AAPL" || got[1].Date != "2026-07-02" {
+		t.Errorf("GetDailySnapshotsForTickers()[1] = %+v, want AAPL 2026-07-02", got[1])
+	}
+	if got[2].Ticker != "MSFT" || got[2].Date != "2026-07-01" {
+		t.Errorf("GetDailySnapshotsForTickers()[2] = %+v, want MSFT 2026-07-01", got[2])
+	}
+}

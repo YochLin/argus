@@ -80,6 +80,10 @@ Three things about today's implementation are conveniences, not commitments:
 - **Unattended-VPS resilience** — a rotating daily log (kept ~1 week), a daily SQLite backup (kept ~2
   weeks by default), and a Telegram alert if a scheduled job (daily report / closing snapshot) panics
   or can't even read the watchlist
+- **Read-only web dashboard** *(optional, opt-in via `WEB_ADDR`)* — KPI cards (net P&L, win rate, profit
+  factor, expectancy, max drawdown), a cumulative P&L curve, and your open positions with live quotes,
+  served from the same process. No login/HTTPS of its own by design — meant for private access over
+  Tailscale or an SSH tunnel, not a public port
 
 This is single-user by design: one Telegram chat ID, no accounts, no multi-tenant data model.
 
@@ -97,7 +101,8 @@ deeper architectural notes if you're modifying the code.
 **Prerequisites:**
 
 - Go 1.25+
-- Node.js (`npx` on your `PATH`) — the bot shells out to a local ACP agent process
+- Node.js (`npx` on your `PATH`) — the bot shells out to a local ACP agent process, and also builds
+  the web dashboard's frontend (see below)
 - The `claude` CLI installed and logged in once on this machine with a Claude Pro/Max account
 - A Telegram bot token ([BotFather](https://t.me/BotFather)) and your chat ID
 - (Optional) A [Finnhub](https://finnhub.io/) API key for fundamentals and richer quotes/news
@@ -109,9 +114,16 @@ cp .env.example .env
 # fill in TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID (required),
 # FINNHUB_API_KEY (optional), and review the CLAUDE_*_MODEL settings
 
+npm --prefix web ci && npm --prefix web run build   # build the web dashboard (see below)
 go build ./...     # sanity-check the build
 go run ./cmd/bot    # run it
 ```
+
+The `npm run build` step is only needed once (or whenever `web/` changes) — it builds straight into
+`internal/web/dist`, which `go:embed` packs into the binary. A placeholder is committed there so
+`go build ./...`/`go test ./...` still work on a fresh clone before you've run it, just without a real
+dashboard UI. Set `WEB_ADDR` in `.env` (e.g. `127.0.0.1:8090`) to serve it; leave it blank to disable
+the dashboard entirely (default).
 
 No `ANTHROPIC_API_KEY` is needed or wanted — leave it unset.
 
