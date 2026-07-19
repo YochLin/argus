@@ -323,19 +323,16 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   (`KeyVsSPYLine`, `KeyThesisLine`) rather than minting trade-review-specific duplicates of the same
   content shape.
 - `internal/signals` — pure functions/struct for rule-based technical signals (price % threshold, RSI,
-  MACD) independent of Telegram/LLM/DB. That purity is preserved for the stateful checks too:
-  `CheckRSIState` and `CheckMACDCross` take the previously persisted state as a parameter and return the
-  new state for the caller to persist — the DB round-trip lives in `bot.checkStatefulSignals`
-  (`db.signal_states`), not here. `RunDailyReport` uses `CheckQuote` plus these two stateful checks, fed
-  by `HistoryProvider.GetHistory` (see `internal/data` above): RSI only alerts on newly entering
-  overbought/oversold (no repeat while it stays there), and MACD only alerts on an actual golden/death
-  cross (`macd_golden_cross`/`macd_death_cross`), with a first-ever observation just recording the
-  baseline silently. The stateless `CheckRSI`/`CheckMACD` still exist (the latter fires every call while
-  a trend holds — that's why the daily path doesn't use it). `MACD`'s signal line is a genuine EMA9 over
-  the MACD series (needs 26+9 closes to warm up, returns all-zero before that) — don't collapse it back
-  to the single-point approximation this used to be (signal line hardcoded to 0), that gave wrong
-  bullish/bearish reads. `Signal.Message` text goes through `internal/i18n` (`NewDetector(lang)`), same
-  as everything in `internal/bot` — don't hardcode a new message string here either.
+  MACD, Stochastic KD, Bollinger Bandwidth, MA Alignment, Volume-Price, New High, Relative Strength RS63,
+  and strategy screens Squeeze Breakout / Box Bottom Rebound) independent of Telegram/LLM/DB. That purity
+  is preserved for the stateful checks too: `CheckRSIState`, `CheckMACDCross`, `CheckSqueezeBreakout`, and
+  `CheckBoxBottom` take the previously persisted state as a parameter and return the new state for the caller
+  to persist — the DB round-trip lives in `bot.checkStatefulSignals` (`db.signal_states`), not here.
+  `RunDailyReport` and `RunUniverseScan` use `checkStatefulSignals`, fed by `HistoryProvider.GetHistory`
+  (see `internal/data` above): RSI only alerts on newly entering overbought/oversold, MACD on golden/death
+  cross, and strategies on fresh triggers within the lookback window. `Signal.Message` text goes through
+  `internal/i18n` (`NewDetector(lang)`), same as everything in `internal/bot` — don't hardcode a new
+  message string here either.
 - `internal/scheduler` — thin wrapper around `robfig/cron` fixed to `time.FixedZone("CST", 8*3600)`
   (Taiwan time) rather than a loaded `time.Location`, specifically so it works in the `alpine` Docker
   image without needing the `tzdata` package installed. Six jobs: the daily report (23:30 CST daily —
