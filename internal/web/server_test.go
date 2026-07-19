@@ -57,6 +57,26 @@ func TestHandleDashboard(t *testing.T) {
 	}
 }
 
+func TestHandleCalendar(t *testing.T) {
+	s := testServer()
+	s.mux = http.NewServeMux()
+	s.mux.HandleFunc("GET /api/calendar", s.handleCalendar)
+
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/calendar?month=2026-07", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	var got calendarResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.Month != "2026-07" {
+		t.Errorf("Month = %q, want 2026-07", got.Month)
+	}
+}
+
 func TestSPAHandler_ServesIndexForUnknownRoute(t *testing.T) {
 	handler := spaHandler()
 

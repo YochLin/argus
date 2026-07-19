@@ -28,6 +28,19 @@ export interface Dictionary {
   loading: string;
   error: string;
   noPositions: string;
+  navDashboard: string;
+  navCalendar: string;
+  weekTotal: string;
+  monthTotal: string;
+  noData: string;
+  side: string;
+  buy: string;
+  sell: string;
+  fee: string;
+  realizedPnL: string;
+  noTransactions: string;
+  today: string;
+  weekdays: [string, string, string, string, string, string, string];
 }
 
 const en: Dictionary = {
@@ -48,6 +61,19 @@ const en: Dictionary = {
   loading: "Loading…",
   error: "Failed to load dashboard.",
   noPositions: "No open positions.",
+  navDashboard: "Dashboard",
+  navCalendar: "Calendar",
+  weekTotal: "Week",
+  monthTotal: "Month total",
+  noData: "No data",
+  side: "Side",
+  buy: "BUY",
+  sell: "SELL",
+  fee: "Fee",
+  realizedPnL: "Realized P&L",
+  noTransactions: "No transactions this day.",
+  today: "Today",
+  weekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
 };
 
 const zh: Dictionary = {
@@ -68,6 +94,19 @@ const zh: Dictionary = {
   loading: "載入中…",
   error: "儀表板載入失敗。",
   noPositions: "目前沒有持倉。",
+  navDashboard: "儀表板",
+  navCalendar: "月曆",
+  weekTotal: "週合計",
+  monthTotal: "當月合計",
+  noData: "無資料",
+  side: "動作",
+  buy: "BUY",
+  sell: "SELL",
+  fee: "手續費",
+  realizedPnL: "已實現損益",
+  noTransactions: "當天沒有交易紀錄。",
+  today: "今天",
+  weekdays: ["日", "一", "二", "三", "四", "五", "六"],
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };
