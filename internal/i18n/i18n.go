@@ -170,6 +170,13 @@ const (
 	KeyTrailingStopAlertLine    Key = "trailing_stop_alert_line"
 	KeyTrailingStopAlertLineATR Key = "trailing_stop_alert_line_atr"
 
+	// Phase 3.11 PR2's rule-based exit alerts (§4.1/§4.2) — each is a
+	// complete, self-contained line (no separate title key, unlike the
+	// stop-loss/trailing-stop pairs above), since these are rarer,
+	// single-occurrence events rather than a per-position sweep.
+	KeyTargetReached Key = "target_reached"
+	KeyMA5Break      Key = "ma5_break"
+
 	KeyChatContextHeader       Key = "chat_context_header"
 	KeyChatContextTickerNoData Key = "chat_context_ticker_no_data"
 	KeyChatContextWatchLine    Key = "chat_context_watch_line"

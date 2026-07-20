@@ -113,6 +113,9 @@ var zhMessages = map[Key]string{
 	KeyTrailingStopAlertLine:    "• *%s* 持有期間最高收盤 $%.2f → 現價 $%.2f，回落 %.1f%%，已達移動停損門檻\n",
 	KeyTrailingStopAlertLineATR: "• *%s* 持有期間最高收盤 $%.2f → 現價 $%.2f，回落 %.1f%%，已達移動停損門檻（門檻 %.1f%%，%.1f×ATR）\n",
 
+	KeyTargetReached: "🎯 *%s* 已達 %.1fR 獲利目標！目標價 $%.2f，現價 $%.2f——考慮獲利了結一半，剩餘部位改用 5MA 防守。\n",
+	KeyMA5Break:      "📉 *%s* 跌破 5 日均線 $%.2f（現價 $%.2f），強勢段防線失守，考慮了結剩餘部位。\n",
+
 	KeyChatContextHeader:       "[背景資料，非即時報價，僅供參考]\n",
 	KeyChatContextTickerNoData: "- %s：尚無收盤資料\n",
 	KeyChatContextWatchLine:    "- %s：%s 收盤 $%.2f (%+.2f%%)\n",
