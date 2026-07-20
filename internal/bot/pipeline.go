@@ -94,20 +94,27 @@ func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommen
 	}
 
 	prices := make(map[string]float64)
+	atrs := make(map[string]float64)
 	for _, list := range stockLists {
 		for _, s := range list {
-			if s.Quote != nil {
-				prices[s.Quote.Ticker] = s.Quote.Price
+			if s.Quote == nil {
+				continue
+			}
+			prices[s.Quote.Ticker] = s.Quote.Price
+			if s.Technicals != nil && s.Technicals.ATR14 > 0 {
+				atrs[s.Quote.Ticker] = s.Technicals.ATR14
 			}
 		}
 	}
+
+	sizing := b.buildSizingLines(recs, prices, atrs)
 
 	watchlistRecs, candidateRecs := splitRecsBySource(recs, sources)
 
 	var sb strings.Builder
 	sb.WriteString(i18n.T(b.lang, i18n.KeyRecommendationsTitle))
-	writeRecGroup(&sb, b.lang, i18n.KeyRecWatchlistSectionTitle, watchlistRecs)
-	writeRecGroup(&sb, b.lang, i18n.KeyRecCandidatesSectionTitle, candidateRecs)
+	writeRecGroup(&sb, b.lang, i18n.KeyRecWatchlistSectionTitle, watchlistRecs, sizing)
+	writeRecGroup(&sb, b.lang, i18n.KeyRecCandidatesSectionTitle, candidateRecs, sizing)
 	b.Send(sb.String())
 
 	var dbRecs []db.Recommendation
@@ -149,18 +156,67 @@ func splitRecsBySource(recs []llm.Recommendation, sources map[string]string) (wa
 // within that group (not continuing the other group's count). Writes
 // nothing at all — title included — when recs is empty, so a day with no
 // new-candidate picks doesn't leave a dangling header with nothing under it.
-func writeRecGroup(sb *strings.Builder, lang i18n.Lang, titleKey i18n.Key, recs []llm.Recommendation) {
+// writeRecGroup's sizing param is buildSizingLines' ticker->KeySizingLine
+// text (Phase 3.11 PR1 §3.4) — nil or a missing entry just renders no sizing
+// line for that rec, same degrade-by-omission convention as everywhere else
+// in this pipeline.
+func writeRecGroup(sb *strings.Builder, lang i18n.Lang, titleKey i18n.Key, recs []llm.Recommendation, sizing map[string]string) {
 	if len(recs) == 0 {
 		return
 	}
 	sb.WriteString(i18n.T(lang, titleKey))
 	for i, r := range recs {
 		if r.Action != "" {
-			fmt.Fprintf(sb, "%d. *%s* — %s\n%s\n\n", i+1, r.Ticker, r.Action, r.Reason)
+			fmt.Fprintf(sb, "%d. *%s* — %s\n%s\n", i+1, r.Ticker, r.Action, r.Reason)
 		} else {
-			fmt.Fprintf(sb, "%d. *%s*\n%s\n\n", i+1, r.Ticker, r.Reason)
+			fmt.Fprintf(sb, "%d. *%s*\n%s\n", i+1, r.Ticker, r.Reason)
 		}
+		if line, ok := sizing[r.Ticker]; ok {
+			sb.WriteString(line)
+		}
+		sb.WriteString("\n")
 	}
+}
+
+// buildSizingLines computes Phase 3.11 PR1's KeySizingLine for every BUY
+// recommendation with a usable current price and ATR14 (§3.4): bot-side,
+// deterministic arithmetic (suggestShares), never left to the LLM. Returns
+// nil outright when the whole feature is disabled (b.riskPctPerTrade <= 0)
+// or there's no account-value figure to size against yet (accountValue);
+// a ticker missing a price or ATR14 (candidates always have Technicals, but
+// a quote or history fetch can still fail — see fetchStockData) is simply
+// left out of the returned map rather than failing the whole batch.
+func (b *Bot) buildSizingLines(recs []llm.Recommendation, prices, atrs map[string]float64) map[string]string {
+	if b.riskPctPerTrade <= 0 {
+		return nil
+	}
+	accountVal, ok := b.accountValue()
+	if !ok {
+		return nil
+	}
+
+	lines := make(map[string]string)
+	for _, r := range recs {
+		if r.Action != "BUY" {
+			continue
+		}
+		price, ok := prices[r.Ticker]
+		if !ok || price <= 0 {
+			continue
+		}
+		atr, ok := atrs[r.Ticker]
+		if !ok || atr <= 0 {
+			continue
+		}
+		stop := price - stopCandidateATRMult*atr
+		shares := suggestShares(accountVal, b.riskPctPerTrade, price, stop)
+		if shares <= 0 {
+			continue
+		}
+		riskBudget := accountVal * b.riskPctPerTrade / 100
+		lines[r.Ticker] = i18n.T(b.lang, i18n.KeySizingLine, riskBudget, stop, shares)
+	}
+	return lines
 }
 
 // maxScanHitFundamentals caps how many scan-hit candidates fetchStockData
@@ -366,6 +422,106 @@ func (b *Bot) computeTechnicals(ticker string, spyCloses []float64) (*llm.Techni
 		recent = recent[len(recent)-promptCandleCount:]
 	}
 	return t, recent, stratHits
+}
+
+// stopCandidateATRMult is the ATR multiplier for the volatility-adaptive
+// stop candidate (§3.2/§3.4 of docs/phase-3.11-trade-risk-management.md) —
+// fixed at 2x, same as the existing ATR trailing-stop's own default
+// reasoning (Phase 3.8 追加項), not a separate env knob.
+const stopCandidateATRMult = 2.0
+
+// stopSuggestion bundles Phase 3.11's three candidate stop-loss reference
+// prices (see /stop and the /buy suggestion line) plus the latest close they
+// were computed against. Low10/Low20/ATRBased are 0 when there isn't enough
+// history for that particular candidate (same "0 = not enough data"
+// sentinel signals.MA already uses) — callers must skip rendering a
+// zero-valued candidate rather than showing a misleading $0.00.
+type stopSuggestion struct {
+	LatestClose float64
+	Low10       float64
+	Low20       float64
+	ATRBased    float64
+}
+
+// computeStopSuggestion fetches ticker's OHLCV history and reduces it to
+// stopSuggestion's three candidates, all computed against LatestClose — the
+// most recent daily close in that same history, not a separate live quote,
+// so /stop's "price must be below the latest close" validation compares
+// against exactly the number the candidates were derived from. Falls back to
+// a live quote for LatestClose only (leaving Low10/Low20/ATRBased at 0) when
+// history can't be fetched at all — e.g. a brand-new watchlist addition
+// Yahoo has no history for yet; ok is false only when that fallback also
+// fails, meaning there's no usable reference price at all.
+func (b *Bot) computeStopSuggestion(ticker string) (stopSuggestion, bool) {
+	var s stopSuggestion
+
+	candles, err := b.history.GetHistory(ticker, "1y")
+	if err != nil || len(candles) == 0 {
+		log.Printf("stop suggestion %s: history: %v", ticker, err)
+		q, qerr := b.provider.GetQuote(ticker)
+		if qerr != nil {
+			log.Printf("stop suggestion %s: quote fallback: %v", ticker, qerr)
+			return stopSuggestion{}, false
+		}
+		s.LatestClose = q.Price
+		return s, true
+	}
+
+	closes := data.Closes(candles)
+	highs := data.Highs(candles)
+	lows := data.Lows(candles)
+	s.LatestClose = closes[len(closes)-1]
+	s.Low10 = signals.LowestClose(closes, 10)
+	s.Low20 = signals.LowestClose(closes, 20)
+	if atr := signals.ATR(highs, lows, closes, 14); atr > 0 {
+		s.ATRBased = s.LatestClose - stopCandidateATRMult*atr
+	}
+	return s, true
+}
+
+// suggestShares is Phase 3.11's R-based position-sizing formula (§3.4):
+// floor(riskBudget ÷ perShareRisk), where riskBudget = accountValue ×
+// riskPct/100 and perShareRisk = price − stop. Bot-side deterministic
+// arithmetic on purpose — the LLM is asked to name a stop level in its BUY
+// reasoning (see KeyTechGuidanceBlock) but never trusted to do this
+// division itself. Returns 0 (meaning: don't show a sizing line) for any
+// non-positive/invalid input, including stop >= price, which would make
+// perShareRisk zero or negative.
+func suggestShares(accountValue, riskPct, price, stop float64) int {
+	if accountValue <= 0 || riskPct <= 0 || price <= 0 || stop <= 0 || stop >= price {
+		return 0
+	}
+	riskBudget := accountValue * riskPct / 100
+	perShareRisk := price - stop
+	shares := int(riskBudget / perShareRisk)
+	if shares < 0 {
+		return 0
+	}
+	return shares
+}
+
+// accountValue is Phase 3.11's account-size input for suggestShares: latest
+// recorded net worth (position market value as of the last closing
+// snapshot) plus declared cash — the same cash source /insight and
+// RunWeeklyReview already use (see loadCash), not a separate live
+// computation. ok is false only when there's no net worth snapshot on
+// record at all (e.g. before the first closing snapshot has ever run);
+// missing cash just leaves it out rather than failing the whole lookup, same
+// as loadCash's own callers already tolerate "never set".
+func (b *Bot) accountValue() (float64, bool) {
+	_, total, ok, err := b.db.GetLatestNetWorth()
+	if err != nil {
+		log.Printf("account value: net worth: %v", err)
+	}
+	if !ok {
+		return 0, false
+	}
+	if cash, cashOK, err := b.loadCash(); err != nil {
+		log.Printf("account value: cash: %v", err)
+	} else if cashOK {
+		total += cash
+	}
+	return total, true
 }
 
 // computeMarketRegime builds Phase 3.7 追加項's broad-market context block

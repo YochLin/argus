@@ -187,6 +187,26 @@ func IsNewHigh(closes []float64, lookback int) bool {
 	return true
 }
 
+// LowestClose returns the lowest close among the trailing n bars — Phase
+// 3.11's structural stop-loss reference (10d/20d swing low, see
+// docs/phase-3.11-trade-risk-management.md §3.2). Returns 0 (the same
+// "not enough data" sentinel MA already uses) when fewer than n closes are
+// available, rather than computing a misleadingly shallow low over whatever
+// is on hand.
+func LowestClose(closes []float64, n int) float64 {
+	if len(closes) < n || n <= 0 {
+		return 0
+	}
+	window := closes[len(closes)-n:]
+	low := window[0]
+	for _, c := range window[1:] {
+		if c < low {
+			low = c
+		}
+	}
+	return low
+}
+
 // RelativeStrength computes (stock return % - SPY return %) over the trailing lookback bars.
 // Returns ok=false if either series has insufficient length.
 func RelativeStrength(closes, spyCloses []float64, lookback int) (rs float64, ok bool) {

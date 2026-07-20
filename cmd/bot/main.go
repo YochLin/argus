@@ -64,6 +64,12 @@ func main() {
 	// presence-gated, since it changes when a real-money alert fires — see
 	// docs/phase-3.8-atr-trailing-stop.md.
 	trailingStopATRMult := envOrFloat("TRAILING_STOP_ATR_MULT", 0)
+	// RISK_PCT_PER_TRADE (Phase 3.11 PR1) defaults to 0 (disabled): sizing
+	// suggestions change what a BUY recommendation tells the user to do
+	// with real money, so — same reasoning as TRAILING_STOP_ATR_MULT above —
+	// it's opt-in rather than shipped with a default like stopLossPct/
+	// trailingStopPct's 10/15.
+	riskPctPerTrade := envOrFloat("RISK_PCT_PER_TRADE", 0)
 
 	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
 	if err != nil {
@@ -161,6 +167,7 @@ func main() {
 		StopLossPct:         stopLossPct,
 		TrailingStopPct:     trailingStopPct,
 		TrailingStopATRMult: trailingStopATRMult,
+		RiskPctPerTrade:     riskPctPerTrade,
 	})
 	if err != nil {
 		log.Fatalf("init bot: %v", err)

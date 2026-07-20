@@ -205,11 +205,38 @@ func TestBuildTradeReviewPromptMinimal(t *testing.T) {
 	if !strings.Contains(prompt, "+300.00") || !strings.Contains(prompt, "19 days") {
 		t.Errorf("buildTradeReviewPrompt() missing P&L/holding-days line, got:\n%s", prompt)
 	}
-	for _, absent := range []string{"Price range", "vs. market", "Holding thesis", "Recommendations during"} {
+	for _, absent := range []string{"Price range", "vs. market", "Holding thesis", "Recommendations during", "R multiple"} {
 		if strings.Contains(prompt, absent) {
 			t.Errorf("buildTradeReviewPrompt() should omit %q when no data is set, got:\n%s", absent, prompt)
 		}
 	}
+}
+
+func TestBuildTradeReviewPromptRMultiple(t *testing.T) {
+	trade := ClosedTrade{
+		Ticker: "AAPL",
+		Legs: []TradeLeg{
+			{Side: "BUY", Shares: 10, Price: 150, Date: "2026-06-01"},
+			{Side: "SELL", Shares: 10, Price: 180, Date: "2026-06-20"},
+		},
+		RealizedPnL: 300, // (180-150)*10
+		HoldingDays: 19,
+		StopPrice:   140, // per-share risk = 150-140 = 10; R = 300/(10*10) = 3
+	}
+
+	prompt := buildTradeReviewPrompt(i18n.EN, trade)
+	if !strings.Contains(prompt, "3.0") {
+		t.Errorf("buildTradeReviewPrompt() missing R-multiple of 3.0, got:\n%s", prompt)
+	}
+
+	t.Run("stop price at or above entry is skipped, not divided by zero or negative", func(t *testing.T) {
+		trade := trade
+		trade.StopPrice = 150
+		prompt := buildTradeReviewPrompt(i18n.EN, trade)
+		if strings.Contains(prompt, "R multiple") {
+			t.Errorf("buildTradeReviewPrompt() should omit the R-multiple line when stop >= entry price, got:\n%s", prompt)
+		}
+	})
 }
 
 func TestBuildTradeReviewPromptFull(t *testing.T) {

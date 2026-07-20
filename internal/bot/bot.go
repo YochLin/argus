@@ -75,6 +75,13 @@ type Bot struct {
 	trailingStopPct     float64
 	trailingStopATRMult float64
 
+	// riskPctPerTrade (RISK_PCT_PER_TRADE env, Phase 3.11 PR1) is the max
+	// account-value percentage a single new BUY should risk, used by
+	// buildSizingLines to compute a suggested share count — <= 0 (the
+	// default) disables the whole feature, same convention as
+	// stopLossPct/trailingStopPct.
+	riskPctPerTrade float64
+
 	// chatQueue feeds chatWorker, which answers plain-text messages one at a
 	// time and in the order they arrived — unlike commands, chat shares one
 	// persistent LLM session, so processing it concurrently could let a
@@ -106,6 +113,7 @@ type Config struct {
 	StopLossPct         float64 // STOP_LOSS_PCT env; 0 disables the check
 	TrailingStopPct     float64 // TRAILING_STOP_PCT env; 0 disables the check
 	TrailingStopATRMult float64 // TRAILING_STOP_ATR_MULT env; <= 0 disables the ATR-based distance
+	RiskPctPerTrade     float64 // RISK_PCT_PER_TRADE env; <= 0 disables the sizing suggestion
 }
 
 func New(cfg Config) (*Bot, error) {
@@ -130,6 +138,7 @@ func New(cfg Config) (*Bot, error) {
 		stopLossPct:         cfg.StopLossPct,
 		trailingStopPct:     cfg.TrailingStopPct,
 		trailingStopATRMult: cfg.TrailingStopATRMult,
+		riskPctPerTrade:     cfg.RiskPctPerTrade,
 		chatQueue:           make(chan *tgbotapi.Message, 32),
 	}, nil
 }
@@ -290,6 +299,8 @@ func (b *Bot) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 		b.handleBuy(args)
 	case "sell":
 		b.handleSell(ctx, args)
+	case "stop":
+		b.handleStop(args)
 	case "portfolio":
 		b.handlePortfolio()
 	case "insight":
