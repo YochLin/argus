@@ -568,7 +568,27 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   marker for any of this — `KeyTechGuidanceBlock` just grew a sixth guidance point asking the model to
   name a concrete stop level in its BUY reasoning, purely for the human reading the message; see
   [docs/phase-3.11-trade-risk-management.md](docs/phase-3.11-trade-risk-management.md) for the full
-  design and PR2 (rule-based target/5MA exit alerts, not yet built). Phase 3.8's other item,
+  design. PR2 adds two more `RunDailyReport`-only rule-based exit checks, both built on PR1's
+  `stop_price`: `checkTargetAlerts` warns once when a position with a stop price set first closes at or
+  above its 2R target (`avgCost + targetRMultiple*(avgCost-stopPrice)`, `targetRMultiple` a fixed 2.0
+  package constant, not env-configurable — unlike `STOP_LOSS_PCT` this isn't an independent risk
+  tolerance the user tunes, it's the design doc's source-material figure, and the check is already
+  inherently opt-in since a position with no stop price is skipped rather than improvising a target off
+  something else) — its own pure decision function, `targetReachedDecision`, is `stopBreachDecision`'s
+  mirror image (alerts crossing *up* through a threshold rather than down), so it isn't just reused
+  in-place. `checkMA5BreakAlerts` warns once when a position up at least `trailProfitPct` (10.0, also a
+  fixed constant) unrealized closes below its MA5 — gated on profit so it doesn't fire on every ordinary
+  pullback of a flat, long-held position, and a companion to the ATR trailing stop rather than a
+  replacement (that one manages deep drawdowns, this one manages the cadence of a position that's
+  already run hard). Unlike the target check, this one *does* directly reuse `stopBreachDecision` — MA5
+  is just another absolute-price downward threshold, structurally identical to a stop price, so a
+  near-duplicate function would add nothing. Both checks source `signal_states` under their own new
+  families (`"target"`/`"ma5_trail"`) so neither collides with `stopLossSignalFamily`/
+  `trailingStopSignalFamily`, and both render as a single self-contained line (`KeyTargetReached`/
+  `KeyMA5Break`, no separate title key like the stop-loss pair above) rather than a batched title+lines
+  message, since these fire far less often than a broad stop-loss sweep. `RunDailyReport` prefetches a
+  `ma5s` map alongside the existing `atrs` one (same shape, `Technicals.MA5` instead of `.ATR14`), so
+  neither new check costs an extra API request in the common case. Phase 3.8's other item,
   recommendation continuity, is prompt-only (not an alert): `loadPrevRecs` wraps the new batched
   `db.GetLatestRecommendations(tickers)` (one `MAX(id) ... GROUP BY ticker` query, not a per-ticker
   loop — same one-call-not-N-calls principle as `loadEarnings`), and `fetchStockData` attaches it as

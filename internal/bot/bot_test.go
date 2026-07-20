@@ -340,6 +340,34 @@ func TestStopBreachDecision(t *testing.T) {
 	}
 }
 
+func TestTargetReachedDecision(t *testing.T) {
+	tests := []struct {
+		name         string
+		close        float64
+		targetPrice  float64
+		prevState    string
+		wantReached  bool
+		wantAlert    bool
+		wantNewState string
+	}{
+		{"below target, never reached", 95, 100, "", false, false, ""},
+		{"exactly at target reaches (upward threshold, not a floor)", 100, 100, "", true, true, "hit"},
+		{"fresh reach alerts", 105, 100, "", true, true, "hit"},
+		{"already hit does not re-alert", 110, 100, "hit", true, false, "hit"},
+		{"falling back under target resets state", 95, 100, "hit", false, false, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reached, alert, newState := targetReachedDecision(tt.close, tt.targetPrice, tt.prevState)
+			if reached != tt.wantReached || alert != tt.wantAlert || newState != tt.wantNewState {
+				t.Errorf("targetReachedDecision(%v, %v, %q) = %v, %v, %q; want %v, %v, %q",
+					tt.close, tt.targetPrice, tt.prevState,
+					reached, alert, newState, tt.wantReached, tt.wantAlert, tt.wantNewState)
+			}
+		})
+	}
+}
+
 func TestSuggestShares(t *testing.T) {
 	tests := []struct {
 		name                               string

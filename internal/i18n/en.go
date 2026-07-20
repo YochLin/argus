@@ -110,6 +110,9 @@ var enMessages = map[Key]string{
 	KeyTrailingStopAlertLine:    "• *%s* peak close since entry $%.2f → price $%.2f, down %.1f%% from peak — trailing-stop threshold hit\n",
 	KeyTrailingStopAlertLineATR: "• *%s* peak close since entry $%.2f → price $%.2f, down %.1f%% from peak — trailing-stop threshold hit (%.1f%% threshold, %.1f×ATR)\n",
 
+	KeyTargetReached: "🎯 *%s* hit its %.1fR profit target! Target $%.2f, price $%.2f — consider taking half off and defending the rest with the 5MA.\n",
+	KeyMA5Break:      "📉 *%s* broke below its 5-day MA $%.2f (price $%.2f) — the strong-trend line just failed, consider closing out the rest.\n",
+
 	KeyChatContextHeader:       "[Background info, not real-time, for reference only]\n",
 	KeyChatContextTickerNoData: "- %s: no closing data yet\n",
 	KeyChatContextWatchLine:    "- %s: %s close $%.2f (%+.2f%%)\n",

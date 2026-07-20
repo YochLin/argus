@@ -174,6 +174,7 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 	var allSignals []signals.Signal
 	prices := make(map[string]float64, len(in.watchlist))
 	atrs := make(map[string]float64, len(in.watchlist))
+	ma5s := make(map[string]float64, len(in.watchlist))
 	for _, s := range in.watchlist {
 		if s.Quote != nil {
 			prices[s.Quote.Ticker] = s.Quote.Price
@@ -181,6 +182,9 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 		}
 		if s.Quote != nil && s.Technicals != nil && s.Technicals.ATR14 > 0 {
 			atrs[s.Quote.Ticker] = s.Technicals.ATR14
+		}
+		if s.Quote != nil && s.Technicals != nil && s.Technicals.MA5 > 0 {
+			ma5s[s.Quote.Ticker] = s.Technicals.MA5
 		}
 	}
 	isBear := isBearRegime(in.marketContext)
@@ -202,6 +206,8 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 	positionList := positionsSlice(in.positions)
 	b.checkStopLossAlerts(positionList, prices)
 	b.checkTrailingStopAlerts(positionList, prices, atrs)
+	b.checkTargetAlerts(positionList, prices)
+	b.checkMA5BreakAlerts(positionList, prices, ma5s)
 
 	explore := b.exploreCandidates(ctx, &in)
 
@@ -783,6 +789,158 @@ func (b *Bot) checkTrailingStopAlerts(positions []db.Position, prices map[string
 
 	var sb strings.Builder
 	sb.WriteString(i18n.T(b.lang, i18n.KeyTrailingStopAlertTitle))
+	for _, l := range lines {
+		sb.WriteString(l)
+	}
+	b.Send(sb.String())
+}
+
+// Phase 3.11 PR2 (§4 of docs/phase-3.11-trade-risk-management.md): rule-based
+// exit alerts that build on PR1's per-trade stop_price, same daily-report-only
+// asymmetry as every other check in this file. targetRMultiple/trailProfitPct
+// are fixed package constants, not env-configurable — unlike STOP_LOSS_PCT/
+// TRAILING_STOP_PCT these aren't independent risk tolerances the user tunes,
+// they're the textbook 2R/10% figures the design doc's source material uses,
+// and both new checks are inherently opt-in already (no stop set = no target;
+// no meaningful profit yet = no 5MA check), so there's no "0 disables it"
+// knob to wire up. targetSignalFamily/ma5TrailSignalFamily each get their own
+// signal_states family so neither collides with stopLossSignalFamily/
+// trailingStopSignalFamily or with each other.
+const (
+	targetRMultiple = 2.0
+	trailProfitPct  = 10.0
+
+	targetSignalFamily   = "target"
+	ma5TrailSignalFamily = "ma5_trail"
+	// hitState mirrors breachedState's role but under a name that reads
+	// correctly for "target reached"/"5MA broken" rather than "breached" —
+	// same "" = not currently hit convention.
+	hitState = "hit"
+)
+
+// targetReachedDecision is the alert-once/reset decision for the 2R
+// take-profit check (§4.1): the mirror image of stopBreachDecision — alerts
+// the first time close reaches (or passes) targetPrice, stays quiet while it
+// remains there, and resets once it falls back under so a later re-touch
+// alerts again (accepted as symmetric with the stop-loss checks' own
+// re-alert-after-recovery behavior, per the design doc).
+func targetReachedDecision(close, targetPrice float64, prevState string) (reached, shouldAlert bool, newState string) {
+	if close < targetPrice {
+		return false, false, ""
+	}
+	if prevState == hitState {
+		return true, false, hitState
+	}
+	return true, true, hitState
+}
+
+// checkTargetAlerts warns once when a position with a stop price set (§3.1's
+// /stop) first closes at or above its 2R target (avgCost +
+// targetRMultiple*(avgCost-stopPrice)) — "take half off, defend the rest with
+// the 5MA" per the design doc's source material. A position without a stop
+// price has no R to measure a target against, so it's skipped rather than
+// improvising one off some other threshold (unlike checkStopLossAlerts, this
+// check has no global-percentage fallback branch at all). A stop at or above
+// cost (shouldn't happen — /stop validates against price, not cost, so a very
+// unusual manual entry could still produce one) is also skipped, since the
+// target formula would move backwards. positions/prices follow
+// checkStopLossAlerts' own conventions (sorted slice, prefetch-with-fallback
+// price lookup via priceFor).
+func (b *Bot) checkTargetAlerts(positions []db.Position, prices map[string]float64) {
+	var lines []string
+	for _, p := range positions {
+		if p.StopPrice <= 0 || p.StopPrice >= p.AvgCost {
+			continue
+		}
+		price, ok := b.priceFor(p.Ticker, prices)
+		if !ok {
+			continue
+		}
+		target := p.AvgCost + targetRMultiple*(p.AvgCost-p.StopPrice)
+
+		prev, err := b.db.GetSignalState(p.Ticker, targetSignalFamily)
+		if err != nil {
+			log.Printf("target state %s: %v", p.Ticker, err)
+		}
+		_, shouldAlert, newState := targetReachedDecision(price, target, prev)
+		if newState != prev {
+			if err := b.db.SetSignalState(p.Ticker, targetSignalFamily, newState); err != nil {
+				log.Printf("target state %s: %v", p.Ticker, err)
+			}
+		}
+		if !shouldAlert {
+			continue
+		}
+		lines = append(lines, i18n.T(b.lang, i18n.KeyTargetReached, p.Ticker, targetRMultiple, target, price))
+	}
+	if len(lines) == 0 {
+		return
+	}
+	var sb strings.Builder
+	for _, l := range lines {
+		sb.WriteString(l)
+	}
+	b.Send(sb.String())
+}
+
+// checkMA5BreakAlerts warns once when a position that's up at least
+// trailProfitPct (10%) unrealized closes below its MA5 — "the strong-trend
+// line just failed" per the design doc's source material ("魚身防守"). The
+// profit gate is deliberate (see the design doc): without it this would fire
+// on every ordinary pullback for a flat, long-held position, since MA5 is
+// tight enough that price dips under it constantly in a non-trending stock.
+// This is a companion to the ATR-based trailing stop, not a replacement —
+// the ATR version manages deep drawdowns from any position, this one manages
+// the cadence of a position that's already run hard. Reuses stopBreachDecision
+// (identical "alert once when close first drops below threshold, reset on
+// recovery" shape — MA5 is just another absolute-price threshold, same as a
+// stop price) rather than a near-duplicate function. ma5s is a prefetched
+// ticker->MA5 map (same prefetch-with-fallback shape as checkTrailingStopAlerts'
+// atrs — a ticker missing from it falls back to one computeTechnicals call).
+func (b *Bot) checkMA5BreakAlerts(positions []db.Position, prices map[string]float64, ma5s map[string]float64) {
+	var lines []string
+	for _, p := range positions {
+		if p.AvgCost <= 0 {
+			continue
+		}
+		price, ok := b.priceFor(p.Ticker, prices)
+		if !ok {
+			continue
+		}
+		profitPct := (price - p.AvgCost) / p.AvgCost * 100
+		if profitPct < trailProfitPct {
+			continue
+		}
+
+		ma5, ok := ma5s[p.Ticker]
+		if !ok {
+			if t, _, _ := b.computeTechnicals(p.Ticker, nil); t != nil {
+				ma5 = t.MA5
+			}
+		}
+		if ma5 <= 0 {
+			continue
+		}
+
+		prev, err := b.db.GetSignalState(p.Ticker, ma5TrailSignalFamily)
+		if err != nil {
+			log.Printf("ma5 trail state %s: %v", p.Ticker, err)
+		}
+		_, shouldAlert, newState := stopBreachDecision(price, ma5, prev)
+		if newState != prev {
+			if err := b.db.SetSignalState(p.Ticker, ma5TrailSignalFamily, newState); err != nil {
+				log.Printf("ma5 trail state %s: %v", p.Ticker, err)
+			}
+		}
+		if !shouldAlert {
+			continue
+		}
+		lines = append(lines, i18n.T(b.lang, i18n.KeyMA5Break, p.Ticker, ma5, price))
+	}
+	if len(lines) == 0 {
+		return
+	}
+	var sb strings.Builder
 	for _, l := range lines {
 		sb.WriteString(l)
 	}
