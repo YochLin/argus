@@ -103,6 +103,11 @@ func registerTools(s *mcp.Server, ts *toolset) {
 	}, ts.getHistory)
 
 	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get_technicals",
+		Description: "Get computed technical indicators for a US stock ticker: RSI(14), MACD trend and zero-line position, moving averages (MA5/20/50/60/200) and their alignment, Stochastic KD, Bollinger Bandwidth/%B, ATR(14) volatility, volume ratio vs 20-day average, new-high flags, and relative strength vs SPY (RS63). Prefer this over manually computing an indicator from get_history's raw candles. Note: this project only has daily bars, not intraday data, so there is no VWAP tool.",
+	}, ts.getTechnicals)
+
+	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_news",
 		Description: "Get recent news headlines for a US stock ticker, newest first.",
 	}, ts.getNews)

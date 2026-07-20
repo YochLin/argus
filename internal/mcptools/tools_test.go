@@ -40,9 +40,18 @@ func (f *fakeProvider) GetMarketMovers() ([]string, error)           { return f.
 type fakeHistory struct {
 	candles []data.Candle
 	err     error
+	// byTicker, when non-nil, overrides candles/err for the tickers it
+	// contains — used by tests that need e.g. SPY's history to differ from
+	// the ticker under test (get_technicals' RS63 line).
+	byTicker map[string][]data.Candle
 }
 
-func (f *fakeHistory) GetHistory(string, string) ([]data.Candle, error) {
+func (f *fakeHistory) GetHistory(ticker, _ string) ([]data.Candle, error) {
+	if f.byTicker != nil {
+		if c, ok := f.byTicker[ticker]; ok {
+			return c, nil
+		}
+	}
 	return f.candles, f.err
 }
 
