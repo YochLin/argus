@@ -220,6 +220,15 @@ type TradeRecommendation struct {
 // against (e.g. a buy that predates snapshotBenchmark, or a backdated date
 // that wasn't a trading day). PeriodHigh/PeriodLow are 0 when there's no
 // snapshot data in range at all.
+// StopPrice (Phase 3.11 PR1, §3.5) is the position's per-trade stop-loss
+// price at the moment the round trip closed — 0 when none was ever set.
+// This is deliberately the stop as it stood at close, not at entry: the
+// caller (bot.recordSell) reads db.Position.StopPrice right before calling
+// db.RecordSell, since a full close deletes the positions row and takes the
+// stop price with it. If the stop was adjusted mid-hold, the R-multiple
+// buildTradeReviewPrompt renders reflects that final risk definition rather
+// than the original one — a deliberate approximation (see the design doc)
+// rather than standing up a stop-price history table just for this.
 type ClosedTrade struct {
 	Ticker          string
 	Legs            []TradeLeg
@@ -230,6 +239,7 @@ type ClosedTrade struct {
 	PeriodLow       float64
 	Thesis          *string
 	Recommendations []TradeRecommendation
+	StopPrice       float64
 }
 
 // MarketContext is Phase 3.7 追加項's broad-market regime block (see
@@ -674,6 +684,12 @@ func buildTradeReviewPrompt(lang i18n.Lang, trade ClosedTrade) string {
 	if trade.Thesis != nil {
 		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyThesisLine, *trade.Thesis))
 	}
+	if trade.StopPrice > 0 {
+		if entryPrice, shares := tradeEntryPrice(trade.Legs); entryPrice > trade.StopPrice && shares > 0 {
+			rMultiple := trade.RealizedPnL / ((entryPrice - trade.StopPrice) * shares)
+			fmt.Fprint(&sb, i18n.T(lang, i18n.KeyRMultipleLine, rMultiple))
+		}
+	}
 
 	if len(trade.Recommendations) > 0 {
 		sb.WriteString(i18n.T(lang, i18n.KeyTradeReviewRecsHeader))
@@ -684,6 +700,29 @@ func buildTradeReviewPrompt(lang i18n.Lang, trade ClosedTrade) string {
 
 	sb.WriteString(i18n.T(lang, i18n.KeyTradeReviewPromptTask, i18n.T(lang, i18n.KeyLessonMarker)))
 	return sb.String()
+}
+
+// tradeEntryPrice returns the share-weighted average BUY price and total
+// BUY shares within legs — buildTradeReviewPrompt's R-multiple denominator
+// input (§3.5). Package-local rather than a reuse of bot's own
+// weightedAvgPrice: that helper operates on []db.Transaction, this on
+// []TradeLeg, and this package doesn't import internal/db (same convention
+// as every other ClosedTrade/StockData mini-struct here). Returns 0, 0 when
+// legs has no BUY side at all (shouldn't happen for a real closed round,
+// but the caller already guards on shares > 0 before dividing by it).
+func tradeEntryPrice(legs []TradeLeg) (price, shares float64) {
+	var totalShares, totalCost float64
+	for _, l := range legs {
+		if l.Side != "BUY" {
+			continue
+		}
+		totalShares += l.Shares
+		totalCost += l.Shares * l.Price
+	}
+	if totalShares == 0 {
+		return 0, 0
+	}
+	return totalCost / totalShares, totalShares
 }
 
 // maLabel renders whether price sits above or below a moving average as an

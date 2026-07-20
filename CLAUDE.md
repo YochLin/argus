@@ -180,6 +180,15 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `GetEarliestBuyDate` (which is all-time `MIN(date)`) to anchor a review's holding period — a ticker
   that was fully closed out and later re-entered would incorrectly anchor to the *first* round's start;
   `lastClosedRound`'s own segmentation is the only correct source for a round's start/end dates.
+  `positions.stop_price` (migration 11, Phase 3.11 PR1) is a per-trade stop-loss price — `0` is the
+  "unset" sentinel (a real stock price is never 0, same pattern as `recommendations.price`/`source`'s
+  migration-5 default). It belongs to the *position*, not the ticker: `RecordSell` deletes the whole
+  `positions` row on a full close, so the stop price correctly disappears with it rather than leaking
+  into a later, unrelated round in the same ticker; `RecordBuy` topping up an existing position
+  deliberately never touches it (adjusting a stop after adding shares is the user's call, not
+  automatic). `SetStopPrice(ticker, price)` is `UPDATE ... WHERE ticker=?` and returns the existing
+  `ErrNoPosition` sentinel via `RowsAffected()==0`, same idiom as every other write here. See
+  [docs/phase-3.11-trade-risk-management.md](docs/phase-3.11-trade-risk-management.md).
 - `internal/i18n` — every user/LLM-facing string in the project, split into exactly two files by design:
   `zh.go` (Traditional Chinese, the original default) and `en.go` (English), both keyed by the `Key`
   constants declared in `i18n.go`. `T(lang, key, args...)` does the lookup + `fmt.Sprintf`. This covers two
@@ -321,9 +330,21 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   quote/cost-basis pair — it's just percentage math, the argument *meaning* is the only thing that
   changes at the call site. `buildTradeReviewPrompt` reuses two already-existing per-line keys verbatim
   (`KeyVsSPYLine`, `KeyThesisLine`) rather than minting trade-review-specific duplicates of the same
-  content shape.
+  content shape. `ClosedTrade.StopPrice` (Phase 3.11 PR1, §3.5 of
+  [docs/phase-3.11-trade-risk-management.md](docs/phase-3.11-trade-risk-management.md)) is the
+  position's stop price *at the moment it closed*, not at entry — `bot.recordSell` reads
+  `db.Position.StopPrice` before calling `db.RecordSell` (a full close deletes the row and takes the
+  stop with it) and threads it through `reviewClosedTrade`/`buildClosedTradeReview`; a stop adjusted
+  mid-hold means the rendered R-multiple reflects the final risk definition, not the original one — a
+  deliberate approximation rather than a stop-price history table. `buildTradeReviewPrompt` computes the
+  R-multiple itself from `trade.Legs` via a package-local `tradeEntryPrice` helper (mirrors
+  `bot.weightedAvgPrice`'s shape but operates on `[]TradeLeg`, not `[]db.Transaction`, so this package
+  still doesn't import `internal/db`) — skipped entirely when `StopPrice <= 0` or the stop sits at/above
+  the entry price (division-by-zero/negative guard), not just when the field is unset.
 - `internal/signals` — pure functions/struct for rule-based technical signals (price % threshold, RSI,
   MACD, Stochastic KD, Bollinger Bandwidth, MA Alignment, Volume-Price, New High, Relative Strength RS63,
+  Lowest Close over N bars (`LowestClose`, Phase 3.11 PR1's stop-loss structural-reference input — 0 is
+  the same "not enough data" sentinel `MA` already uses),
   and strategy screens Squeeze Breakout / Box Bottom Rebound) independent of Telegram/LLM/DB. That purity
   is preserved for the stateful checks too: `CheckRSIState`, `CheckMACDCross`, `CheckSqueezeBreakout`, and
   `CheckBoxBottom` take the previously persisted state as a parameter and return the new state for the caller
@@ -523,7 +544,31 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   already-fetched quote from the caller's prefetch map, else one direct `GetQuote` fallback — which also
   replaced `recordNetWorthSnapshot`'s previously-inlined copy of the same fallback. `STOP_LOSS_PCT`/
   `TRAILING_STOP_PCT` (env, `Bot.stopLossPct`/`trailingStopPct`) are positive percentages; either at 0
-  disables that check entirely rather than firing on every position. Phase 3.8's other item,
+  disables that check entirely rather than firing on every position.
+  `checkStopLossAlerts` (Phase 3.11 PR1) is now two-tiered rather than a single global-percentage check:
+  a position with `stop_price > 0` is checked against that absolute price via a new pure sibling,
+  `stopBreachDecision(close, stopPrice, prevState)` — deliberately *not* a call into
+  `breachAlertDecision` with a percent-to-price conversion bolted on, since that function's
+  `thresholdPct <= 0` already carries a "disabled" meaning that has no analogue for an absolute price
+  and would just invite confusing the two call sites. A position without a stop price falls through to
+  the original `b.stopLossPct` branch, byte-for-byte unchanged; both branches share the same
+  `stopLossSignalFamily` since a given position only ever takes one of the two. `/stop TICKER [PRICE]`
+  (`handleStop`/`parseStopArgs`, mirrors `parseTradeArgs`' shape) sets/shows it; showing it (no price
+  argument) and `/buy`'s post-purchase suggestion line both go through one assembly point,
+  `bot.computeStopSuggestion` (`pipeline.go`) — three candidates (10d low, 20d low, `LatestClose -
+  2*ATR14`) computed against `LatestClose`, which is the *history's* last close, not a live quote, so
+  `/stop`'s "price must be below the latest close" validation compares against exactly the number the
+  candidates were derived from; it only falls back to one live `GetQuote` (leaving the three candidates
+  at 0) when history can't be fetched at all. `RISK_PCT_PER_TRADE` (env, `Bot.riskPctPerTrade`, `<= 0`
+  disables it like the other two) feeds `bot.buildSizingLines`, called from `sendAndSaveRecommendations`
+  for every BUY recommendation with a usable price and `Technicals.ATR14`: `suggestShares(accountValue,
+  riskPct, price, stop)` is bot-side deterministic arithmetic (never left to the LLM), and
+  `bot.accountValue()` is `GetLatestNetWorth` plus declared cash via the same `loadCash` source
+  `/insight`/`RunWeeklyReview` already use. The recommendation prompt itself gained no new parse
+  marker for any of this — `KeyTechGuidanceBlock` just grew a sixth guidance point asking the model to
+  name a concrete stop level in its BUY reasoning, purely for the human reading the message; see
+  [docs/phase-3.11-trade-risk-management.md](docs/phase-3.11-trade-risk-management.md) for the full
+  design and PR2 (rule-based target/5MA exit alerts, not yet built). Phase 3.8's other item,
   recommendation continuity, is prompt-only (not an alert): `loadPrevRecs` wraps the new batched
   `db.GetLatestRecommendations(tickers)` (one `MAX(id) ... GROUP BY ticker` query, not a per-ticker
   loop — same one-call-not-N-calls principle as `loadEarnings`), and `fetchStockData` attaches it as

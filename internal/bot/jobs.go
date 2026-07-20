@@ -582,28 +582,65 @@ func breachAlertDecision(adverseMovePct, thresholdPct float64, prevState string)
 	return true, true, breachedState
 }
 
-// checkStopLossAlerts warns about any open position whose unrealized loss
-// has just breached STOP_LOSS_PCT (b.stopLossPct, 0 disables the check
-// entirely). Rule-based and independent of the LLM, so it still fires when
-// every LLM provider is down. positions is expected sorted by ticker (see
-// positionsSlice); prices is the current-price lookup built by the caller
-// (see priceFor).
-func (b *Bot) checkStopLossAlerts(positions []db.Position, prices map[string]float64) {
-	if b.stopLossPct <= 0 {
-		return
+// stopBreachDecision is stopBreachAlertDecision's absolute-price sibling
+// (Phase 3.11 PR1 §3.3): alert once when close first drops below stopPrice,
+// stay silent on later calls while it remains below, and reset once it
+// recovers back at-or-above stopPrice so a later re-breach alerts again.
+// Deliberately not a call into breachAlertDecision with some
+// price-to-percent conversion bolted on — that function's thresholdPct <= 0
+// already means "disabled", a contract that has no meaning for an absolute
+// price level and would just invite confusing the two call sites.
+func stopBreachDecision(close, stopPrice float64, prevState string) (breached, shouldAlert bool, newState string) {
+	if close >= stopPrice {
+		return false, false, ""
 	}
+	if prevState == breachedState {
+		return true, false, breachedState
+	}
+	return true, true, breachedState
+}
+
+// checkStopLossAlerts is Phase 3.11 PR1's two-tier stop-loss check (§3.3):
+// a position with a per-trade stop_price set (via /stop) is checked against
+// that absolute price (stopBreachDecision); one without falls back to the
+// original global STOP_LOSS_PCT percentage check (b.stopLossPct, 0 disables
+// it), unchanged from before this phase. A position only ever takes one of
+// the two branches, so both safely share the same signal_states family
+// (stopLossSignalFamily) without state collisions. Rule-based and
+// independent of the LLM, so it still fires when every LLM provider is
+// down. positions is expected sorted by ticker (see positionsSlice); prices
+// is the current-price lookup built by the caller (see priceFor).
+func (b *Bot) checkStopLossAlerts(positions []db.Position, prices map[string]float64) {
 	var lines []string
 	for _, p := range positions {
 		price, ok := b.priceFor(p.Ticker, prices)
 		if !ok {
 			continue
 		}
-		lossPct := (p.AvgCost - price) / p.AvgCost * 100
 
 		prev, err := b.db.GetSignalState(p.Ticker, stopLossSignalFamily)
 		if err != nil {
 			log.Printf("stop loss state %s: %v", p.Ticker, err)
 		}
+
+		if p.StopPrice > 0 {
+			_, shouldAlert, newState := stopBreachDecision(price, p.StopPrice, prev)
+			if newState != prev {
+				if err := b.db.SetSignalState(p.Ticker, stopLossSignalFamily, newState); err != nil {
+					log.Printf("stop loss state %s: %v", p.Ticker, err)
+				}
+			}
+			if !shouldAlert {
+				continue
+			}
+			lines = append(lines, i18n.T(b.lang, i18n.KeyStopPriceHit, p.Ticker, p.StopPrice, price))
+			continue
+		}
+
+		if b.stopLossPct <= 0 {
+			continue
+		}
+		lossPct := (p.AvgCost - price) / p.AvgCost * 100
 		_, shouldAlert, newState := breachAlertDecision(lossPct, b.stopLossPct, prev)
 		if newState != prev {
 			if err := b.db.SetSignalState(p.Ticker, stopLossSignalFamily, newState); err != nil {

@@ -2,13 +2,35 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
 )
+
+// noDataProvider is a data.Provider + data.HistoryProvider stub that always
+// errors, standing in for the real Finnhub/Yahoo chain in tests that don't
+// care about quote/history data themselves but exercise a code path that
+// now touches it in passing (Phase 3.11 PR1's recordBuy -> buyStopSuggestion
+// -> computeStopSuggestion) — a real Bot always has non-nil provider/
+// history (see main.go), so computeStopSuggestion doesn't nil-check them;
+// this stub keeps that assumption true in tests too, degrading to "no
+// suggestion" (both lookups fail) exactly like a live API error would.
+type noDataProvider struct{}
+
+func (noDataProvider) Name() string                         { return "stub" }
+func (noDataProvider) GetQuote(string) (*data.Quote, error) { return nil, errors.New("no data") }
+func (noDataProvider) GetNews(string, int) ([]data.NewsItem, error) {
+	return nil, errors.New("no data")
+}
+func (noDataProvider) GetMarketMovers() ([]string, error) { return nil, errors.New("no data") }
+func (noDataProvider) GetHistory(string, string) ([]data.Candle, error) {
+	return nil, errors.New("no data")
+}
 
 func newPendingActionsTestBot(t *testing.T) (*Bot, *db.DB) {
 	t.Helper()
@@ -17,7 +39,7 @@ func newPendingActionsTestBot(t *testing.T) (*Bot, *db.DB) {
 		t.Fatalf("db.New() error = %v", err)
 	}
 	t.Cleanup(func() { d.Close() })
-	return &Bot{db: d, lang: i18n.EN}, d
+	return &Bot{db: d, lang: i18n.EN, provider: noDataProvider{}, history: noDataProvider{}}, d
 }
 
 func TestParseCallbackData(t *testing.T) {

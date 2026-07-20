@@ -386,6 +386,142 @@ func parseTradeArgs(args string) (ticker string, shares, price, fee float64, dat
 	return ticker, shares, price, fee, date, nil
 }
 
+// parseStopArgs parses /stop's "<ticker> [price]" arguments — price is
+// optional (omitted means "show me the current setting and candidates"),
+// mirroring parseTradeArgs' shape for a single optional numeric field.
+func parseStopArgs(args string) (ticker string, price float64, hasPrice bool, err error) {
+	fields := strings.Fields(args)
+	if len(fields) < 1 || len(fields) > 2 {
+		return "", 0, false, fmt.Errorf("expected <ticker> [price]")
+	}
+	ticker = strings.ToUpper(fields[0])
+	if len(fields) == 1 {
+		return ticker, 0, false, nil
+	}
+	if price, err = strconv.ParseFloat(fields[1], 64); err != nil || price <= 0 {
+		return "", 0, false, fmt.Errorf("invalid price %q", fields[1])
+	}
+	return ticker, price, true, nil
+}
+
+// handleStop is Phase 3.11 PR1's /stop TICKER [PRICE] (see
+// docs/phase-3.11-trade-risk-management.md §3.2): with a price, sets that
+// ticker's per-trade stop-loss (db.Position.StopPrice); without one, shows
+// the current setting plus three candidate reference prices computed from
+// existing history — no new data source. A long position's stop must sit
+// below the latest close, so it's rejected (not silently accepted) when it
+// doesn't — computeStopSuggestion's LatestClose is the same number the
+// candidates themselves were computed against, so this validates against
+// exactly what the user is being shown. computeStopSuggestion also degrades
+// to a live quote when history is unavailable; only when that also fails is
+// there truly nothing to validate against, in which case the set is
+// rejected rather than accepted blind.
+func (b *Bot) handleStop(args string) {
+	ticker, price, hasPrice, err := parseStopArgs(args)
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyStopUsage))
+		return
+	}
+
+	pos, ok, err := b.db.GetPosition(ticker)
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
+		return
+	}
+	if !ok {
+		b.Send(i18n.T(b.lang, i18n.KeyStopNoPosition, ticker))
+		return
+	}
+
+	if !hasPrice {
+		b.showStop(ticker, pos)
+		return
+	}
+
+	suggestion, refOK := b.computeStopSuggestion(ticker)
+	if !refOK {
+		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, "no reference price available"))
+		return
+	}
+	if price >= suggestion.LatestClose {
+		b.Send(i18n.T(b.lang, i18n.KeyStopInvalidPrice, price, suggestion.LatestClose))
+		return
+	}
+
+	if err := b.db.SetStopPrice(ticker, price); err != nil {
+		if errors.Is(err, db.ErrNoPosition) {
+			b.Send(i18n.T(b.lang, i18n.KeyStopNoPosition, ticker))
+			return
+		}
+		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
+		return
+	}
+
+	distPct := (suggestion.LatestClose - price) / suggestion.LatestClose * 100
+	riskPerShare := pos.AvgCost - price
+	b.Send(i18n.T(b.lang, i18n.KeyStopSet, ticker, price, distPct, riskPerShare))
+}
+
+// showStop renders /stop TICKER's no-price branch: the current setting (or
+// a note that it falls back to the global STOP_LOSS_PCT) plus the three
+// candidate reference prices — each skipped individually when
+// computeStopSuggestion couldn't derive it (0 = not enough history), same
+// degrade-per-field convention writeStockSection's MA lines already use.
+func (b *Bot) showStop(ticker string, pos db.Position) {
+	var sb strings.Builder
+	if pos.StopPrice > 0 {
+		sb.WriteString(i18n.T(b.lang, i18n.KeyStopShow, ticker, pos.StopPrice))
+	} else {
+		sb.WriteString(i18n.T(b.lang, i18n.KeyStopNotSet, ticker, b.stopLossPct))
+	}
+
+	suggestion, ok := b.computeStopSuggestion(ticker)
+	if !ok {
+		b.Send(sb.String())
+		return
+	}
+	sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidatesHeader))
+	if suggestion.Low10 > 0 {
+		sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidateLine, i18n.T(b.lang, i18n.KeyStopLow10Label), suggestion.Low10))
+	}
+	if suggestion.Low20 > 0 {
+		sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidateLine, i18n.T(b.lang, i18n.KeyStopLow20Label), suggestion.Low20))
+	}
+	if suggestion.ATRBased > 0 {
+		sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidateLine, i18n.T(b.lang, i18n.KeyStopATRLabel), suggestion.ATRBased))
+	}
+	b.Send(sb.String())
+}
+
+// buyStopSuggestion renders the same three candidates as a one-shot
+// suggestion line appended to a successful /buy confirmation (§3.2) — never
+// blocking or altering the trade confirmation itself, same
+// degrade-by-omission convention as computeTechnicals feeding
+// fetchStockData. addOnNote is appended when this buy topped up an existing
+// position that already has a stop price set, since RecordBuy deliberately
+// never adjusts an existing stop automatically (see Position.StopPrice).
+func (b *Bot) buyStopSuggestion(ticker string, existingStopPrice float64) string {
+	suggestion, ok := b.computeStopSuggestion(ticker)
+	if !ok {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString(i18n.T(b.lang, i18n.KeyBuyStopSuggestion))
+	if suggestion.Low10 > 0 {
+		sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidateLine, i18n.T(b.lang, i18n.KeyStopLow10Label), suggestion.Low10))
+	}
+	if suggestion.Low20 > 0 {
+		sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidateLine, i18n.T(b.lang, i18n.KeyStopLow20Label), suggestion.Low20))
+	}
+	if suggestion.ATRBased > 0 {
+		sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidateLine, i18n.T(b.lang, i18n.KeyStopATRLabel), suggestion.ATRBased))
+	}
+	if existingStopPrice > 0 {
+		sb.WriteString(i18n.T(b.lang, i18n.KeyBuyStopAddOnNote, ticker, existingStopPrice))
+	}
+	return sb.String()
+}
+
 // handleBuy records a purchase and folds it into the ticker's position
 // (weighted-average cost). The ticker is also added to the watchlist —
 // see the "持倉自動納入 watchlist" PLAN.md item — so a bought position is
@@ -412,6 +548,16 @@ func (b *Bot) handleBuy(args string) {
 // exact same confirmation text as typing /buy directly — see
 // executePendingAction.
 func (b *Bot) recordBuy(ticker string, shares, price, fee float64, date string) string {
+	// Read any stop price already on the position before the buy — RecordBuy
+	// deliberately doesn't touch it, but buyStopSuggestion's add-on note
+	// needs to know it was there.
+	var existingStopPrice float64
+	if prevPos, ok, err := b.db.GetPosition(ticker); err != nil {
+		log.Printf("buy %s: get existing position: %v", ticker, err)
+	} else if ok {
+		existingStopPrice = prevPos.StopPrice
+	}
+
 	pos, err := b.db.RecordBuy(ticker, shares, price, fee, date)
 	if err != nil {
 		return i18n.T(b.lang, i18n.KeyBuyFailed, err)
@@ -419,7 +565,8 @@ func (b *Bot) recordBuy(ticker string, shares, price, fee float64, date string) 
 	if err := b.db.AddTicker(ticker); err != nil {
 		log.Printf("buy: add %s to watchlist: %v", ticker, err)
 	}
-	return i18n.T(b.lang, i18n.KeyBuySuccess, ticker, shares, price, fee, pos.Shares, pos.AvgCost) + b.thesisNudge(ticker)
+	msg := i18n.T(b.lang, i18n.KeyBuySuccess, ticker, shares, price, fee, pos.Shares, pos.AvgCost) + b.thesisNudge(ticker)
+	return msg + b.buyStopSuggestion(ticker, existingStopPrice)
 }
 
 // thesisNudge returns a one-line nudge to record a holding thesis when
@@ -457,10 +604,10 @@ func (b *Bot) handleSell(ctx context.Context, args string) {
 	if date == "" {
 		date = todayDate()
 	}
-	msg, closed := b.recordSell(ticker, shares, price, fee, date)
+	msg, closed, stopPrice := b.recordSell(ticker, shares, price, fee, date)
 	b.Send(msg)
 	if closed {
-		go b.reviewClosedTrade(ctx, ticker)
+		go b.reviewClosedTrade(ctx, ticker, stopPrice)
 	}
 }
 
@@ -469,20 +616,30 @@ func (b *Bot) handleSell(ctx context.Context, args string) {
 // reuses this instead of duplicating the RecordSell call and error mapping.
 // closed reports whether this sell fully closed out the position (shares
 // returned to 0), so callers can decide whether to trigger a sell-review;
-// it's always false on an error path, since nothing was recorded.
-func (b *Bot) recordSell(ticker string, shares, price, fee float64, date string) (msg string, closed bool) {
+// it's always false on an error path, since nothing was recorded. stopPrice
+// is the position's stop price as it stood right before this sell (Phase
+// 3.11 PR1 §3.5) — read via GetPosition *before* calling db.RecordSell,
+// since a full close deletes the positions row and takes the stop price
+// with it; always 0 on an error path or when no stop had ever been set.
+func (b *Bot) recordSell(ticker string, shares, price, fee float64, date string) (msg string, closed bool, stopPrice float64) {
+	if prevPos, ok, err := b.db.GetPosition(ticker); err != nil {
+		log.Printf("sell %s: get position for stop price: %v", ticker, err)
+	} else if ok {
+		stopPrice = prevPos.StopPrice
+	}
+
 	pos, realizedPnL, err := b.db.RecordSell(ticker, shares, price, fee, date)
 	if err != nil {
 		switch {
 		case errors.Is(err, db.ErrNoPosition):
-			return i18n.T(b.lang, i18n.KeySellNoPosition, ticker), false
+			return i18n.T(b.lang, i18n.KeySellNoPosition, ticker), false, 0
 		case errors.Is(err, db.ErrInsufficientShares):
-			return i18n.T(b.lang, i18n.KeySellInsufficientShares, ticker), false
+			return i18n.T(b.lang, i18n.KeySellInsufficientShares, ticker), false, 0
 		default:
-			return i18n.T(b.lang, i18n.KeySellFailed, err), false
+			return i18n.T(b.lang, i18n.KeySellFailed, err), false, 0
 		}
 	}
-	return i18n.T(b.lang, i18n.KeySellSuccess, ticker, shares, price, fee, realizedPnL, pos.Shares), pos.Shares == 0
+	return i18n.T(b.lang, i18n.KeySellSuccess, ticker, shares, price, fee, realizedPnL, pos.Shares), pos.Shares == 0, stopPrice
 }
 
 // tradeRound is a fully closed round trip in a ticker's transaction history:
@@ -568,7 +725,16 @@ func weightedAvgPrice(legs []db.Transaction, side string) float64 {
 // individually (logged, left at its zero value) rather than failing the
 // whole review — same "attach what's available" convention as
 // fetchStockData's optional StockData fields.
-func (b *Bot) buildClosedTradeReview(ticker string) (llm.ClosedTrade, bool, error) {
+// buildClosedTradeReview assembles the most recent fully closed round trip
+// in ticker into an llm.ClosedTrade. stopPrice (Phase 3.11 PR1 §3.5) is the
+// position's stop price at the moment it closed, supplied by the caller —
+// this function has no way to recover it itself once the positions row is
+// gone, so reviewClosedTrade (the automatic post-sell path) passes what
+// recordSell captured right before the close, while handleReview (the
+// manual /review path, which can run long after a ticker closed) passes 0:
+// there is no way to recover a historical stop price after the fact, so a
+// manually reviewed trade simply renders without the R-multiple line.
+func (b *Bot) buildClosedTradeReview(ticker string, stopPrice float64) (llm.ClosedTrade, bool, error) {
 	txs, err := b.db.GetTransactions(ticker)
 	if err != nil {
 		return llm.ClosedTrade{}, false, err
@@ -597,6 +763,7 @@ func (b *Bot) buildClosedTradeReview(ticker string) (llm.ClosedTrade, bool, erro
 		Legs:        legs,
 		RealizedPnL: realizedPnL,
 		HoldingDays: holdingDays,
+		StopPrice:   stopPrice,
 	}
 
 	if high, low, ok, err := b.db.GetCloseExtremes(ticker, round.StartDate, round.EndDate); err != nil {
@@ -641,8 +808,8 @@ func (b *Bot) buildClosedTradeReview(ticker string) (llm.ClosedTrade, bool, erro
 // confirmation, so a second failure alert about the review itself would be
 // noise for something that isn't the trade record. See handleReview for the
 // manual /review TICKER path, which reports failures to the user instead.
-func (b *Bot) reviewClosedTrade(ctx context.Context, ticker string) {
-	trade, ok, err := b.buildClosedTradeReview(ticker)
+func (b *Bot) reviewClosedTrade(ctx context.Context, ticker string, stopPrice float64) {
+	trade, ok, err := b.buildClosedTradeReview(ticker, stopPrice)
 	if err != nil {
 		log.Printf("review %s: %v", ticker, err)
 		return
@@ -672,7 +839,7 @@ func (b *Bot) handleReview(ctx context.Context, args string) {
 		return
 	}
 
-	trade, ok, err := b.buildClosedTradeReview(ticker)
+	trade, ok, err := b.buildClosedTradeReview(ticker, 0)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
 		return

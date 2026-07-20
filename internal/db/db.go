@@ -55,10 +55,18 @@ type Recommendation struct {
 
 // Position is the current open holding for a ticker: total shares and the
 // cost-basis-weighted average price paid across all buys, net of sells.
+// StopPrice is Phase 3.11's per-trade stop-loss level (0 = unset, meaning
+// checkStopLossAlerts falls back to the global STOP_LOSS_PCT for this
+// ticker) — see SetStopPrice. It belongs to the open position, not the
+// ticker itself: RecordSell deletes the positions row on a full close, and
+// the stop price correctly disappears with it, while RecordBuy topping up
+// an existing position deliberately leaves it untouched (whether to adjust
+// a stop after adding shares is the user's call, not automatic).
 type Position struct {
 	Ticker    string
 	Shares    float64
 	AvgCost   float64
+	StopPrice float64
 	UpdatedAt time.Time
 }
 
@@ -343,6 +351,14 @@ var migrations = []string{
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	`,
+	// 11: positions gains a per-trade stop-loss price (Phase 3.11 PR1, see
+	// docs/phase-3.11-trade-risk-management.md §3.1) — 0 is a safe "unset"
+	// sentinel since a real stock price is never 0, mirroring universe's
+	// removed flag and recommendations' price/source columns as a single
+	// cheap ALTER TABLE. Set via /stop or SetStopPrice; checkStopLossAlerts
+	// (internal/bot/jobs.go) prefers this over the global STOP_LOSS_PCT
+	// whenever it's set for a given position.
+	`ALTER TABLE positions ADD COLUMN stop_price REAL NOT NULL DEFAULT 0;`,
 }
 
 func (d *DB) migrate() error {
@@ -615,8 +631,8 @@ func (d *DB) RecordSell(ticker string, shares, price, fee float64, date string) 
 func (d *DB) GetPosition(ticker string) (Position, bool, error) {
 	p := Position{Ticker: ticker}
 	err := d.conn.QueryRow(
-		`SELECT shares, avg_cost, updated_at FROM positions WHERE ticker = ?`, ticker,
-	).Scan(&p.Shares, &p.AvgCost, &p.UpdatedAt)
+		`SELECT shares, avg_cost, stop_price, updated_at FROM positions WHERE ticker = ?`, ticker,
+	).Scan(&p.Shares, &p.AvgCost, &p.StopPrice, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return Position{}, false, nil
 	}
@@ -628,7 +644,7 @@ func (d *DB) GetPosition(ticker string) (Position, bool, error) {
 
 // GetPositions returns every open position, ordered by ticker.
 func (d *DB) GetPositions() ([]Position, error) {
-	rows, err := d.conn.Query(`SELECT ticker, shares, avg_cost, updated_at FROM positions ORDER BY ticker`)
+	rows, err := d.conn.Query(`SELECT ticker, shares, avg_cost, stop_price, updated_at FROM positions ORDER BY ticker`)
 	if err != nil {
 		return nil, err
 	}
@@ -637,12 +653,32 @@ func (d *DB) GetPositions() ([]Position, error) {
 	var positions []Position
 	for rows.Next() {
 		var p Position
-		if err := rows.Scan(&p.Ticker, &p.Shares, &p.AvgCost, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.Ticker, &p.Shares, &p.AvgCost, &p.StopPrice, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		positions = append(positions, p)
 	}
 	return positions, rows.Err()
+}
+
+// SetStopPrice sets ticker's per-trade stop-loss price (Phase 3.11 PR1, see
+// the Position.StopPrice field comment). Returns ErrNoPosition — the same
+// sentinel RecordSell uses, checked the same way via errors.Is — when there
+// is no open position for ticker to set it on, detected via RowsAffected
+// rather than a separate existence check.
+func (d *DB) SetStopPrice(ticker string, price float64) error {
+	res, err := d.conn.Exec(`UPDATE positions SET stop_price = ? WHERE ticker = ?`, price, ticker)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNoPosition
+	}
+	return nil
 }
 
 // GetLatestRecommendations returns each ticker's most recent recommendation

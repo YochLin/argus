@@ -299,6 +299,38 @@ func TestRecordSellErrors(t *testing.T) {
 	}
 }
 
+func TestSetStopPrice(t *testing.T) {
+	d := newTestDB(t)
+
+	if err := d.SetStopPrice("AAPL", 190); !errors.Is(err, ErrNoPosition) {
+		t.Errorf("SetStopPrice() with no position error = %v, want ErrNoPosition", err)
+	}
+
+	if _, err := d.RecordBuy("AAPL", 10, 200, 0, "2026-07-01"); err != nil {
+		t.Fatalf("RecordBuy() error = %v", err)
+	}
+	if err := d.SetStopPrice("AAPL", 190); err != nil {
+		t.Fatalf("SetStopPrice() error = %v", err)
+	}
+
+	pos, ok, err := d.GetPosition("AAPL")
+	if err != nil {
+		t.Fatalf("GetPosition() error = %v", err)
+	}
+	if !ok || pos.StopPrice != 190 {
+		t.Errorf("GetPosition() = %+v, want StopPrice=190", pos)
+	}
+
+	// A full close deletes the positions row, so the stop price goes with
+	// it rather than lingering for a later, unrelated round in the ticker.
+	if _, _, err := d.RecordSell("AAPL", 10, 210, 0, "2026-07-05"); err != nil {
+		t.Fatalf("RecordSell() error = %v", err)
+	}
+	if err := d.SetStopPrice("AAPL", 190); !errors.Is(err, ErrNoPosition) {
+		t.Errorf("SetStopPrice() after full close error = %v, want ErrNoPosition", err)
+	}
+}
+
 func TestGetPositionsOrdering(t *testing.T) {
 	d := newTestDB(t)
 

@@ -174,6 +174,34 @@ func TestParseTradeArgs(t *testing.T) {
 	}
 }
 
+func TestParseStopArgs(t *testing.T) {
+	t.Run("ticker only", func(t *testing.T) {
+		ticker, price, hasPrice, err := parseStopArgs("aapl")
+		if err != nil {
+			t.Fatalf("parseStopArgs() error = %v", err)
+		}
+		if ticker != "AAPL" || price != 0 || hasPrice {
+			t.Errorf("parseStopArgs() = %q, %v, %v; want AAPL, 0, false", ticker, price, hasPrice)
+		}
+	})
+
+	t.Run("ticker and price", func(t *testing.T) {
+		ticker, price, hasPrice, err := parseStopArgs("aapl 190.5")
+		if err != nil {
+			t.Fatalf("parseStopArgs() error = %v", err)
+		}
+		if ticker != "AAPL" || price != 190.5 || !hasPrice {
+			t.Errorf("parseStopArgs() = %q, %v, %v; want AAPL, 190.5, true", ticker, price, hasPrice)
+		}
+	})
+
+	for _, args := range []string{"", "AAPL 190 extra", "AAPL 0", "AAPL -5", "AAPL abc"} {
+		if _, _, _, err := parseStopArgs(args); err == nil {
+			t.Errorf("parseStopArgs(%q) error = nil, want error", args)
+		}
+	}
+}
+
 func TestFormatChatContext(t *testing.T) {
 	t.Run("empty tickers returns empty string", func(t *testing.T) {
 		if got := formatChatContext(i18n.EN, nil, nil, nil); got != "" {
@@ -279,6 +307,56 @@ func TestBreachAlertDecision(t *testing.T) {
 				t.Errorf("breachAlertDecision(%v, %v, %q) = %v, %v, %q; want %v, %v, %q",
 					tt.adverseMovePct, tt.thresholdPct, tt.prevState,
 					breached, alert, newState, tt.wantBreached, tt.wantAlert, tt.wantNewState)
+			}
+		})
+	}
+}
+
+func TestStopBreachDecision(t *testing.T) {
+	tests := []struct {
+		name         string
+		close        float64
+		stopPrice    float64
+		prevState    string
+		wantBreached bool
+		wantAlert    bool
+		wantNewState string
+	}{
+		{"above stop, never breached", 105, 100, "", false, false, ""},
+		{"exactly at stop does not breach (long stop is a floor, not a ceiling)", 100, 100, "", false, false, ""},
+		{"fresh breach alerts", 95, 100, "", true, true, "breached"},
+		{"already breached does not re-alert", 90, 100, "breached", true, false, "breached"},
+		{"recovering back at or above stop resets state", 100, 100, "breached", false, false, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			breached, alert, newState := stopBreachDecision(tt.close, tt.stopPrice, tt.prevState)
+			if breached != tt.wantBreached || alert != tt.wantAlert || newState != tt.wantNewState {
+				t.Errorf("stopBreachDecision(%v, %v, %q) = %v, %v, %q; want %v, %v, %q",
+					tt.close, tt.stopPrice, tt.prevState,
+					breached, alert, newState, tt.wantBreached, tt.wantAlert, tt.wantNewState)
+			}
+		})
+	}
+}
+
+func TestSuggestShares(t *testing.T) {
+	tests := []struct {
+		name                               string
+		accountValue, riskPct, price, stop float64
+		want                               int
+	}{
+		{"normal case: $10000 * 1% = $100 risk / $5 per-share risk = 20 shares", 10000, 1, 50, 45, 20},
+		{"disabled: riskPct <= 0", 10000, 0, 50, 45, 0},
+		{"disabled: non-positive account value", 0, 1, 50, 45, 0},
+		{"invalid: stop at price (zero per-share risk)", 10000, 1, 50, 50, 0},
+		{"invalid: stop above price", 10000, 1, 50, 55, 0},
+		{"invalid: non-positive stop", 10000, 1, 50, 0, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := suggestShares(tt.accountValue, tt.riskPct, tt.price, tt.stop); got != tt.want {
+				t.Errorf("suggestShares(%v, %v, %v, %v) = %d, want %d", tt.accountValue, tt.riskPct, tt.price, tt.stop, got, tt.want)
 			}
 		})
 	}
@@ -493,7 +571,7 @@ func TestSplitRecsBySource(t *testing.T) {
 func TestWriteRecGroup(t *testing.T) {
 	t.Run("empty recs writes nothing, not even the title", func(t *testing.T) {
 		var sb strings.Builder
-		writeRecGroup(&sb, i18n.EN, i18n.KeyRecWatchlistSectionTitle, nil)
+		writeRecGroup(&sb, i18n.EN, i18n.KeyRecWatchlistSectionTitle, nil, nil)
 		if sb.String() != "" {
 			t.Errorf("writeRecGroup() = %q, want empty", sb.String())
 		}
@@ -505,7 +583,7 @@ func TestWriteRecGroup(t *testing.T) {
 			{Ticker: "AAPL", Action: "HOLD", Reason: "fairly valued."},
 			{Ticker: "MSFT", Action: "BUY", Reason: "cloud growth."},
 		}
-		writeRecGroup(&sb, i18n.EN, i18n.KeyRecWatchlistSectionTitle, recs)
+		writeRecGroup(&sb, i18n.EN, i18n.KeyRecWatchlistSectionTitle, recs, nil)
 		got := sb.String()
 		want := i18n.T(i18n.EN, i18n.KeyRecWatchlistSectionTitle) +
 			"1. *AAPL* — HOLD\nfairly valued.\n\n" +
@@ -518,9 +596,21 @@ func TestWriteRecGroup(t *testing.T) {
 	t.Run("empty action omits the action separator", func(t *testing.T) {
 		var sb strings.Builder
 		recs := []llm.Recommendation{{Ticker: "AAPL", Reason: "no action line."}}
-		writeRecGroup(&sb, i18n.EN, i18n.KeyRecCandidatesSectionTitle, recs)
+		writeRecGroup(&sb, i18n.EN, i18n.KeyRecCandidatesSectionTitle, recs, nil)
 		got := sb.String()
 		want := i18n.T(i18n.EN, i18n.KeyRecCandidatesSectionTitle) + "1. *AAPL*\nno action line.\n\n"
+		if got != want {
+			t.Errorf("writeRecGroup() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("a sizing line for a ticker in the map is appended after the reason", func(t *testing.T) {
+		var sb strings.Builder
+		recs := []llm.Recommendation{{Ticker: "AAPL", Action: "BUY", Reason: "breakout."}}
+		sizing := map[string]string{"AAPL": "sizing info\n"}
+		writeRecGroup(&sb, i18n.EN, i18n.KeyRecWatchlistSectionTitle, recs, sizing)
+		got := sb.String()
+		want := i18n.T(i18n.EN, i18n.KeyRecWatchlistSectionTitle) + "1. *AAPL* — BUY\nbreakout.\nsizing info\n\n"
 		if got != want {
 			t.Errorf("writeRecGroup() = %q, want %q", got, want)
 		}
@@ -844,27 +934,39 @@ func TestRecordSellClosedFlag(t *testing.T) {
 	if _, err := d.RecordBuy("AAPL", 10, 200, 0, "2026-06-01"); err != nil {
 		t.Fatalf("RecordBuy() error = %v", err)
 	}
+	if err := d.SetStopPrice("AAPL", 180); err != nil {
+		t.Fatalf("SetStopPrice() error = %v", err)
+	}
 
-	msg, closed := b.recordSell("AAPL", 4, 220, 0, "2026-06-10")
+	msg, closed, stopPrice := b.recordSell("AAPL", 4, 220, 0, "2026-06-10")
 	if closed {
 		t.Errorf("recordSell() closed = true for a partial sell, want false; msg = %q", msg)
 	}
+	if stopPrice != 180 {
+		t.Errorf("recordSell() stopPrice = %v, want 180 (read before the sell)", stopPrice)
+	}
 
-	msg, closed = b.recordSell("AAPL", 6, 230, 0, "2026-06-20")
+	msg, closed, stopPrice = b.recordSell("AAPL", 6, 230, 0, "2026-06-20")
 	if !closed {
 		t.Errorf("recordSell() closed = false for a sell down to 0 shares, want true; msg = %q", msg)
 	}
+	if stopPrice != 180 {
+		t.Errorf("recordSell() stopPrice = %v, want 180 for the sell that fully closed the position", stopPrice)
+	}
 
-	msg, closed = b.recordSell("AAPL", 1, 200, 0, "2026-06-21")
+	msg, closed, stopPrice = b.recordSell("AAPL", 1, 200, 0, "2026-06-21")
 	if closed {
 		t.Errorf("recordSell() closed = true on an error path (no position left), want false; msg = %q", msg)
+	}
+	if stopPrice != 0 {
+		t.Errorf("recordSell() stopPrice = %v, want 0 on an error path", stopPrice)
 	}
 }
 
 func TestBuildClosedTradeReviewNoTransactions(t *testing.T) {
 	b, _ := newPendingActionsTestBot(t)
 
-	_, ok, err := b.buildClosedTradeReview("AAPL")
+	_, ok, err := b.buildClosedTradeReview("AAPL", 0)
 	if err != nil || ok {
 		t.Fatalf("buildClosedTradeReview() = _, %v, %v; want ok=false, err=nil for a never-traded ticker", ok, err)
 	}
@@ -909,7 +1011,7 @@ func TestBuildClosedTradeReviewFull(t *testing.T) {
 		t.Fatalf("SaveRecommendations() error = %v", err)
 	}
 
-	trade, ok, err := b.buildClosedTradeReview("AAPL")
+	trade, ok, err := b.buildClosedTradeReview("AAPL", 0)
 	if err != nil || !ok {
 		t.Fatalf("buildClosedTradeReview() = _, %v, %v; want ok=true, err=nil", ok, err)
 	}

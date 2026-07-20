@@ -89,7 +89,7 @@ func TestMAAlignment(t *testing.T) {
 
 func TestVolumePriceSignal(t *testing.T) {
 	// To test signals, we need at least 6 bars of closes and volumes
-	closes := []float64{10, 10, 10, 10, 10, 12} // price up
+	closes := []float64{10, 10, 10, 10, 10, 12}      // price up
 	volumes := []int64{100, 100, 100, 100, 100, 200} // vol ratio 200/100 = 2.0 >= 1.3 (vol up)
 
 	sig := VolumePriceSignal(closes, volumes)
@@ -112,6 +112,19 @@ func TestIsNewHigh(t *testing.T) {
 	}
 	if IsNewHigh([]float64{10, 15, 14, 13, 12}, 5) {
 		t.Errorf("expected false for 12")
+	}
+}
+
+func TestLowestClose(t *testing.T) {
+	closes := []float64{20, 15, 12, 18, 16, 19}
+	if got := LowestClose(closes, 3); got != 16 {
+		t.Errorf("LowestClose(last 3) = %v, want 16", got)
+	}
+	if got := LowestClose(closes, 5); got != 12 {
+		t.Errorf("LowestClose(last 5) = %v, want 12", got)
+	}
+	if got := LowestClose(closes, 10); got != 0 {
+		t.Errorf("LowestClose() with insufficient data = %v, want 0", got)
 	}
 }
 
