@@ -88,6 +88,10 @@ func (b *Bot) gatherRecommendationInputs() (recommendationInputs, error) {
 // "movers"/"scan", see recommendationSources) is persisted alongside so
 // /track can break its hit rate down by candidate-sourcing path (Phase 3.8).
 // Shared by /recommend and RunDailyReport, which otherwise mirror each other.
+// Each recommendation goes out as its own message (see sendRecGroup) rather
+// than one combined block, so its [Check]/[Buy]/[Sell] quick-action row
+// (quick_actions.go, UX quick win) attaches to that ticker specifically —
+// Telegram inline keyboards belong to one message, not a sub-section of one.
 func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommendation, sources map[string]string, stockLists ...[]llm.StockData) {
 	if newsSummary != "" {
 		b.Send(i18n.T(b.lang, i18n.KeyMarketNewsSummaryTitle) + newsSummary)
@@ -111,11 +115,9 @@ func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommen
 
 	watchlistRecs, candidateRecs := splitRecsBySource(recs, sources)
 
-	var sb strings.Builder
-	sb.WriteString(i18n.T(b.lang, i18n.KeyRecommendationsTitle))
-	writeRecGroup(&sb, b.lang, i18n.KeyRecWatchlistSectionTitle, watchlistRecs, sizing)
-	writeRecGroup(&sb, b.lang, i18n.KeyRecCandidatesSectionTitle, candidateRecs, sizing)
-	b.Send(sb.String())
+	b.Send(i18n.T(b.lang, i18n.KeyRecommendationsTitle))
+	b.sendRecGroup(i18n.KeyRecWatchlistSectionTitle, watchlistRecs, sizing)
+	b.sendRecGroup(i18n.KeyRecCandidatesSectionTitle, candidateRecs, sizing)
 
 	var dbRecs []db.Recommendation
 	for _, r := range recs {
@@ -151,31 +153,41 @@ func splitRecsBySource(recs []llm.Recommendation, sources map[string]string) (wa
 	return watchlistRecs, candidateRecs
 }
 
-// writeRecGroup renders one section of sendAndSaveRecommendations' message:
-// a title followed by each recommendation in the group, numbered from 1
-// within that group (not continuing the other group's count). Writes
-// nothing at all — title included — when recs is empty, so a day with no
-// new-candidate picks doesn't leave a dangling header with nothing under it.
-// writeRecGroup's sizing param is buildSizingLines' ticker->KeySizingLine
-// text (Phase 3.11 PR1 §3.4) — nil or a missing entry just renders no sizing
-// line for that rec, same degrade-by-omission convention as everywhere else
-// in this pipeline.
-func writeRecGroup(sb *strings.Builder, lang i18n.Lang, titleKey i18n.Key, recs []llm.Recommendation, sizing map[string]string) {
+// sendRecGroup sends one section of sendAndSaveRecommendations' output: a
+// title message followed by each recommendation in the group as its own
+// message (with a [Check]/[Buy]/[Sell] quick-action row attached — see
+// sendWithTickerActions), so the group's numbering that used to appear in
+// one combined block is dropped rather than kept per-message, where it
+// would just read as a stray "1." on every single message. Sends nothing at
+// all — title included — when recs is empty, so a day with no new-candidate
+// picks doesn't leave a dangling header with nothing under it.
+func (b *Bot) sendRecGroup(titleKey i18n.Key, recs []llm.Recommendation, sizing map[string]string) {
 	if len(recs) == 0 {
 		return
 	}
-	sb.WriteString(i18n.T(lang, titleKey))
-	for i, r := range recs {
-		if r.Action != "" {
-			fmt.Fprintf(sb, "%d. *%s* — %s\n%s\n", i+1, r.Ticker, r.Action, r.Reason)
-		} else {
-			fmt.Fprintf(sb, "%d. *%s*\n%s\n", i+1, r.Ticker, r.Reason)
-		}
-		if line, ok := sizing[r.Ticker]; ok {
-			sb.WriteString(line)
-		}
-		sb.WriteString("\n")
+	b.Send(i18n.T(b.lang, titleKey))
+	for _, r := range recs {
+		b.sendWithTickerActions(r.Ticker, formatRecLine(b.lang, r, sizing))
 	}
+}
+
+// formatRecLine renders one recommendation as a standalone message body —
+// pulled out of sendRecGroup so it's testable without a live Bot/Telegram
+// API. sizing is buildSizingLines' ticker->KeySizingLine text (Phase 3.11
+// PR1 §3.4) — nil or a missing entry just renders no sizing line for that
+// rec, same degrade-by-omission convention as everywhere else in this
+// pipeline.
+func formatRecLine(lang i18n.Lang, r llm.Recommendation, sizing map[string]string) string {
+	var sb strings.Builder
+	if r.Action != "" {
+		fmt.Fprintf(&sb, "*%s* — %s\n%s\n", r.Ticker, r.Action, r.Reason)
+	} else {
+		fmt.Fprintf(&sb, "*%s*\n%s\n", r.Ticker, r.Reason)
+	}
+	if line, ok := sizing[r.Ticker]; ok {
+		sb.WriteString(line)
+	}
+	return sb.String()
 }
 
 // buildSizingLines computes Phase 3.11 PR1's KeySizingLine for every BUY

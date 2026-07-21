@@ -665,6 +665,22 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   since it's also a one-shot LLM call, and reports `KeyReviewNoClosedTrade` rather than silently doing
   nothing when the ticker has never had a fully closed trade. See
   [docs/phase-3.8-sell-review.md](docs/phase-3.8-sell-review.md).
+  `quick_actions.go`'s per-ticker `[Check]/[Buy]/[Sell]` inline keyboard row (2026-07 UX quick win) is why
+  `sendAndSaveRecommendations` and `handlePortfolio` changed from one combined message to one message per
+  ticker — a Telegram inline keyboard belongs to a single message, not a sub-section of one, so there was
+  no way to attach it to what used to be one batched block. `[Check]` (`callbackCheckPrefix`,
+  `act_check:<ticker>`) is real: `handleCallbackQuery` (`pending_actions.go`) dispatches it to
+  `go b.handleCheck(ctx, ticker)` — the exact same one-shot analysis `/check` runs, placeholder message
+  included, just triggered by a button tap instead of typed text. `[Buy]`/`[Sell]` (`callbackBuyPrefix`/
+  `callbackSellPrefix`) do **not** prefill Telegram's message input box — that was PLAN.md's original design
+  intent, but live-verified against the Bot API to be impossible: `switch_inline_query_current_chat`
+  requires Inline Mode to be turned on via BotFather, and tapping a resulting inline result sends it
+  immediately rather than leaving it in the input box for the user to add shares/price and send themselves.
+  They reply instead with a copy-pasteable `` /buy TICKER <shares> <price> `` template in a Markdown code
+  block — Telegram's tap-to-copy on that block is the actual "quick fill" mechanism. All three prefixes
+  share `handleCallbackQuery` with `pending_actions.go`'s `pa_confirm:`/`pa_reject:` ones (checked first,
+  different namespace, `parseCallbackData` already returns `ok=false` for an unrecognized prefix so there's
+  no collision) — see that file's doc comment for the full dispatch shape.
 - `internal/mcptools` — Phase 3.5's read-only MCP (Model Context Protocol) tool surface for chat, using
   the official `github.com/modelcontextprotocol/go-sdk`. `NewServer(lang, provider, history, fundamentals,
   earnings)` builds an `*mcp.Server` and registers seven tools (`tools.go`'s `registerTools`): `get_quote`/

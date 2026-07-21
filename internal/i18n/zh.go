@@ -450,4 +450,10 @@ var zhMessages = map[Key]string{
 	KeyMCPTradeProposalFailed: "建立交易提案失敗：%v",
 	KeyMCPTradeProposalBuy:    "已建立買入提案：*%s* %g 股 @ $%.2f（提案 #%d）。這只是提案，需要使用者在 Telegram 上按下確認鍵才會真正入帳，不算已經完成。",
 	KeyMCPTradeProposalSell:   "已建立賣出提案：*%s* %g 股 @ $%.2f（提案 #%d）。這只是提案，需要使用者在 Telegram 上按下確認鍵才會真正入帳，不算已經完成。",
+
+	KeyCheckButton:         "🔍 檢查",
+	KeyBuyButton:           "🟢 買進",
+	KeySellButton:          "🔴 賣出",
+	KeyBuyCommandTemplate:  "點擊以下指令複製，補上股數與價格後送出：\n```\n/buy %s <股數> <價格>\n```",
+	KeySellCommandTemplate: "點擊以下指令複製，補上股數與價格後送出：\n```\n/sell %s <股數> <價格>\n```",
 }

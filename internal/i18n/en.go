@@ -461,4 +461,10 @@ Keep the reply concise — under 300 words total.
 	KeyMCPTradeProposalFailed: "Failed to create trade proposal: %v",
 	KeyMCPTradeProposalBuy:    "Created a BUY proposal: *%s* %g shares @ $%.2f (proposal #%d). This is only a proposal — the user still has to tap Confirm on Telegram before it's actually recorded, so don't treat it as done yet.",
 	KeyMCPTradeProposalSell:   "Created a SELL proposal: *%s* %g shares @ $%.2f (proposal #%d). This is only a proposal — the user still has to tap Confirm on Telegram before it's actually recorded, so don't treat it as done yet.",
+
+	KeyCheckButton:         "🔍 Check",
+	KeyBuyButton:           "🟢 Buy",
+	KeySellButton:          "🔴 Sell",
+	KeyBuyCommandTemplate:  "Tap to copy, then fill in shares and price:\n```\n/buy %s <shares> <price>\n```",
+	KeySellCommandTemplate: "Tap to copy, then fill in shares and price:\n```\n/sell %s <shares> <price>\n```",
 }
