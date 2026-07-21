@@ -61,6 +61,7 @@ func New(cfg Config) *Server {
 	}
 	s.mux = http.NewServeMux()
 	s.mux.HandleFunc("GET /api/config", s.handleConfig)
+	s.mux.HandleFunc("GET /api/status", s.handleStatus)
 	s.mux.HandleFunc("GET /api/dashboard", s.handleDashboard)
 	s.mux.HandleFunc("GET /api/calendar", s.handleCalendar)
 	s.mux.HandleFunc("GET /api/rounds", s.handleRounds)

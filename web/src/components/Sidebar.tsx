@@ -1,0 +1,95 @@
+import type { MouseEvent, ReactNode } from "react";
+import type { Dictionary } from "../i18n";
+
+interface Props {
+  path: string;
+  onNavigate: (path: string) => void;
+  dict: Dictionary;
+}
+
+// /round (the detail page reached by clicking a row in /rounds) has no nav
+// link of its own — same reasoning as a chart drill-down page not
+// appearing in a top nav — see App.tsx's comment on why this is a
+// hand-rolled path/popstate router rather than a routing library for an
+// app this size. isActive additionally treats /round as belonging to the
+// Rounds link, fixing NavBar's old exact-match-only behavior that left all
+// three links un-highlighted on the round detail page.
+const links: Array<{ path: string; label: (dict: Dictionary) => string; icon: ReactNode }> = [
+  { path: "/", label: (d) => d.navDashboard, icon: <DashboardIcon /> },
+  { path: "/calendar", label: (d) => d.navCalendar, icon: <CalendarIcon /> },
+  { path: "/rounds", label: (d) => d.navRounds, icon: <RoundsIcon /> },
+];
+
+function isActive(linkPath: string, path: string): boolean {
+  return linkPath === path || (linkPath === "/rounds" && path === "/round");
+}
+
+export function Sidebar({ path, onNavigate, dict }: Props) {
+  return (
+    <div className="sidebar">
+      <div className="sidebar-wordmark">
+        ARGUS <span className="cursor">▮</span>
+      </div>
+      <nav className="sidebar-nav">
+        {links.map((link) => (
+          <a
+            key={link.path}
+            href={link.path}
+            className={`side-link${isActive(link.path, path) ? " active" : ""}`}
+            onClick={(e: MouseEvent) => {
+              e.preventDefault();
+              onNavigate(link.path);
+            }}
+          >
+            {link.icon}
+            {link.label(dict)}
+          </a>
+        ))}
+      </nav>
+    </div>
+  );
+}
+
+const iconProps = {
+  width: 16,
+  height: 16,
+  viewBox: "0 0 16 16",
+  stroke: "currentColor",
+  strokeWidth: 1.5,
+  fill: "none",
+};
+
+function DashboardIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <rect x="2" y="2" width="5" height="5" rx="1" />
+      <rect x="9" y="2" width="5" height="5" rx="1" />
+      <rect x="2" y="9" width="5" height="5" rx="1" />
+      <rect x="9" y="9" width="5" height="5" rx="1" />
+    </svg>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <rect x="2" y="3" width="12" height="11" rx="1" />
+      <line x1="2" y1="6" x2="14" y2="6" />
+      <line x1="5" y1="1.5" x2="5" y2="4" />
+      <line x1="11" y1="1.5" x2="11" y2="4" />
+    </svg>
+  );
+}
+
+function RoundsIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <line x1="4" y1="2" x2="4" y2="14" />
+      <rect x="2.5" y="5" width="3" height="5" />
+      <line x1="8" y1="1" x2="8" y2="15" />
+      <rect x="6.5" y="3" width="3" height="7" />
+      <line x1="12" y1="3" x2="12" y2="13" />
+      <rect x="10.5" y="6" width="3" height="4" />
+    </svg>
+  );
+}

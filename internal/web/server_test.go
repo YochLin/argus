@@ -40,6 +40,27 @@ func TestHandleConfig(t *testing.T) {
 	}
 }
 
+func TestHandleStatus(t *testing.T) {
+	s := testServer()
+	s.db = &fakeDB{watchlist: []string{"AAPL", "MSFT"}}
+	s.mux = http.NewServeMux()
+	s.mux.HandleFunc("GET /api/status", s.handleStatus)
+
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/status", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	var got statusResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.WatchingCount != 2 {
+		t.Errorf("WatchingCount = %d, want 2", got.WatchingCount)
+	}
+}
+
 func TestHandleDashboard(t *testing.T) {
 	s := testServer()
 	s.mux = http.NewServeMux()

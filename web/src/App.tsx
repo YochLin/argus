@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { fetchConfig } from "./api";
+import { fetchConfig, fetchStatus, type Status } from "./api";
 import { getDictionary, type Dictionary } from "./i18n";
-import { NavBar } from "./components/NavBar";
+import { Sidebar } from "./components/Sidebar";
+import { StatusBar } from "./components/StatusBar";
 import { DashboardView } from "./components/DashboardView";
 import { CalendarView } from "./components/CalendarView";
 import { RoundsListView } from "./components/RoundsListView";
@@ -35,14 +36,18 @@ function useRoute(): [string, (route: string) => void] {
 
 export default function App() {
   const [dict, setDict] = useState<Dictionary>(getDictionary("zh"));
+  const [status, setStatus] = useState<Status | null>(null);
   const [route, navigate] = useRoute();
 
   useEffect(() => {
-    // /api/config's failure isn't fatal — the page still works with the
-    // zh default dictionary already in state, just possibly the wrong
-    // language.
+    // /api/config's and /api/status's failures aren't fatal — the page
+    // still works with the zh default dictionary and an empty status-bar
+    // shell, just possibly the wrong language / no status line.
     fetchConfig()
       .then((cfg) => setDict(getDictionary(cfg.lang)))
+      .catch(() => {});
+    fetchStatus()
+      .then(setStatus)
       .catch(() => {});
   }, []);
 
@@ -75,9 +80,12 @@ export default function App() {
   }
 
   return (
-    <div className="app">
-      <NavBar path={path} onNavigate={navigate} dict={dict} />
-      {body}
+    <div className="app-shell">
+      <Sidebar path={path} onNavigate={navigate} dict={dict} />
+      <div className="app-main">
+        {status ? <StatusBar status={status} dict={dict} /> : <div className="status-bar" />}
+        <div className="content">{body}</div>
+      </div>
     </div>
   );
 }

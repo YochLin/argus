@@ -15,7 +15,6 @@ type dashboardResponse struct {
 	KPIs      kpisResponse       `json:"kpis"`
 	Curve     []DateValue        `json:"curve"`
 	Positions []positionResponse `json:"positions"`
-	Status    statusResponse     `json:"status"`
 }
 
 type kpisResponse struct {
@@ -109,6 +108,17 @@ type candleResponse struct {
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, configResponse{Lang: string(s.lang)})
+}
+
+func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if p := recover(); p != nil {
+			log.Printf("web: panic in handleStatus: %v", p)
+			writeError(w, http.StatusInternalServerError, "internal error")
+		}
+	}()
+
+	writeJSON(w, http.StatusOK, buildStatus(s.db))
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {

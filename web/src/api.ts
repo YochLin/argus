@@ -37,7 +37,6 @@ export interface Dashboard {
   kpis: KPIs;
   curve: DateValue[];
   positions: Position[];
-  status: Status;
 }
 
 export interface Config {
@@ -104,6 +103,10 @@ export function fetchConfig(): Promise<Config> {
 
 export function fetchDashboard(): Promise<Dashboard> {
   return getJSON<Dashboard>("/api/dashboard");
+}
+
+export function fetchStatus(): Promise<Status> {
+  return getJSON<Status>("/api/status");
 }
 
 export function fetchCalendar(month: string): Promise<Calendar> {
