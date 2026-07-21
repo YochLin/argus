@@ -108,12 +108,22 @@ func TestBuildDashboard_PositionsAndKPIs(t *testing.T) {
 	if got.KPIs.Expectancy != 40 {
 		t.Errorf("Expectancy = %v, want 40", got.KPIs.Expectancy)
 	}
+}
 
-	if got.Status.WatchingCount != 3 {
-		t.Errorf("WatchingCount = %d, want 3", got.Status.WatchingCount)
+func TestBuildStatus(t *testing.T) {
+	fdb := &fakeDB{
+		watchlist: []string{"AAPL", "MSFT", "NVDA"},
+		spy:       db.DailySnapshot{Date: "2026-07-15", ChangePercent: 0.42},
+		spyOK:     true,
 	}
-	if got.Status.SPYChangePct != 0.42 || got.Status.LastCloseDate != "2026-07-15" {
-		t.Errorf("Status = %+v, want SPY +0.42%% on 2026-07-15", got.Status)
+
+	got := buildStatus(fdb)
+
+	if got.WatchingCount != 3 {
+		t.Errorf("WatchingCount = %d, want 3", got.WatchingCount)
+	}
+	if got.SPYChangePct != 0.42 || got.LastCloseDate != "2026-07-15" {
+		t.Errorf("Status = %+v, want SPY +0.42%% on 2026-07-15", got)
 	}
 }
 

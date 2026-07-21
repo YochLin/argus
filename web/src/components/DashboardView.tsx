@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchDashboard, type Dashboard } from "../api";
 import type { Dictionary } from "../i18n";
-import { StatusBar } from "./StatusBar";
 import { KpiCard } from "./KpiCard";
 import { PnlChart } from "./PnlChart";
 import { PositionsTable } from "./PositionsTable";
@@ -30,11 +29,10 @@ export function DashboardView({ dict }: Props) {
     return <div className="loading">{dict.loading}</div>;
   }
 
-  const { kpis, curve, positions, status } = dashboard;
+  const { kpis, curve, positions } = dashboard;
 
   return (
     <>
-      <StatusBar status={status} dict={dict} />
       <div className="kpi-grid">
         <KpiCard label={dict.netPnL} value={kpis.netPnL} format="currency" colorMode="pnl" />
         <KpiCard label={dict.winRate} value={kpis.winRate} format="percent" />

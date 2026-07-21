@@ -25,13 +25,35 @@ type dbReader interface {
 	GetLatestSnapshot(ticker string) (db.DailySnapshot, bool, error)
 }
 
+// buildStatus assembles the /api/status response — the shell-level status
+// bar shown on every page (Phase 5 sidebar layout, see
+// docs/phase-5-sidebar-layout.md), not just the dashboard. Like
+// buildDashboard, a single failed query never fails the whole response: it
+// logs and leaves that field at its zero value.
+func buildStatus(database dbReader) statusResponse {
+	var status statusResponse
+	watchlist, err := database.GetWatchlist()
+	if err != nil {
+		log.Printf("web: status: get watchlist: %v", err)
+	} else {
+		status.WatchingCount = len(watchlist)
+	}
+	if spy, ok, err := database.GetLatestSnapshot(spyTicker); err != nil {
+		log.Printf("web: status: get SPY snapshot: %v", err)
+	} else if ok {
+		status.SPYChangePct = spy.ChangePercent
+		status.LastCloseDate = spy.Date
+	}
+	return status
+}
+
 // buildDashboard assembles the /api/dashboard response: KPIs and the
-// cumulative P&L curve (both from the DailyPnL replay engine in pnl.go),
-// the live-quote-enriched positions list, and the status-bar fields.
-// Nothing here aborts the whole response on a partial failure — a single
-// bad quote just leaves that position's price fields at 0 (logged), same
-// "attach what's available" degrade convention internal/bot's
-// fetchStockData uses for optional prompt fields.
+// cumulative P&L curve (both from the DailyPnL replay engine in pnl.go)
+// and the live-quote-enriched positions list. Nothing here aborts the
+// whole response on a partial failure — a single bad quote just leaves
+// that position's price fields at 0 (logged), same "attach what's
+// available" degrade convention internal/bot's fetchStockData uses for
+// optional prompt fields.
 func buildDashboard(database dbReader, quotes quoteGetter) (dashboardResponse, error) {
 	positions, err := database.GetPositions()
 	if err != nil {
@@ -96,19 +118,6 @@ func buildDashboard(database dbReader, quotes quoteGetter) (dashboardResponse, e
 			pr.UnrealizedPnLPct = (q.Price - p.AvgCost) / p.AvgCost * 100
 		}
 		resp.Positions = append(resp.Positions, pr)
-	}
-
-	watchlist, err := database.GetWatchlist()
-	if err != nil {
-		log.Printf("web: dashboard: get watchlist: %v", err)
-	} else {
-		resp.Status.WatchingCount = len(watchlist)
-	}
-	if spy, ok, err := database.GetLatestSnapshot(spyTicker); err != nil {
-		log.Printf("web: dashboard: get SPY snapshot: %v", err)
-	} else if ok {
-		resp.Status.SPYChangePct = spy.ChangePercent
-		resp.Status.LastCloseDate = spy.Date
 	}
 
 	return resp, nil

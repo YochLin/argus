@@ -114,10 +114,99 @@ a {
   }
 }
 
-.app {
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 208px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  padding: 16px 12px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.sidebar-wordmark {
+  font-family: var(--font-mono);
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  font-size: 15px;
+  padding: 0 8px;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.side-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-left: 2px solid transparent;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 12px;
+  color: var(--ink-2);
+  text-decoration: none;
+}
+
+.side-link:hover {
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.side-link.active {
+  color: var(--accent);
+  border-left-color: var(--accent);
+  background: var(--surface);
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0; /* flex children default to min-width:auto, which would let
+    lightweight-charts' container push the whole column wider instead of
+    shrinking to fit. */
+}
+
+.content {
   max-width: 1280px;
   margin: 0 auto;
   padding: 0 16px 16px;
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: auto;
+    height: auto;
+    position: static;
+    flex-direction: row;
+    align-items: center;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+  }
+
+  .side-link.active {
+    border-left-color: transparent;
+  }
 }
 
 .kpi-grid {
@@ -177,34 +266,6 @@ th {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-}
-
-.nav-bar {
-  display: flex;
-  gap: 20px;
-  padding: 0 16px 16px;
-  max-width: 1280px;
-  margin: 0 auto;
-}
-
-.nav-link {
-  font-family: var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-size: 12px;
-  color: var(--ink-2);
-  text-decoration: none;
-  padding-bottom: 4px;
-  border-bottom: 2px solid transparent;
-}
-
-.nav-link:hover {
-  color: var(--ink);
-}
-
-.nav-link.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
 }
 
 .calendar-nav {

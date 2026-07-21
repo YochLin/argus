@@ -6,17 +6,16 @@ interface Props {
   dict: Dictionary;
 }
 
-// The dashboard's one signature element (docs/phase-5-web-dashboard.md):
-// "ARGUS ▮ WATCHING 14 · SPY +0.42% · LAST CLOSE 2026-07-15" — a hundred-
-// eyed watcher rendered as a terminal status line, and genuinely live data
-// rather than pure decoration. The blinking cursor block respects
-// prefers-reduced-motion via .cursor's CSS rule in theme.css.
+// The shell-level status line rendered on every page (Phase 5 sidebar
+// layout, see docs/phase-5-sidebar-layout.md): "WATCHING 14 · SPY +0.42% ·
+// LAST CLOSE 2026-07-15" — genuinely live data, not decoration. The
+// "ARGUS ▮" wordmark used to live here but moved to Sidebar's top, since
+// the status bar itself is now shared shell chrome rather than a
+// dashboard-only element.
 export function StatusBar({ status, dict }: Props) {
   const sign = status.spyChangePct >= 0 ? "+" : "";
   return (
     <div className="status-bar">
-      <span>ARGUS</span>
-      <span className="cursor">▮</span>
       <span>
         {dict.watching} {status.watchingCount}
       </span>
