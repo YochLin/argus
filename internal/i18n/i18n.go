@@ -459,4 +459,11 @@ const (
 	KeySellButton          Key = "sell_button"
 	KeyBuyCommandTemplate  Key = "buy_command_template"
 	KeySellCommandTemplate Key = "sell_command_template"
+
+	// RunDailyReport's US-market-holiday guard (UX 可靠性優化): a fixed
+	// NYSE calendar computed in internal/market lets the job tell a real
+	// closed-market day apart from an ordinary one before it ever fetches
+	// data or calls the LLM, instead of running its full analysis on stale
+	// prior-session prices and pushing a misleading report.
+	KeyDailyReportMarketClosed Key = "daily_report_market_closed"
 )

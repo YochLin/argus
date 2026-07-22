@@ -467,4 +467,6 @@ Keep the reply concise — under 300 words total.
 	KeySellButton:          "🔴 Sell",
 	KeyBuyCommandTemplate:  "Tap to copy, then fill in shares and price:\n```\n/buy %s <shares> <price>\n```",
 	KeySellCommandTemplate: "Tap to copy, then fill in shares and price:\n```\n/sell %s <shares> <price>\n```",
+
+	KeyDailyReportMarketClosed: "📅 US markets are closed today — skipping the daily report.",
 }

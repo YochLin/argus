@@ -10,6 +10,7 @@ import (
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
+	"argus/internal/market"
 	"argus/internal/signals"
 )
 
@@ -157,8 +158,24 @@ func (b *Bot) recordNetWorthSnapshot(date string, prices map[string]float64) {
 
 // RunDailyReport fetches data, detects signals, generates LLM recommendations,
 // and sends the daily report. Called by the scheduler.
+//
+// The cron behind this fires every day with no weekday/holiday
+// restriction (unlike RunClosingSnapshot, which is Tue–Sat only) — on a US
+// market holiday it would otherwise still run a full LLM analysis off
+// whatever stale prior-session quotes the providers return and push a
+// report implying that's today's price action. market.IsTradingDay checks
+// that before anything else gets fetched; time.Now().In(cst) is safe to
+// feed it directly rather than resolving a real US Eastern time first
+// because this job only ever runs at the fixed 23:30 CST cron time — see
+// IsTradingDay's own doc comment for why that specific hour makes Taiwan's
+// date and the US trading date the same value.
 func (b *Bot) RunDailyReport(ctx context.Context) {
 	defer b.recoverJobPanic("daily report")
+
+	if !market.IsTradingDay(time.Now().In(cst)) {
+		b.Send(i18n.T(b.lang, i18n.KeyDailyReportMarketClosed))
+		return
+	}
 
 	b.Send(i18n.T(b.lang, i18n.KeyDailyReportStart))
 
