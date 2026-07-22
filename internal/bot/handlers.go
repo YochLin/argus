@@ -877,7 +877,10 @@ func (b *Bot) saveLesson(ticker, lesson string) {
 
 // handlePortfolio shows every open position's current market value and
 // unrealized P&L against a live quote, plus cumulative realized P&L across
-// all past sells.
+// all past sells. Each position goes out as its own message (same reasoning
+// as sendAndSaveRecommendations — see that doc comment) so its
+// [Check]/[Buy]/[Sell] quick-action row (quick_actions.go) attaches to that
+// ticker specifically.
 func (b *Bot) handlePortfolio() {
 	positions, err := b.db.GetPositions()
 	if err != nil {
@@ -894,23 +897,22 @@ func (b *Bot) handlePortfolio() {
 		log.Printf("portfolio: realized pnl: %v", err)
 	}
 
-	var sb strings.Builder
-	sb.WriteString(i18n.T(b.lang, i18n.KeyPortfolioTitle))
+	b.Send(i18n.T(b.lang, i18n.KeyPortfolioTitle))
 	var totalValue float64
 	for _, p := range positions {
 		q, err := b.provider.GetQuote(p.Ticker)
 		if err != nil {
-			sb.WriteString(i18n.T(b.lang, i18n.KeyQuoteUnavailable, p.Ticker))
+			b.sendWithTickerActions(p.Ticker, i18n.T(b.lang, i18n.KeyQuoteUnavailable, p.Ticker))
 			continue
 		}
 		marketValue := p.Shares * q.Price
 		unrealized := (q.Price - p.AvgCost) * p.Shares
 		unrealizedPct := (q.Price - p.AvgCost) / p.AvgCost * 100
 		totalValue += marketValue
-		sb.WriteString(i18n.T(b.lang, i18n.KeyPortfolioLine, p.Ticker, p.Shares, p.AvgCost, q.Price, marketValue, unrealized, unrealizedPct))
+		line := i18n.T(b.lang, i18n.KeyPortfolioLine, p.Ticker, p.Shares, p.AvgCost, q.Price, marketValue, unrealized, unrealizedPct)
+		b.sendWithTickerActions(p.Ticker, line)
 	}
-	sb.WriteString(i18n.T(b.lang, i18n.KeyPortfolioSummary, totalValue, realizedTotal))
-	b.Send(sb.String())
+	b.Send(i18n.T(b.lang, i18n.KeyPortfolioSummary, totalValue, realizedTotal))
 }
 
 // handleInsight is Phase 3.6's portfolio-level analysis command: unlike

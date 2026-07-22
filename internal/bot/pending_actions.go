@@ -114,14 +114,35 @@ func (b *Bot) sendPendingActionConfirmation(id int64, text string) error {
 	return err
 }
 
-// handleCallbackQuery processes a tap on a pending-action confirmation
-// button. It always answers the callback query first (to clear Telegram's
-// loading spinner on the button) regardless of outcome, then edits the
-// original message in place to show the result instead of sending a new
-// message — so the chat doesn't accumulate a stray "confirmed"/"rejected"
-// line under the original proposal.
+// handleCallbackQuery processes a tap on any inline keyboard button this
+// bot sends — pending-action confirm/reject (below) and per-ticker quick
+// actions (quick_actions.go's callbackCheckPrefix/callbackBuyPrefix/
+// callbackSellPrefix, checked first since they're a different callback_data
+// namespace). Both always answer the callback query first (clears
+// Telegram's loading spinner on the button) regardless of outcome.
+// Pending-action taps then edit the original message in place to show the
+// result instead of sending a new one, so the chat doesn't accumulate a
+// stray "confirmed"/"rejected" line under the original proposal; quick
+// actions instead send a fresh message (a per-ticker message that already
+// has its own buttons stays untouched, so it can still be tapped again).
 func (b *Bot) handleCallbackQuery(ctx context.Context, cq *tgbotapi.CallbackQuery) {
 	if cq.Message == nil || cq.Message.Chat == nil || cq.Message.Chat.ID != b.chatID {
+		return
+	}
+
+	if ticker, ok := strings.CutPrefix(cq.Data, callbackCheckPrefix); ok {
+		b.answerCallback(cq.ID)
+		go b.handleCheck(ctx, ticker)
+		return
+	}
+	if ticker, ok := strings.CutPrefix(cq.Data, callbackBuyPrefix); ok {
+		b.answerCallback(cq.ID)
+		b.Send(i18n.T(b.lang, i18n.KeyBuyCommandTemplate, ticker))
+		return
+	}
+	if ticker, ok := strings.CutPrefix(cq.Data, callbackSellPrefix); ok {
+		b.answerCallback(cq.ID)
+		b.Send(i18n.T(b.lang, i18n.KeySellCommandTemplate, ticker))
 		return
 	}
 
@@ -130,14 +151,20 @@ func (b *Bot) handleCallbackQuery(ctx context.Context, cq *tgbotapi.CallbackQuer
 		return
 	}
 
-	if _, err := b.api.Request(tgbotapi.NewCallback(cq.ID, "")); err != nil {
-		log.Printf("pending actions: answer callback: %v", err)
-	}
+	b.answerCallback(cq.ID)
 
 	resultText := b.resolvePendingAction(ctx, id, confirm)
 	edit := tgbotapi.NewEditMessageText(cq.Message.Chat.ID, cq.Message.MessageID, resultText)
 	if _, err := b.api.Send(edit); err != nil {
 		log.Printf("pending actions: edit confirmation message: %v", err)
+	}
+}
+
+// answerCallback clears Telegram's loading spinner on a tapped inline
+// keyboard button. Shared by every handleCallbackQuery branch.
+func (b *Bot) answerCallback(id string) {
+	if _, err := b.api.Request(tgbotapi.NewCallback(id, "")); err != nil {
+		log.Printf("callback query: answer: %v", err)
 	}
 }
 

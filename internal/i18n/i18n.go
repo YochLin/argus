@@ -445,4 +445,18 @@ const (
 	KeyMCPTradeProposalFailed Key = "mcp_trade_proposal_failed"
 	KeyMCPTradeProposalBuy    Key = "mcp_trade_proposal_buy"
 	KeyMCPTradeProposalSell   Key = "mcp_trade_proposal_sell"
+
+	// Daily Report/`/portfolio` per-ticker quick-action row (UX quick win):
+	// every per-ticker message gets [Check]/[Buy]/[Sell] buttons. Check
+	// re-runs the same analysis /check does; Buy/Sell can't actually prefill
+	// Telegram's message input box — switch_inline_query_current_chat needs
+	// Inline Mode enabled via BotFather and sends its result immediately on
+	// tap rather than leaving it editable for more args (verified against
+	// the live Bot API, not assumed) — so they reply with a copy-pasteable
+	// command template instead.
+	KeyCheckButton         Key = "check_button"
+	KeyBuyButton           Key = "buy_button"
+	KeySellButton          Key = "sell_button"
+	KeyBuyCommandTemplate  Key = "buy_command_template"
+	KeySellCommandTemplate Key = "sell_command_template"
 )

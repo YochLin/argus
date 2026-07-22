@@ -596,51 +596,41 @@ func TestSplitRecsBySource(t *testing.T) {
 	}
 }
 
-func TestWriteRecGroup(t *testing.T) {
-	t.Run("empty recs writes nothing, not even the title", func(t *testing.T) {
-		var sb strings.Builder
-		writeRecGroup(&sb, i18n.EN, i18n.KeyRecWatchlistSectionTitle, nil, nil)
-		if sb.String() != "" {
-			t.Errorf("writeRecGroup() = %q, want empty", sb.String())
-		}
-	})
-
-	t.Run("numbers from 1 within the group and includes the title", func(t *testing.T) {
-		var sb strings.Builder
-		recs := []llm.Recommendation{
-			{Ticker: "AAPL", Action: "HOLD", Reason: "fairly valued."},
-			{Ticker: "MSFT", Action: "BUY", Reason: "cloud growth."},
-		}
-		writeRecGroup(&sb, i18n.EN, i18n.KeyRecWatchlistSectionTitle, recs, nil)
-		got := sb.String()
-		want := i18n.T(i18n.EN, i18n.KeyRecWatchlistSectionTitle) +
-			"1. *AAPL* — HOLD\nfairly valued.\n\n" +
-			"2. *MSFT* — BUY\ncloud growth.\n\n"
+func TestFormatRecLine(t *testing.T) {
+	t.Run("includes the action separator when Action is set", func(t *testing.T) {
+		r := llm.Recommendation{Ticker: "MSFT", Action: "BUY", Reason: "cloud growth."}
+		got := formatRecLine(i18n.EN, r, nil)
+		want := "*MSFT* — BUY\ncloud growth.\n"
 		if got != want {
-			t.Errorf("writeRecGroup() = %q, want %q", got, want)
+			t.Errorf("formatRecLine() = %q, want %q", got, want)
 		}
 	})
 
 	t.Run("empty action omits the action separator", func(t *testing.T) {
-		var sb strings.Builder
-		recs := []llm.Recommendation{{Ticker: "AAPL", Reason: "no action line."}}
-		writeRecGroup(&sb, i18n.EN, i18n.KeyRecCandidatesSectionTitle, recs, nil)
-		got := sb.String()
-		want := i18n.T(i18n.EN, i18n.KeyRecCandidatesSectionTitle) + "1. *AAPL*\nno action line.\n\n"
+		r := llm.Recommendation{Ticker: "AAPL", Reason: "no action line."}
+		got := formatRecLine(i18n.EN, r, nil)
+		want := "*AAPL*\nno action line.\n"
 		if got != want {
-			t.Errorf("writeRecGroup() = %q, want %q", got, want)
+			t.Errorf("formatRecLine() = %q, want %q", got, want)
 		}
 	})
 
 	t.Run("a sizing line for a ticker in the map is appended after the reason", func(t *testing.T) {
-		var sb strings.Builder
-		recs := []llm.Recommendation{{Ticker: "AAPL", Action: "BUY", Reason: "breakout."}}
+		r := llm.Recommendation{Ticker: "AAPL", Action: "BUY", Reason: "breakout."}
 		sizing := map[string]string{"AAPL": "sizing info\n"}
-		writeRecGroup(&sb, i18n.EN, i18n.KeyRecWatchlistSectionTitle, recs, sizing)
-		got := sb.String()
-		want := i18n.T(i18n.EN, i18n.KeyRecWatchlistSectionTitle) + "1. *AAPL* — BUY\nbreakout.\nsizing info\n\n"
+		got := formatRecLine(i18n.EN, r, sizing)
+		want := "*AAPL* — BUY\nbreakout.\nsizing info\n"
 		if got != want {
-			t.Errorf("writeRecGroup() = %q, want %q", got, want)
+			t.Errorf("formatRecLine() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("a ticker missing from sizing renders no sizing line", func(t *testing.T) {
+		r := llm.Recommendation{Ticker: "TSLA", Action: "SELL", Reason: "overextended."}
+		got := formatRecLine(i18n.EN, r, map[string]string{"AAPL": "sizing info\n"})
+		want := "*TSLA* — SELL\noverextended.\n"
+		if got != want {
+			t.Errorf("formatRecLine() = %q, want %q", got, want)
 		}
 	})
 }
