@@ -369,6 +369,28 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `lumberjack.Logger` only rotates on size by itself, so this cron call to `Rotate()` is what makes it
   an actual daily rotation), and the SQLite backup (`AddBackup`, 06:00 CST daily, after the closing
   snapshot so each backup includes that day's post-close data).
+- `internal/market` — pure, dependency-free NYSE trading-calendar logic (`IsTradingDay`/`IsHoliday`),
+  added for the "美股休市日感知" UX fix: `RunDailyReport`'s cron has no weekday/holiday restriction
+  (unlike `AddClosingSnapshot`'s Tue–Sat), so before this it would run a full LLM analysis on a market
+  holiday off whatever stale prior-session quotes the providers returned and push a report implying
+  that was today's price action. `IsTradingDay(t)` takes `t` as already carrying the correct US Eastern
+  calendar date rather than converting it from another zone itself — same `tzdata`-avoidance constraint
+  as `internal/scheduler` (see above), except a fixed UTC offset can't stand in for `America/New_York`
+  here the way `time.FixedZone("CST", ...)` can for Taiwan, since US Eastern actually crosses the DST
+  boundary. The one caller, `RunDailyReport`, sidesteps needing a real timezone conversion at all by
+  relying on its cron firing at the fixed 23:30 CST time: Taiwan never observes DST, and at that specific
+  hour Taiwan's date, UTC's date, and the US Eastern date (10:30 EST / 11:30 EDT into the same calendar
+  day, never having crossed midnight) all agree — so `time.Now().In(cst)` already carries the right
+  Y/M/D. A caller running at a different hour would need to resolve the US Eastern date for real first;
+  `IsTradingDay` doesn't do that for you. Holiday dates are computed per-year (`holidaysForYear`, standard
+  NYSE fixed/nth-weekday rules + a Meeus/Jones/Butcher Easter calculation for Good Friday) with the
+  Saturday→preceding-Friday / Sunday→following-Monday observed-date shift applied — except New Year's Day
+  specifically does **not** shift off a Saturday: verified against NYSE's actual 2005 and 2022 calendars
+  (the two most recent years Jan 1 fell on a Saturday), both show Dec 31 trading normally, since that
+  Friday is the year's last trading day and NYSE keeps it open for year-end settlement. Known, accepted
+  gap: only this fixed annual set is covered — ad-hoc closures (a national day of mourning, a weather
+  emergency) aren't calculable and won't be caught, the same "no API dependency" tradeoff PLAN.md's design
+  note chose over Finnhub's holiday endpoint (free-tier availability was never confirmed).
 - `internal/render` — Telegram/chat-facing text formatting shared between `internal/bot` and
   `internal/mcptools`: `Fundamentals`/`FinancialStatement`/`Commaf`, depending only on `internal/data` +
   `internal/i18n` (same constraint `internal/mcptools` needs — see that package's entry below). Pulled
@@ -411,7 +433,11 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   somewhere to land without another reshuffle. `New` takes a `Config` struct (token, chatID, DB, the
   four data providers, LLM client, lang, thresholds) rather than its former 12 positional parameters.
   The former two:
-  `RunClosingSnapshot` writes each watchlist ticker's completed-session OHLCV to
+  `RunDailyReport` opens with a `market.IsTradingDay` guard (see `internal/market` above) — its cron
+  fires every day with no weekday/holiday exclusion, so without this check a US market holiday would
+  still run the full LLM analysis and push a report off stale prior-session quotes as if they were
+  today's. On a non-trading day it sends `KeyDailyReportMarketClosed` and returns before fetching any
+  data or calling the LLM. `RunClosingSnapshot` writes each watchlist ticker's completed-session OHLCV to
   `daily_snapshots` dated one day back in Taiwan terms (that's the US trading date at that hour) and
   skipping quotes whose timestamp is >12h old (US market holiday — the providers return the prior
   session, which would otherwise be filed under the wrong date). It also calls `snapshotBenchmark`

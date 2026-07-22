@@ -456,4 +456,6 @@ var zhMessages = map[Key]string{
 	KeySellButton:          "🔴 賣出",
 	KeyBuyCommandTemplate:  "點擊以下指令複製，補上股數與價格後送出：\n```\n/buy %s <股數> <價格>\n```",
 	KeySellCommandTemplate: "點擊以下指令複製，補上股數與價格後送出：\n```\n/sell %s <股數> <價格>\n```",
+
+	KeyDailyReportMarketClosed: "📅 今天美股休市，暫停產出每日報告。",
 }
