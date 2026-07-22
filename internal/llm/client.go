@@ -60,8 +60,17 @@ type backend struct {
 // parseRecommendations must match. Call AddFallback to append a second
 // backend (e.g. AntigravityProvider) to try when Claude's calls fail.
 func NewClient(recommendModel, checkModel, chatModel string, lang i18n.Lang) *Client {
+	return NewClientWithProvider(acpProvider{}, recommendModel, checkModel, chatModel, lang)
+}
+
+// NewClientWithProvider builds a Client backed by an arbitrary Provider
+// instead of the real acpProvider{} — its only reason to exist is letting a
+// test seed Client with a fake Provider (e.g. RunDailyReport's E2E test in
+// internal/bot) without spawning a real claude-agent-acp subprocess. Real
+// callers always go through NewClient.
+func NewClientWithProvider(provider Provider, recommendModel, checkModel, chatModel string, lang i18n.Lang) *Client {
 	return &Client{
-		backends: []backend{{provider: acpProvider{}, recommendModel: recommendModel, checkModel: checkModel, chatModel: chatModel}},
+		backends: []backend{{provider: provider, recommendModel: recommendModel, checkModel: checkModel, chatModel: chatModel}},
 		lang:     lang,
 	}
 }

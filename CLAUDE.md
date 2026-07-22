@@ -210,7 +210,13 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   "opus"/"sonnet" mean nothing to a different backend), tried in order with fallthrough on error, same
   shape as `data.Multi` just for LLM calls. `NewClient` always seeds `backends[0]` with `acpProvider`
   (defined in `acp_provider.go`), which drives Claude through the **Agent Client Protocol (ACP)**, not the
-  Anthropic API SDK. `internal/llm/acp` itself (`conn.go` + `session.go`) knows nothing about Claude — it's
+  Anthropic API SDK — `NewClient` is just a thin wrapper over `NewClientWithProvider`, an exported
+  constructor that takes an arbitrary `Provider` instead. The only reason `NewClientWithProvider` exists
+  is test injection (`internal/bot`'s `RunDailyReport` E2E test seeds a canned-reply fake `Provider`
+  through it so the test runs offline with no real `claude-agent-acp` subprocess) — every real call site
+  still goes through `NewClient`. Exporting it is safe despite being test-only: this whole package lives
+  under `internal/`, so nothing outside this module can import it regardless. `internal/llm/acp` itself
+  (`conn.go` + `session.go`) knows nothing about Claude — it's
   a generic ACP JSON-RPC-over-stdio transport/handshake driver (`initialize` → `session/new` →
   `session/prompt`, accumulating `session/update` text chunks) reusable by any ACP-speaking agent;
   `acp.StartSession(ctx, command, args, cwd, meta)` takes the launch command and the `_meta` payload as
@@ -437,7 +443,10 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   fires every day with no weekday/holiday exclusion, so without this check a US market holiday would
   still run the full LLM analysis and push a report off stale prior-session quotes as if they were
   today's. On a non-trading day it sends `KeyDailyReportMarketClosed` and returns before fetching any
-  data or calling the LLM. `RunClosingSnapshot` writes each watchlist ticker's completed-session OHLCV to
+  data or calling the LLM. The check reads `b.now()` rather than calling `time.Now()` directly —
+  `Bot.now` (set to `time.Now` by `New`, left nil-but-unused by every other test constructor in this
+  package) exists solely so a test can pin this to a known trading/non-trading date instead of the
+  outcome depending on whatever real date the test happens to run on. `RunClosingSnapshot` writes each watchlist ticker's completed-session OHLCV to
   `daily_snapshots` dated one day back in Taiwan terms (that's the US trading date at that hour) and
   skipping quotes whose timestamp is >12h old (US market holiday — the providers return the prior
   session, which would otherwise be filed under the wrong date). It also calls `snapshotBenchmark`

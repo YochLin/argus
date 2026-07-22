@@ -172,7 +172,7 @@ func (b *Bot) recordNetWorthSnapshot(date string, prices map[string]float64) {
 func (b *Bot) RunDailyReport(ctx context.Context) {
 	defer b.recoverJobPanic("daily report")
 
-	if !market.IsTradingDay(time.Now().In(cst)) {
+	if !market.IsTradingDay(b.now().In(cst)) {
 		b.Send(i18n.T(b.lang, i18n.KeyDailyReportMarketClosed))
 		return
 	}
