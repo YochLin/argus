@@ -90,6 +90,16 @@ type Bot struct {
 	// user has 32 unanswered messages backlogged, and blocking is the right
 	// thing to do at that point anyway.
 	chatQueue chan *tgbotapi.Message
+
+	// now returns the current time; RunDailyReport's market.IsTradingDay
+	// guard reads through this instead of calling time.Now() directly so a
+	// test can pin it to a known trading (or holiday/weekend) date instead
+	// of depending on whatever real date it happens to run on — otherwise
+	// an E2E test exercising RunDailyReport's full path would intermittently
+	// take the "market closed" short-circuit whenever CI ran on an actual
+	// weekend. New sets this to time.Now; nil is only safe here because no
+	// other command/job in this package calls it.
+	now func() time.Time
 }
 
 // Config bundles New's construction inputs. Replaces New's former 12
@@ -114,10 +124,23 @@ type Config struct {
 	TrailingStopPct     float64 // TRAILING_STOP_PCT env; 0 disables the check
 	TrailingStopATRMult float64 // TRAILING_STOP_ATR_MULT env; <= 0 disables the ATR-based distance
 	RiskPctPerTrade     float64 // RISK_PCT_PER_TRADE env; <= 0 disables the sizing suggestion
+
+	// APIEndpoint overrides tgbotapi's default https://api.telegram.org
+	// target — empty (the only value any real deployment ever sets) keeps
+	// tgbotapi.NewBotAPI's normal behavior. Its only purpose today is
+	// pointing a test's *Bot at an httptest fake Telegram server (see the
+	// daily-report E2E test) instead of making a real network call.
+	APIEndpoint string
 }
 
 func New(cfg Config) (*Bot, error) {
-	api, err := tgbotapi.NewBotAPI(cfg.Token)
+	var api *tgbotapi.BotAPI
+	var err error
+	if cfg.APIEndpoint != "" {
+		api, err = tgbotapi.NewBotAPIWithAPIEndpoint(cfg.Token, cfg.APIEndpoint)
+	} else {
+		api, err = tgbotapi.NewBotAPI(cfg.Token)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("telegram: %w", err)
 	}
@@ -140,6 +163,7 @@ func New(cfg Config) (*Bot, error) {
 		trailingStopATRMult: cfg.TrailingStopATRMult,
 		riskPctPerTrade:     cfg.RiskPctPerTrade,
 		chatQueue:           make(chan *tgbotapi.Message, 32),
+		now:                 time.Now,
 	}, nil
 }
 
