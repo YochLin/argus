@@ -3,6 +3,8 @@ package data
 import (
 	"fmt"
 	"sort"
+
+	"argus/internal/market"
 )
 
 // AnalystRating is a snapshot of Wall Street analyst buy/hold/sell counts for
@@ -43,6 +45,9 @@ type finnhubAnalystRating struct {
 // ticker set (watchlist, not the broad candidate list) to stay under the
 // free-tier rate limit.
 func (f *Finnhub) GetAnalystRating(ticker string) (*AnalystRating, error) {
+	if market.Of(ticker) == market.TW {
+		return nil, errTWNotSupported
+	}
 	var result []finnhubAnalystRating
 	if err := f.get(fmt.Sprintf("/stock/recommendation?symbol=%s", ticker), &result); err != nil {
 		return nil, err

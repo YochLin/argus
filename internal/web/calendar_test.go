@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"argus/internal/db"
+	"argus/internal/market"
 )
 
 func TestMonthBounds(t *testing.T) {
@@ -32,7 +33,7 @@ func TestMonthBounds(t *testing.T) {
 }
 
 func TestBuildCalendar_Empty(t *testing.T) {
-	got, err := buildCalendar(&fakeDB{}, "2026-07")
+	got, err := buildCalendar(&fakeDB{}, "2026-07", market.US)
 	if err != nil {
 		t.Fatalf("buildCalendar() error = %v", err)
 	}
@@ -48,7 +49,7 @@ func TestBuildCalendar_Empty(t *testing.T) {
 }
 
 func TestBuildCalendar_InvalidMonthFallsBackToCurrent(t *testing.T) {
-	got, err := buildCalendar(&fakeDB{}, "garbage")
+	got, err := buildCalendar(&fakeDB{}, "garbage", market.US)
 	if err != nil {
 		t.Fatalf("buildCalendar() error = %v", err)
 	}
@@ -74,7 +75,7 @@ func TestBuildCalendar_DaysAndTransactionsScopedToMonth(t *testing.T) {
 		},
 	}
 
-	got, err := buildCalendar(fdb, "2026-07")
+	got, err := buildCalendar(fdb, "2026-07", market.US)
 	if err != nil {
 		t.Fatalf("buildCalendar() error = %v", err)
 	}
@@ -108,7 +109,7 @@ func TestBuildCalendar_MonthBeforeFirstTradeHasNoDays(t *testing.T) {
 		},
 	}
 
-	got, err := buildCalendar(fdb, "2026-05")
+	got, err := buildCalendar(fdb, "2026-05", market.US)
 	if err != nil {
 		t.Fatalf("buildCalendar() error = %v", err)
 	}
@@ -127,7 +128,7 @@ func TestBuildCalendar_SnapshotErrorPropagates(t *testing.T) {
 		},
 		snapshotsErr: errors.New("provider down"),
 	}
-	if _, err := buildCalendar(fdb, "2026-07"); err == nil {
+	if _, err := buildCalendar(fdb, "2026-07", market.US); err == nil {
 		t.Error("buildCalendar() error = nil, want the snapshot fetch error to propagate")
 	}
 }

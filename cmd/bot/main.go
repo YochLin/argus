@@ -17,6 +17,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/llm"
+	"argus/internal/market"
 	"argus/internal/mcptools"
 	"argus/internal/scheduler"
 	"argus/internal/web"
@@ -201,7 +202,10 @@ func main() {
 		telegramBot.RunDailyReport(ctx)
 	})
 	sched.AddClosingSnapshot(ctx, func(ctx context.Context) {
-		telegramBot.RunClosingSnapshot(ctx)
+		telegramBot.RunClosingSnapshot(ctx, market.US)
+	})
+	sched.AddTWClosingSnapshot(ctx, func(ctx context.Context) {
+		telegramBot.RunClosingSnapshot(ctx, market.TW)
 	})
 	sched.AddUniverseScan(ctx, func(ctx context.Context) {
 		telegramBot.RunUniverseScan(ctx)

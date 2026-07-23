@@ -1,6 +1,10 @@
 package data
 
-import "fmt"
+import (
+	"fmt"
+
+	"argus/internal/market"
+)
 
 // Fundamentals is a curated set of valuation/profitability/growth ratios.
 // Sourced from Finnhub's /stock/metric endpoint — Yahoo's equivalent
@@ -60,6 +64,9 @@ type FundamentalsProvider interface {
 }
 
 func (f *Finnhub) GetFundamentals(ticker string) (*Fundamentals, error) {
+	if market.Of(ticker) == market.TW {
+		return nil, errTWNotSupported
+	}
 	var result struct {
 		Metric map[string]any `json:"metric"`
 	}
@@ -113,6 +120,9 @@ type finnhubReportLine struct {
 // GetFinancialStatements returns the most recent filing's key line items.
 // freq is "annual" (10-K) or "quarterly" (10-Q).
 func (f *Finnhub) GetFinancialStatements(ticker, freq string) (*FinancialStatement, error) {
+	if market.Of(ticker) == market.TW {
+		return nil, errTWNotSupported
+	}
 	var result struct {
 		Data []struct {
 			Year    int    `json:"year"`

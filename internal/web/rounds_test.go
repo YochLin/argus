@@ -7,6 +7,7 @@ import (
 
 	"argus/internal/data"
 	"argus/internal/db"
+	"argus/internal/market"
 )
 
 // fakeHistory implements data.HistoryProvider for tests.
@@ -125,7 +126,7 @@ func TestBuildRounds(t *testing.T) {
 			tx("MSFT", "BUY", 5, 400, "2026-07-01"),
 		},
 	}
-	got, err := buildRounds(fdb)
+	got, err := buildRounds(fdb, market.US)
 	if err != nil {
 		t.Fatalf("buildRounds() error = %v", err)
 	}
@@ -145,7 +146,7 @@ func TestBuildRounds(t *testing.T) {
 }
 
 func TestBuildRounds_Empty(t *testing.T) {
-	got, err := buildRounds(&fakeDB{})
+	got, err := buildRounds(&fakeDB{}, market.US)
 	if err != nil {
 		t.Fatalf("buildRounds() error = %v", err)
 	}

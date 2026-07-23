@@ -106,6 +106,27 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   order for that distinction is the kind of thing that fails silently. `AnalystRating.HasPrev` is false
   when Finnhub has only one period on record (a newly-covered ticker) — the `Prev*` fields are all zero in
   that case, and must not be read as "no analysts currently rate this stock."
+  Phase 6 PR1 (docs/phase-6-tw-market.md) added TW support to `yahoo.go`, live-tested against the real
+  endpoint: `resolveSymbol(ticker)` returns `[ticker]` unchanged for a US ticker, but for a TW ticker
+  (`market.Of`) returns `[ticker+".TW", ticker+".TWO"]` — Yahoo distinguishes TWSE-listed (`.TW`, e.g.
+  `2330.TW`) from TPEx-listed (`.TWO`, e.g. `5274.TWO`) and a bare numeric ticker carries no listing-venue
+  information of its own. `GetQuote`/`GetHistory`/`GetNews` all try `resolveSymbol`'s candidates in order
+  and cache (`twSuffixCache`, keyed by the bare ticker) whichever suffix actually succeeded, so a ticker
+  only ever pays the two-request cost once. "Failure" for fallback purposes is any error, including the
+  pre-existing all-zero-meta guard (`yahoo: no market data for %s`) — Yahoo returns HTTP 200 with an
+  all-zero body for a suffix that doesn't match any real listing, exactly like it already does for an
+  invalid US ticker, so no new failure-detection logic was needed. **`Quote.Ticker` on a successful TW
+  fetch is always reset to the bare ticker** (`2330`, never `2330.TW`) before returning — every caller in
+  this codebase uses the bare ticker as a map key, and returning the suffixed symbol would silently break
+  every one of those lookups. `GetMarketMovers`/`IsUSEquitySymbol` are untouched (US-only by design).
+  `finnhub.go`/`fundamentals.go`/`analystrating.go` each gained a `market.Of(ticker) == market.TW` guard at
+  the top of every per-ticker method (`GetQuote`/`GetNews`/`GetFundamentals`/`GetFinancialStatements`/
+  `GetAnalystRating`), returning a sentinel `errTWNotSupported` instead of making a doomed request —
+  Finnhub's free tier doesn't cover Taiwan listings at all, so without the guard every TW quote would waste
+  a request before `Multi` falls through to Yahoo (same "doomed request" shape CLAUDE.md already documents
+  for a placeholder `FINNHUB_API_KEY`). `GetUpcomingEarnings` deliberately has no guard: it's one
+  whole-market call filtered client-side, so a TW ticker just never matches rather than costing anything
+  extra.
 - `internal/db` — thin wrapper around `database/sql` + `modernc.org/sqlite` (pure-Go, no cgo). Owns nine
   tables: `watchlist`, `daily_snapshots`, `recommendations` (with `action` BUY/SELL/HOLD, `price` at
   recommendation time, and `source` — `"watchlist"`/`"movers"`/`"scan"`, migration 5, `""` for rows saved
@@ -189,6 +210,31 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   automatic). `SetStopPrice(ticker, price)` is `UPDATE ... WHERE ticker=?` and returns the existing
   `ErrNoPosition` sentinel via `RowsAffected()==0`, same idiom as every other write here. See
   [docs/phase-3.11-trade-risk-management.md](docs/phase-3.11-trade-risk-management.md).
+  Migration 12 (Phase 6 PR1, docs/phase-6-tw-market.md §4.2) is this project's **first table-rebuild
+  migration**, not just an appended `ALTER TABLE`: `watchlist`/`positions`/`transactions`/
+  `recommendations` each gain a `market TEXT NOT NULL DEFAULT 'us'` column (backfilled via
+  `WHERE ticker GLOB '[0-9]*'`, a defensive no-op on any pre-Phase-6 deployed DB), but
+  `net_worth_snapshots`'s primary key was `date` alone — SQLite can't `ALTER` a primary key, so that table
+  is dropped and rebuilt as `(date, market)` PK, with every existing row backfilled to `market='us'`. This
+  is the migration `TestMigration12BackfillsMarketAndRebuildsNetWorth` (db_test.go) exists specifically to
+  pin down: it hand-applies migrations 1–11 against a raw connection, seeds legacy-shaped rows, then runs
+  migration 12 and asserts every pre-existing row survived with the correct backfilled market — a
+  same-date write for the *other* market afterward must not clobber the backfilled row, proving the
+  composite PK actually took effect. `daily_snapshots`/`signal_states`/`scan_hits`/`universe`/`thesis`/
+  `trade_lessons`/`pending_actions` deliberately did **not** gain a market column — every reader of those
+  tables already has the ticker in hand and can call `market.Of` itself, and none of them do a SQL-level
+  cross-market aggregation that would need the column pre-computed. Every write path
+  (`AddTicker`/`RecordBuy`/`RecordSell`/`SaveRecommendations`) derives `market` internally via
+  `string(market.Of(ticker))` — **no exported signature gained a market parameter for these four**, since
+  the value is always mechanically derivable from the ticker already being passed in; adding one would
+  just be a second, independently-editable "fact" for the same information `market.Of` already owns.
+  By contrast, every net-worth-related read/write **did** gain an explicit `market.MarketID` parameter
+  (`SaveNetWorthSnapshot`/`GetLatestNetWorth`/`GetNetWorthOnOrBefore`/`GetNetWorthRange`/`GetRealizedPnL`)
+  — unlike a ticker-scoped write, these aggregate *across* a market with no ticker in the call to derive
+  it from, so the caller has to say which one explicitly. `GetWatchlist()` (all tickers, any market) was
+  kept as-is for callers that genuinely want the whole list regardless of market (chat context injection,
+  `/list`, `/status` with no ticker) — `GetWatchlistByMarket(m)` is the new, additional single-market
+  query, not a replacement.
 - `internal/i18n` — every user/LLM-facing string in the project, split into exactly two files by design:
   `zh.go` (Traditional Chinese, the original default) and `en.go` (English), both keyed by the `Key`
   constants declared in `i18n.go`. `T(lang, key, args...)` does the lookup + `fmt.Sprintf`. This covers two
@@ -375,6 +421,11 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `lumberjack.Logger` only rotates on size by itself, so this cron call to `Rotate()` is what makes it
   an actual daily rotation), and the SQLite backup (`AddBackup`, 06:00 CST daily, after the closing
   snapshot so each backup includes that day's post-close data).
+  Phase 6 PR1 added `AddTWClosingSnapshot` (14:30 CST Mon–Fri) — Taipei and Taiwan share the same UTC+8
+  offset with no DST on either side, so unlike `AddDailyReport`'s US-session arithmetic this needed no
+  cross-zone adjustment at all: the TWSE/TPEx session closes 13:30 Taipei time, and 14:30 leaves a plain
+  30-minute buffer for Yahoo's chart data to be available. `main.go` registers it alongside (not instead
+  of) `AddClosingSnapshot`, both driving `bot.RunClosingSnapshot` with a different `market.MarketID`.
 - `internal/market` — pure, dependency-free NYSE trading-calendar logic (`IsTradingDay`/`IsHoliday`),
   added for the "美股休市日感知" UX fix: `RunDailyReport`'s cron has no weekday/holiday restriction
   (unlike `AddClosingSnapshot`'s Tue–Sat), so before this it would run a full LLM analysis on a market
@@ -397,6 +448,13 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   gap: only this fixed annual set is covered — ad-hoc closures (a national day of mourning, a weather
   emergency) aren't calculable and won't be caught, the same "no API dependency" tradeoff PLAN.md's design
   note chose over Finnhub's holiday endpoint (free-tier availability was never confirmed).
+  Phase 6 PR1 (see docs/phase-6-tw-market.md) added `MarketID`/`Of(ticker) MarketID` — the single source
+  of truth for US-vs-TW ticker classification project-wide (`db`/`data`/`bot`/`web`/`mcptools` all call
+  it; no code path accepts a caller-supplied market value). `Of` classifies by shape alone: a leading
+  digit means TW (`2330`/`0050`/`00679B`), anything else (including `""`) is US — deliberately no
+  validation beyond that, same "garbage in, garbage through" contract as `IsTradingDay`/`IsHoliday`. This
+  is why Hong Kong listings are explicitly out of scope (`0700.HK` would also classify as TW by this
+  rule) and why the design doc calls that out as a real constraint, not an oversight.
 - `internal/render` — Telegram/chat-facing text formatting shared between `internal/bot` and
   `internal/mcptools`: `Fundamentals`/`FinancialStatement`/`Commaf`, depending only on `internal/data` +
   `internal/i18n` (same constraint `internal/mcptools` needs — see that package's entry below). Pulled
@@ -716,6 +774,52 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   share `handleCallbackQuery` with `pending_actions.go`'s `pa_confirm:`/`pa_reject:` ones (checked first,
   different namespace, `parseCallbackData` already returns `ok=false` for an unrecognized prefix so there's
   no collision) — see that file's doc comment for the full dispatch shape.
+  Phase 6 PR1 (docs/phase-6-tw-market.md) made TW tickers first-class for every already-existing capability
+  (watchlist/quote/history/snapshot/trade/portfolio/chat) while keeping `/recommend`/`RunDailyReport`
+  US-only for this PR (analysis/LLM face is PR2). `RunClosingSnapshot(ctx)` → `RunClosingSnapshot(ctx,
+  m market.MarketID)`: watchlist now comes from `GetWatchlistByMarket(m)`, and the snapshot date's
+  semantics differ by market — US still dates one day back (`AddClosingSnapshot`'s 05:30 CST run captures
+  a session that closed the *previous* US day), but TW dates the snapshot **today** (`AddTWClosingSnapshot`'s
+  14:30 CST run is the same Taipei afternoon as the session it's recording — no cross-midnight gap to
+  correct for). `benchmarkFor(m)` returns `"SPY"` for US and `"0050"` for TW; `snapshotBenchmark`/
+  `recordNetWorthSnapshot` both take `m` now, and `recordNetWorthSnapshot` filters `GetPositions()` down to
+  `market.Of(p.Ticker) == m` before summing — a TWD and a USD position must never land in the same
+  `net_worth_snapshots` total, they're different currencies. 0050 is allowed to simultaneously be a TW
+  watchlist/held ticker; a same-`(ticker,date)` double-write from both the benchmark path and the ordinary
+  per-ticker path is safe because `SaveSnapshot` is `INSERT OR REPLACE`. `main.go` registers **two**
+  `RunClosingSnapshot` closures (`market.US`/`market.TW`) against `AddClosingSnapshot`/
+  `AddTWClosingSnapshot` respectively — `AddDailyReport`/`AddUniverseScan`/`RunDailyReport`/
+  `RunUniverseScan` stay single (US-only), unchanged, since PR2 owns their TW counterparts.
+  `gatherRecommendationInputs` (shared by `/recommend` and `RunDailyReport`) now calls
+  `GetWatchlistByMarket(market.US)` instead of the all-market `GetWatchlist()` — a TW ticker can be
+  `/add`ed/`/buy`ed/`/check`ed today, but it will not appear in a daily report or `/recommend` output until
+  PR2's TW analysis pass exists; this is a deliberate PR1/PR2 scope line, not an oversight.
+  `/check`'s `computeTechnicals` call picks its RS63 benchmark history via
+  `benchmarkFor(market.Of(ticker))` rather than the hardcoded `benchmarkTicker` constant, since `/check`
+  (unlike the US-only recommendation pipeline) is expected to work immediately on a TW ticker. `/portfolio`
+  now renders as up to two independent blocks (`sendPortfolioSection(market.US, ...)` then
+  `sendPortfolioSection(market.TW, ...)`), each with its own section-title key (`KeyPortfolioSectionUS`/
+  `KeyPortfolioSectionTW`) and its own realized-P&L subtotal (`GetRealizedPnL(m)`) — a market with zero
+  open positions gets **no block at all**, not an empty one. A TW line additionally gets a `lotSuffix`
+  note (`"（= N 張）"`) when its share count is an exact multiple of `twLotSize` (1000) — this project
+  still records TW positions in raw shares (`/buy 2330 1000` = one board lot), the note is purely a
+  display convenience, never a unit change. `/cash` gained a second, independent settings key
+  (`cashSettingKeyTWD = "cash_balance_twd"`, alongside the pre-existing `cash_balance` for USD — zero
+  migration, `settings` is already a generic key/value table) — `/cash <amount>` alone still means USD
+  (backward compatible), `/cash usd|twd <amount>` sets a currency explicitly, and `/cash` with no argument
+  shows both (whichever are actually set). The parsing itself lives in the pure, separately tested
+  `parseCashArgs`, mirroring the existing `parseTradeArgs`/`parseStopArgs` convention. `loadCash` gained a
+  `market.MarketID` parameter throughout (`loadCash(m)`); `accountValue` (Phase 3.11's BUY-sizing input)
+  followed the same shape (`accountValue(m)`) since it's built from `GetLatestNetWorth(m)` + `loadCash(m)`
+  — its one caller, `buildSizingLines`, hardcodes `market.US` for this PR since BUY sizing only ever runs
+  against US recommendations right now. **TWD is never added into a USD total anywhere in a prompt**:
+  `buildInsightPrompt`/`buildWeeklyReviewPrompt` (`internal/llm`) render a TWD cash balance as its own
+  standalone line (`KeyInsightCashLineTWD`) rather than folding it into the existing `totalValue+cash`
+  USD figure — that total already mixes every held position's market value regardless of currency (an
+  accepted gap, see docs/phase-6-tw-market.md §7 "`/insight` 混市場"), and adding a TWD number into it
+  would only compound an already-known-wrong figure. `buildChatContext`/`handleList`/`handleStatus`
+  (no-argument form) are unchanged — they still read the all-market `GetWatchlist()`, since "everything
+  I'm watching" is exactly what those want.
 - `internal/mcptools` — Phase 3.5's read-only MCP (Model Context Protocol) tool surface for chat, using
   the official `github.com/modelcontextprotocol/go-sdk`. `NewServer(lang, provider, history, fundamentals,
   earnings)` builds an `*mcp.Server` and registers seven tools (`tools.go`'s `registerTools`): `get_quote`/
@@ -773,6 +877,16 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   subprocess has no Telegram bot of its own to show a confirm/reject keyboard with; `internal/bot` picks
   up `pending`-status rows after the chat turn that created them (see that package's entry). See
   [docs/phase-4-write-gating.md](docs/phase-4-write-gating.md).
+  Phase 6 PR1 needed zero new tools: `get_quote`/`get_history` already work for a TW ticker for free once
+  the provider layer maps it (`internal/data`'s `resolveSymbol`); `get_fundamentals`/
+  `get_financial_statements` already degrade to their existing "no data" `mcpErr` for a TW ticker with no
+  code change at all, since `Finnhub.GetFundamentals`'s new TW guard (see `internal/data`'s entry) just
+  becomes one more error `getFundamentals`'s existing `err != nil → i18n.KeyMCPNoFundamentals` branch
+  catches — FinMind support in PR3 is what turns that into real data, not a PR1 change. `get_portfolio`
+  did change: `getPortfolio` now mirrors `internal/bot`'s `sendPortfolioSection` (its own copy —
+  `writePortfolioSection` — for the same can't-share-an-import reason as `formatFundamentals`), rendering
+  up to two market-scoped blocks with independent `GetRealizedPnL(m)` subtotals instead of one combined
+  figure that would silently sum TWD and USD together.
 - `internal/web` — Phase 5 PR1's read-only web dashboard (see
   [docs/phase-5-web-dashboard.md](docs/phase-5-web-dashboard.md)): an in-process HTTP server gated by the
   `WEB_ADDR` env var (empty = off, same presence-of-config convention as `FINNHUB_API_KEY`), started as a
@@ -822,6 +936,25 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   build output) is gitignored, never committed. `spaHandler` in `server.go` falls back to `index.html` for
   any request path that isn't a real file in the embedded build, so client-side routes added in later PRs
   (e.g. PR2's calendar view) don't 404 on a hard refresh.
+  Phase 6 PR1 added a `?market=us|tw` query parameter (default `us`, preserving every pre-Phase-6 client's
+  behavior unchanged) to `/api/status`/`/api/dashboard`/`/api/calendar`/`/api/rounds` — every one of them
+  reads `transactions`/`positions`, and replaying a TWD position through the same P&L curve as a USD one
+  would silently produce a meaningless mixed-currency number, not just a display glitch, so this had to
+  ship in the same PR as the DB migration rather than "later" (see the design doc's explicit "不能後補").
+  `dashboard.go`'s `filterByMarket`/`filterTransactionsByMarket`/`filterPositionsByMarket` do the filtering
+  *before* handing data to the replay engine (`pnl.go`'s `DailyPnL`/`CumulativeCurve`/KPI functions) —
+  those stayed pure functions with zero changes, "filter what goes in, not what the engine computes" is the
+  whole shape of this change. `/api/round-detail` deliberately did **not** gain a `market` parameter: it's
+  already scoped to one `ticker` in its query string, and that ticker alone determines its market — adding
+  a second, independently-settable parameter would just invite the two disagreeing. The frontend
+  (`web/src/`) mirrors this with an app-level `Market` toggle state lifted into `App.tsx` (US/TW pill
+  buttons in `Sidebar.tsx`, "樣式從簡" per the design doc — no new visual language) that every
+  market-scoped view re-fetches on when it changes; `api.ts`'s `currencySymbol(market)` (`"$"`/`"NT$"`)
+  feeds `KpiCard`/`PositionsTable`/`TradesTable`'s existing (now optional, default-`"$"`) `currency` prop.
+  `RoundDetailView` is the one exception that does **not** read the app-level toggle for its currency — a
+  round is opened by a specific ticker, so it derives its own currency via `api.ts`'s `marketOf(ticker)`
+  (a client-side mirror of `internal/market.Of`) instead, same reasoning as `/api/round-detail` not taking
+  a `market` parameter.
 
 ## Key behaviors to preserve
 

@@ -73,11 +73,15 @@ var enMessages = map[Key]string{
 	KeyBuyStopSuggestion:    "\n💡 Stop-loss reference:\n",
 	KeyBuyStopAddOnNote:     "*%s*'s current stop is $%.2f — use /stop to reset it after adding to the position.\n",
 
-	KeyPortfolioTitle:   "💼 *Portfolio Overview*\n\n",
-	KeyPortfolioEmpty:   "No positions yet. Use /buy <ticker> <shares> <price> to record a purchase.",
-	KeyPortfolioLine:    "*%s*  %g shares @ avg $%.2f\nPrice $%.2f  Value $%.2f  Unrealized %+.2f (%+.2f%%)\n\n",
-	KeyPortfolioSummary: "—\nTotal market value: $%.2f\nCumulative realized P&L: %+.2f",
-	KeyJobPanic:         "⚠️ *%s* hit an unexpected error and aborted: %v",
+	KeyPortfolioTitle:      "💼 *Portfolio Overview*\n\n",
+	KeyPortfolioEmpty:      "No positions yet. Use /buy <ticker> <shares> <price> to record a purchase.",
+	KeyPortfolioLine:       "*%s*  %g shares @ avg $%.2f\nPrice $%.2f  Value $%.2f  Unrealized %+.2f (%+.2f%%)\n\n",
+	KeyPortfolioSummary:    "—\nTotal market value: $%.2f\nCumulative realized P&L: %+.2f",
+	KeyPortfolioSectionUS:  "*US (USD)*\n",
+	KeyPortfolioSectionTW:  "*TW (TWD)*\n",
+	KeyPortfolioSummaryTWD: "—\nTotal market value: NT$%.2f\nCumulative realized P&L: %+.2f",
+	KeyPortfolioLotSuffix:  " (= %d board lots)",
+	KeyJobPanic:            "⚠️ *%s* hit an unexpected error and aborted: %v",
 
 	KeyInsightResultTitle: "💡 *Portfolio Insight*\n\n%s",
 
@@ -97,11 +101,13 @@ var enMessages = map[Key]string{
 	KeyMonthlyReportTxCountLine:   "Transactions this month: %d\n",
 	KeyMonthlyReportCashLine:      "Total assets incl. cash: $%.2f (cash $%.2f)\n",
 
-	KeyCashUsage:      "Usage: /cash <amount> (omit the amount to check the current value)",
-	KeyCashCurrent:    "Declared cash: $%.2f",
-	KeyCashNotSet:     "Cash balance not set yet. Use /cash <amount> to set it.",
-	KeyCashSetSuccess: "Cash balance set to $%.2f.",
-	KeyCashSetFailed:  "Failed to set cash balance: %v",
+	KeyCashUsage:         "Usage: /cash <amount> = USD; /cash twd <amount> or /cash usd <amount> to specify a currency; omit the amount to check current values",
+	KeyCashCurrent:       "Declared cash: $%.2f",
+	KeyCashCurrentTWD:    "Declared cash (TWD): NT$%.2f",
+	KeyCashNotSet:        "Cash balance not set yet. Use /cash <amount> to set it.",
+	KeyCashSetSuccess:    "Cash balance set to $%.2f.",
+	KeyCashSetSuccessTWD: "Cash balance (TWD) set to NT$%.2f.",
+	KeyCashSetFailed:     "Failed to set cash balance: %v",
 
 	KeyStopLossAlertTitle:       "🛑 *Stop-Loss Alert*\n\n",
 	KeyStopLossAlertLine:        "• *%s* cost $%.2f → price $%.2f, unrealized loss %.1f%% — stop-loss threshold hit\n",
@@ -336,6 +342,7 @@ Keep the reply concise — under 400 words total.
 	KeyInsightPromptIntro:       "You are a US equities analyst. Give a portfolio-level read on the whole set of holdings below (not a repeat of each ticker's individual analysis).\n\n",
 	KeyInsightPositionValueLine: "Total position value: $%.2f\n",
 	KeyInsightCashLine:          "Cash balance: $%.2f\nTotal assets (positions + cash): $%.2f\n",
+	KeyInsightCashLineTWD:       "Cash balance (TWD): NT$%.2f\n",
 	KeyInsightPromptTask: `
 Please analyze the whole portfolio in English (don't repeat the per-ticker data already listed — focus on portfolio-level judgment):
 1. Concentration risk: is any single position or sector too large a share of the portfolio (infer sector from your own

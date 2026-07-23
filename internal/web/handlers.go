@@ -5,7 +5,20 @@ import (
 	"errors"
 	"log"
 	"net/http"
+
+	"argus/internal/market"
 )
+
+// marketParam parses r's "market" query parameter into a market.MarketID —
+// "tw" for Taiwan, anything else (including absent, the common case)
+// defaults to US, preserving pre-Phase-6 behavior for every existing
+// client. See docs/phase-6-tw-market.md §4.4.
+func marketParam(r *http.Request) market.MarketID {
+	if r.URL.Query().Get("market") == "tw" {
+		return market.TW
+	}
+	return market.US
+}
 
 // dashboardResponse is /api/dashboard's body. Only raw numbers/dates/
 // tickers — no display strings — per docs/phase-5-web-dashboard.md's UI
@@ -118,7 +131,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	writeJSON(w, http.StatusOK, buildStatus(s.db))
+	writeJSON(w, http.StatusOK, buildStatus(s.db, marketParam(r)))
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
@@ -129,7 +142,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	resp, err := buildDashboard(s.db, s.quotes)
+	resp, err := buildDashboard(s.db, s.quotes, marketParam(r))
 	if err != nil {
 		log.Printf("web: build dashboard: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to build dashboard")
@@ -146,7 +159,7 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	resp, err := buildCalendar(s.db, r.URL.Query().Get("month"))
+	resp, err := buildCalendar(s.db, r.URL.Query().Get("month"), marketParam(r))
 	if err != nil {
 		log.Printf("web: build calendar: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to build calendar")
@@ -163,7 +176,7 @@ func (s *Server) handleRounds(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	resp, err := buildRounds(s.db)
+	resp, err := buildRounds(s.db, marketParam(r))
 	if err != nil {
 		log.Printf("web: build rounds: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to build rounds")

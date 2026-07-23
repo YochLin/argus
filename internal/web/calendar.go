@@ -1,6 +1,10 @@
 package web
 
-import "time"
+import (
+	"time"
+
+	"argus/internal/market"
+)
 
 // monthBounds parses a "YYYY-MM" month string into its first/last calendar
 // day (as "YYYY-MM-DD" strings, matching daily_snapshots/transactions'
@@ -23,7 +27,7 @@ func monthBounds(month string) (start, end string, ok bool) {
 // (design doc's A3) are deliberately not computed here — they're just a sum
 // over Days, cheap enough to leave to the frontend rather than opening a
 // second endpoint for it.
-func buildCalendar(database dbReader, month string) (calendarResponse, error) {
+func buildCalendar(database dbReader, month string, m market.MarketID) (calendarResponse, error) {
 	monthStart, monthEnd, ok := monthBounds(month)
 	if !ok {
 		monthStart, monthEnd, _ = monthBounds(time.Now().Format("2006-01"))
@@ -38,10 +42,11 @@ func buildCalendar(database dbReader, month string) (calendarResponse, error) {
 		Transactions: []transactionResponse{},
 	}
 
-	txs, err := database.GetAllTransactions()
+	allTxs, err := database.GetAllTransactions()
 	if err != nil {
 		return calendarResponse{}, err
 	}
+	txs := filterTransactionsByMarket(allTxs, m)
 	if len(txs) == 0 {
 		return resp, nil
 	}

@@ -1,9 +1,13 @@
 package db
 
 import (
+	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
+
+	"argus/internal/market"
 )
 
 // newTestDB opens a fresh sqlite file in a t.TempDir() so each test gets an
@@ -266,7 +270,7 @@ func TestRecordSellRealizedPnLAndPartialClose(t *testing.T) {
 		t.Errorf("RecordSell() remaining position = %+v, want Shares=6 AvgCost=200", pos)
 	}
 
-	total, err := d.GetRealizedPnL()
+	total, err := d.GetRealizedPnL(market.US)
 	if err != nil || total != 79 {
 		t.Errorf("GetRealizedPnL() = %v, %v; want 79, nil", total, err)
 	}
@@ -353,11 +357,11 @@ func TestGetPositionsOrdering(t *testing.T) {
 func TestSaveNetWorthSnapshotUpsert(t *testing.T) {
 	d := newTestDB(t)
 
-	if err := d.SaveNetWorthSnapshot("2026-07-05", 1000); err != nil {
+	if err := d.SaveNetWorthSnapshot("2026-07-05", market.US, 1000); err != nil {
 		t.Fatalf("SaveNetWorthSnapshot() error = %v", err)
 	}
 	// Same date should replace, not conflict.
-	if err := d.SaveNetWorthSnapshot("2026-07-05", 1200); err != nil {
+	if err := d.SaveNetWorthSnapshot("2026-07-05", market.US, 1200); err != nil {
 		t.Fatalf("SaveNetWorthSnapshot() (upsert) error = %v", err)
 	}
 }
@@ -365,7 +369,7 @@ func TestSaveNetWorthSnapshotUpsert(t *testing.T) {
 func TestGetLatestNetWorthEmpty(t *testing.T) {
 	d := newTestDB(t)
 
-	_, _, ok, err := d.GetLatestNetWorth()
+	_, _, ok, err := d.GetLatestNetWorth(market.US)
 	if err != nil {
 		t.Fatalf("GetLatestNetWorth() error = %v", err)
 	}
@@ -377,14 +381,14 @@ func TestGetLatestNetWorthEmpty(t *testing.T) {
 func TestGetLatestNetWorth(t *testing.T) {
 	d := newTestDB(t)
 
-	if err := d.SaveNetWorthSnapshot("2026-07-01", 1000); err != nil {
+	if err := d.SaveNetWorthSnapshot("2026-07-01", market.US, 1000); err != nil {
 		t.Fatalf("SaveNetWorthSnapshot() error = %v", err)
 	}
-	if err := d.SaveNetWorthSnapshot("2026-07-08", 1100); err != nil {
+	if err := d.SaveNetWorthSnapshot("2026-07-08", market.US, 1100); err != nil {
 		t.Fatalf("SaveNetWorthSnapshot() error = %v", err)
 	}
 
-	date, total, ok, err := d.GetLatestNetWorth()
+	date, total, ok, err := d.GetLatestNetWorth(market.US)
 	if err != nil || !ok || date != "2026-07-08" || total != 1100 {
 		t.Errorf("GetLatestNetWorth() = %q, %v, %v, %v; want \"2026-07-08\", 1100, true, nil", date, total, ok, err)
 	}
@@ -393,15 +397,15 @@ func TestGetLatestNetWorth(t *testing.T) {
 func TestGetNetWorthOnOrBefore(t *testing.T) {
 	d := newTestDB(t)
 
-	if err := d.SaveNetWorthSnapshot("2026-07-01", 1000); err != nil {
+	if err := d.SaveNetWorthSnapshot("2026-07-01", market.US, 1000); err != nil {
 		t.Fatalf("SaveNetWorthSnapshot() error = %v", err)
 	}
-	if err := d.SaveNetWorthSnapshot("2026-07-03", 1050); err != nil {
+	if err := d.SaveNetWorthSnapshot("2026-07-03", market.US, 1050); err != nil {
 		t.Fatalf("SaveNetWorthSnapshot() error = %v", err)
 	}
 
 	t.Run("exact date match", func(t *testing.T) {
-		total, ok, err := d.GetNetWorthOnOrBefore("2026-07-03")
+		total, ok, err := d.GetNetWorthOnOrBefore("2026-07-03", market.US)
 		if err != nil || !ok || total != 1050 {
 			t.Errorf("GetNetWorthOnOrBefore(2026-07-03) = %v, %v, %v; want 1050, true, nil", total, ok, err)
 		}
@@ -409,14 +413,14 @@ func TestGetNetWorthOnOrBefore(t *testing.T) {
 
 	t.Run("falls back to most recent prior date", func(t *testing.T) {
 		// 2026-07-02 has no snapshot (e.g. a weekend) — should fall back to 07-01.
-		total, ok, err := d.GetNetWorthOnOrBefore("2026-07-02")
+		total, ok, err := d.GetNetWorthOnOrBefore("2026-07-02", market.US)
 		if err != nil || !ok || total != 1000 {
 			t.Errorf("GetNetWorthOnOrBefore(2026-07-02) = %v, %v, %v; want 1000, true, nil", total, ok, err)
 		}
 	})
 
 	t.Run("no snapshot on or before date", func(t *testing.T) {
-		_, ok, err := d.GetNetWorthOnOrBefore("2026-06-01")
+		_, ok, err := d.GetNetWorthOnOrBefore("2026-06-01", market.US)
 		if err != nil {
 			t.Fatalf("GetNetWorthOnOrBefore() error = %v", err)
 		}
@@ -429,20 +433,20 @@ func TestGetNetWorthOnOrBefore(t *testing.T) {
 func TestGetNetWorthRange(t *testing.T) {
 	d := newTestDB(t)
 
-	if err := d.SaveNetWorthSnapshot("2026-06-30", 900); err != nil { // outside range
+	if err := d.SaveNetWorthSnapshot("2026-06-30", market.US, 900); err != nil { // outside range
 		t.Fatalf("SaveNetWorthSnapshot() error = %v", err)
 	}
-	if err := d.SaveNetWorthSnapshot("2026-07-01", 1000); err != nil {
+	if err := d.SaveNetWorthSnapshot("2026-07-01", market.US, 1000); err != nil {
 		t.Fatalf("SaveNetWorthSnapshot() error = %v", err)
 	}
-	if err := d.SaveNetWorthSnapshot("2026-07-15", 1100); err != nil {
+	if err := d.SaveNetWorthSnapshot("2026-07-15", market.US, 1100); err != nil {
 		t.Fatalf("SaveNetWorthSnapshot() error = %v", err)
 	}
-	if err := d.SaveNetWorthSnapshot("2026-08-01", 1200); err != nil { // outside range
+	if err := d.SaveNetWorthSnapshot("2026-08-01", market.US, 1200); err != nil { // outside range
 		t.Fatalf("SaveNetWorthSnapshot() error = %v", err)
 	}
 
-	got, err := d.GetNetWorthRange("2026-07-01", "2026-07-31")
+	got, err := d.GetNetWorthRange("2026-07-01", "2026-07-31", market.US)
 	if err != nil {
 		t.Fatalf("GetNetWorthRange() error = %v", err)
 	}
@@ -459,7 +463,7 @@ func TestGetNetWorthRange(t *testing.T) {
 
 func TestGetNetWorthRangeEmpty(t *testing.T) {
 	d := newTestDB(t)
-	got, err := d.GetNetWorthRange("2026-07-01", "2026-07-31")
+	got, err := d.GetNetWorthRange("2026-07-01", "2026-07-31", market.US)
 	if err != nil {
 		t.Fatalf("GetNetWorthRange() error = %v", err)
 	}
@@ -741,6 +745,126 @@ func TestMigrateIsRerunnable(t *testing.T) {
 	got, err := d.GetWatchlist()
 	if err != nil || len(got) != 1 || got[0] != "AAPL" {
 		t.Errorf("GetWatchlist() after reopen = %v, %v; want [AAPL], nil", got, err)
+	}
+}
+
+// TestMigration12BackfillsMarketAndRebuildsNetWorth simulates a pre-Phase-6
+// database (stopped at migration 11, no market columns, net_worth_snapshots
+// keyed by date alone) picking up a TW position before ever running the
+// Phase 6 code — the deploy-day scenario docs/phase-6-tw-market.md §8 flags
+// as this migration's biggest risk, since it's the project's first
+// rebuild-a-table migration rather than a plain append-only ALTER TABLE.
+// Asserts every pre-existing row survives with the correct backfilled
+// market, not just that the migration runs without error.
+func TestMigration12BackfillsMarketAndRebuildsNetWorth(t *testing.T) {
+	conn, err := sql.Open("sqlite", fmt.Sprintf("file:%s", filepath.Join(t.TempDir(), "legacy.db")))
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	d := &DB{conn: conn}
+	defer d.Close()
+
+	// Apply migrations 1..11 by hand (pre-Phase-6 schema) and stamp
+	// user_version accordingly, exactly like migrate() would have at that
+	// point in this database's history.
+	for i, m := range migrations[:11] {
+		if _, err := conn.Exec(m); err != nil {
+			t.Fatalf("apply legacy migration %d: %v", i+1, err)
+		}
+	}
+	if _, err := conn.Exec(`PRAGMA user_version = 11`); err != nil {
+		t.Fatalf("set user_version: %v", err)
+	}
+
+	// Seed old-shaped rows: a US and a TW ticker on the watchlist/positions/
+	// transactions/recommendations tables (none of which have a market
+	// column yet), plus a net_worth_snapshots row under the old
+	// single-column (date) primary key.
+	legacyInserts := []string{
+		`INSERT INTO watchlist (ticker) VALUES ('AAPL')`,
+		`INSERT INTO watchlist (ticker) VALUES ('2330')`,
+		`INSERT INTO positions (ticker, shares, avg_cost) VALUES ('AAPL', 10, 150)`,
+		`INSERT INTO positions (ticker, shares, avg_cost) VALUES ('2330', 1000, 900)`,
+		`INSERT INTO transactions (ticker, side, shares, price, fee, date) VALUES ('AAPL', 'BUY', 10, 150, 0, '2026-07-01')`,
+		`INSERT INTO transactions (ticker, side, shares, price, fee, date) VALUES ('2330', 'BUY', 1000, 900, 0, '2026-07-01')`,
+		`INSERT INTO recommendations (date, ticker, action, reason, price, source) VALUES ('2026-07-01', 'AAPL', 'BUY', 'test', 150, 'watchlist')`,
+		`INSERT INTO recommendations (date, ticker, action, reason, price, source) VALUES ('2026-07-01', '2330', 'BUY', 'test', 900, 'watchlist')`,
+		`INSERT INTO net_worth_snapshots (date, total_value) VALUES ('2026-07-01', 1500)`,
+	}
+	for _, ins := range legacyInserts {
+		if _, err := conn.Exec(ins); err != nil {
+			t.Fatalf("legacy insert %q: %v", ins, err)
+		}
+	}
+
+	// Now apply the rest — migration 12, the market-column/net_worth rebuild.
+	if err := d.migrate(); err != nil {
+		t.Fatalf("migrate() error = %v", err)
+	}
+
+	watchlistUS, err := d.GetWatchlistByMarket(market.US)
+	if err != nil || len(watchlistUS) != 1 || watchlistUS[0] != "AAPL" {
+		t.Errorf("GetWatchlistByMarket(US) = %v, %v; want [AAPL], nil", watchlistUS, err)
+	}
+	watchlistTW, err := d.GetWatchlistByMarket(market.TW)
+	if err != nil || len(watchlistTW) != 1 || watchlistTW[0] != "2330" {
+		t.Errorf("GetWatchlistByMarket(TW) = %v, %v; want [2330], nil", watchlistTW, err)
+	}
+
+	posUS, ok, err := d.GetPosition("AAPL")
+	if err != nil || !ok || posUS.Market != "us" {
+		t.Errorf("GetPosition(AAPL) = %+v, %v, %v; want Market=us", posUS, ok, err)
+	}
+	posTW, ok, err := d.GetPosition("2330")
+	if err != nil || !ok || posTW.Market != "tw" {
+		t.Errorf("GetPosition(2330) = %+v, %v, %v; want Market=tw", posTW, ok, err)
+	}
+
+	txsUS, err := d.GetTransactions("AAPL")
+	if err != nil || len(txsUS) != 1 || txsUS[0].Market != "us" {
+		t.Errorf("GetTransactions(AAPL) = %+v, %v; want one row with Market=us", txsUS, err)
+	}
+	txsTW, err := d.GetTransactions("2330")
+	if err != nil || len(txsTW) != 1 || txsTW[0].Market != "tw" {
+		t.Errorf("GetTransactions(2330) = %+v, %v; want one row with Market=tw", txsTW, err)
+	}
+
+	recs, err := d.GetRecommendationsSince("2026-07-01")
+	if err != nil || len(recs) != 2 {
+		t.Fatalf("GetRecommendationsSince() = %v, %v; want 2 rows", recs, err)
+	}
+	for _, r := range recs {
+		wantMarket := "us"
+		if r.Ticker == "2330" {
+			wantMarket = "tw"
+		}
+		if r.Market != wantMarket {
+			t.Errorf("recommendation %s Market = %q, want %q", r.Ticker, r.Market, wantMarket)
+		}
+	}
+
+	// The pre-migration net_worth_snapshots row must survive the table
+	// rebuild, backfilled to market='us' (the only market that existed
+	// before Phase 6).
+	date, total, ok, err := d.GetLatestNetWorth(market.US)
+	if err != nil || !ok || date != "2026-07-01" || total != 1500 {
+		t.Errorf("GetLatestNetWorth(US) = %q, %v, %v, %v; want \"2026-07-01\", 1500, true, nil", date, total, ok, err)
+	}
+	if _, _, ok, err := d.GetLatestNetWorth(market.TW); err != nil || ok {
+		t.Errorf("GetLatestNetWorth(TW) = _, _, %v, %v; want ok=false (no TW row existed pre-migration)", ok, err)
+	}
+
+	// A post-migration write for the other market must coexist at the same
+	// date without clobbering the backfilled US row — the whole point of the
+	// (date, market) composite PK.
+	if err := d.SaveNetWorthSnapshot("2026-07-01", market.TW, 950000); err != nil {
+		t.Fatalf("SaveNetWorthSnapshot(TW) error = %v", err)
+	}
+	if _, total, ok, err := d.GetLatestNetWorth(market.US); err != nil || !ok || total != 1500 {
+		t.Errorf("GetLatestNetWorth(US) after a same-date TW write = %v, %v, %v; want unaffected 1500", total, ok, err)
+	}
+	if _, total, ok, err := d.GetLatestNetWorth(market.TW); err != nil || !ok || total != 950000 {
+		t.Errorf("GetLatestNetWorth(TW) after write = %v, %v, %v; want 950000", total, ok, err)
 	}
 }
 

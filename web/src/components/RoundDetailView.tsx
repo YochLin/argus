@@ -6,7 +6,7 @@ import {
   type SeriesMarker,
   type Time,
 } from "lightweight-charts";
-import { fetchRoundDetail, type RoundDetail } from "../api";
+import { currencySymbol, fetchRoundDetail, marketOf, type RoundDetail } from "../api";
 import type { Dictionary } from "../i18n";
 import { TradesTable } from "./TradesTable";
 
@@ -84,12 +84,13 @@ export function RoundDetailView({ dict, ticker, start, onBack }: Props) {
     // db.GetAllTransactions' date order already, but sort defensively since
     // that's an implementation detail of the API, not a documented contract.
     const trades = [...detail.trades].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    const currency = currencySymbol(marketOf(detail.ticker));
     const markers: SeriesMarker<Time>[] = trades.map((t) => ({
       time: t.date as Time,
       position: t.side === "BUY" ? "belowBar" : "aboveBar",
       color: t.side === "BUY" ? "#2FBF71" : "#E5484D",
       shape: t.side === "BUY" ? "arrowUp" : "arrowDown",
-      text: `${t.side} ${t.shares}@$${t.price.toFixed(2)}`,
+      text: `${t.side} ${t.shares}@${currency}${t.price.toFixed(2)}`,
     }));
     seriesRef.current.setMarkers(markers);
     chartRef.current?.timeScale().fitContent();
@@ -109,7 +110,7 @@ export function RoundDetailView({ dict, ticker, start, onBack }: Props) {
           </div>
           <div className="card chart-card" ref={containerRef} />
           <div className="card">
-            <TradesTable dict={dict} transactions={detail.trades} />
+            <TradesTable dict={dict} transactions={detail.trades} currency={currencySymbol(marketOf(ticker))} />
           </div>
         </>
       )}

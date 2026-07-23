@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"argus/internal/market"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -50,6 +52,7 @@ type Recommendation struct {
 	Reason    string
 	Price     float64 // price at recommendation time (0 for rows saved before the column existed)
 	Source    string  // "watchlist" / "movers" / "scan" ("" for rows saved before the column existed — display as "watchlist")
+	Market    string  // "us" / "tw" — derived from Ticker via market.Of at write time, never caller-supplied (Phase 6, see migration 12)
 	CreatedAt time.Time
 }
 
@@ -67,6 +70,7 @@ type Position struct {
 	Shares    float64
 	AvgCost   float64
 	StopPrice float64
+	Market    string // "us" / "tw" — derived from Ticker via market.Of at write time, never caller-supplied (Phase 6, see migration 12)
 	UpdatedAt time.Time
 }
 
@@ -82,6 +86,7 @@ type Transaction struct {
 	Fee         float64
 	Date        string
 	RealizedPnL float64
+	Market      string // "us" / "tw" — derived from Ticker via market.Of at write time, never caller-supplied (Phase 6, see migration 12)
 	CreatedAt   time.Time
 }
 
@@ -359,6 +364,46 @@ var migrations = []string{
 	// (internal/bot/jobs.go) prefers this over the global STOP_LOSS_PCT
 	// whenever it's set for a given position.
 	`ALTER TABLE positions ADD COLUMN stop_price REAL NOT NULL DEFAULT 0;`,
+	// 12: Phase 6 PR1's market column — watchlist/positions/transactions/
+	// recommendations each gain a "us"/"tw" market tag (see
+	// docs/phase-6-tw-market.md §4.2) so per-market queries (a TW-only
+	// closing snapshot, a two-book /portfolio, a per-market web dashboard
+	// filter) don't have to re-derive it from ticker shape via SQL. The
+	// UPDATE ... GLOB backfill is defensive (a pre-Phase-6 database has no TW
+	// rows to begin with) rather than load-bearing, but costs nothing to run.
+	// market.Of is the single source of truth this backfill (and every write
+	// path from here on) mirrors — see that function's doc comment.
+	//
+	// net_worth_snapshots' PK is date alone, and SQLite can't ALTER a
+	// primary key — the whole table is rebuilt with PK (date, market)
+	// instead, backfilling every existing row as 'us' (the only market that
+	// existed before this migration). This is the project's first
+	// rebuild-a-table migration rather than an append-only ALTER TABLE; see
+	// docs/phase-6-tw-market.md §8 for why this is flagged as the phase's
+	// biggest single risk and why a pre-deploy backup check matters here
+	// specifically.
+	`
+	ALTER TABLE watchlist       ADD COLUMN market TEXT NOT NULL DEFAULT 'us';
+	ALTER TABLE positions       ADD COLUMN market TEXT NOT NULL DEFAULT 'us';
+	ALTER TABLE transactions    ADD COLUMN market TEXT NOT NULL DEFAULT 'us';
+	ALTER TABLE recommendations ADD COLUMN market TEXT NOT NULL DEFAULT 'us';
+	UPDATE watchlist       SET market = 'tw' WHERE ticker GLOB '[0-9]*';
+	UPDATE positions       SET market = 'tw' WHERE ticker GLOB '[0-9]*';
+	UPDATE transactions    SET market = 'tw' WHERE ticker GLOB '[0-9]*';
+	UPDATE recommendations SET market = 'tw' WHERE ticker GLOB '[0-9]*';
+
+	CREATE TABLE net_worth_snapshots_new (
+		date        TEXT NOT NULL,
+		market      TEXT NOT NULL DEFAULT 'us',
+		total_value REAL NOT NULL,
+		created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (date, market)
+	);
+	INSERT INTO net_worth_snapshots_new (date, market, total_value, created_at)
+		SELECT date, 'us', total_value, created_at FROM net_worth_snapshots;
+	DROP TABLE net_worth_snapshots;
+	ALTER TABLE net_worth_snapshots_new RENAME TO net_worth_snapshots;
+	`,
 }
 
 func (d *DB) migrate() error {
@@ -379,7 +424,7 @@ func (d *DB) migrate() error {
 }
 
 func (d *DB) AddTicker(ticker string) error {
-	_, err := d.conn.Exec(`INSERT OR IGNORE INTO watchlist (ticker) VALUES (?)`, ticker)
+	_, err := d.conn.Exec(`INSERT OR IGNORE INTO watchlist (ticker, market) VALUES (?, ?)`, ticker, string(market.Of(ticker)))
 	return err
 }
 
@@ -388,8 +433,34 @@ func (d *DB) RemoveTicker(ticker string) error {
 	return err
 }
 
+// GetWatchlist returns every watchlist ticker regardless of market, for
+// callers that want "the whole list" (chat context injection, /list,
+// /status with no argument) — see GetWatchlistByMarket for a single-market
+// query.
 func (d *DB) GetWatchlist() ([]string, error) {
 	rows, err := d.conn.Query(`SELECT ticker FROM watchlist ORDER BY ticker`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tickers []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		tickers = append(tickers, t)
+	}
+	return tickers, rows.Err()
+}
+
+// GetWatchlistByMarket returns watchlist tickers for one market only (Phase
+// 6, market.US or market.TW) — used by the per-market jobs (closing
+// snapshot, and PR1's US-only daily-report/recommend input gathering) that
+// must not mix the two.
+func (d *DB) GetWatchlistByMarket(m market.MarketID) ([]string, error) {
+	rows, err := d.conn.Query(`SELECT ticker FROM watchlist WHERE market = ? ORDER BY ticker`, string(m))
 	if err != nil {
 		return nil, err
 	}
@@ -460,8 +531,8 @@ func (d *DB) SaveRecommendations(date string, recs []Recommendation) error {
 	defer tx.Rollback()
 
 	for _, r := range recs {
-		_, err := tx.Exec(`INSERT INTO recommendations (date, ticker, action, reason, price, source) VALUES (?, ?, ?, ?, ?, ?)`,
-			date, r.Ticker, r.Action, r.Reason, r.Price, r.Source)
+		_, err := tx.Exec(`INSERT INTO recommendations (date, ticker, action, reason, price, source, market) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			date, r.Ticker, r.Action, r.Reason, r.Price, r.Source, string(market.Of(r.Ticker)))
 		if err != nil {
 			return err
 		}
@@ -473,7 +544,7 @@ func (d *DB) SaveRecommendations(date string, recs []Recommendation) error {
 // (dates are lexicographically comparable YYYY-MM-DD strings), oldest first.
 func (d *DB) GetRecommendationsSince(fromDate string) ([]Recommendation, error) {
 	rows, err := d.conn.Query(
-		`SELECT id, date, ticker, action, reason, price, source FROM recommendations
+		`SELECT id, date, ticker, action, reason, price, source, market FROM recommendations
 		 WHERE date >= ? ORDER BY date, id`,
 		fromDate,
 	)
@@ -485,7 +556,7 @@ func (d *DB) GetRecommendationsSince(fromDate string) ([]Recommendation, error) 
 	var recs []Recommendation
 	for rows.Next() {
 		var r Recommendation
-		if err := rows.Scan(&r.ID, &r.Date, &r.Ticker, &r.Action, &r.Reason, &r.Price, &r.Source); err != nil {
+		if err := rows.Scan(&r.ID, &r.Date, &r.Ticker, &r.Action, &r.Reason, &r.Price, &r.Source, &r.Market); err != nil {
 			return nil, err
 		}
 		recs = append(recs, r)
@@ -542,23 +613,24 @@ func (d *DB) RecordBuy(ticker string, shares, price, fee float64, date string) (
 
 	totalShares := existingShares + shares
 	avgCost := (existingShares*existingCost + shares*price + fee) / totalShares
+	m := string(market.Of(ticker))
 
 	if _, err := tx.Exec(`
-		INSERT INTO positions (ticker, shares, avg_cost, updated_at)
-		VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+		INSERT INTO positions (ticker, shares, avg_cost, market, updated_at)
+		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(ticker) DO UPDATE SET
 			shares = excluded.shares,
 			avg_cost = excluded.avg_cost,
 			updated_at = excluded.updated_at`,
-		ticker, totalShares, avgCost,
+		ticker, totalShares, avgCost, m,
 	); err != nil {
 		return Position{}, err
 	}
 
 	if _, err := tx.Exec(`
-		INSERT INTO transactions (ticker, side, shares, price, fee, date)
-		VALUES (?, 'BUY', ?, ?, ?, ?)`,
-		ticker, shares, price, fee, date,
+		INSERT INTO transactions (ticker, side, shares, price, fee, date, market)
+		VALUES (?, 'BUY', ?, ?, ?, ?, ?)`,
+		ticker, shares, price, fee, date, m,
 	); err != nil {
 		return Position{}, err
 	}
@@ -566,7 +638,7 @@ func (d *DB) RecordBuy(ticker string, shares, price, fee float64, date string) (
 	if err := tx.Commit(); err != nil {
 		return Position{}, err
 	}
-	return Position{Ticker: ticker, Shares: totalShares, AvgCost: avgCost}, nil
+	return Position{Ticker: ticker, Shares: totalShares, AvgCost: avgCost, Market: m}, nil
 }
 
 // RecordSell records a SELL transaction against an existing position,
@@ -613,9 +685,9 @@ func (d *DB) RecordSell(ticker string, shares, price, fee float64, date string) 
 	}
 
 	if _, err := tx.Exec(`
-		INSERT INTO transactions (ticker, side, shares, price, fee, date, realized_pnl)
-		VALUES (?, 'SELL', ?, ?, ?, ?, ?)`,
-		ticker, shares, price, fee, date, realizedPnL,
+		INSERT INTO transactions (ticker, side, shares, price, fee, date, realized_pnl, market)
+		VALUES (?, 'SELL', ?, ?, ?, ?, ?, ?)`,
+		ticker, shares, price, fee, date, realizedPnL, string(market.Of(ticker)),
 	); err != nil {
 		return Position{}, 0, err
 	}
@@ -623,7 +695,7 @@ func (d *DB) RecordSell(ticker string, shares, price, fee float64, date string) 
 	if err := tx.Commit(); err != nil {
 		return Position{}, 0, err
 	}
-	return Position{Ticker: ticker, Shares: remainingShares, AvgCost: existingCost}, realizedPnL, nil
+	return Position{Ticker: ticker, Shares: remainingShares, AvgCost: existingCost, Market: string(market.Of(ticker))}, realizedPnL, nil
 }
 
 // GetPosition returns the current position for ticker, or ok=false if
@@ -631,8 +703,8 @@ func (d *DB) RecordSell(ticker string, shares, price, fee float64, date string) 
 func (d *DB) GetPosition(ticker string) (Position, bool, error) {
 	p := Position{Ticker: ticker}
 	err := d.conn.QueryRow(
-		`SELECT shares, avg_cost, stop_price, updated_at FROM positions WHERE ticker = ?`, ticker,
-	).Scan(&p.Shares, &p.AvgCost, &p.StopPrice, &p.UpdatedAt)
+		`SELECT shares, avg_cost, stop_price, market, updated_at FROM positions WHERE ticker = ?`, ticker,
+	).Scan(&p.Shares, &p.AvgCost, &p.StopPrice, &p.Market, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return Position{}, false, nil
 	}
@@ -644,7 +716,7 @@ func (d *DB) GetPosition(ticker string) (Position, bool, error) {
 
 // GetPositions returns every open position, ordered by ticker.
 func (d *DB) GetPositions() ([]Position, error) {
-	rows, err := d.conn.Query(`SELECT ticker, shares, avg_cost, stop_price, updated_at FROM positions ORDER BY ticker`)
+	rows, err := d.conn.Query(`SELECT ticker, shares, avg_cost, stop_price, market, updated_at FROM positions ORDER BY ticker`)
 	if err != nil {
 		return nil, err
 	}
@@ -653,7 +725,7 @@ func (d *DB) GetPositions() ([]Position, error) {
 	var positions []Position
 	for rows.Next() {
 		var p Position
-		if err := rows.Scan(&p.Ticker, &p.Shares, &p.AvgCost, &p.StopPrice, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.Ticker, &p.Shares, &p.AvgCost, &p.StopPrice, &p.Market, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		positions = append(positions, p)
@@ -698,7 +770,7 @@ func (d *DB) GetLatestRecommendations(tickers []string) (map[string]Recommendati
 		args[i] = t
 	}
 	query := fmt.Sprintf(`
-		SELECT id, date, ticker, action, reason, price FROM recommendations
+		SELECT id, date, ticker, action, reason, price, market FROM recommendations
 		WHERE id IN (
 			SELECT MAX(id) FROM recommendations WHERE ticker IN (%s) GROUP BY ticker
 		)`, strings.Join(placeholders, ","))
@@ -712,7 +784,7 @@ func (d *DB) GetLatestRecommendations(tickers []string) (map[string]Recommendati
 	out := make(map[string]Recommendation)
 	for rows.Next() {
 		var r Recommendation
-		if err := rows.Scan(&r.ID, &r.Date, &r.Ticker, &r.Action, &r.Reason, &r.Price); err != nil {
+		if err := rows.Scan(&r.ID, &r.Date, &r.Ticker, &r.Action, &r.Reason, &r.Price, &r.Market); err != nil {
 			return nil, err
 		}
 		out[r.Ticker] = r
@@ -764,7 +836,7 @@ func (d *DB) GetPeakClose(ticker, sinceDate string) (float64, bool, error) {
 // into trade rounds (see bot.lastClosedRound).
 func (d *DB) GetTransactions(ticker string) ([]Transaction, error) {
 	rows, err := d.conn.Query(`
-		SELECT id, ticker, side, shares, price, fee, date, realized_pnl, created_at
+		SELECT id, ticker, side, shares, price, fee, date, realized_pnl, market, created_at
 		FROM transactions WHERE ticker = ? ORDER BY date, id`,
 		ticker,
 	)
@@ -776,7 +848,7 @@ func (d *DB) GetTransactions(ticker string) ([]Transaction, error) {
 	var txs []Transaction
 	for rows.Next() {
 		var t Transaction
-		if err := rows.Scan(&t.ID, &t.Ticker, &t.Side, &t.Shares, &t.Price, &t.Fee, &t.Date, &t.RealizedPnL, &t.CreatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Ticker, &t.Side, &t.Shares, &t.Price, &t.Fee, &t.Date, &t.RealizedPnL, &t.Market, &t.CreatedAt); err != nil {
 			return nil, err
 		}
 		txs = append(txs, t)
@@ -792,7 +864,7 @@ func (d *DB) GetTransactions(ticker string) ([]Transaction, error) {
 // aggregate, which only needs a window's totals, not per-row detail).
 func (d *DB) GetAllTransactions() ([]Transaction, error) {
 	rows, err := d.conn.Query(`
-		SELECT id, ticker, side, shares, price, fee, date, realized_pnl, created_at
+		SELECT id, ticker, side, shares, price, fee, date, realized_pnl, market, created_at
 		FROM transactions ORDER BY date, id`,
 	)
 	if err != nil {
@@ -803,7 +875,7 @@ func (d *DB) GetAllTransactions() ([]Transaction, error) {
 	var txs []Transaction
 	for rows.Next() {
 		var t Transaction
-		if err := rows.Scan(&t.ID, &t.Ticker, &t.Side, &t.Shares, &t.Price, &t.Fee, &t.Date, &t.RealizedPnL, &t.CreatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Ticker, &t.Side, &t.Shares, &t.Price, &t.Fee, &t.Date, &t.RealizedPnL, &t.Market, &t.CreatedAt); err != nil {
 			return nil, err
 		}
 		txs = append(txs, t)
@@ -840,7 +912,7 @@ func (d *DB) GetCloseExtremes(ticker, from, to string) (high, low float64, ok bo
 // trade's fixed holding period).
 func (d *DB) GetRecommendationsForTicker(ticker, from, to string) ([]Recommendation, error) {
 	rows, err := d.conn.Query(
-		`SELECT id, date, ticker, action, reason, price, source FROM recommendations
+		`SELECT id, date, ticker, action, reason, price, source, market FROM recommendations
 		 WHERE ticker = ? AND date BETWEEN ? AND ? ORDER BY date, id`,
 		ticker, from, to,
 	)
@@ -852,7 +924,7 @@ func (d *DB) GetRecommendationsForTicker(ticker, from, to string) ([]Recommendat
 	var recs []Recommendation
 	for rows.Next() {
 		var r Recommendation
-		if err := rows.Scan(&r.ID, &r.Date, &r.Ticker, &r.Action, &r.Reason, &r.Price, &r.Source); err != nil {
+		if err := rows.Scan(&r.ID, &r.Date, &r.Ticker, &r.Action, &r.Reason, &r.Price, &r.Source, &r.Market); err != nil {
 			return nil, err
 		}
 		recs = append(recs, r)
@@ -861,33 +933,39 @@ func (d *DB) GetRecommendationsForTicker(ticker, from, to string) ([]Recommendat
 }
 
 // GetRealizedPnL sums realized_pnl across every SELL transaction ever
-// recorded, for /portfolio's cumulative realized P&L line.
-func (d *DB) GetRealizedPnL() (float64, error) {
+// recorded in market, for /portfolio's per-market cumulative realized P&L
+// line (Phase 6: money never sums across markets, see
+// docs/phase-6-tw-market.md §3.2).
+func (d *DB) GetRealizedPnL(m market.MarketID) (float64, error) {
 	var total sql.NullFloat64
-	if err := d.conn.QueryRow(`SELECT SUM(realized_pnl) FROM transactions WHERE side = 'SELL'`).Scan(&total); err != nil {
+	if err := d.conn.QueryRow(`SELECT SUM(realized_pnl) FROM transactions WHERE side = 'SELL' AND market = ?`, string(m)).Scan(&total); err != nil {
 		return 0, err
 	}
 	return total.Float64, nil
 }
 
-// SaveNetWorthSnapshot upserts the total position value for date.
-func (d *DB) SaveNetWorthSnapshot(date string, total float64) error {
+// SaveNetWorthSnapshot upserts the total position value for (date, market) —
+// see net_worth_snapshots' migration-12 PK rebuild (Phase 6): the two
+// markets' totals are always tracked as separate rows, never summed, since
+// TWD and USD don't convert.
+func (d *DB) SaveNetWorthSnapshot(date string, m market.MarketID, total float64) error {
 	_, err := d.conn.Exec(`
-		INSERT INTO net_worth_snapshots (date, total_value)
-		VALUES (?, ?)
-		ON CONFLICT(date) DO UPDATE SET total_value = excluded.total_value`,
-		date, total,
+		INSERT INTO net_worth_snapshots (date, market, total_value)
+		VALUES (?, ?, ?)
+		ON CONFLICT(date, market) DO UPDATE SET total_value = excluded.total_value`,
+		date, string(m), total,
 	)
 	return err
 }
 
-// GetLatestNetWorth returns the most recent net_worth_snapshots row
-// regardless of date, or ok=false if none exists yet — same "most recent
-// regardless of date" shape as GetLatestSnapshot, for the weekly review's
-// net-worth line (Phase 3.6 PR2), net_worth_snapshots' first reader.
-func (d *DB) GetLatestNetWorth() (date string, total float64, ok bool, err error) {
+// GetLatestNetWorth returns the most recent net_worth_snapshots row for
+// market regardless of date, or ok=false if none exists yet — same "most
+// recent regardless of date" shape as GetLatestSnapshot, for the weekly
+// review's net-worth line (Phase 3.6 PR2) and Phase 3.11's accountValue.
+func (d *DB) GetLatestNetWorth(m market.MarketID) (date string, total float64, ok bool, err error) {
 	err = d.conn.QueryRow(
-		`SELECT date, total_value FROM net_worth_snapshots ORDER BY date DESC LIMIT 1`,
+		`SELECT date, total_value FROM net_worth_snapshots WHERE market = ? ORDER BY date DESC LIMIT 1`,
+		string(m),
 	).Scan(&date, &total)
 	if err == sql.ErrNoRows {
 		return "", 0, false, nil
@@ -898,15 +976,16 @@ func (d *DB) GetLatestNetWorth() (date string, total float64, ok bool, err error
 	return date, total, true, nil
 }
 
-// GetNetWorthOnOrBefore returns the most recent net_worth_snapshots row with
-// date <= the given date, or ok=false if none exists — used to find a
-// baseline "about a week ago" even when that exact date wasn't a trading
-// day (weekend/holiday), same reasoning as GetPeakClose's date-range query.
-func (d *DB) GetNetWorthOnOrBefore(date string) (float64, bool, error) {
+// GetNetWorthOnOrBefore returns the most recent net_worth_snapshots row for
+// market with date <= the given date, or ok=false if none exists — used to
+// find a baseline "about a week ago" even when that exact date wasn't a
+// trading day (weekend/holiday), same reasoning as GetPeakClose's date-range
+// query.
+func (d *DB) GetNetWorthOnOrBefore(date string, m market.MarketID) (float64, bool, error) {
 	var total float64
 	err := d.conn.QueryRow(
-		`SELECT total_value FROM net_worth_snapshots WHERE date <= ? ORDER BY date DESC LIMIT 1`,
-		date,
+		`SELECT total_value FROM net_worth_snapshots WHERE market = ? AND date <= ? ORDER BY date DESC LIMIT 1`,
+		string(m), date,
 	).Scan(&total)
 	if err == sql.ErrNoRows {
 		return 0, false, nil
@@ -926,14 +1005,14 @@ type NetWorthPoint struct {
 	Total float64
 }
 
-// GetNetWorthRange returns every net_worth_snapshots row with date in
-// [from, to] inclusive, date ascending — the monthly report's raw input for
-// its sparkline/drawdown calculations (both pure functions over this
-// slice, see bot.sparkline/bot.maxDrawdownPct).
-func (d *DB) GetNetWorthRange(from, to string) ([]NetWorthPoint, error) {
+// GetNetWorthRange returns every net_worth_snapshots row for market with
+// date in [from, to] inclusive, date ascending — the monthly report's raw
+// input for its sparkline/drawdown calculations (both pure functions over
+// this slice, see bot.sparkline/bot.maxDrawdownPct).
+func (d *DB) GetNetWorthRange(from, to string, m market.MarketID) ([]NetWorthPoint, error) {
 	rows, err := d.conn.Query(
-		`SELECT date, total_value FROM net_worth_snapshots WHERE date BETWEEN ? AND ? ORDER BY date`,
-		from, to,
+		`SELECT date, total_value FROM net_worth_snapshots WHERE market = ? AND date BETWEEN ? AND ? ORDER BY date`,
+		string(m), from, to,
 	)
 	if err != nil {
 		return nil, err

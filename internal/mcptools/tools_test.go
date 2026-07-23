@@ -27,11 +27,19 @@ type fakeProvider struct {
 	newsErr    error
 	movers     []string
 	moversErr  error
+	// quotes, when non-nil, overrides quote for the tickers it contains —
+	// used by tests needing distinct per-ticker quotes (Phase 6's
+	// get_portfolio market-subtotal test needs a US and a TW ticker priced
+	// differently in the same call).
+	quotes map[string]*data.Quote
 }
 
 func (f *fakeProvider) Name() string { return "fake" }
-func (f *fakeProvider) GetQuote(string) (*data.Quote, error) {
+func (f *fakeProvider) GetQuote(ticker string) (*data.Quote, error) {
 	atomic.AddInt32(&f.quoteCalls, 1)
+	if q, ok := f.quotes[ticker]; ok {
+		return q, nil
+	}
 	return f.quote, f.quoteErr
 }
 func (f *fakeProvider) GetNews(string, int) ([]data.NewsItem, error) { return f.news, f.newsErr }

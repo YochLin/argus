@@ -11,6 +11,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/llm"
+	"argus/internal/market"
 	"argus/internal/signals"
 )
 
@@ -39,10 +40,13 @@ type recommendationInputs struct {
 // gatherRecommendationInputs assembles the watchlist ∪ market-mover/scan-hit
 // candidate set, the positions/earnings/market-news/prior-recommendation
 // context that feeds the LLM prompt, and the resulting []llm.StockData for
-// both ticker sets. Returns the db.GetWatchlist error verbatim (both callers
-// render it via the same KeyWatchlistQueryFailed message and abort).
+// both ticker sets. Returns the db.GetWatchlistByMarket error verbatim (both
+// callers render it via the same KeyWatchlistQueryFailed message and abort).
+// US-only watchlist for now (market.US) — Phase 6 PR1's /recommend and
+// RunDailyReport stay US-only; PR2 adds a TW-market analysis pass alongside
+// this one rather than merging the two (see docs/phase-6-tw-market.md §4.3).
 func (b *Bot) gatherRecommendationInputs() (recommendationInputs, error) {
-	tickers, err := b.db.GetWatchlist()
+	tickers, err := b.db.GetWatchlistByMarket(market.US)
 	if err != nil {
 		return recommendationInputs{}, err
 	}
@@ -202,7 +206,11 @@ func (b *Bot) buildSizingLines(recs []llm.Recommendation, prices, atrs map[strin
 	if b.riskPctPerTrade <= 0 {
 		return nil
 	}
-	accountVal, ok := b.accountValue()
+	// market.US only for now — sizing is only computed for BUY recs, and
+	// PR1's /recommend/RunDailyReport candidates are US-only (see
+	// gatherRecommendationInputs); Phase 6 PR2 threads a market parameter
+	// through once TW recommendations exist.
+	accountVal, ok := b.accountValue(market.US)
 	if !ok {
 		return nil
 	}
@@ -512,23 +520,25 @@ func suggestShares(accountValue, riskPct, price, stop float64) int {
 	return shares
 }
 
-// accountValue is Phase 3.11's account-size input for suggestShares: latest
-// recorded net worth (position market value as of the last closing
-// snapshot) plus declared cash — the same cash source /insight and
+// accountValue is Phase 3.11's account-size input for suggestShares: m's
+// latest recorded net worth (position market value as of the last closing
+// snapshot) plus m's declared cash — the same cash source /insight and
 // RunWeeklyReview already use (see loadCash), not a separate live
-// computation. ok is false only when there's no net worth snapshot on
-// record at all (e.g. before the first closing snapshot has ever run);
-// missing cash just leaves it out rather than failing the whole lookup, same
-// as loadCash's own callers already tolerate "never set".
-func (b *Bot) accountValue() (float64, bool) {
-	_, total, ok, err := b.db.GetLatestNetWorth()
+// computation. Phase 6 makes this per-market (never summed across TWD/USD,
+// see docs/phase-6-tw-market.md §3.2). ok is false only when there's no net
+// worth snapshot on record at all for m (e.g. before the first closing
+// snapshot has ever run for that market); missing cash just leaves it out
+// rather than failing the whole lookup, same as loadCash's own callers
+// already tolerate "never set".
+func (b *Bot) accountValue(m market.MarketID) (float64, bool) {
+	_, total, ok, err := b.db.GetLatestNetWorth(m)
 	if err != nil {
 		log.Printf("account value: net worth: %v", err)
 	}
 	if !ok {
 		return 0, false
 	}
-	if cash, cashOK, err := b.loadCash(); err != nil {
+	if cash, cashOK, err := b.loadCash(m); err != nil {
 		log.Printf("account value: cash: %v", err)
 	} else if cashOK {
 		total += cash

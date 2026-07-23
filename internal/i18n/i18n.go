@@ -126,11 +126,15 @@ const (
 	KeyBuyStopSuggestion    Key = "buy_stop_suggestion"
 	KeyBuyStopAddOnNote     Key = "buy_stop_add_on_note"
 
-	KeyPortfolioTitle   Key = "portfolio_title"
-	KeyPortfolioEmpty   Key = "portfolio_empty"
-	KeyPortfolioLine    Key = "portfolio_line"
-	KeyPortfolioSummary Key = "portfolio_summary"
-	KeyJobPanic         Key = "job_panic"
+	KeyPortfolioTitle      Key = "portfolio_title"
+	KeyPortfolioEmpty      Key = "portfolio_empty"
+	KeyPortfolioLine       Key = "portfolio_line"
+	KeyPortfolioSummary    Key = "portfolio_summary"
+	KeyPortfolioSectionUS  Key = "portfolio_section_us"
+	KeyPortfolioSectionTW  Key = "portfolio_section_tw"
+	KeyPortfolioSummaryTWD Key = "portfolio_summary_twd"
+	KeyPortfolioLotSuffix  Key = "portfolio_lot_suffix"
+	KeyJobPanic            Key = "job_panic"
 
 	KeyInsightResultTitle Key = "insight_result_title"
 
@@ -154,11 +158,13 @@ const (
 	KeyReviewNoClosedTrade    Key = "review_no_closed_trade"
 	KeyTradeReviewResultTitle Key = "trade_review_result_title"
 
-	KeyCashUsage      Key = "cash_usage"
-	KeyCashCurrent    Key = "cash_current"
-	KeyCashNotSet     Key = "cash_not_set"
-	KeyCashSetSuccess Key = "cash_set_success"
-	KeyCashSetFailed  Key = "cash_set_failed"
+	KeyCashUsage         Key = "cash_usage"
+	KeyCashCurrent       Key = "cash_current"
+	KeyCashCurrentTWD    Key = "cash_current_twd"
+	KeyCashNotSet        Key = "cash_not_set"
+	KeyCashSetSuccess    Key = "cash_set_success"
+	KeyCashSetSuccessTWD Key = "cash_set_success_twd"
+	KeyCashSetFailed     Key = "cash_set_failed"
 
 	KeyStopLossAlertTitle Key = "stop_loss_alert_title"
 	KeyStopLossAlertLine  Key = "stop_loss_alert_line"
@@ -343,6 +349,7 @@ const (
 	KeyInsightPromptIntro       Key = "insight_prompt_intro"
 	KeyInsightPositionValueLine Key = "insight_position_value_line"
 	KeyInsightCashLine          Key = "insight_cash_line"
+	KeyInsightCashLineTWD       Key = "insight_cash_line_twd"
 	KeyInsightPromptTask        Key = "insight_prompt_task"
 
 	KeyWeeklyReviewPromptIntro Key = "weekly_review_prompt_intro"

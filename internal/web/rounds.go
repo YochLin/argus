@@ -9,6 +9,7 @@ import (
 
 	"argus/internal/data"
 	"argus/internal/db"
+	"argus/internal/market"
 )
 
 // errRoundNotFound distinguishes "no such round" (404) from any other
@@ -99,14 +100,18 @@ func roundBuyShares(legs []db.Transaction) float64 {
 	return total
 }
 
-// buildRounds assembles /api/rounds: every round, across every ticker ever
-// transacted, most-recently-started first — the flat list a frontend picker
-// groups/filters by ticker.
-func buildRounds(database dbReader) (roundsResponse, error) {
-	txs, err := database.GetAllTransactions()
+// buildRounds assembles /api/rounds: every round in market m, across every
+// ticker ever transacted in it, most-recently-started first — the flat list
+// a frontend picker groups/filters by ticker. Restricted to one market
+// (Phase 6) for the same reason buildDashboard/buildCalendar are: a round's
+// realized P&L is a currency amount, and TWD/USD rounds must never mix in
+// one list.
+func buildRounds(database dbReader, m market.MarketID) (roundsResponse, error) {
+	allTxs, err := database.GetAllTransactions()
 	if err != nil {
 		return roundsResponse{}, err
 	}
+	txs := filterTransactionsByMarket(allTxs, m)
 
 	byTicker := make(map[string][]db.Transaction)
 	for _, t := range txs {
