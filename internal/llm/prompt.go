@@ -311,10 +311,13 @@ func writeMarketContext(sb *strings.Builder, lang i18n.Lang, m *MarketContext) {
 	sb.WriteString("\n")
 }
 
-func buildRecommendationPrompt(lang i18n.Lang, watchlist []StockData, candidates []StockData, marketNews []data.NewsItem, market *MarketContext, recentLessons []PastLesson) string {
+func buildRecommendationPrompt(lang i18n.Lang, watchlist []StockData, candidates []StockData, marketNews []data.NewsItem, market *MarketContext, recentLessons []PastLesson, isTW bool) string {
 	var sb strings.Builder
 
 	sb.WriteString(i18n.T(lang, i18n.KeyRecPromptIntro))
+	if isTW {
+		sb.WriteString(i18n.T(lang, i18n.KeyRecTWMarketNote))
+	}
 	writeMarketContext(&sb, lang, market)
 	writeRecentLessons(&sb, lang, recentLessons)
 

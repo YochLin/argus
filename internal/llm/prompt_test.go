@@ -409,14 +409,14 @@ func TestWriteStockSectionRendersPastLessons(t *testing.T) {
 func TestBuildRecommendationPromptRendersRecentLessons(t *testing.T) {
 	prompt := buildRecommendationPrompt(i18n.EN, nil, nil, nil, nil, []PastLesson{
 		{Ticker: "NVDA", Date: "2026-06-20", Lesson: "chased a breakout too late"},
-	})
+	}, false)
 	if !strings.Contains(prompt, "NVDA") || !strings.Contains(prompt, "chased a breakout too late") {
 		t.Errorf("buildRecommendationPrompt() missing recent-lessons content, got:\n%s", prompt)
 	}
 }
 
 func TestBuildRecommendationPromptOmitsRecentLessonsWhenEmpty(t *testing.T) {
-	prompt := buildRecommendationPrompt(i18n.EN, nil, nil, nil, nil, nil)
+	prompt := buildRecommendationPrompt(i18n.EN, nil, nil, nil, nil, nil, false)
 	if strings.Contains(prompt, "Recent Trade Lessons") {
 		t.Errorf("buildRecommendationPrompt() should omit recent-lessons block when empty, got:\n%s", prompt)
 	}

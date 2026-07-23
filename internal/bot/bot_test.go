@@ -731,7 +731,7 @@ func TestSummarizeTrack(t *testing.T) {
 		{Action: "BUY", Source: "scan", ChangePct: 4, Hit: true},
 	}
 
-	overall, bySource := summarizeTrack(rows)
+	overall, bySource, _ := summarizeTrack(rows)
 
 	if overall.Evaluated != 4 || overall.Hits != 3 {
 		t.Fatalf("summarizeTrack() overall = %+v, want Evaluated=4 Hits=3", overall)
@@ -786,7 +786,7 @@ func TestSortedSourceKeys(t *testing.T) {
 }
 
 func TestRenderTrackSummaryEmptyWhenNothingEvaluated(t *testing.T) {
-	if got := renderTrackSummary(i18n.EN, trackSourceStats{}, nil); got != "" {
+	if got := renderTrackSummary(i18n.EN, trackSourceStats{}, nil, nil); got != "" {
 		t.Errorf("renderTrackSummary() with Evaluated=0 = %q, want \"\"", got)
 	}
 }
@@ -795,7 +795,7 @@ func TestRenderTrackSummaryOmitsBySourceBreakdownForSingleSource(t *testing.T) {
 	overall := trackSourceStats{Hits: 3, Evaluated: 4, BuySum: 12, BuyCount: 3}
 	bySource := map[string]trackSourceStats{"watchlist": overall}
 
-	got := renderTrackSummary(i18n.EN, overall, bySource)
+	got := renderTrackSummary(i18n.EN, overall, bySource, nil)
 
 	if !strings.Contains(got, "3/4") {
 		t.Errorf("renderTrackSummary() missing hit rate, got:\n%s", got)
@@ -812,7 +812,7 @@ func TestRenderTrackSummaryIncludesBySourceBreakdownForMultipleSources(t *testin
 		"scan":      {Hits: 2, Evaluated: 2},
 	}
 
-	got := renderTrackSummary(i18n.EN, overall, bySource)
+	got := renderTrackSummary(i18n.EN, overall, bySource, nil)
 
 	if !strings.Contains(got, "By source") {
 		t.Errorf("renderTrackSummary() with 2 sources should include the by-source breakdown, got:\n%s", got)
@@ -1173,6 +1173,42 @@ func TestMaxDrawdownPctPicksWorstDipFromRunningPeak(t *testing.T) {
 	want := 25.0
 	if diff := got - want; diff > 1e-9 || diff < -1e-9 {
 		t.Errorf("maxDrawdownPct() = %v, want %v", got, want)
+	}
+}
+
+func TestParseRecommendMarketArg(t *testing.T) {
+	cases := []struct {
+		args string
+		want []market.MarketID
+		ok   bool
+	}{
+		{"", []market.MarketID{market.US, market.TW}, true},
+		{"  ", []market.MarketID{market.US, market.TW}, true},
+		{"us", []market.MarketID{market.US}, true},
+		{"US", []market.MarketID{market.US}, true},
+		{"tw", []market.MarketID{market.TW}, true},
+		{"TW", []market.MarketID{market.TW}, true},
+		{"jp", nil, false},
+	}
+	for _, c := range cases {
+		got, ok := parseRecommendMarketArg(c.args)
+		if ok != c.ok {
+			t.Errorf("parseRecommendMarketArg(%q) ok = %v, want %v", c.args, ok, c.ok)
+			continue
+		}
+		if !ok {
+			continue
+		}
+		if len(got) != len(c.want) {
+			t.Errorf("parseRecommendMarketArg(%q) = %v, want %v", c.args, got, c.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Errorf("parseRecommendMarketArg(%q) = %v, want %v", c.args, got, c.want)
+				break
+			}
+		}
 	}
 }
 

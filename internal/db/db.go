@@ -110,6 +110,9 @@ func New(path string) (*DB, error) {
 	if err := d.seedSP500(); err != nil {
 		return nil, err
 	}
+	if err := d.seedTW150(); err != nil {
+		return nil, err
+	}
 	return d, nil
 }
 
@@ -1046,6 +1049,28 @@ func (d *DB) GetTransactionStats(from, to string) (count, sellCount int, realize
 		       SUM(CASE WHEN side = 'SELL' THEN realized_pnl ELSE 0 END)
 		FROM transactions WHERE date BETWEEN ? AND ?`,
 		from, to,
+	).Scan(&count, &sellCountNull, &realizedNull)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return count, int(sellCountNull.Int64), realizedNull.Float64, nil
+}
+
+// GetTransactionStatsByMarket is GetTransactionStats scoped to one market
+// (Phase 6 PR2, see docs/phase-6-tw-market.md §5.3) — RunMonthlyReport's
+// per-market blocks must not sum a US and a TW transaction into the same
+// count/realized-P&L figure, so this filters by the transactions.market
+// column (populated at write time by RecordBuy/RecordSell, see that
+// migration's doc comment) rather than reusing the whole-table query.
+func (d *DB) GetTransactionStatsByMarket(from, to string, m market.MarketID) (count, sellCount int, realized float64, err error) {
+	var sellCountNull sql.NullInt64
+	var realizedNull sql.NullFloat64
+	err = d.conn.QueryRow(`
+		SELECT COUNT(*),
+		       SUM(CASE WHEN side = 'SELL' THEN 1 ELSE 0 END),
+		       SUM(CASE WHEN side = 'SELL' THEN realized_pnl ELSE 0 END)
+		FROM transactions WHERE date BETWEEN ? AND ? AND market = ?`,
+		from, to, string(m),
 	).Scan(&count, &sellCountNull, &realizedNull)
 	if err != nil {
 		return 0, 0, 0, err

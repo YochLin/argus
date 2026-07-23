@@ -201,6 +201,9 @@ func main() {
 	sched.AddDailyReport(ctx, func(ctx context.Context) {
 		telegramBot.RunDailyReport(ctx)
 	})
+	sched.AddTWDailyReport(ctx, func(ctx context.Context) {
+		telegramBot.RunTWDailyReport(ctx)
+	})
 	sched.AddClosingSnapshot(ctx, func(ctx context.Context) {
 		telegramBot.RunClosingSnapshot(ctx, market.US)
 	})
@@ -209,6 +212,9 @@ func main() {
 	})
 	sched.AddUniverseScan(ctx, func(ctx context.Context) {
 		telegramBot.RunUniverseScan(ctx)
+	})
+	sched.AddTWUniverseScan(ctx, func(ctx context.Context) {
+		telegramBot.RunTWUniverseScan(ctx)
 	})
 	sched.AddWeeklyReview(ctx, func(ctx context.Context) {
 		telegramBot.RunWeeklyReview(ctx)

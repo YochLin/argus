@@ -94,9 +94,16 @@ func (c *Client) AddFallback(provider Provider, recommendModel, checkModel, chat
 // unchanged from before this parameter existed — see MarketContext).
 // recentLessons is Phase 3.9's cross-ticker "recent N lessons, general" feed
 // (see docs/research-tradingagents.md and PastLesson) — empty skips that
-// block the same way market/marketNews do when unavailable.
-func (c *Client) GenerateRecommendations(ctx context.Context, watchlist []StockData, candidates []StockData, marketNews []data.NewsItem, market *MarketContext, recentLessons []PastLesson) (summary string, recs []Recommendation, err error) {
-	prompt := buildRecommendationPrompt(c.lang, watchlist, candidates, marketNews, market, recentLessons)
+// block the same way market/marketNews do when unavailable. isTW is Phase 6
+// PR2's market-context flag (see docs/phase-6-tw-market.md §5.1): true for a
+// TW-market call, prepending a one-line note that this batch is Taiwan-listed
+// stocks priced in TWD with a daily ±10% move limit — a plain bool rather
+// than an internal/market.MarketID, since that package's exported market
+// parameter name here would otherwise shadow the internal/market package
+// name if this package ever needed to import it (it doesn't, for this one
+// flag).
+func (c *Client) GenerateRecommendations(ctx context.Context, watchlist []StockData, candidates []StockData, marketNews []data.NewsItem, market *MarketContext, recentLessons []PastLesson, isTW bool) (summary string, recs []Recommendation, err error) {
+	prompt := buildRecommendationPrompt(c.lang, watchlist, candidates, marketNews, market, recentLessons, isTW)
 	raw, err := c.prompt(ctx, prompt, func(b backend) string { return b.recommendModel })
 	if err != nil {
 		return "", nil, err
