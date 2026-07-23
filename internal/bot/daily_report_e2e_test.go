@@ -28,20 +28,21 @@ type fakeE2EProvider struct{}
 
 func (fakeE2EProvider) Name() string { return "fake" }
 
+// fakeE2EQuotes covers AAPL (US) and, since Phase 6, 2330/0050 (TW) — the
+// latter two let TestRunTWDailyReportE2E exercise runDailyReport(ctx,
+// market.TW)'s full path, including isTWMarketClosed's 0050 freshness
+// check, without a real Yahoo call.
+var fakeE2EQuotes = map[string]*data.Quote{
+	"AAPL": {Ticker: "AAPL", Price: 200.0, Open: 198.0, High: 201.0, Low: 197.0, PrevClose: 197.5, ChangePercent: 1.27, Timestamp: time.Now()},
+	"2330": {Ticker: "2330", Price: 950.0, Open: 945.0, High: 955.0, Low: 940.0, PrevClose: 940.0, ChangePercent: 1.06, Timestamp: time.Now()},
+	"0050": {Ticker: "0050", Price: 190.0, Open: 189.0, High: 191.0, Low: 188.0, PrevClose: 188.5, ChangePercent: 0.79, Timestamp: time.Now()},
+}
+
 func (fakeE2EProvider) GetQuote(ticker string) (*data.Quote, error) {
-	if ticker != "AAPL" {
-		return nil, fmt.Errorf("fake: no quote for %s", ticker)
+	if q, ok := fakeE2EQuotes[ticker]; ok {
+		return q, nil
 	}
-	return &data.Quote{
-		Ticker:        "AAPL",
-		Price:         200.0,
-		Open:          198.0,
-		High:          201.0,
-		Low:           197.0,
-		PrevClose:     197.5,
-		ChangePercent: 1.27,
-		Timestamp:     time.Now(),
-	}, nil
+	return nil, fmt.Errorf("fake: no quote for %s", ticker)
 }
 
 func (fakeE2EProvider) GetNews(ticker string, limit int) ([]data.NewsItem, error) {
@@ -64,6 +65,28 @@ func (fakeE2ELLMProvider) Prompt(ctx context.Context, systemPrompt, model, text 
 }
 
 func (fakeE2ELLMProvider) NewChatSession(ctx context.Context, systemPrompt, model string) (llm.ChatSession, error) {
+	return nil, errors.New("fake: chat not supported")
+}
+
+// capturingE2ELLMProvider is fakeE2ELLMProvider's Phase 6 PR2 sibling: it
+// records the prompt text it was sent (so a test can assert on which
+// tickers actually made it into the prompt — the real proof that
+// runDailyReport's per-market candidate filtering worked, since the fake
+// reply itself is canned rather than derived from the prompt) and answers
+// with a recommendation for whatever ticker the test configures, in the
+// same "[TICKER: X]\nAction: Y\nReason: Z\n" shape parseRecommendations
+// expects.
+type capturingE2ELLMProvider struct {
+	replyTicker string
+	lastPrompt  *string
+}
+
+func (p capturingE2ELLMProvider) Prompt(ctx context.Context, systemPrompt, model, text string) (string, error) {
+	*p.lastPrompt = text
+	return fmt.Sprintf("[TICKER: %s]\nAction: BUY\nReason: Strong momentum.\n", p.replyTicker), nil
+}
+
+func (capturingE2ELLMProvider) NewChatSession(ctx context.Context, systemPrompt, model string) (llm.ChatSession, error) {
 	return nil, errors.New("fake: chat not supported")
 }
 
@@ -243,5 +266,89 @@ func TestRunDailyReportE2E_MarketHoliday(t *testing.T) {
 	}
 	if len(recs) != 0 {
 		t.Errorf("expected no recommendations saved on a market holiday, got %+v", recs)
+	}
+}
+
+// TestRunTWDailyReportE2E is Phase 6 PR2's market-filtering correctness
+// requirement (§5.4): with both an AAPL (US) and a 2330 (TW) ticker on the
+// watchlist, RunTWDailyReport's prompt must only ever mention 2330 — never
+// AAPL — and the saved recommendation must carry market='tw'. capturingE2ELLMProvider's
+// recorded prompt is the actual proof (see its doc comment); a canned reply
+// mentioning "AAPL" would pass a text-search-only assertion even if the
+// wrong market's data leaked into the call.
+func TestRunTWDailyReportE2E(t *testing.T) {
+	server, getCalls := newFakeTelegramServer(t)
+
+	d, err := db.New(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("db.New() error = %v", err)
+	}
+	t.Cleanup(func() { d.Close() })
+	if err := d.AddTicker("AAPL"); err != nil {
+		t.Fatalf("AddTicker(AAPL) error = %v", err)
+	}
+	if err := d.AddTicker("2330"); err != nil {
+		t.Fatalf("AddTicker(2330) error = %v", err)
+	}
+
+	var lastPrompt string
+	b, err := New(Config{
+		Token:       "test-token",
+		ChatID:      12345,
+		DB:          d,
+		Provider:    fakeE2EProvider{},
+		History:     fakeE2EProvider{},
+		LLM:         llm.NewClientWithProvider(capturingE2ELLMProvider{replyTicker: "2330", lastPrompt: &lastPrompt}, "", "", "", i18n.EN),
+		Lang:        i18n.EN,
+		APIEndpoint: server.URL + "/bot%s/%s",
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	b.RunTWDailyReport(context.Background())
+
+	// "### AAPL" is writeStockSection's per-ticker header (KeyStockHeader) —
+	// checking for that specifically, not a bare "AAPL" substring, since the
+	// prompt's fixed task-instructions block illustrates the expected output
+	// format with literal "[TICKER: AAPL]"/"[TICKER: MSFT]" example lines
+	// regardless of which market is being reported on.
+	if strings.Contains(lastPrompt, "### AAPL") {
+		t.Errorf("TW daily report's prompt included an AAPL stock section — US watchlist ticker leaked into the TW report:\n%s", lastPrompt)
+	}
+	if !strings.Contains(lastPrompt, "### 2330") {
+		t.Errorf("TW daily report's prompt never included a 2330 stock section:\n%s", lastPrompt)
+	}
+
+	calls := getCalls()
+	var sawRecommendation bool
+	for _, c := range calls {
+		if strings.Contains(c.text, "2330") && strings.Contains(strings.ToUpper(c.text), "BUY") {
+			sawRecommendation = true
+		}
+		if strings.Contains(c.text, "AAPL") {
+			t.Errorf("TW daily report sent a message mentioning AAPL: %q", c.text)
+		}
+	}
+	if !sawRecommendation {
+		t.Errorf("no sendMessage payload mentioned 2330/BUY; got %d messages: %+v", len(calls), calls)
+	}
+
+	recs, err := d.GetRecommendationsSince("2000-01-01")
+	if err != nil {
+		t.Fatalf("GetRecommendationsSince() error = %v", err)
+	}
+	var found *db.Recommendation
+	for i := range recs {
+		if recs[i].Ticker == "2330" {
+			found = &recs[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("no 2330 recommendation was saved to the DB; got %+v", recs)
+	}
+	if found.Market != "tw" {
+		t.Errorf("saved recommendation market = %q, want tw", found.Market)
 	}
 }

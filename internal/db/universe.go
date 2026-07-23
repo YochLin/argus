@@ -17,6 +17,26 @@ import (
 //go:embed sp500_tickers.txt
 var sp500Tickers string
 
+// tw150Tickers is the embedded seed list for the universe table's 'tw'
+// source tier (Phase 6 PR2, see docs/phase-6-tw-market.md §5.2) — a
+// hand-compiled approximation of 0050 (Taiwan 50)'s large-cap constituents
+// plus a selection of well-known 台灣中型100 (mid-cap) names, ~120 tickers
+// total. Unlike sp500Tickers there is no single stable public CSV export for
+// either index's constituents (both etfinfo.tw and moneydj paginate their
+// holdings tables), so this list was compiled by hand from those sites'
+// visible holdings plus well-established TW market knowledge as of 2026-07 —
+// it is a known-approximate seed, not an authoritative index snapshot.
+// Refreshing it is a manual, human-driven process repeated in a future PR
+// (see docs/phase-6-tw-market.md §7's "tw150 清單無自動刷新" known gap), same
+// staleness trade-off as sp500Tickers' own refresh story but without an
+// automated SyncSP500-style diff — a scan pool that's missing a newer
+// mid-cap constituent or still carries a name that fell out of the index
+// just scans a slightly different set than the live index; it doesn't
+// produce wrong data for any ticker it does scan.
+//
+//go:embed tw150_tickers.txt
+var tw150Tickers string
+
 // UniverseEntry is one ticker in the Phase 2.6 candidate scan pool.
 type UniverseEntry struct {
 	Ticker  string
@@ -54,6 +74,40 @@ func (d *DB) seedSP500() error {
 			continue
 		}
 		if _, err := tx.Exec(`INSERT OR IGNORE INTO universe (ticker, source) VALUES (?, 'sp500')`, ticker); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// seedTW150 is seedSP500's Phase 6 PR2 mirror for the 'tw' source tier: same
+// count-query-not-migration gate (checked separately from 'sp500', so a
+// fresh install seeds both tiers independently), same deliberately-not-
+// re-synced-on-every-startup behavior so a manual /universe remove of a
+// seeded TW ticker sticks. There is no TW equivalent of SyncSP500 in this
+// phase (see tw150Tickers' doc comment) — refreshing the embedded list is a
+// manual re-generate-and-PR process, not an automatic startup diff.
+func (d *DB) seedTW150() error {
+	var count int
+	if err := d.conn.QueryRow(`SELECT COUNT(*) FROM universe WHERE source = 'tw'`).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, line := range strings.Split(strings.TrimSpace(tw150Tickers), "\n") {
+		ticker := strings.TrimSpace(line)
+		if ticker == "" {
+			continue
+		}
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO universe (ticker, source) VALUES (?, 'tw')`, ticker); err != nil {
 			return err
 		}
 	}

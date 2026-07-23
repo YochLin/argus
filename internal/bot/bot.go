@@ -314,7 +314,7 @@ func (b *Bot) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 	case "status":
 		b.handleStatus(args)
 	case "recommend":
-		b.handleRecommend(ctx)
+		b.handleRecommend(ctx, args)
 	case "check":
 		b.handleCheck(ctx, args)
 	case "track":

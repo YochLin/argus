@@ -37,33 +37,47 @@ type recommendationInputs struct {
 	candidates       []llm.StockData    // fetchStockData output for candidateTickers
 }
 
-// gatherRecommendationInputs assembles the watchlist ∪ market-mover/scan-hit
-// candidate set, the positions/earnings/market-news/prior-recommendation
-// context that feeds the LLM prompt, and the resulting []llm.StockData for
-// both ticker sets. Returns the db.GetWatchlistByMarket error verbatim (both
+// gatherRecommendationInputs assembles the watchlist ∪ candidate set for
+// market m, the positions/earnings/market-news/prior-recommendation context
+// that feeds the LLM prompt, and the resulting []llm.StockData for both
+// ticker sets. Returns the db.GetWatchlistByMarket error verbatim (both
 // callers render it via the same KeyWatchlistQueryFailed message and abort).
-// US-only watchlist for now (market.US) — Phase 6 PR1's /recommend and
-// RunDailyReport stay US-only; PR2 adds a TW-market analysis pass alongside
-// this one rather than merging the two (see docs/phase-6-tw-market.md §4.3).
-func (b *Bot) gatherRecommendationInputs() (recommendationInputs, error) {
-	tickers, err := b.db.GetWatchlistByMarket(market.US)
+//
+// Candidate sourcing is asymmetric by market (Phase 6 PR2 §5.1): US gets
+// market-movers ∪ today's US-market scan hits, exactly as before PR2 existed
+// — GetMarketMovers/exploreCandidates are both US-only features (see their
+// own doc comments) with no TW equivalent. TW gets *only* today's TW-market
+// scan hits (RunUniverseScan(ctx, market.TW)'s output) — there is no TW
+// movers/explore source in this phase. marketNews is similarly US-only for
+// now: Finnhub's general-news endpoint has no TW equivalent until PR3's
+// FinMind router lands, so a TW call gets an explicit nil here rather than
+// attaching US-market news to a TW report (see
+// docs/phase-6-tw-market.md §2's "之前走 nil-degrade").
+func (b *Bot) gatherRecommendationInputs(m market.MarketID) (recommendationInputs, error) {
+	tickers, err := b.db.GetWatchlistByMarket(m)
 	if err != nil {
 		return recommendationInputs{}, err
 	}
 
-	candidateTickers, err := b.provider.GetMarketMovers()
-	if err != nil {
-		log.Printf("market movers: %v", err)
+	var candidateTickers []string
+	if m == market.US {
+		candidateTickers, err = b.provider.GetMarketMovers()
+		if err != nil {
+			log.Printf("market movers: %v", err)
+		}
 	}
-	scanHits := b.loadScanHits()
+	scanHits := b.loadScanHits(m)
 	dedupedCandidates := mergeCandidates(candidateTickers, scanHits, tickers)
 	allTickers := append(append([]string{}, tickers...), dedupedCandidates...)
 
 	positions := b.loadPositions()
 	earnings := b.loadEarnings(allTickers)
-	marketNews := b.loadMarketNews()
+	var marketNews []data.NewsItem
+	if m == market.US {
+		marketNews = b.loadMarketNews()
+	}
 	prevRecs := b.loadPrevRecs(allTickers)
-	marketContext := b.computeMarketRegime()
+	marketContext := b.computeMarketRegime(m)
 	pastLessons := b.loadPastLessons(allTickers)
 	recentLessons := b.loadRecentLessons()
 
@@ -96,7 +110,9 @@ func (b *Bot) gatherRecommendationInputs() (recommendationInputs, error) {
 // than one combined block, so its [Check]/[Buy]/[Sell] quick-action row
 // (quick_actions.go, UX quick win) attaches to that ticker specifically —
 // Telegram inline keyboards belong to one message, not a sub-section of one.
-func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommendation, sources map[string]string, stockLists ...[]llm.StockData) {
+// m selects which market's account value buildSizingLines sizes BUY
+// recommendations against (Phase 6 PR2).
+func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommendation, sources map[string]string, m market.MarketID, stockLists ...[]llm.StockData) {
 	if newsSummary != "" {
 		b.Send(i18n.T(b.lang, i18n.KeyMarketNewsSummaryTitle) + newsSummary)
 	}
@@ -115,7 +131,7 @@ func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommen
 		}
 	}
 
-	sizing := b.buildSizingLines(recs, prices, atrs)
+	sizing := b.buildSizingLines(recs, prices, atrs, m)
 
 	watchlistRecs, candidateRecs := splitRecsBySource(recs, sources)
 
@@ -201,16 +217,16 @@ func formatRecLine(lang i18n.Lang, r llm.Recommendation, sizing map[string]strin
 // or there's no account-value figure to size against yet (accountValue);
 // a ticker missing a price or ATR14 (candidates always have Technicals, but
 // a quote or history fetch can still fail — see fetchStockData) is simply
-// left out of the returned map rather than failing the whole batch.
-func (b *Bot) buildSizingLines(recs []llm.Recommendation, prices, atrs map[string]float64) map[string]string {
+// left out of the returned map rather than failing the whole batch. m
+// selects which market's account value (net worth + cash, never summed
+// across markets) sizing is computed against — Phase 6 PR2 threads this
+// through now that both US and TW recommendation runs call this (PR1 always
+// passed market.US since only US recs existed yet).
+func (b *Bot) buildSizingLines(recs []llm.Recommendation, prices, atrs map[string]float64, m market.MarketID) map[string]string {
 	if b.riskPctPerTrade <= 0 {
 		return nil
 	}
-	// market.US only for now — sizing is only computed for BUY recs, and
-	// PR1's /recommend/RunDailyReport candidates are US-only (see
-	// gatherRecommendationInputs); Phase 6 PR2 threads a market parameter
-	// through once TW recommendations exist.
-	accountVal, ok := b.accountValue(market.US)
+	accountVal, ok := b.accountValue(m)
 	if !ok {
 		return nil
 	}
@@ -311,9 +327,25 @@ func capScanHitTickers(scanReasons map[string]string, max int) map[string]bool {
 func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positions map[string]db.Position, earnings map[string]data.EarningsEvent, scanReasons map[string]string, prevRecs map[string]db.Recommendation, pastLessons map[string][]db.Lesson) []llm.StockData {
 	extraFundamentals := capScanHitTickers(scanReasons, maxScanHitFundamentals)
 
-	var spyCloses []float64
-	if spyCandles, err := b.history.GetHistory(benchmarkTicker, "1y"); err == nil {
-		spyCloses = data.Closes(spyCandles)
+	// benchCloses lazily fetches and caches each market's benchmark close
+	// series (SPY for US, 0050 for TW) — Phase 6 PR2: tickers here can now
+	// span both markets (RunWeeklyReview/handleInsight pass every held
+	// position regardless of market), so a single shared SPY series is no
+	// longer correct for RS63 the way it was pre-Phase-6. A market whose
+	// tickers never actually appear in this call (the common case for
+	// gatherRecommendationInputs, which always passes a market-homogeneous
+	// list) costs zero extra requests.
+	benchCloses := make(map[market.MarketID][]float64)
+	loadBenchCloses := func(m market.MarketID) []float64 {
+		if closes, ok := benchCloses[m]; ok {
+			return closes
+		}
+		var closes []float64
+		if candles, err := b.history.GetHistory(benchmarkFor(m), "1y"); err == nil {
+			closes = data.Closes(candles)
+		}
+		benchCloses[m] = closes
+		return closes
 	}
 
 	var result []llm.StockData
@@ -340,7 +372,7 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 				stock.AnalystRating = ar
 			}
 		}
-		stock.Technicals, stock.Candles, stock.StrategyHits = b.computeTechnicals(t, spyCloses)
+		stock.Technicals, stock.Candles, stock.StrategyHits = b.computeTechnicals(t, loadBenchCloses(market.Of(t)))
 		if p, ok := positions[t]; ok {
 			stock.Position = &llm.Position{Shares: p.Shares, AvgCost: p.AvgCost}
 		}
@@ -547,39 +579,45 @@ func (b *Bot) accountValue(m market.MarketID) (float64, bool) {
 }
 
 // computeMarketRegime builds Phase 3.7 追加項's broad-market context block
-// (see docs/phase-3.7-market-regime.md and llm.MarketContext): SPY's own
-// trend (last close from a single GetHistory call, no separate GetQuote) and
+// (see docs/phase-3.7-market-regime.md and llm.MarketContext): benchmarkFor
+// (m)'s own trend (SPY for US, 0050 for TW as of Phase 6 PR2 — last close
+// from a single GetHistory call, no separate GetQuote) and, US only,
 // ^VIX's latest level (via the ordinary Multi quote chain — Finnhub returns
 // an error-shaped-but-200 body for CFD indices it doesn't support, which
 // decodes as an all-zero quote and falls through to Yahoo exactly like any
-// other "no data" quote, confirmed by live testing, see the design doc).
-// Either half failing just logs and leaves that half's fields at 0 (skipped
-// by writeMarketContext's per-field rendering); both failing returns nil so
-// gatherRecommendationInputs's caller sees "no regime data" rather than an
-// all-zero struct.
-func (b *Bot) computeMarketRegime() *llm.MarketContext {
-	var m llm.MarketContext
+// other "no data" quote, confirmed by live testing, see the design doc). VIX
+// is skipped entirely for TW — there's no equivalent volatility-index ticker
+// wired up for the TWSE/TPEx market, and the design doc doesn't call for one
+// (see docs/phase-6-tw-market.md §5.1). Either half failing just logs and
+// leaves that half's fields at 0 (skipped by writeMarketContext's per-field
+// rendering); both failing returns nil so the caller sees "no regime data"
+// rather than an all-zero struct.
+func (b *Bot) computeMarketRegime(m market.MarketID) *llm.MarketContext {
+	var mc llm.MarketContext
 
-	candles, err := b.history.GetHistory(benchmarkTicker, "1y")
+	bench := benchmarkFor(m)
+	candles, err := b.history.GetHistory(bench, "1y")
 	if err != nil {
-		log.Printf("market regime: %s history: %v", benchmarkTicker, err)
+		log.Printf("market regime: %s history: %v", bench, err)
 	} else if len(candles) > 0 {
 		closes := data.Closes(candles)
-		m.SPYPrice = closes[len(closes)-1]
-		m.SPYMA50 = signals.MA(closes, 50)
-		m.SPYMA200 = signals.MA(closes, 200)
+		mc.SPYPrice = closes[len(closes)-1]
+		mc.SPYMA50 = signals.MA(closes, 50)
+		mc.SPYMA200 = signals.MA(closes, 200)
 	}
 
-	if q, err := b.provider.GetQuote(vixTicker); err != nil {
-		log.Printf("market regime: %s quote: %v", vixTicker, err)
-	} else {
-		m.VIX = q.Price
+	if m == market.US {
+		if q, err := b.provider.GetQuote(vixTicker); err != nil {
+			log.Printf("market regime: %s quote: %v", vixTicker, err)
+		} else {
+			mc.VIX = q.Price
+		}
 	}
 
-	if m.SPYPrice == 0 && m.VIX == 0 {
+	if mc.SPYPrice == 0 && mc.VIX == 0 {
 		return nil
 	}
-	return &m
+	return &mc
 }
 
 // isBearRegime returns true if the market context indicates a weak/bear regime
@@ -727,18 +765,31 @@ func computeVsSPY(currentPrice, avgCost, spyPrice, spyEntryClose float64) llm.Vs
 }
 
 // loadVsSPY computes computeVsSPY for every position in stocks that has both
-// a BUY date on record (db.GetEarliestBuyDate) and a same-date SPY close in
-// daily_snapshots (populated by snapshotBenchmark since Phase 3.8) — a
-// position missing either is simply omitted from the result, not an error
-// (e.g. a pre-Phase-3.8 buy predates SPY ever being snapshotted). Reuses
-// stocks' already-fetched Quote.Price rather than a second GetQuote call per
-// ticker, and fetches the current SPY quote once up front since every
-// position compares against the same value.
+// a BUY date on record (db.GetEarliestBuyDate) and a same-date benchmark
+// close in daily_snapshots (populated by snapshotBenchmark since Phase 3.8)
+// — a position missing either is simply omitted from the result, not an
+// error (e.g. a pre-Phase-3.8 buy predates the benchmark ever being
+// snapshotted). Reuses stocks' already-fetched Quote.Price rather than a
+// second GetQuote call per ticker. Phase 6 PR2: stocks can now span both
+// markets (RunWeeklyReview/handleInsight pass every held position), so the
+// benchmark is selected per position via market.Of (SPY for US, 0050 for
+// TW) rather than a single shared SPY quote — benchQuotes lazily fetches and
+// caches each market's current quote, same "only pay for what's actually
+// used" shape as fetchStockData's loadBenchCloses.
 func (b *Bot) loadVsSPY(stocks []llm.StockData, positions map[string]db.Position) map[string]llm.VsSPYReturn {
-	spyQuote, err := b.provider.GetQuote(benchmarkTicker)
-	if err != nil {
-		log.Printf("vs-spy: benchmark %s quote: %v", benchmarkTicker, err)
-		return nil
+	benchQuotes := make(map[market.MarketID]*data.Quote)
+	loadBenchQuote := func(m market.MarketID) *data.Quote {
+		if q, ok := benchQuotes[m]; ok {
+			return q
+		}
+		ticker := benchmarkFor(m)
+		q, err := b.provider.GetQuote(ticker)
+		if err != nil {
+			log.Printf("vs-spy: benchmark %s quote: %v", ticker, err)
+			q = nil
+		}
+		benchQuotes[m] = q
+		return q
 	}
 
 	out := make(map[string]llm.VsSPYReturn, len(stocks))
@@ -746,6 +797,11 @@ func (b *Bot) loadVsSPY(stocks []llm.StockData, positions map[string]db.Position
 		ticker := s.Quote.Ticker
 		p, ok := positions[ticker]
 		if !ok || p.AvgCost == 0 {
+			continue
+		}
+		m := market.Of(ticker)
+		benchQuote := loadBenchQuote(m)
+		if benchQuote == nil {
 			continue
 		}
 		buyDate, ok, err := b.db.GetEarliestBuyDate(ticker)
@@ -756,15 +812,15 @@ func (b *Bot) loadVsSPY(stocks []llm.StockData, positions map[string]db.Position
 		if !ok {
 			continue
 		}
-		spyEntryClose, ok, err := b.db.GetSnapshotClose(benchmarkTicker, buyDate)
+		benchEntryClose, ok, err := b.db.GetSnapshotClose(benchmarkFor(m), buyDate)
 		if err != nil {
 			log.Printf("vs-spy: benchmark snapshot %s: %v", ticker, err)
 			continue
 		}
-		if !ok || spyEntryClose == 0 {
+		if !ok || benchEntryClose == 0 {
 			continue
 		}
-		out[ticker] = computeVsSPY(s.Quote.Price, p.AvgCost, spyQuote.Price, spyEntryClose)
+		out[ticker] = computeVsSPY(s.Quote.Price, p.AvgCost, benchQuote.Price, benchEntryClose)
 	}
 	return out
 }
@@ -787,16 +843,26 @@ func (b *Bot) loadMarketNews() []data.NewsItem {
 }
 
 // loadScanHits returns today's Phase 2.6 universe-scan hits keyed by ticker
-// (joined reason string per ticker) via db.GetScanHits. Degrades to nil
-// (not an error) on a query failure — candidates without a scan reason still
-// go through movers as before.
-func (b *Bot) loadScanHits() map[string]string {
+// (joined reason string per ticker) via db.GetScanHits, filtered to market m
+// — scan_hits carries no market column of its own (see internal/db's Phase 6
+// migration note: every reader that has the ticker in hand can derive it),
+// so this filters client-side via market.Of, same pattern
+// recordNetWorthSnapshot uses for db.GetPositions(). Degrades to nil (not an
+// error) on a query failure — candidates without a scan reason still go
+// through movers as before.
+func (b *Bot) loadScanHits(m market.MarketID) map[string]string {
 	hits, err := b.db.GetScanHits(todayDate())
 	if err != nil {
 		log.Printf("scan hits: %v", err)
 		return nil
 	}
-	return hits
+	out := make(map[string]string, len(hits))
+	for t, reason := range hits {
+		if market.Of(t) == m {
+			out[t] = reason
+		}
+	}
+	return out
 }
 
 // computeTrackRows re-runs /track's core computation for the given lookback
@@ -821,10 +887,23 @@ func (b *Bot) computeTrackRows(days int) (rows []trackRow, lines []string, ok bo
 
 	// One quote per distinct ticker, however often it was recommended.
 	quotes := make(map[string]*data.Quote)
-	spyQuote, err := b.provider.GetQuote(benchmarkTicker)
-	if err != nil {
-		log.Printf("track: benchmark %s quote: %v", benchmarkTicker, err)
-		spyQuote = nil
+	// benchQuotes lazily fetches and caches each market's current benchmark
+	// quote (SPY for US, 0050 for TW) — Phase 6 PR2: recs here can span both
+	// markets, so a single shared SPY quote is no longer correct (see
+	// trackHit's own per-row benchmark selection below).
+	benchQuotes := make(map[market.MarketID]*data.Quote)
+	loadBenchQuote := func(m market.MarketID) *data.Quote {
+		if q, ok := benchQuotes[m]; ok {
+			return q
+		}
+		ticker := benchmarkFor(m)
+		q, err := b.provider.GetQuote(ticker)
+		if err != nil {
+			log.Printf("track: benchmark %s quote: %v", ticker, err)
+			q = nil
+		}
+		benchQuotes[m] = q
+		return q
 	}
 
 	for _, r := range recs {
@@ -861,18 +940,22 @@ func (b *Bot) computeTrackRows(days int) (rows []trackRow, lines []string, ok bo
 
 		changePct := (q.Price - base) / base * 100
 
-		var spyChangePct float64
-		haveSPY := false
-		if spyQuote != nil {
-			if spyBase, ok, err := b.db.GetSnapshotClose(benchmarkTicker, r.Date); err == nil && ok && spyBase != 0 {
-				spyChangePct = (spyQuote.Price - spyBase) / spyBase * 100
-				haveSPY = true
+		recMarket := market.Of(r.Ticker)
+		benchTicker := benchmarkFor(recMarket)
+		benchQuote := loadBenchQuote(recMarket)
+
+		var benchChangePct float64
+		haveBench := false
+		if benchQuote != nil {
+			if benchBase, ok, err := b.db.GetSnapshotClose(benchTicker, r.Date); err == nil && ok && benchBase != 0 {
+				benchChangePct = (benchQuote.Price - benchBase) / benchBase * 100
+				haveBench = true
 			}
 		}
 
 		verdict := ""
 		if r.Action == "BUY" || r.Action == "SELL" {
-			hit := trackHit(r.Action, changePct, spyChangePct, haveSPY)
+			hit := trackHit(r.Action, changePct, benchChangePct, haveBench)
 			verdict = "❌"
 			if hit {
 				verdict = "✅"
@@ -880,13 +963,14 @@ func (b *Bot) computeTrackRows(days int) (rows []trackRow, lines []string, ok bo
 			rows = append(rows, trackRow{
 				Action:    r.Action,
 				Source:    displaySource(r.Source),
+				Market:    recMarket,
 				ChangePct: changePct,
 				Hit:       hit,
 			})
 		}
 
-		if haveSPY {
-			lines = append(lines, i18n.T(b.lang, i18n.KeyTrackLineVsSPY, r.Date, r.Ticker, action, base, q.Price, changePct, spyChangePct, verdict))
+		if haveBench {
+			lines = append(lines, i18n.T(b.lang, i18n.KeyTrackLineVsSPY, r.Date, r.Ticker, action, base, q.Price, changePct, benchTicker, benchChangePct, verdict))
 		} else {
 			lines = append(lines, i18n.T(b.lang, i18n.KeyTrackLine, r.Date, r.Ticker, action, base, q.Price, changePct, verdict))
 		}

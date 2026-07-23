@@ -1,12 +1,14 @@
 package bot
 
 import (
+	"sort"
 	"strings"
 	"time"
 
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
+	"argus/internal/market"
 )
 
 // formatChatContext renders the read-only background block prefixed to
@@ -62,13 +64,16 @@ func todayDate() string {
 	return time.Now().In(cst).Format("2006-01-02")
 }
 
-// renderTrackSummary formats the hit-rate/avg-return/by-source breakdown —
-// shared by /track's own display (handleTrack) and RunWeeklyReview's
-// strategy-feedback block, which additionally asks the model to comment on
-// it. Returns "" when nothing's been evaluated yet (no BUY/SELL row with a
-// resolvable price), so callers can skip the block entirely rather than
-// show an empty summary.
-func renderTrackSummary(lang i18n.Lang, overall trackSourceStats, bySource map[string]trackSourceStats) string {
+// renderTrackSummary formats the hit-rate/avg-return/by-source/by-market
+// breakdown — shared by /track's own display (handleTrack) and
+// RunWeeklyReview's strategy-feedback block, which additionally asks the
+// model to comment on it. Returns "" when nothing's been evaluated yet (no
+// BUY/SELL row with a resolvable price), so callers can skip the block
+// entirely rather than show an empty summary. byMarket (Phase 6 PR2 §5.3)
+// mirrors bySource's own "only show the breakdown when there's more than one
+// group" gate — a single-market user (the common case pre-Phase-6, and any
+// TW-only or US-only holder) never sees a one-row market breakdown.
+func renderTrackSummary(lang i18n.Lang, overall trackSourceStats, bySource map[string]trackSourceStats, byMarket map[market.MarketID]trackSourceStats) string {
 	if overall.Evaluated == 0 {
 		return ""
 	}
@@ -82,7 +87,25 @@ func renderTrackSummary(lang i18n.Lang, overall trackSourceStats, bySource map[s
 			sb.WriteString(i18n.T(lang, i18n.KeyTrackBySourceLine, source, s.Hits, s.Evaluated, s.HitRate()))
 		}
 	}
+	if len(byMarket) > 1 {
+		sb.WriteString(i18n.T(lang, i18n.KeyTrackByMarketHeader))
+		for _, m := range sortedMarketKeys(byMarket) {
+			s := byMarket[m]
+			sb.WriteString(i18n.T(lang, i18n.KeyTrackByMarketLine, string(m), s.Hits, s.Evaluated, s.HitRate()))
+		}
+	}
 	return sb.String()
+}
+
+// sortedMarketKeys returns byMarket's keys in stable order (US before TW),
+// mirroring sortedSourceKeys' role for the by-source breakdown.
+func sortedMarketKeys(byMarket map[market.MarketID]trackSourceStats) []market.MarketID {
+	keys := make([]market.MarketID, 0, len(byMarket))
+	for k := range byMarket {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	return keys
 }
 
 // sparklineChars are sparkline's 8 Unicode block levels, low to high.

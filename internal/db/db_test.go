@@ -872,32 +872,42 @@ func TestMigration12BackfillsMarketAndRebuildsNetWorth(t *testing.T) {
 // ticker list on first creation, and that reopening the same database
 // (simulating a restart) doesn't duplicate or re-seed rows the user may have
 // since removed.
+// sp500Entries filters entries down to the 'sp500'-sourced ones — New() also
+// seeds a 'tw' tier (see TestSeedTW150 below), so tests scoped to the S&P
+// 500 seed specifically must not assume every universe row is 'sp500'.
+func sp500Entries(entries []UniverseEntry) []UniverseEntry {
+	var out []UniverseEntry
+	for _, e := range entries {
+		if e.Source == "sp500" {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 func TestSeedSP500(t *testing.T) {
 	d := newTestDB(t)
 
-	entries, err := d.GetUniverse()
+	all, err := d.GetUniverse()
 	if err != nil {
 		t.Fatalf("GetUniverse() error = %v", err)
 	}
+	entries := sp500Entries(all)
 	if len(entries) < 400 {
-		t.Fatalf("GetUniverse() len = %d, want >= 400 (S&P 500 seed)", len(entries))
-	}
-	for _, e := range entries {
-		if e.Source != "sp500" {
-			t.Fatalf("unexpected source %q for freshly seeded ticker %q", e.Source, e.Ticker)
-		}
+		t.Fatalf("sp500 entries = %d, want >= 400 (S&P 500 seed)", len(entries))
 	}
 
 	// A user removes a seeded ticker...
 	if err := d.RemoveUniverseTicker(entries[0].Ticker); err != nil {
 		t.Fatalf("RemoveUniverseTicker() error = %v", err)
 	}
-	afterRemove, err := d.GetUniverse()
+	afterRemoveAll, err := d.GetUniverse()
 	if err != nil {
 		t.Fatalf("GetUniverse() error = %v", err)
 	}
+	afterRemove := sp500Entries(afterRemoveAll)
 	if len(afterRemove) != len(entries)-1 {
-		t.Fatalf("GetUniverse() len after remove = %d, want %d", len(afterRemove), len(entries)-1)
+		t.Fatalf("sp500 entries after remove = %d, want %d", len(afterRemove), len(entries)-1)
 	}
 
 	// ...and it must not come back on a later seedSP500() call (only re-seeds
@@ -905,12 +915,54 @@ func TestSeedSP500(t *testing.T) {
 	if err := d.seedSP500(); err != nil {
 		t.Fatalf("seedSP500() error = %v", err)
 	}
-	afterReseed, err := d.GetUniverse()
+	afterReseedAll, err := d.GetUniverse()
 	if err != nil {
 		t.Fatalf("GetUniverse() error = %v", err)
 	}
+	afterReseed := sp500Entries(afterReseedAll)
 	if len(afterReseed) != len(afterRemove) {
-		t.Errorf("GetUniverse() len after reseed = %d, want %d (removed ticker should stay gone)", len(afterReseed), len(afterRemove))
+		t.Errorf("sp500 entries after reseed = %d, want %d (removed ticker should stay gone)", len(afterReseed), len(afterRemove))
+	}
+}
+
+// TestSeedTW150 is TestSeedSP500's Phase 6 PR2 mirror for the 'tw' seed
+// tier — same fresh-install-only, sticks-after-remove behavior, scoped to
+// tw150Tickers instead of sp500Tickers.
+func TestSeedTW150(t *testing.T) {
+	d := newTestDB(t)
+
+	all, err := d.GetUniverse()
+	if err != nil {
+		t.Fatalf("GetUniverse() error = %v", err)
+	}
+	var entries []UniverseEntry
+	for _, e := range all {
+		if e.Source == "tw" {
+			entries = append(entries, e)
+		}
+	}
+	if len(entries) < 50 {
+		t.Fatalf("tw entries = %d, want >= 50 (tw150 seed)", len(entries))
+	}
+
+	if err := d.RemoveUniverseTicker(entries[0].Ticker); err != nil {
+		t.Fatalf("RemoveUniverseTicker() error = %v", err)
+	}
+	if err := d.seedTW150(); err != nil {
+		t.Fatalf("seedTW150() error = %v", err)
+	}
+	afterAll, err := d.GetUniverse()
+	if err != nil {
+		t.Fatalf("GetUniverse() error = %v", err)
+	}
+	var afterCount int
+	for _, e := range afterAll {
+		if e.Source == "tw" {
+			afterCount++
+		}
+	}
+	if afterCount != len(entries)-1 {
+		t.Errorf("tw entries after remove+reseed = %d, want %d (removed ticker should stay gone)", afterCount, len(entries)-1)
 	}
 }
 
@@ -998,7 +1050,7 @@ func TestSyncSP500NewTickerAutoAdded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetUniverse() error = %v", err)
 	}
-	missingTicker := entries[0].Ticker
+	missingTicker := sp500Entries(entries)[0].Ticker
 	if _, err := d.conn.Exec(`DELETE FROM universe WHERE ticker = ?`, missingTicker); err != nil {
 		t.Fatalf("simulating a never-seeded ticker: %v", err)
 	}
@@ -1036,7 +1088,7 @@ func TestSyncSP500TombstonedTickerSticks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetUniverse() error = %v", err)
 	}
-	removedTicker := entries[0].Ticker
+	removedTicker := sp500Entries(entries)[0].Ticker
 	if err := d.RemoveUniverseTicker(removedTicker); err != nil {
 		t.Fatalf("RemoveUniverseTicker() error = %v", err)
 	}

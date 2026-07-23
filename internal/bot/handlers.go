@@ -95,16 +95,54 @@ func (b *Bot) handleStatus(ticker string) {
 	b.Send(formatQuote(b.lang, q))
 }
 
-func (b *Bot) handleRecommend(ctx context.Context) {
+// parseRecommendMarketArg parses /recommend's optional [tw|us] argument
+// (Phase 6 PR2 §5.3), case-insensitive: "" means "both markets, US first"
+// (matching this project's existing US-first convention elsewhere — e.g.
+// sendPortfolioSection), "us"/"tw" means just that one. ok is false for
+// anything else, telling the caller to show the usage message rather than
+// guessing. Pure and separately tested, same convention as
+// parseTradeArgs/parseStopArgs/parseCashArgs.
+func parseRecommendMarketArg(args string) (markets []market.MarketID, ok bool) {
+	switch strings.ToLower(strings.TrimSpace(args)) {
+	case "":
+		return []market.MarketID{market.US, market.TW}, true
+	case "us":
+		return []market.MarketID{market.US}, true
+	case "tw":
+		return []market.MarketID{market.TW}, true
+	default:
+		return nil, false
+	}
+}
+
+// handleRecommend is /recommend [tw|us]'s command handler: each market in
+// parseRecommendMarketArg's result runs its own placeholder-then-report flow
+// in sequence.
+func (b *Bot) handleRecommend(ctx context.Context, args string) {
+	markets, ok := parseRecommendMarketArg(args)
+	if !ok {
+		b.Send(i18n.T(b.lang, i18n.KeyRecommendUsage))
+		return
+	}
+	for _, m := range markets {
+		b.runRecommend(ctx, m)
+	}
+}
+
+// runRecommend is handleRecommend's per-market body — the interactive
+// counterpart of runDailyReport's LLM-call tail, without the signal
+// detection/exit-discipline/exploration steps that are runDailyReport-only
+// (see that function's own doc comment for why).
+func (b *Bot) runRecommend(ctx context.Context, m market.MarketID) {
 	b.Send(i18n.T(b.lang, i18n.KeyAnalyzing))
 
-	in, err := b.gatherRecommendationInputs()
+	in, err := b.gatherRecommendationInputs(m)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyWatchlistQueryFailed, err))
 		return
 	}
 
-	summary, recs, err := b.llm.GenerateRecommendations(ctx, in.watchlist, in.candidates, in.marketNews, in.marketContext, in.recentLessons)
+	summary, recs, err := b.llm.GenerateRecommendations(ctx, in.watchlist, in.candidates, in.marketNews, in.marketContext, in.recentLessons, m == market.TW)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyLLMFailed, err))
 		return
@@ -120,7 +158,7 @@ func (b *Bot) handleRecommend(ctx context.Context) {
 	// — an interactive /recommend doesn't get a second one-shot LLM call
 	// tacked onto its latency.
 	sources := recommendationSources(in.watchlistTickers, in.candidateTickers, in.scanHits, nil)
-	b.sendAndSaveRecommendations(summary, recs, sources, in.watchlist, in.candidates)
+	b.sendAndSaveRecommendations(summary, recs, sources, m, in.watchlist, in.candidates)
 }
 
 func (b *Bot) handleCheck(ctx context.Context, ticker string) {
@@ -220,8 +258,8 @@ func (b *Bot) handleTrack(daysArg string) {
 		sb.WriteString(l)
 	}
 
-	overall, bySource := summarizeTrack(rows)
-	sb.WriteString(renderTrackSummary(b.lang, overall, bySource))
+	overall, bySource, byMarket := summarizeTrack(rows)
+	sb.WriteString(renderTrackSummary(b.lang, overall, bySource, byMarket))
 	b.Send(sb.String())
 }
 
@@ -255,6 +293,7 @@ func trackHit(action string, tickerChangePct, spyChangePct float64, haveSPY bool
 type trackRow struct {
 	Action    string // "BUY" or "SELL" only
 	Source    string // already normalized via displaySource
+	Market    market.MarketID
 	ChangePct float64
 	Hit       bool
 }
@@ -290,20 +329,25 @@ func (s trackSourceStats) AvgSellPct() float64 {
 	return s.SellSum / float64(s.SellCount)
 }
 
-// summarizeTrack aggregates trackRows into overall stats and a per-source
-// breakdown (see trackSourceStats), for /track's summary footer: hit rate,
-// average BUY/SELL magnitude, and — when more than one source is present —
-// the same broken down by candidate-sourcing path (Phase 2.6's
-// deferred-until-Phase-3.8 "成效對照").
-func summarizeTrack(rows []trackRow) (overall trackSourceStats, bySource map[string]trackSourceStats) {
+// summarizeTrack aggregates trackRows into overall stats, a per-source
+// breakdown (see trackSourceStats), and a per-market breakdown (Phase 6 PR2
+// §5.3) — for /track's summary footer: hit rate, average BUY/SELL
+// magnitude, and — when more than one source/market is present — the same
+// broken down by candidate-sourcing path (Phase 2.6's deferred-until-
+// Phase-3.8 "成效對照") or by market.
+func summarizeTrack(rows []trackRow) (overall trackSourceStats, bySource map[string]trackSourceStats, byMarket map[market.MarketID]trackSourceStats) {
 	bySource = make(map[string]trackSourceStats)
+	byMarket = make(map[market.MarketID]trackSourceStats)
 	for _, r := range rows {
 		accumulateTrackRow(&overall, r)
 		s := bySource[r.Source]
 		accumulateTrackRow(&s, r)
 		bySource[r.Source] = s
+		mstat := byMarket[r.Market]
+		accumulateTrackRow(&mstat, r)
+		byMarket[r.Market] = mstat
 	}
-	return overall, bySource
+	return overall, bySource, byMarket
 }
 
 func accumulateTrackRow(s *trackSourceStats, r trackRow) {
@@ -1267,7 +1311,7 @@ func (b *Bot) sendUniverseSummary() {
 
 	var sb strings.Builder
 	sb.WriteString(i18n.T(b.lang, i18n.KeyUniverseSummary, len(entries)))
-	for _, source := range []string{"sp500", "manual"} {
+	for _, source := range []string{"sp500", "tw", "manual"} {
 		if n := bySource[source]; n > 0 {
 			sb.WriteString(i18n.T(b.lang, i18n.KeyUniverseSourceLine, source, n))
 		}

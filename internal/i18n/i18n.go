@@ -51,25 +51,29 @@ func T(lang Lang, key Key, args ...any) string {
 
 // Keys used by internal/bot.
 const (
-	KeyUnknownCommand            Key = "unknown_command"
-	KeyAddUsage                  Key = "add_usage"
-	KeyAddFailed                 Key = "add_failed"
-	KeyAddSuccess                Key = "add_success"
-	KeyRemoveUsage               Key = "remove_usage"
-	KeyRemoveFailed              Key = "remove_failed"
-	KeyRemoveSuccess             Key = "remove_success"
-	KeyQueryFailed               Key = "query_failed"
-	KeyWatchlistEmptyHint        Key = "watchlist_empty_hint"
-	KeyWatchlistTitle            Key = "watchlist_title"
-	KeyWatchlistEmpty            Key = "watchlist_empty"
-	KeyMarketStatusTitle         Key = "market_status_title"
-	KeyQuoteUnavailable          Key = "quote_unavailable"
-	KeyQuoteFailed               Key = "quote_failed"
-	KeyAnalyzing                 Key = "analyzing"
-	KeyWatchlistQueryFailed      Key = "watchlist_query_failed"
-	KeyLLMFailed                 Key = "llm_failed"
-	KeyNoRecommendations         Key = "no_recommendations"
-	KeyRecommendationsTitle      Key = "recommendations_title"
+	KeyUnknownCommand       Key = "unknown_command"
+	KeyAddUsage             Key = "add_usage"
+	KeyAddFailed            Key = "add_failed"
+	KeyAddSuccess           Key = "add_success"
+	KeyRemoveUsage          Key = "remove_usage"
+	KeyRemoveFailed         Key = "remove_failed"
+	KeyRemoveSuccess        Key = "remove_success"
+	KeyQueryFailed          Key = "query_failed"
+	KeyWatchlistEmptyHint   Key = "watchlist_empty_hint"
+	KeyWatchlistTitle       Key = "watchlist_title"
+	KeyWatchlistEmpty       Key = "watchlist_empty"
+	KeyMarketStatusTitle    Key = "market_status_title"
+	KeyQuoteUnavailable     Key = "quote_unavailable"
+	KeyQuoteFailed          Key = "quote_failed"
+	KeyAnalyzing            Key = "analyzing"
+	KeyWatchlistQueryFailed Key = "watchlist_query_failed"
+	KeyLLMFailed            Key = "llm_failed"
+	KeyNoRecommendations    Key = "no_recommendations"
+	KeyRecommendationsTitle Key = "recommendations_title"
+	// KeyRecommendUsage is Phase 6 PR2's /recommend [tw|us] argument-parsing
+	// error (§5.3) — the pre-Phase-6 form took no argument at all, so this is
+	// new.
+	KeyRecommendUsage            Key = "recommend_usage"
 	KeyRecWatchlistSectionTitle  Key = "rec_watchlist_section_title"
 	KeyRecCandidatesSectionTitle Key = "rec_candidates_section_title"
 	// KeySizingLine is Phase 3.11 PR1's bot-computed R-based position-sizing
@@ -100,6 +104,12 @@ const (
 	KeyTrackAvgReturnLine     Key = "track_avg_return_line"
 	KeyTrackBySourceHeader    Key = "track_by_source_header"
 	KeyTrackBySourceLine      Key = "track_by_source_line"
+	// Phase 6 PR2's /track market-dimension breakdown (§5.3, mirrors the
+	// by-source breakdown above) — only rendered when more than one market
+	// appears in the tracked window, same "only when there's more than one
+	// group" gate as KeyTrackBySourceHeader.
+	KeyTrackByMarketHeader Key = "track_by_market_header"
+	KeyTrackByMarketLine   Key = "track_by_market_line"
 
 	KeyBuyUsage               Key = "buy_usage"
 	KeyBuyFailed              Key = "buy_failed"
@@ -142,8 +152,14 @@ const (
 	KeyWeeklyReviewResultTitle    Key = "weekly_review_result_title"
 	KeyWeeklyNetWorthLine         Key = "weekly_net_worth_line"
 	KeyWeeklyNetWorthLineWithCash Key = "weekly_net_worth_line_with_cash"
-	KeyWeeklyEarningsPreviewTitle Key = "weekly_earnings_preview_title"
-	KeyWeeklyEarningsPreviewLine  Key = "weekly_earnings_preview_line"
+	// Phase 6 PR2's TW counterparts of the two keys above (§5.3) — a full
+	// separate TWD-labeled pair, same precedent as
+	// KeyPortfolioSummary/KeyPortfolioSummaryTWD, rather than a shared key
+	// parameterized by currency symbol.
+	KeyWeeklyNetWorthLineTWD         Key = "weekly_net_worth_line_twd"
+	KeyWeeklyNetWorthLineWithCashTWD Key = "weekly_net_worth_line_with_cash_twd"
+	KeyWeeklyEarningsPreviewTitle    Key = "weekly_earnings_preview_title"
+	KeyWeeklyEarningsPreviewLine     Key = "weekly_earnings_preview_line"
 
 	KeyMonthlyReportTitle         Key = "monthly_report_title"
 	KeyMonthlyReportSparklineLine Key = "monthly_report_sparkline_line"
@@ -153,6 +169,11 @@ const (
 	KeyMonthlyReportSPYLine       Key = "monthly_report_spy_line"
 	KeyMonthlyReportTxCountLine   Key = "monthly_report_tx_count_line"
 	KeyMonthlyReportCashLine      Key = "monthly_report_cash_line"
+	// KeyMonthlyReportTWBenchmarkLine is KeyMonthlyReportSPYLine's TW
+	// counterpart (Phase 6 PR2 §5.3) — 0050 instead of SPY, a separate key
+	// rather than a shared one parameterized by benchmark name since the two
+	// only ever render inside their own market's block.
+	KeyMonthlyReportTWBenchmarkLine Key = "monthly_report_tw_benchmark_line"
 
 	KeyReviewUsage            Key = "review_usage"
 	KeyReviewNoClosedTrade    Key = "review_no_closed_trade"
@@ -317,7 +338,13 @@ const (
 	KeySystemPromptAnalyst Key = "system_prompt_analyst"
 	KeySystemPromptChat    Key = "system_prompt_chat"
 
-	KeyRecPromptIntro       Key = "rec_prompt_intro"
+	KeyRecPromptIntro Key = "rec_prompt_intro"
+	// KeyRecTWMarketNote is Phase 6 PR2's TW-market prompt context (§5.1) —
+	// prepended right after KeyRecPromptIntro only when
+	// GenerateRecommendations' isTW flag is set, so the model knows this
+	// batch is Taiwan-listed (TWD pricing, ±10% daily move limit) rather than
+	// its default US assumption.
+	KeyRecTWMarketNote      Key = "rec_tw_market_note"
 	KeyMarketRegimeHeader   Key = "market_regime_header"
 	KeyMarketRegimeSPYLine  Key = "market_regime_spy_line"
 	KeyMarketRegimeVIXLine  Key = "market_regime_vix_line"
@@ -473,4 +500,14 @@ const (
 	// data or calls the LLM, instead of running its full analysis on stale
 	// prior-session prices and pushing a misleading report.
 	KeyDailyReportMarketClosed Key = "daily_report_market_closed"
+
+	// KeyTWDailyReportMarketClosed is the TW daily report's market-closed
+	// guard (Phase 6 PR2 §3.3/§5.1) — unlike the US guard above, there's no
+	// TW holiday-calendar package to check against (Lunar New Year/typhoon
+	// closures aren't calculable), so runDailyReport(ctx, market.TW) instead
+	// fetches a 0050 quote and treats a >12h-stale timestamp as "market
+	// closed" — the same staleness threshold RunClosingSnapshot already uses
+	// to catch a US-holiday rerun, just applied at report-open time instead
+	// of after the fact.
+	KeyTWDailyReportMarketClosed Key = "tw_daily_report_market_closed"
 )
