@@ -4,23 +4,92 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
+	"sync"
 	"time"
+
+	"argus/internal/market"
 )
 
 type Yahoo struct {
 	client *http.Client
+
+	// chartBaseURL/searchBaseURL default to the real Yahoo endpoints;
+	// overridable so tests can point at an httptest server instead (see
+	// yahoo_test.go's TW suffix-fallback tests).
+	chartBaseURL  string
+	searchBaseURL string
+
+	// twSuffixCache remembers, per bare TW ticker, which Yahoo suffix
+	// (".TW" or ".TWO") actually resolved last time — see resolveSymbol.
+	twSuffixMu    sync.Mutex
+	twSuffixCache map[string]string
 }
 
 func NewYahoo() *Yahoo {
 	return &Yahoo{
-		client: &http.Client{Timeout: 10 * time.Second},
+		client:        &http.Client{Timeout: 10 * time.Second},
+		chartBaseURL:  "https://query1.finance.yahoo.com",
+		searchBaseURL: "https://query2.finance.yahoo.com",
+		twSuffixCache: make(map[string]string),
 	}
 }
 
 func (y *Yahoo) Name() string { return "yahoo" }
 
+// resolveSymbol returns the ordered list of Yahoo chart-API symbols to try
+// for ticker. A US ticker (market.Of) is used as-is. A TW ticker has no
+// listed-exchange information in its bare form (2330 could be TWSE or
+// TPEx) — Yahoo distinguishes them by suffix (.TW for TWSE-listed, .TWO
+// for TPEx-listed), so an unresolved ticker gets both candidates in that
+// order; once one succeeds, cacheTWSuffix remembers it so later calls for
+// the same ticker only ever try the one that actually worked.
+func (y *Yahoo) resolveSymbol(ticker string) []string {
+	if market.Of(ticker) != market.TW {
+		return []string{ticker}
+	}
+	y.twSuffixMu.Lock()
+	suffix, ok := y.twSuffixCache[ticker]
+	y.twSuffixMu.Unlock()
+	if ok {
+		return []string{ticker + suffix}
+	}
+	return []string{ticker + ".TW", ticker + ".TWO"}
+}
+
+// cacheTWSuffix records which suffix resolveSymbol should try first for
+// ticker next time, based on the symbol that just succeeded. No-op for a
+// US ticker (nothing to cache).
+func (y *Yahoo) cacheTWSuffix(ticker, symbol string) {
+	if market.Of(ticker) != market.TW {
+		return
+	}
+	suffix := strings.TrimPrefix(symbol, ticker)
+	y.twSuffixMu.Lock()
+	y.twSuffixCache[ticker] = suffix
+	y.twSuffixMu.Unlock()
+}
+
 func (y *Yahoo) GetQuote(ticker string) (*Quote, error) {
-	url := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&range=1d", ticker)
+	var lastErr error
+	for _, symbol := range y.resolveSymbol(ticker) {
+		q, err := y.getQuote(symbol)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		y.cacheTWSuffix(ticker, symbol)
+		q.Ticker = ticker
+		return q, nil
+	}
+	return nil, lastErr
+}
+
+// getQuote fetches a single Yahoo chart-API symbol as-is (no TW suffix
+// resolution — see GetQuote, which tries resolveSymbol's candidates
+// against this).
+func (y *Yahoo) getQuote(ticker string) (*Quote, error) {
+	url := fmt.Sprintf("%s/v8/finance/chart/%s?interval=1d&range=1d", y.chartBaseURL, ticker)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -123,7 +192,22 @@ func (y *Yahoo) GetHistory(ticker, rangeParam string) ([]Candle, error) {
 	if rangeParam == "" {
 		rangeParam = "1y"
 	}
-	url := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&range=%s", ticker, rangeParam)
+	var lastErr error
+	for _, symbol := range y.resolveSymbol(ticker) {
+		candles, err := y.getHistory(symbol, rangeParam)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		y.cacheTWSuffix(ticker, symbol)
+		return candles, nil
+	}
+	return nil, lastErr
+}
+
+// getHistory fetches a single Yahoo chart-API symbol as-is — see GetHistory.
+func (y *Yahoo) getHistory(ticker, rangeParam string) ([]Candle, error) {
+	url := fmt.Sprintf("%s/v8/finance/chart/%s?interval=1d&range=%s", y.chartBaseURL, ticker, rangeParam)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -200,8 +284,23 @@ func (y *Yahoo) GetHistory(ticker, rangeParam string) ([]Candle, error) {
 }
 
 func (y *Yahoo) GetNews(ticker string, limit int) ([]NewsItem, error) {
+	var lastErr error
+	for _, symbol := range y.resolveSymbol(ticker) {
+		items, err := y.getNews(symbol, limit)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		y.cacheTWSuffix(ticker, symbol)
+		return items, nil
+	}
+	return nil, lastErr
+}
+
+// getNews fetches a single Yahoo search-API symbol as-is — see GetNews.
+func (y *Yahoo) getNews(ticker string, limit int) ([]NewsItem, error) {
 	// Yahoo Finance news scraping via query2 endpoint
-	url := fmt.Sprintf("https://query2.finance.yahoo.com/v1/finance/search?q=%s&newsCount=%d&quotesCount=0", ticker, limit)
+	url := fmt.Sprintf("%s/v1/finance/search?q=%s&newsCount=%d&quotesCount=0", y.searchBaseURL, ticker, limit)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err

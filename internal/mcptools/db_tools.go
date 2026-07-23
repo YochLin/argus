@@ -11,7 +11,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"argus/internal/data"
+	"argus/internal/db"
 	"argus/internal/i18n"
+	"argus/internal/market"
 )
 
 // benchmarkTicker mirrors internal/bot's own benchmarkTicker (SPY) —
@@ -91,11 +93,15 @@ func (ts *toolset) getWatchlist(ctx context.Context, _ *mcp.CallToolRequest, _ e
 	return result, nil, err
 }
 
-// getPortfolio mirrors internal/bot's handlePortfolio (core logic only, not
-// the Telegram-send tail) — one live quote per position for market
-// value/unrealized P&L, plus all-time realized P&L. Kept in quoteCacheTTL
-// (not longCacheTTL) since, like get_quote, its numbers are live prices a
-// chat model might reasonably re-check within the same conversation.
+// getPortfolio mirrors internal/bot's handlePortfolio/sendPortfolioSection
+// (core logic only, not the Telegram-send tail) — one live quote per
+// position for market value/unrealized P&L, plus each market's own
+// all-time realized P&L (Phase 6: money never sums across markets, see
+// docs/phase-6-tw-market.md §3.2 and CLAUDE.md's can't-share-an-import note
+// on why this is its own copy rather than an internal/bot import). Kept in
+// quoteCacheTTL (not longCacheTTL) since, like get_quote, its numbers are
+// live prices a chat model might reasonably re-check within the same
+// conversation.
 func (ts *toolset) getPortfolio(ctx context.Context, _ *mcp.CallToolRequest, _ emptyInput) (*mcp.CallToolResult, any, error) {
 	result, err := ts.withCache(ctx, "get_portfolio", quoteCacheTTL, func() (*mcp.CallToolResult, error) {
 		positions, err := ts.db.GetPositions()
@@ -106,30 +112,59 @@ func (ts *toolset) getPortfolio(ctx context.Context, _ *mcp.CallToolRequest, _ e
 			return nil, ts.mcpErr(i18n.KeyPortfolioEmpty)
 		}
 
-		realizedTotal, err := ts.db.GetRealizedPnL()
-		if err != nil {
-			log.Printf("mcptools: get_portfolio realized pnl: %v", err)
-		}
-
 		var sb strings.Builder
 		sb.WriteString(i18n.T(ts.lang, i18n.KeyPortfolioTitle))
-		var totalValue float64
-		for _, p := range positions {
-			q, err := ts.provider.GetQuote(p.Ticker)
-			if err != nil {
-				sb.WriteString(i18n.T(ts.lang, i18n.KeyQuoteUnavailable, p.Ticker))
-				continue
-			}
-			marketValue := p.Shares * q.Price
-			unrealized := (q.Price - p.AvgCost) * p.Shares
-			unrealizedPct := (q.Price - p.AvgCost) / p.AvgCost * 100
-			totalValue += marketValue
-			sb.WriteString(i18n.T(ts.lang, i18n.KeyPortfolioLine, p.Ticker, p.Shares, p.AvgCost, q.Price, marketValue, unrealized, unrealizedPct))
-		}
-		sb.WriteString(i18n.T(ts.lang, i18n.KeyPortfolioSummary, totalValue, realizedTotal))
+		ts.writePortfolioSection(&sb, market.US, positions)
+		ts.writePortfolioSection(&sb, market.TW, positions)
 		return textResult(sb.String()), nil
 	})
 	return result, nil, err
+}
+
+// writePortfolioSection renders one market's block into sb — see
+// bot.sendPortfolioSection's doc comment for the shared logic this mirrors.
+// Writes nothing at all when m has no open positions.
+func (ts *toolset) writePortfolioSection(sb *strings.Builder, m market.MarketID, positions []db.Position) {
+	var marketPositions []db.Position
+	for _, p := range positions {
+		if market.Of(p.Ticker) == m {
+			marketPositions = append(marketPositions, p)
+		}
+	}
+	if len(marketPositions) == 0 {
+		return
+	}
+
+	realizedTotal, err := ts.db.GetRealizedPnL(m)
+	if err != nil {
+		log.Printf("mcptools: get_portfolio realized pnl (%s): %v", m, err)
+	}
+
+	sectionTitle := i18n.KeyPortfolioSectionUS
+	if m == market.TW {
+		sectionTitle = i18n.KeyPortfolioSectionTW
+	}
+	sb.WriteString(i18n.T(ts.lang, sectionTitle))
+
+	var totalValue float64
+	for _, p := range marketPositions {
+		q, err := ts.provider.GetQuote(p.Ticker)
+		if err != nil {
+			sb.WriteString(i18n.T(ts.lang, i18n.KeyQuoteUnavailable, p.Ticker))
+			continue
+		}
+		marketValue := p.Shares * q.Price
+		unrealized := (q.Price - p.AvgCost) * p.Shares
+		unrealizedPct := (q.Price - p.AvgCost) / p.AvgCost * 100
+		totalValue += marketValue
+		sb.WriteString(i18n.T(ts.lang, i18n.KeyPortfolioLine, p.Ticker, p.Shares, p.AvgCost, q.Price, marketValue, unrealized, unrealizedPct))
+	}
+	if m == market.TW {
+		sb.WriteString(i18n.T(ts.lang, i18n.KeyPortfolioSummaryTWD, totalValue, realizedTotal))
+	} else {
+		sb.WriteString(i18n.T(ts.lang, i18n.KeyPortfolioSummary, totalValue, realizedTotal))
+	}
+	sb.WriteString("\n\n")
 }
 
 // getRecommendationStats mirrors internal/bot's handleTrack (core logic

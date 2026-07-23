@@ -599,12 +599,18 @@ func buildCheckPrompt(lang i18n.Lang, s StockData) string {
 // /recommend and /check already use — quote, technicals, fundamentals,
 // earnings, cost basis) followed by a portfolio-wide summary line and a task
 // block that explicitly asks for concentration/thesis/rebalancing judgment
-// rather than a repeat of the per-ticker analysis above it. cash is only
-// rendered when haveCash is true (the user has run /cash at least once) —
+// rather than a repeat of the per-ticker analysis above it. cashUSD is only
+// rendered when haveCashUSD is true (the user has run /cash at least once) —
 // see PLAN.md's Phase 3.6 "現金水位" item: an unset cash balance should read
 // as "no data," not silently as $0, which would misleadingly suggest 100%
-// invested.
-func buildInsightPrompt(lang i18n.Lang, positions []StockData, cash float64, haveCash bool) string {
+// invested. cashTWD/haveCashTWD is Phase 6's second book
+// (docs/phase-6-tw-market.md §3.2) — rendered as its own line rather than
+// folded into totalValue+cash the way USD is, since totalValue already mixes
+// USD and TWD position values together (an accepted gap, see that doc's §7
+// "/insight 混市場" — this prompt still runs once over every held position
+// regardless of market) and adding a TWD figure into that same mixed-
+// currency total would only compound the error.
+func buildInsightPrompt(lang i18n.Lang, positions []StockData, cashUSD float64, haveCashUSD bool, cashTWD float64, haveCashTWD bool) string {
 	var sb strings.Builder
 	sb.WriteString(i18n.T(lang, i18n.KeyInsightPromptIntro))
 
@@ -617,8 +623,11 @@ func buildInsightPrompt(lang i18n.Lang, positions []StockData, cash float64, hav
 	}
 
 	sb.WriteString(i18n.T(lang, i18n.KeyInsightPositionValueLine, totalValue))
-	if haveCash {
-		sb.WriteString(i18n.T(lang, i18n.KeyInsightCashLine, cash, totalValue+cash))
+	if haveCashUSD {
+		sb.WriteString(i18n.T(lang, i18n.KeyInsightCashLine, cashUSD, totalValue+cashUSD))
+	}
+	if haveCashTWD {
+		sb.WriteString(i18n.T(lang, i18n.KeyInsightCashLineTWD, cashTWD))
 	}
 
 	sb.WriteString(i18n.T(lang, i18n.KeyInsightPromptTask))
@@ -632,7 +641,7 @@ func buildInsightPrompt(lang i18n.Lang, positions []StockData, cash float64, hav
 // folded into the same prompt so the model's portfolio judgment and its
 // comment on recommendation accuracy come from a single coherent call
 // rather than two.
-func buildWeeklyReviewPrompt(lang i18n.Lang, positions []StockData, cash float64, haveCash bool, trackSummary string) string {
+func buildWeeklyReviewPrompt(lang i18n.Lang, positions []StockData, cashUSD float64, haveCashUSD bool, cashTWD float64, haveCashTWD bool, trackSummary string) string {
 	var sb strings.Builder
 	sb.WriteString(i18n.T(lang, i18n.KeyWeeklyReviewPromptIntro))
 
@@ -645,8 +654,11 @@ func buildWeeklyReviewPrompt(lang i18n.Lang, positions []StockData, cash float64
 	}
 
 	sb.WriteString(i18n.T(lang, i18n.KeyInsightPositionValueLine, totalValue))
-	if haveCash {
-		sb.WriteString(i18n.T(lang, i18n.KeyInsightCashLine, cash, totalValue+cash))
+	if haveCashUSD {
+		sb.WriteString(i18n.T(lang, i18n.KeyInsightCashLine, cashUSD, totalValue+cashUSD))
+	}
+	if haveCashTWD {
+		sb.WriteString(i18n.T(lang, i18n.KeyInsightCashLineTWD, cashTWD))
 	}
 
 	if trackSummary != "" {

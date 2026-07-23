@@ -78,6 +78,56 @@ func TestGetPortfolio(t *testing.T) {
 	}
 }
 
+// TestGetPortfolioMarketSubtotals is Phase 6's mcptools-side counterpart to
+// internal/bot's TestBuildDashboard_MarketFilter — get_portfolio must never
+// mix a TW position's NT$ value into the USD subtotal (or vice versa), see
+// docs/phase-6-tw-market.md §4.5.
+func TestGetPortfolioMarketSubtotals(t *testing.T) {
+	d := newTestDB(t)
+	if _, err := d.RecordBuy("AAPL", 10, 150, 0, "2026-01-01"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.RecordBuy("2330", 1000, 900, 0, "2026-01-01"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := d.RecordSell("AAPL", 2, 180, 0, "2026-01-05"); err != nil {
+		t.Fatal(err)
+	}
+
+	fp := &fakeProvider{quotes: map[string]*data.Quote{
+		"AAPL": {Ticker: "AAPL", Price: 200},
+		"2330": {Ticker: "2330", Price: 950},
+	}}
+	ts := &toolset{lang: i18n.EN, provider: fp, history: &fakeHistory{}, db: d}
+	session := connectTool(t, ts)
+
+	text, isError := callText(t, session, "get_portfolio", map[string]any{})
+	if isError {
+		t.Fatalf("get_portfolio returned an error result: %s", text)
+	}
+	if !strings.Contains(text, "AAPL") || !strings.Contains(text, "2330") {
+		t.Fatalf("get_portfolio result missing a ticker, got:\n%s", text)
+	}
+	// AAPL's realized P&L ((180-150)*2=60) must land in the USD section, not
+	// bleed into 2330's TWD subtotal.
+	usIdx := strings.Index(text, "AAPL")
+	twIdx := strings.Index(text, "2330")
+	if usIdx > twIdx {
+		t.Fatalf("expected US section (AAPL) before TW section (2330), got:\n%s", text)
+	}
+	usSection := text[:twIdx]
+	twSection := text[twIdx:]
+	if !strings.Contains(usSection, "60.00") {
+		t.Errorf("US section missing AAPL's realized P&L 60.00, got:\n%s", usSection)
+	}
+	if strings.Contains(twSection, "60.00") {
+		t.Errorf("TW section leaked AAPL's realized P&L, got:\n%s", twSection)
+	}
+	if !strings.Contains(twSection, "950.00") {
+		t.Errorf("TW section missing 2330's price 950.00, got:\n%s", twSection)
+	}
+}
+
 func TestGetPortfolioEmpty(t *testing.T) {
 	d := newTestDB(t)
 	ts := &toolset{lang: i18n.EN, provider: &fakeProvider{}, history: &fakeHistory{}, db: d}

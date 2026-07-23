@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { fetchCalendar, type Calendar, type Transaction } from "../api";
+import { currencySymbol, fetchCalendar, type Calendar, type Market, type Transaction } from "../api";
 import type { Dictionary } from "../i18n";
 import { TradesTable } from "./TradesTable";
 
 interface Props {
   dict: Dictionary;
+  market: Market;
 }
 
 interface Cell {
@@ -57,29 +58,30 @@ function buildWeeks(month: string, valuesByDate: Map<string, number>): Cell[][] 
   return weeks;
 }
 
-function fmtSigned(v: number): string {
+function fmtSigned(v: number, currency: string): string {
   const sign = v > 0 ? "+" : v < 0 ? "-" : "";
-  return `${sign}$${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  return `${sign}${currency}${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
 function weekTotal(week: Cell[]): number {
   return week.reduce((sum, c) => sum + (c.value ?? 0), 0);
 }
 
-export function CalendarView({ dict }: Props) {
+export function CalendarView({ dict, market }: Props) {
   const [month, setMonth] = useState(currentMonth());
   const [calendar, setCalendar] = useState<Calendar | null>(null);
   const [error, setError] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const currency = currencySymbol(market);
 
   useEffect(() => {
     setCalendar(null);
     setError(false);
     setSelectedDate(null);
-    fetchCalendar(month)
+    fetchCalendar(month, market)
       .then(setCalendar)
       .catch(() => setError(true));
-  }, [month]);
+  }, [month, market]);
 
   const valuesByDate = useMemo(() => {
     const m = new Map<string, number>();
@@ -115,7 +117,7 @@ export function CalendarView({ dict }: Props) {
         </button>
         <button onClick={() => setMonth(currentMonth())}>{dict.today}</button>
         <span className={`calendar-total mono ${monthTotal >= 0 ? "profit" : "loss"}`}>
-          {dict.monthTotal}: {fmtSigned(monthTotal)}
+          {dict.monthTotal}: {fmtSigned(monthTotal, currency)}
         </span>
       </div>
 
@@ -149,12 +151,12 @@ export function CalendarView({ dict }: Props) {
                     >
                       <span className="cal-day-num">{Number(cell.date.slice(-2))}</span>
                       <span className="cal-day-value mono">
-                        {cell.value !== null ? fmtSigned(cell.value) : ""}
+                        {cell.value !== null ? fmtSigned(cell.value, currency) : ""}
                       </span>
                     </button>
                   ),
                 )}
-                <div className="calendar-week-total mono">{fmtSigned(weekTotal(week))}</div>
+                <div className="calendar-week-total mono">{fmtSigned(weekTotal(week), currency)}</div>
               </Fragment>
             ))}
           </div>
@@ -162,7 +164,11 @@ export function CalendarView({ dict }: Props) {
           {selectedDate && (
             <div className="card day-detail-panel">
               <div className="eyebrow">{selectedDate}</div>
-              <TradesTable dict={dict} transactions={transactionsByDate.get(selectedDate) ?? []} />
+              <TradesTable
+                dict={dict}
+                transactions={transactionsByDate.get(selectedDate) ?? []}
+                currency={currency}
+              />
             </div>
           )}
         </>

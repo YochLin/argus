@@ -16,6 +16,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/llm"
+	"argus/internal/market"
 	"argus/internal/render"
 	"argus/internal/webfetch"
 )
@@ -158,11 +159,15 @@ func (b *Bot) handleCheck(ctx context.Context, ticker string) {
 			stock.AnalystRating = ar
 		}
 	}
-	var spyCloses []float64
-	if spyCandles, err := b.history.GetHistory(benchmarkTicker, "1y"); err == nil {
-		spyCloses = data.Closes(spyCandles)
+	// RS63 needs the right benchmark for ticker's own market (Phase 6): SPY
+	// for a US ticker, 0050 for a TW one — /check works on either since
+	// handleCheck, unlike gatherRecommendationInputs, isn't restricted to a
+	// US-only watchlist (see docs/phase-6-tw-market.md §4.3).
+	var benchCloses []float64
+	if benchCandles, err := b.history.GetHistory(benchmarkFor(market.Of(ticker)), "1y"); err == nil {
+		benchCloses = data.Closes(benchCandles)
 	}
-	stock.Technicals, stock.Candles, stock.StrategyHits = b.computeTechnicals(ticker, spyCloses)
+	stock.Technicals, stock.Candles, stock.StrategyHits = b.computeTechnicals(ticker, benchCloses)
 
 	result, err := b.llm.CheckStock(ctx, stock)
 	if err != nil {
@@ -892,14 +897,37 @@ func (b *Bot) handlePortfolio() {
 		return
 	}
 
-	realizedTotal, err := b.db.GetRealizedPnL()
-	if err != nil {
-		log.Printf("portfolio: realized pnl: %v", err)
+	b.Send(i18n.T(b.lang, i18n.KeyPortfolioTitle))
+	b.sendPortfolioSection(market.US, positions)
+	b.sendPortfolioSection(market.TW, positions)
+}
+
+// sendPortfolioSection renders /portfolio's per-market block (Phase 6, see
+// docs/phase-6-tw-market.md §4.3): a section title tagged with the market's
+// currency, each of that market's positions, and a market-scoped subtotal
+// (GetRealizedPnL(m) — realized P&L never sums across markets). Sends
+// nothing at all — not even the section title — when m has no open
+// positions, so a single-market portfolio doesn't show a dangling empty
+// block for the other market.
+func (b *Bot) sendPortfolioSection(m market.MarketID, positions []db.Position) {
+	var marketPositions []db.Position
+	for _, p := range positions {
+		if market.Of(p.Ticker) == m {
+			marketPositions = append(marketPositions, p)
+		}
+	}
+	if len(marketPositions) == 0 {
+		return
 	}
 
-	b.Send(i18n.T(b.lang, i18n.KeyPortfolioTitle))
+	realizedTotal, err := b.db.GetRealizedPnL(m)
+	if err != nil {
+		log.Printf("portfolio: realized pnl (%s): %v", m, err)
+	}
+
+	b.Send(i18n.T(b.lang, portfolioSectionTitleKey(m)))
 	var totalValue float64
-	for _, p := range positions {
+	for _, p := range marketPositions {
 		q, err := b.provider.GetQuote(p.Ticker)
 		if err != nil {
 			b.sendWithTickerActions(p.Ticker, i18n.T(b.lang, i18n.KeyQuoteUnavailable, p.Ticker))
@@ -910,9 +938,49 @@ func (b *Bot) handlePortfolio() {
 		unrealizedPct := (q.Price - p.AvgCost) / p.AvgCost * 100
 		totalValue += marketValue
 		line := i18n.T(b.lang, i18n.KeyPortfolioLine, p.Ticker, p.Shares, p.AvgCost, q.Price, marketValue, unrealized, unrealizedPct)
+		if note := lotSuffix(b.lang, m, p.Shares); note != "" {
+			// KeyPortfolioLine ends "...%%)\n\n" — splice the note onto that
+			// last content line rather than appending after the trailing
+			// blank line, so it reads as part of the same position summary.
+			line = strings.TrimSuffix(line, "\n\n") + note + "\n\n"
+		}
 		b.sendWithTickerActions(p.Ticker, line)
 	}
-	b.Send(i18n.T(b.lang, i18n.KeyPortfolioSummary, totalValue, realizedTotal))
+	if m == market.TW {
+		b.Send(i18n.T(b.lang, i18n.KeyPortfolioSummaryTWD, totalValue, realizedTotal))
+	} else {
+		b.Send(i18n.T(b.lang, i18n.KeyPortfolioSummary, totalValue, realizedTotal))
+	}
+}
+
+// portfolioSectionTitleKey selects /portfolio's per-market section title.
+func portfolioSectionTitleKey(m market.MarketID) i18n.Key {
+	if m == market.TW {
+		return i18n.KeyPortfolioSectionTW
+	}
+	return i18n.KeyPortfolioSectionUS
+}
+
+// twLotSize is one 台股 board lot (張) — 1,000 shares, the unit Taiwanese
+// investors actually think in even though this project records TW positions
+// in raw shares like US ones (§3 of docs/phase-6-tw-market.md: "單位一律
+// 股").
+const twLotSize = 1000
+
+// lotSuffix appends a "(= N 張)" note to a TW portfolio line when shares is
+// an exact multiple of a board lot (1,000) — a non-round share count (e.g.
+// a partial fill) simply gets no note, same as any other "not enough data"
+// omission in this codebase. Always "" for US, where board lots aren't a
+// concept.
+func lotSuffix(lang i18n.Lang, m market.MarketID, shares float64) string {
+	if m != market.TW || shares < twLotSize {
+		return ""
+	}
+	lots := shares / twLotSize
+	if lots != math.Trunc(lots) {
+		return ""
+	}
+	return i18n.T(lang, i18n.KeyPortfolioLotSuffix, int(lots))
 }
 
 // handleInsight is Phase 3.6's portfolio-level analysis command: unlike
@@ -958,12 +1026,16 @@ func (b *Bot) handleInsight(ctx context.Context) {
 		}
 	}
 
-	cash, haveCash, err := b.loadCash()
+	cashUSD, haveCashUSD, err := b.loadCash(market.US)
 	if err != nil {
-		log.Printf("insight: load cash: %v", err)
+		log.Printf("insight: load cash (USD): %v", err)
+	}
+	cashTWD, haveCashTWD, err := b.loadCash(market.TW)
+	if err != nil {
+		log.Printf("insight: load cash (TWD): %v", err)
 	}
 
-	result, err := b.llm.InsightPortfolio(ctx, stocks, cash, haveCash)
+	result, err := b.llm.InsightPortfolio(ctx, stocks, cashUSD, haveCashUSD, cashTWD, haveCashTWD)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyLLMFailed, err))
 		return
@@ -971,50 +1043,130 @@ func (b *Bot) handleInsight(ctx context.Context) {
 	b.Send(i18n.T(b.lang, i18n.KeyInsightResultTitle, result))
 }
 
-// cashSettingKey is the db.settings key /cash reads/writes — see
-// db.GetSetting/SetSetting's Phase 3.6 doc comment.
-const cashSettingKey = "cash_balance"
+// cashSettingKey/cashSettingKeyTWD are the db.settings keys /cash reads/
+// writes — see db.GetSetting/SetSetting's Phase 3.6 doc comment.
+// cashSettingKey (USD) predates Phase 6 and keeps its original key name for
+// zero-migration backward compatibility; cashSettingKeyTWD is Phase 6's new
+// second book (see docs/phase-6-tw-market.md §3.2 — TWD/USD never convert,
+// so this is a second independent value, not a currency-converted view of
+// the first).
+const (
+	cashSettingKey    = "cash_balance"
+	cashSettingKeyTWD = "cash_balance_twd"
+)
 
-// handleCash manages the user's manually-declared cash balance (Phase 3.6).
-// With no argument it reports the current value; with one, it sets it.
-// Deliberately never touched by /buy or /sell (see PLAN.md's Phase 3.6
-// "現金水位" item) — transactions don't record where the money came from,
-// so auto-adjusting cash from them would drift from reality quickly. This
-// is a purely user-maintained reference value, fed only into /insight (see
-// handleInsight) — never into /recommend, so the model doesn't see idle
-// cash and start nudging toward "put it to work."
+// cashSettingKeyFor returns the settings key backing m's cash balance.
+func cashSettingKeyFor(m market.MarketID) string {
+	if m == market.TW {
+		return cashSettingKeyTWD
+	}
+	return cashSettingKey
+}
+
+// handleCash manages the user's manually-declared cash balance, one per
+// market (Phase 3.6, extended by Phase 6 to two books — see §3.2). With no
+// argument it reports both currencies' current values (omitting whichever
+// isn't set); `/cash <amount>` sets USD (backward compatible with the
+// pre-Phase-6 single-currency form); `/cash usd <amount>`/`/cash twd
+// <amount>` set a currency explicitly. Deliberately never touched by /buy or
+// /sell (see PLAN.md's Phase 3.6 "現金水位" item) — transactions don't record
+// where the money came from, so auto-adjusting cash from them would drift
+// from reality quickly. This is a purely user-maintained reference value,
+// fed only into /insight/週報 (see handleInsight) — never into /recommend, so
+// the model doesn't see idle cash and start nudging toward "put it to work."
 func (b *Bot) handleCash(args string) {
 	args = strings.TrimSpace(args)
 	if args == "" {
-		cash, ok, err := b.loadCash()
-		if err != nil {
-			b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
-			return
-		}
-		if !ok {
-			b.Send(i18n.T(b.lang, i18n.KeyCashNotSet))
-			return
-		}
-		b.Send(i18n.T(b.lang, i18n.KeyCashCurrent, cash))
+		b.Send(b.renderCashStatus())
 		return
 	}
 
-	amount, err := strconv.ParseFloat(args, 64)
-	if err != nil || amount < 0 {
+	m, amount, err := parseCashArgs(args)
+	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyCashUsage))
 		return
 	}
-	if err := b.db.SetSetting(cashSettingKey, strconv.FormatFloat(amount, 'f', 2, 64)); err != nil {
+	if err := b.db.SetSetting(cashSettingKeyFor(m), strconv.FormatFloat(amount, 'f', 2, 64)); err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyCashSetFailed, err))
 		return
 	}
-	b.Send(i18n.T(b.lang, i18n.KeyCashSetSuccess, amount))
+	if m == market.TW {
+		b.Send(i18n.T(b.lang, i18n.KeyCashSetSuccessTWD, amount))
+	} else {
+		b.Send(i18n.T(b.lang, i18n.KeyCashSetSuccess, amount))
+	}
 }
 
-// loadCash returns the user's declared cash balance, or ok=false if /cash
-// has never been run.
-func (b *Bot) loadCash() (float64, bool, error) {
-	raw, ok, err := b.db.GetSetting(cashSettingKey)
+// parseCashArgs parses handleCash's non-empty argument string: a bare
+// amount (backward compatible, defaults to USD), or "usd <amount>"/
+// "twd <amount>" to pick a currency explicitly (see §3.2 of
+// docs/phase-6-tw-market.md). Pure and separately tested, same convention
+// as parseTradeArgs/parseStopArgs — the caller (handleCash) owns rendering
+// the usage message on error.
+func parseCashArgs(args string) (m market.MarketID, amount float64, err error) {
+	fields := strings.Fields(args)
+	amountArg := args
+	m = market.US
+
+	switch len(fields) {
+	case 1:
+		amountArg = fields[0]
+	case 2:
+		switch strings.ToLower(fields[0]) {
+		case "twd":
+			m = market.TW
+			amountArg = fields[1]
+		case "usd":
+			m = market.US
+			amountArg = fields[1]
+		default:
+			return "", 0, fmt.Errorf("unknown currency %q", fields[0])
+		}
+	default:
+		return "", 0, fmt.Errorf("cash: unexpected argument shape %q", args)
+	}
+
+	amount, err = strconv.ParseFloat(amountArg, 64)
+	if err != nil {
+		return "", 0, err
+	}
+	if amount < 0 {
+		return "", 0, fmt.Errorf("cash: negative amount %v", amount)
+	}
+	return m, amount, nil
+}
+
+// renderCashStatus renders /cash's no-argument reply: one line per currency
+// that's actually been set, or KeyCashNotSet if neither has.
+func (b *Bot) renderCashStatus() string {
+	usd, usdOK, errUSD := b.loadCash(market.US)
+	if errUSD != nil {
+		return i18n.T(b.lang, i18n.KeyQueryFailed, errUSD)
+	}
+	twd, twdOK, errTWD := b.loadCash(market.TW)
+	if errTWD != nil {
+		return i18n.T(b.lang, i18n.KeyQueryFailed, errTWD)
+	}
+	if !usdOK && !twdOK {
+		return i18n.T(b.lang, i18n.KeyCashNotSet)
+	}
+	var sb strings.Builder
+	if usdOK {
+		sb.WriteString(i18n.T(b.lang, i18n.KeyCashCurrent, usd))
+	}
+	if twdOK {
+		if usdOK {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(i18n.T(b.lang, i18n.KeyCashCurrentTWD, twd))
+	}
+	return sb.String()
+}
+
+// loadCash returns m's declared cash balance, or ok=false if /cash has
+// never set it.
+func (b *Bot) loadCash(m market.MarketID) (float64, bool, error) {
+	raw, ok, err := b.db.GetSetting(cashSettingKeyFor(m))
 	if err != nil || !ok {
 		return 0, ok, err
 	}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchDashboard, type Dashboard } from "../api";
+import { currencySymbol, fetchDashboard, type Dashboard, type Market } from "../api";
 import type { Dictionary } from "../i18n";
 import { KpiCard } from "./KpiCard";
 import { PnlChart } from "./PnlChart";
@@ -7,20 +7,25 @@ import { PositionsTable } from "./PositionsTable";
 
 interface Props {
   dict: Dictionary;
+  market: Market;
 }
 
 // The dashboard screen's body, pulled out of App.tsx (Phase 5 PR2) so App
 // can route between this and CalendarView — each view owns its own
 // fetch/loading/error state rather than App prefetching everything upfront.
-export function DashboardView({ dict }: Props) {
+// Phase 6: refetches whenever the market toggle changes (see App.tsx),
+// since /api/dashboard's numbers are market-scoped (buildDashboard).
+export function DashboardView({ dict, market }: Props) {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    fetchDashboard()
+    setDashboard(null);
+    setError(false);
+    fetchDashboard(market)
       .then(setDashboard)
       .catch(() => setError(true));
-  }, []);
+  }, [market]);
 
   if (error) {
     return <div className="error-message">{dict.error}</div>;
@@ -30,25 +35,33 @@ export function DashboardView({ dict }: Props) {
   }
 
   const { kpis, curve, positions } = dashboard;
+  const currency = currencySymbol(market);
 
   return (
     <>
       <div className="kpi-grid">
-        <KpiCard label={dict.netPnL} value={kpis.netPnL} format="currency" colorMode="pnl" />
+        <KpiCard label={dict.netPnL} value={kpis.netPnL} format="currency" colorMode="pnl" currency={currency} />
         <KpiCard label={dict.winRate} value={kpis.winRate} format="percent" />
         <KpiCard label={dict.profitFactor} value={kpis.profitFactor} format="ratio" />
-        <KpiCard label={dict.expectancy} value={kpis.expectancy} format="currency" colorMode="pnl" />
+        <KpiCard
+          label={dict.expectancy}
+          value={kpis.expectancy}
+          format="currency"
+          colorMode="pnl"
+          currency={currency}
+        />
         <KpiCard
           label={dict.maxDrawdown}
           value={-Math.abs(kpis.maxDrawdown)}
           format="currency"
           colorMode="loss"
+          currency={currency}
         />
       </div>
       <PnlChart curve={curve} />
       <div className="card">
         <div className="eyebrow">{dict.positions}</div>
-        <PositionsTable positions={positions} dict={dict} />
+        <PositionsTable positions={positions} dict={dict} currency={currency} />
       </div>
     </>
   );

@@ -140,6 +140,38 @@ a {
   padding: 0 8px;
 }
 
+/* Phase 6's US/TW market toggle (docs/phase-6-tw-market.md §4.4) —
+   deliberately styled as a plain two-button pill, no new visual language,
+   per that doc's "樣式從簡". */
+.market-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.market-toggle-btn {
+  flex: 1;
+  padding: 6px 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.market-toggle-btn:hover {
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.market-toggle-btn.active {
+  color: var(--accent);
+  background: var(--surface);
+}
+
 .sidebar-nav {
   display: flex;
   flex-direction: column;

@@ -112,8 +112,8 @@ func (c *Client) CheckStock(ctx context.Context, stock StockData) (string, error
 // insightModel/env var): this is the same one-shot-session shape as
 // CheckStock, just a different prompt, and doesn't warrant its own model
 // tier for a rarely-invoked command.
-func (c *Client) InsightPortfolio(ctx context.Context, positions []StockData, cash float64, haveCash bool) (string, error) {
-	prompt := buildInsightPrompt(c.lang, positions, cash, haveCash)
+func (c *Client) InsightPortfolio(ctx context.Context, positions []StockData, cashUSD float64, haveCashUSD bool, cashTWD float64, haveCashTWD bool) (string, error) {
+	prompt := buildInsightPrompt(c.lang, positions, cashUSD, haveCashUSD, cashTWD, haveCashTWD)
 	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
 }
 
@@ -123,8 +123,8 @@ func (c *Client) InsightPortfolio(ctx context.Context, positions []StockData, ca
 // history yet) folded into the same prompt so the model's portfolio
 // judgment and its comment on recommendation accuracy come out of one
 // coherent call. Reuses checkModel, same reasoning as InsightPortfolio.
-func (c *Client) WeeklyReview(ctx context.Context, positions []StockData, cash float64, haveCash bool, trackSummary string) (string, error) {
-	prompt := buildWeeklyReviewPrompt(c.lang, positions, cash, haveCash, trackSummary)
+func (c *Client) WeeklyReview(ctx context.Context, positions []StockData, cashUSD float64, haveCashUSD bool, cashTWD float64, haveCashTWD bool, trackSummary string) (string, error) {
+	prompt := buildWeeklyReviewPrompt(c.lang, positions, cashUSD, haveCashUSD, cashTWD, haveCashTWD, trackSummary)
 	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
 }
 

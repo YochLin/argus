@@ -6,6 +6,7 @@ import (
 
 	"argus/internal/data"
 	"argus/internal/db"
+	"argus/internal/market"
 )
 
 // fakeDB implements dbReader for tests without touching real SQLite.
@@ -16,6 +17,8 @@ type fakeDB struct {
 	watchlist []string
 	spy       db.DailySnapshot
 	spyOK     bool
+	twBench   db.DailySnapshot
+	twBenchOK bool
 
 	snapshotsErr error
 }
@@ -27,8 +30,11 @@ func (f *fakeDB) GetDailySnapshotsForTickers(tickers []string, from, to string) 
 }
 func (f *fakeDB) GetWatchlist() ([]string, error) { return f.watchlist, nil }
 func (f *fakeDB) GetLatestSnapshot(ticker string) (db.DailySnapshot, bool, error) {
-	if ticker == spyTicker {
+	switch ticker {
+	case spyTicker:
 		return f.spy, f.spyOK, nil
+	case twBenchmarkTicker:
+		return f.twBench, f.twBenchOK, nil
 	}
 	return db.DailySnapshot{}, false, nil
 }
@@ -47,7 +53,7 @@ func (f *fakeQuotes) GetQuote(ticker string) (*data.Quote, error) {
 }
 
 func TestBuildDashboard_Empty(t *testing.T) {
-	got, err := buildDashboard(&fakeDB{}, &fakeQuotes{})
+	got, err := buildDashboard(&fakeDB{}, &fakeQuotes{}, market.US)
 	if err != nil {
 		t.Fatalf("buildDashboard() error = %v", err)
 	}
@@ -87,7 +93,7 @@ func TestBuildDashboard_PositionsAndKPIs(t *testing.T) {
 		"AAPL": {Ticker: "AAPL", Price: 160},
 	}}
 
-	got, err := buildDashboard(fdb, quotes)
+	got, err := buildDashboard(fdb, quotes, market.US)
 	if err != nil {
 		t.Fatalf("buildDashboard() error = %v", err)
 	}
@@ -117,7 +123,7 @@ func TestBuildStatus(t *testing.T) {
 		spyOK:     true,
 	}
 
-	got := buildStatus(fdb)
+	got := buildStatus(fdb, market.US)
 
 	if got.WatchingCount != 3 {
 		t.Errorf("WatchingCount = %d, want 3", got.WatchingCount)
@@ -127,11 +133,75 @@ func TestBuildStatus(t *testing.T) {
 	}
 }
 
+// TestBuildDashboard_MarketFilter is Phase 6's core correctness requirement
+// for the web dashboard (docs/phase-6-tw-market.md §4.4): a TWD position/
+// transaction must never leak into a market.US-scoped response (or vice
+// versa) — mixing currencies into one KPI/curve would silently produce a
+// meaningless number, not just a display glitch.
+func TestBuildDashboard_MarketFilter(t *testing.T) {
+	fdb := &fakeDB{
+		positions: []db.Position{
+			{Ticker: "AAPL", Shares: 10, AvgCost: 100},
+			{Ticker: "2330", Shares: 1000, AvgCost: 900},
+		},
+		txs: []db.Transaction{
+			tx("AAPL", "BUY", 10, 100, "2026-07-01"),
+			tx("2330", "BUY", 1000, 900, "2026-07-01"),
+		},
+	}
+	quotes := &fakeQuotes{quotes: map[string]*data.Quote{
+		"AAPL": {Ticker: "AAPL", Price: 160},
+		"2330": {Ticker: "2330", Price: 950},
+	}}
+
+	us, err := buildDashboard(fdb, quotes, market.US)
+	if err != nil {
+		t.Fatalf("buildDashboard(US) error = %v", err)
+	}
+	if len(us.Positions) != 1 || us.Positions[0].Ticker != "AAPL" {
+		t.Errorf("buildDashboard(US) Positions = %+v, want only AAPL", us.Positions)
+	}
+
+	tw, err := buildDashboard(fdb, quotes, market.TW)
+	if err != nil {
+		t.Fatalf("buildDashboard(TW) error = %v", err)
+	}
+	if len(tw.Positions) != 1 || tw.Positions[0].Ticker != "2330" {
+		t.Errorf("buildDashboard(TW) Positions = %+v, want only 2330", tw.Positions)
+	}
+}
+
+func TestBuildStatus_MarketFilter(t *testing.T) {
+	fdb := &fakeDB{
+		watchlist: []string{"AAPL", "2330", "0050"},
+		spy:       db.DailySnapshot{Date: "2026-07-15", ChangePercent: 0.42},
+		spyOK:     true,
+		twBench:   db.DailySnapshot{Date: "2026-07-15", ChangePercent: 1.1},
+		twBenchOK: true,
+	}
+
+	us := buildStatus(fdb, market.US)
+	if us.WatchingCount != 1 {
+		t.Errorf("buildStatus(US) WatchingCount = %d, want 1 (AAPL only)", us.WatchingCount)
+	}
+	if us.SPYChangePct != 0.42 {
+		t.Errorf("buildStatus(US) SPYChangePct = %v, want 0.42", us.SPYChangePct)
+	}
+
+	tw := buildStatus(fdb, market.TW)
+	if tw.WatchingCount != 2 {
+		t.Errorf("buildStatus(TW) WatchingCount = %d, want 2 (2330, 0050)", tw.WatchingCount)
+	}
+	if tw.SPYChangePct != 1.1 {
+		t.Errorf("buildStatus(TW) SPYChangePct = %v, want 1.1 (0050's, not SPY's)", tw.SPYChangePct)
+	}
+}
+
 func TestBuildDashboard_QuoteFailureDegradesGracefully(t *testing.T) {
 	fdb := &fakeDB{positions: []db.Position{{Ticker: "AAPL", Shares: 10, AvgCost: 100}}}
 	quotes := &fakeQuotes{err: map[string]error{"AAPL": errors.New("provider down")}}
 
-	got, err := buildDashboard(fdb, quotes)
+	got, err := buildDashboard(fdb, quotes, market.US)
 	if err != nil {
 		t.Fatalf("buildDashboard() error = %v", err)
 	}

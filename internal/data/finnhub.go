@@ -2,15 +2,28 @@ package data
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
+
+	"argus/internal/market"
 )
 
 type Finnhub struct {
 	apiKey string
 	client *http.Client
 }
+
+// errTWNotSupported is returned by every per-ticker Finnhub method for a TW
+// ticker instead of making the request — Finnhub's free tier doesn't cover
+// Taiwan listings, so without this guard every TW quote/news/fundamentals
+// call would waste a doomed request before Multi falls through to Yahoo
+// (same "doomed request" pattern CLAUDE.md already documents for a
+// placeholder FINNHUB_API_KEY). GetUpcomingEarnings doesn't need this guard:
+// it's one whole-market call filtered client-side, so a TW ticker just never
+// matches rather than costing an extra request.
+var errTWNotSupported = errors.New("finnhub: taiwan market not supported")
 
 func NewFinnhub(apiKey string) *Finnhub {
 	return &Finnhub{
@@ -42,6 +55,9 @@ func (f *Finnhub) get(path string, out any) error {
 }
 
 func (f *Finnhub) GetQuote(ticker string) (*Quote, error) {
+	if market.Of(ticker) == market.TW {
+		return nil, errTWNotSupported
+	}
 	var result struct {
 		C  float64 `json:"c"`  // current price
 		H  float64 `json:"h"`  // high
@@ -75,6 +91,9 @@ func (f *Finnhub) GetQuote(ticker string) (*Quote, error) {
 }
 
 func (f *Finnhub) GetNews(ticker string, limit int) ([]NewsItem, error) {
+	if market.Of(ticker) == market.TW {
+		return nil, errTWNotSupported
+	}
 	from := time.Now().AddDate(0, 0, -7).Format("2006-01-02")
 	to := time.Now().Format("2006-01-02")
 

@@ -5,15 +5,63 @@ import (
 	"time"
 
 	"argus/internal/db"
+	"argus/internal/market"
 )
 
-// spyTicker mirrors internal/bot's own benchmarkTicker constant — SPY is
-// deliberately never added to the watchlist table (it's not a holding),
-// so daily_snapshots is the only place it's recorded; internal/web can't
-// import internal/bot's unexported constant, so this is duplicated the
-// same way formatFundamentals/commaf are elsewhere in the project rather
-// than restructuring package boundaries for one string literal.
-const spyTicker = "SPY"
+// spyTicker/twBenchmarkTicker mirror internal/bot's own benchmarkTicker/
+// benchmarkFor — SPY/0050 are deliberately never added to the watchlist
+// table (they're not holdings), so daily_snapshots is the only place either
+// is recorded; internal/web can't import internal/bot's unexported
+// constant/function, so this is duplicated the same way formatFundamentals/
+// commaf are elsewhere in the project rather than restructuring package
+// boundaries for one string literal.
+const (
+	spyTicker         = "SPY"
+	twBenchmarkTicker = "0050"
+)
+
+// benchmarkFor returns m's daily-snapshot benchmark ticker.
+func benchmarkFor(m market.MarketID) string {
+	if m == market.TW {
+		return twBenchmarkTicker
+	}
+	return spyTicker
+}
+
+// filterByMarket returns the subset of tickers belonging to market m.
+func filterByMarket(tickers []string, m market.MarketID) []string {
+	out := make([]string, 0, len(tickers))
+	for _, t := range tickers {
+		if market.Of(t) == m {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// filterTransactionsByMarket returns the subset of txs belonging to market
+// m, preserving order.
+func filterTransactionsByMarket(txs []db.Transaction, m market.MarketID) []db.Transaction {
+	out := make([]db.Transaction, 0, len(txs))
+	for _, t := range txs {
+		if market.Of(t.Ticker) == m {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// filterPositionsByMarket returns the subset of positions belonging to
+// market m, preserving order.
+func filterPositionsByMarket(positions []db.Position, m market.MarketID) []db.Position {
+	out := make([]db.Position, 0, len(positions))
+	for _, p := range positions {
+		if market.Of(p.Ticker) == m {
+			out = append(out, p)
+		}
+	}
+	return out
+}
 
 // dbReader is the subset of *db.DB the dashboard needs — narrow enough to
 // fake in tests without a real SQLite file.
@@ -29,40 +77,50 @@ type dbReader interface {
 // bar shown on every page (Phase 5 sidebar layout, see
 // docs/phase-5-sidebar-layout.md), not just the dashboard. Like
 // buildDashboard, a single failed query never fails the whole response: it
-// logs and leaves that field at its zero value.
-func buildStatus(database dbReader) statusResponse {
+// logs and leaves that field at its zero value. m selects which market's
+// watchlist count/benchmark to show (Phase 6, see
+// docs/phase-6-tw-market.md §4.4).
+func buildStatus(database dbReader, m market.MarketID) statusResponse {
 	var status statusResponse
 	watchlist, err := database.GetWatchlist()
 	if err != nil {
 		log.Printf("web: status: get watchlist: %v", err)
 	} else {
-		status.WatchingCount = len(watchlist)
+		status.WatchingCount = len(filterByMarket(watchlist, m))
 	}
-	if spy, ok, err := database.GetLatestSnapshot(spyTicker); err != nil {
-		log.Printf("web: status: get SPY snapshot: %v", err)
+	if bench, ok, err := database.GetLatestSnapshot(benchmarkFor(m)); err != nil {
+		log.Printf("web: status: get benchmark snapshot: %v", err)
 	} else if ok {
-		status.SPYChangePct = spy.ChangePercent
-		status.LastCloseDate = spy.Date
+		status.SPYChangePct = bench.ChangePercent
+		status.LastCloseDate = bench.Date
 	}
 	return status
 }
 
 // buildDashboard assembles the /api/dashboard response: KPIs and the
 // cumulative P&L curve (both from the DailyPnL replay engine in pnl.go)
-// and the live-quote-enriched positions list. Nothing here aborts the
-// whole response on a partial failure — a single bad quote just leaves
-// that position's price fields at 0 (logged), same "attach what's
-// available" degrade convention internal/bot's fetchStockData uses for
-// optional prompt fields.
-func buildDashboard(database dbReader, quotes quoteGetter) (dashboardResponse, error) {
-	positions, err := database.GetPositions()
+// and the live-quote-enriched positions list, restricted to market m
+// (Phase 6, see docs/phase-6-tw-market.md §4.4 — TWD and USD transactions
+// must never be replayed together, or the curve/KPIs come out as
+// meaningless mixed-currency numbers). The replay engine itself
+// (DailyPnL/KPIs in pnl.go) is unchanged — it's a pure function over
+// whatever transactions/snapshots it's given, so filtering happens here,
+// before that call, not inside it. Nothing here aborts the whole response
+// on a partial failure — a single bad quote just leaves that position's
+// price fields at 0 (logged), same "attach what's available" degrade
+// convention internal/bot's fetchStockData uses for optional prompt fields.
+func buildDashboard(database dbReader, quotes quoteGetter, m market.MarketID) (dashboardResponse, error) {
+	allPositions, err := database.GetPositions()
 	if err != nil {
 		return dashboardResponse{}, err
 	}
-	txs, err := database.GetAllTransactions()
+	positions := filterPositionsByMarket(allPositions, m)
+
+	allTxs, err := database.GetAllTransactions()
 	if err != nil {
 		return dashboardResponse{}, err
 	}
+	txs := filterTransactionsByMarket(allTxs, m)
 
 	sells := FilterSells(txs)
 	resp := dashboardResponse{

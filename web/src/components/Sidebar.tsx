@@ -1,10 +1,13 @@
 import type { MouseEvent, ReactNode } from "react";
 import type { Dictionary } from "../i18n";
+import type { Market } from "../api";
 
 interface Props {
   path: string;
   onNavigate: (path: string) => void;
   dict: Dictionary;
+  market: Market;
+  onMarketChange: (market: Market) => void;
 }
 
 // /round (the detail page reached by clicking a row in /rounds) has no nav
@@ -24,11 +27,30 @@ function isActive(linkPath: string, path: string): boolean {
   return linkPath === path || (linkPath === "/rounds" && path === "/round");
 }
 
-export function Sidebar({ path, onNavigate, dict }: Props) {
+// Phase 6's US/TW toggle (docs/phase-6-tw-market.md §4.4: "tab 或
+// select,樣式從簡") lives here rather than as its own component — it's two
+// buttons, not worth a dedicated file, and the sidebar is already the
+// shell-level chrome every page shares (same reasoning as the wordmark
+// living here instead of on each view).
+export function Sidebar({ path, onNavigate, dict, market, onMarketChange }: Props) {
   return (
     <div className="sidebar">
       <div className="sidebar-wordmark">
         ARGUS <span className="cursor">▮</span>
+      </div>
+      <div className="market-toggle" role="group" aria-label="market">
+        <button
+          className={`market-toggle-btn${market === "us" ? " active" : ""}`}
+          onClick={() => onMarketChange("us")}
+        >
+          US
+        </button>
+        <button
+          className={`market-toggle-btn${market === "tw" ? " active" : ""}`}
+          onClick={() => onMarketChange("tw")}
+        >
+          TW
+        </button>
       </div>
       <nav className="sidebar-nav">
         {links.map((link) => (

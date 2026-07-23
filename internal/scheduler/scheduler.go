@@ -67,6 +67,24 @@ func (s *Scheduler) AddClosingSnapshot(ctx context.Context, fn JobFunc) {
 	log.Println("scheduler: closing snapshot registered at 05:30 CST (Tue–Sat)")
 }
 
+// AddTWClosingSnapshot schedules the TW-market post-close snapshot job at
+// 14:30 CST, Monday–Friday (Phase 6, see docs/phase-6-tw-market.md §3.3): the
+// TWSE/TPEx session closes at 13:30 Taipei time (== CST, Taiwan and Taipei
+// share the same UTC+8 offset with no DST on either side, so unlike
+// AddDailyReport's US-session arithmetic this needs no cross-zone
+// adjustment), and Yahoo's chart endpoint has the closing bar available well
+// before 14:00 in practice — 14:30 leaves a 30-minute buffer past that.
+func (s *Scheduler) AddTWClosingSnapshot(ctx context.Context, fn JobFunc) {
+	_, err := s.c.AddFunc("0 30 14 * * 1-5", func() {
+		log.Println("scheduler: running TW closing snapshot")
+		fn(ctx)
+	})
+	if err != nil {
+		log.Fatalf("scheduler: add TW closing snapshot: %v", err)
+	}
+	log.Println("scheduler: TW closing snapshot registered at 14:30 CST (Mon–Fri)")
+}
+
 // AddUniverseScan schedules Phase 2.6's chunked candidate-pool scan at 05:45
 // CST, Tuesday–Saturday — after the closing snapshot (05:30) has updated
 // daily_snapshots/positions data, and before the backup (06:00) so a fresh

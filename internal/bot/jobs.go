@@ -40,25 +40,44 @@ func (b *Bot) SendSignalAlert(sigs []signals.Signal) {
 	b.Send(sb.String())
 }
 
-// RunClosingSnapshot records the just-closed US session's OHLCV for every
-// watchlist ticker into daily_snapshots. Called by the scheduler at 05:30
-// CST — after the US close — so unlike the daily report (which runs an
-// hour or two into the session, not at the close) this captures genuine
-// closing data. At that hour the US trading date is Taiwan's "yesterday",
-// which is why the snapshot is dated one day back.
+// benchmarkFor returns the daily-snapshot benchmark ticker for m: SPY for
+// US, 0050 for TW (Phase 6, same "snapshot alongside the watchlist" role
+// benchmarkTicker/snapshotBenchmark already played for US-only — see
+// docs/phase-6-tw-market.md §3.3). 0050 is allowed to simultaneously be a
+// TW watchlist/position ticker; SaveSnapshot's INSERT OR REPLACE makes a
+// same-(ticker,date) double-write from both paths safe.
+func benchmarkFor(m market.MarketID) string {
+	if m == market.TW {
+		return "0050"
+	}
+	return benchmarkTicker
+}
+
+// RunClosingSnapshot records the just-closed session's OHLCV for every
+// watchlist ticker in market m into daily_snapshots. Called by the
+// scheduler once per market: 05:30 CST for US (after the US close) and
+// 14:30 CST Mon-Fri for TW (after the TW close) — see
+// docs/phase-6-tw-market.md §3.3. Date semantics differ by market: at
+// 05:30 CST the US trading date is still Taiwan's "yesterday" (hence the
+// -1 day), but the TW closing snapshot runs the same afternoon as the TW
+// session it's recording, so it's dated today.
 // It's a silent background job: results go to the DB and errors to the log,
 // not to Telegram.
-func (b *Bot) RunClosingSnapshot(ctx context.Context) {
+func (b *Bot) RunClosingSnapshot(ctx context.Context, m market.MarketID) {
 	defer b.recoverJobPanic("closing snapshot")
 
-	tickers, err := b.db.GetWatchlist()
+	tickers, err := b.db.GetWatchlistByMarket(m)
 	if err != nil {
 		log.Printf("closing snapshot: watchlist: %v", err)
 		b.Send(i18n.T(b.lang, i18n.KeyWatchlistQueryFailed, err))
 		return
 	}
 
-	date := time.Now().In(cst).AddDate(0, 0, -1).Format("2006-01-02")
+	now := time.Now().In(cst)
+	date := now.Format("2006-01-02")
+	if m == market.US {
+		date = now.AddDate(0, 0, -1).Format("2006-01-02")
+	}
 	prices := make(map[string]float64, len(tickers))
 	for _, t := range tickers {
 		q, err := b.provider.GetQuote(t)
@@ -66,11 +85,11 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context) {
 			log.Printf("closing snapshot: quote %s: %v", t, err)
 			continue
 		}
-		// On a US market holiday the cron still fires but providers return
-		// the previous session's quote; its timestamp is then a full day
-		// old, and saving it would file old data under the wrong date.
+		// On a market holiday the cron still fires but providers return the
+		// previous session's quote; its timestamp is then a full day old,
+		// and saving it would file old data under the wrong date.
 		if time.Since(q.Timestamp) > 12*time.Hour {
-			log.Printf("closing snapshot: %s quote is stale (%s), skipping (US holiday?)", t, q.Timestamp.Format(time.RFC3339))
+			log.Printf("closing snapshot: %s quote is stale (%s), skipping (holiday?)", t, q.Timestamp.Format(time.RFC3339))
 			continue
 		}
 		prices[t] = q.Price
@@ -88,32 +107,32 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context) {
 			log.Printf("closing snapshot: save %s: %v", t, err)
 		}
 	}
-	log.Printf("closing snapshot: done for %s (%d tickers)", date, len(tickers))
+	log.Printf("closing snapshot: done for %s market=%s (%d tickers)", date, m, len(tickers))
 
-	b.snapshotBenchmark(date)
-	b.recordNetWorthSnapshot(date, prices)
+	b.snapshotBenchmark(date, m)
+	b.recordNetWorthSnapshot(date, m, prices)
 }
 
-// snapshotBenchmark records benchmarkTicker's (SPY) closing price into
+// snapshotBenchmark records benchmarkFor(m)'s (SPY/0050) closing price into
 // daily_snapshots under the same date as the watchlist snapshot, so /track's
-// relative-to-market hit rate (Phase 3.8) has same-day SPY data to compare
-// against without ever needing to replay history through a live API call.
-// Same stale-quote guard as the per-ticker loop above (a US holiday still
-// fires the cron but returns the prior session's quote). Silent on failure,
-// same as the rest of this job — a missing benchmark row just makes /track
-// fall back to its absolute-direction hit rule for that date.
-func (b *Bot) snapshotBenchmark(date string) {
-	q, err := b.provider.GetQuote(benchmarkTicker)
+// relative-to-market hit rate (Phase 3.8) has same-day benchmark data to
+// compare against without ever needing to replay history through a live API
+// call. Same stale-quote guard as the per-ticker loop above. Silent on
+// failure, same as the rest of this job — a missing benchmark row just makes
+// /track fall back to its absolute-direction hit rule for that date.
+func (b *Bot) snapshotBenchmark(date string, m market.MarketID) {
+	ticker := benchmarkFor(m)
+	q, err := b.provider.GetQuote(ticker)
 	if err != nil {
-		log.Printf("closing snapshot: benchmark %s: %v", benchmarkTicker, err)
+		log.Printf("closing snapshot: benchmark %s: %v", ticker, err)
 		return
 	}
 	if time.Since(q.Timestamp) > 12*time.Hour {
-		log.Printf("closing snapshot: benchmark %s quote is stale (%s), skipping (US holiday?)", benchmarkTicker, q.Timestamp.Format(time.RFC3339))
+		log.Printf("closing snapshot: benchmark %s quote is stale (%s), skipping (holiday?)", ticker, q.Timestamp.Format(time.RFC3339))
 		return
 	}
 	snap := db.DailySnapshot{
-		Ticker:        benchmarkTicker,
+		Ticker:        ticker,
 		Date:          date,
 		Open:          q.Open,
 		Close:         q.Price,
@@ -123,35 +142,41 @@ func (b *Bot) snapshotBenchmark(date string) {
 		ChangePercent: q.ChangePercent,
 	}
 	if err := b.db.SaveSnapshot(snap); err != nil {
-		log.Printf("closing snapshot: save benchmark %s: %v", benchmarkTicker, err)
+		log.Printf("closing snapshot: save benchmark %s: %v", ticker, err)
 	}
 }
 
-// recordNetWorthSnapshot totals every open position's value as of the
-// closing snapshot and stores it dated the same day, so a net worth curve
-// can be drawn later. prices reuses the quotes RunClosingSnapshot already
-// fetched for watchlist tickers (positions are auto-added to the watchlist
-// on /buy, so this covers the common case); any position ticker missing
-// from it gets a direct quote fetch as a fallback (see priceFor).
-func (b *Bot) recordNetWorthSnapshot(date string, prices map[string]float64) {
+// recordNetWorthSnapshot totals market m's open positions' value as of the
+// closing snapshot and stores it dated the same day (Phase 6: per-market row,
+// never summed across markets — see SaveNetWorthSnapshot). prices reuses the
+// quotes RunClosingSnapshot already fetched for watchlist tickers (positions
+// are auto-added to the watchlist on /buy, so this covers the common case);
+// any position ticker missing from it gets a direct quote fetch as a
+// fallback (see priceFor).
+func (b *Bot) recordNetWorthSnapshot(date string, m market.MarketID, prices map[string]float64) {
 	positions, err := b.db.GetPositions()
 	if err != nil {
 		log.Printf("net worth snapshot: positions: %v", err)
 		return
 	}
-	if len(positions) == 0 {
-		return
-	}
 
 	var total float64
+	var haveAny bool
 	for _, p := range positions {
+		if market.Of(p.Ticker) != m {
+			continue
+		}
+		haveAny = true
 		price, ok := b.priceFor(p.Ticker, prices)
 		if !ok {
 			continue
 		}
 		total += p.Shares * price
 	}
-	if err := b.db.SaveNetWorthSnapshot(date, total); err != nil {
+	if !haveAny {
+		return
+	}
+	if err := b.db.SaveNetWorthSnapshot(date, m, total); err != nil {
 		log.Printf("net worth snapshot: save: %v", err)
 	}
 }
@@ -972,8 +997,12 @@ func (b *Bot) checkMA5BreakAlerts(positions []db.Position, prices map[string]flo
 // (e.g. a fresh install, or a holding period under a week) — skip the line
 // rather than show a misleading 0%, same "ok=false means skip" pattern
 // GetPeakClose's callers use.
+// weeklyNetWorthLine reports on market.US only for now — Phase 6 PR2 adds
+// the TW counterpart (see docs/phase-6-tw-market.md §5.3); PR1 only threads
+// the new per-market signature through without changing weekly-review
+// behavior.
 func (b *Bot) weeklyNetWorthLine(cash float64, haveCash bool) (string, error) {
-	latestDateStr, latest, ok, err := b.db.GetLatestNetWorth()
+	latestDateStr, latest, ok, err := b.db.GetLatestNetWorth(market.US)
 	if err != nil {
 		return "", err
 	}
@@ -987,7 +1016,7 @@ func (b *Bot) weeklyNetWorthLine(cash float64, haveCash bool) (string, error) {
 	}
 	weekAgo := latestDate.AddDate(0, 0, -7).Format("2006-01-02")
 
-	prior, ok, err := b.db.GetNetWorthOnOrBefore(weekAgo)
+	prior, ok, err := b.db.GetNetWorthOnOrBefore(weekAgo, market.US)
 	if err != nil {
 		return "", err
 	}
@@ -1051,9 +1080,13 @@ func (b *Bot) RunWeeklyReview(ctx context.Context) {
 		}
 	}
 
-	cash, haveCash, err := b.loadCash()
+	cashUSD, haveCashUSD, err := b.loadCash(market.US)
 	if err != nil {
-		log.Printf("weekly review: load cash: %v", err)
+		log.Printf("weekly review: load cash (USD): %v", err)
+	}
+	cashTWD, haveCashTWD, err := b.loadCash(market.TW)
+	if err != nil {
+		log.Printf("weekly review: load cash (TWD): %v", err)
 	}
 
 	var trackSummary string
@@ -1064,14 +1097,14 @@ func (b *Bot) RunWeeklyReview(ctx context.Context) {
 		trackSummary = renderTrackSummary(b.lang, overall, bySource)
 	}
 
-	result, err := b.llm.WeeklyReview(ctx, stocks, cash, haveCash, trackSummary)
+	result, err := b.llm.WeeklyReview(ctx, stocks, cashUSD, haveCashUSD, cashTWD, haveCashTWD, trackSummary)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyLLMFailed, err))
 		return
 	}
 
 	var sb strings.Builder
-	if line, err := b.weeklyNetWorthLine(cash, haveCash); err != nil {
+	if line, err := b.weeklyNetWorthLine(cashUSD, haveCashUSD); err != nil {
 		log.Printf("weekly review: net worth line: %v", err)
 	} else if line != "" {
 		sb.WriteString(line)
@@ -1097,7 +1130,9 @@ func (b *Bot) RunMonthlyReport(ctx context.Context) {
 
 	from, to := monthRange(time.Now().In(cst))
 
-	points, err := b.db.GetNetWorthRange(from, to)
+	// market.US only for now — Phase 6 PR2 splits the monthly report into
+	// per-market blocks (see docs/phase-6-tw-market.md §5.3).
+	points, err := b.db.GetNetWorthRange(from, to, market.US)
 	if err != nil {
 		log.Printf("monthly report: net worth range: %v", err)
 		return
@@ -1125,7 +1160,7 @@ func (b *Bot) RunMonthlyReport(ctx context.Context) {
 	// against, so the line is skipped entirely.
 	fromDate, _ := time.Parse("2006-01-02", from)
 	priorMonthEnd := fromDate.AddDate(0, 0, -1).Format("2006-01-02")
-	baseline, haveBaseline, err := b.db.GetNetWorthOnOrBefore(priorMonthEnd)
+	baseline, haveBaseline, err := b.db.GetNetWorthOnOrBefore(priorMonthEnd, market.US)
 	if err != nil {
 		log.Printf("monthly report: baseline net worth: %v", err)
 	}
@@ -1153,7 +1188,7 @@ func (b *Bot) RunMonthlyReport(ctx context.Context) {
 		sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportSPYLine, (last-first)/first*100))
 	}
 
-	if cash, haveCash, err := b.loadCash(); err != nil {
+	if cash, haveCash, err := b.loadCash(market.US); err != nil {
 		log.Printf("monthly report: load cash: %v", err)
 	} else if haveCash {
 		sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportCashLine, latest+cash, cash))

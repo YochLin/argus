@@ -76,11 +76,15 @@ var zhMessages = map[Key]string{
 	KeyBuyStopSuggestion:    "\n💡 停損參考：\n",
 	KeyBuyStopAddOnNote:     "*%s* 目前停損 $%.2f，加碼後可用 /stop 重新設定。\n",
 
-	KeyPortfolioTitle:   "💼 *資產總覽*\n\n",
-	KeyPortfolioEmpty:   "目前沒有持倉。使用 /buy <ticker> <股數> <價格> 記錄買入。",
-	KeyPortfolioLine:    "*%s*  %g 股 @ 均價 $%.2f\n現價 $%.2f　市值 $%.2f　未實現損益 %+.2f (%+.2f%%)\n\n",
-	KeyPortfolioSummary: "—\n總市值：$%.2f\n累計已實現損益：%+.2f",
-	KeyJobPanic:         "⚠️ *%s* 執行時發生未預期錯誤，已中止：%v",
+	KeyPortfolioTitle:      "💼 *資產總覽*\n\n",
+	KeyPortfolioEmpty:      "目前沒有持倉。使用 /buy <ticker> <股數> <價格> 記錄買入。",
+	KeyPortfolioLine:       "*%s*  %g 股 @ 均價 $%.2f\n現價 $%.2f　市值 $%.2f　未實現損益 %+.2f (%+.2f%%)\n\n",
+	KeyPortfolioSummary:    "—\n總市值：$%.2f\n累計已實現損益：%+.2f",
+	KeyPortfolioSectionUS:  "*美股 (USD)*\n",
+	KeyPortfolioSectionTW:  "*台股 (TWD)*\n",
+	KeyPortfolioSummaryTWD: "—\n總市值：NT$%.2f\n累計已實現損益：%+.2f",
+	KeyPortfolioLotSuffix:  "（= %d 張）",
+	KeyJobPanic:            "⚠️ *%s* 執行時發生未預期錯誤，已中止：%v",
 
 	KeyInsightResultTitle: "💡 *投資組合見解*\n\n%s",
 
@@ -100,11 +104,13 @@ var zhMessages = map[Key]string{
 	KeyMonthlyReportTxCountLine:   "當月交易筆數：%d\n",
 	KeyMonthlyReportCashLine:      "含現金總資產：$%.2f（現金 $%.2f）\n",
 
-	KeyCashUsage:      "用法：/cash <金額>（查詢請不帶參數）",
-	KeyCashCurrent:    "目前登記現金：$%.2f",
-	KeyCashNotSet:     "尚未登記現金水位，使用 /cash <金額> 設定。",
-	KeyCashSetSuccess: "已將現金水位設為 $%.2f。",
-	KeyCashSetFailed:  "設定現金水位失敗：%v",
+	KeyCashUsage:         "用法：/cash <金額>＝USD；/cash twd <金額> 或 /cash usd <金額> 指定幣別；查詢請不帶參數",
+	KeyCashCurrent:       "目前登記現金：$%.2f",
+	KeyCashCurrentTWD:    "目前登記現金 (TWD)：NT$%.2f",
+	KeyCashNotSet:        "尚未登記現金水位，使用 /cash <金額> 設定。",
+	KeyCashSetSuccess:    "已將現金水位設為 $%.2f。",
+	KeyCashSetSuccessTWD: "已將現金水位 (TWD) 設為 NT$%.2f。",
+	KeyCashSetFailed:     "設定現金水位失敗：%v",
 
 	KeyStopLossAlertTitle:       "🛑 *停損提醒*\n\n",
 	KeyStopLossAlertLine:        "• *%s* 成本 $%.2f → 現價 $%.2f，未實現損失 %.1f%%，已達停損門檻\n",
@@ -333,6 +339,7 @@ var zhMessages = map[Key]string{
 	KeyInsightPromptIntro:       "你是一位美股分析師，請針對以下整體持倉組合給出組合層級的見解（不是逐檔重複個股分析）。\n\n",
 	KeyInsightPositionValueLine: "持倉總市值：$%.2f\n",
 	KeyInsightCashLine:          "現金水位：$%.2f\n總資產（持倉＋現金）：$%.2f\n",
+	KeyInsightCashLineTWD:       "現金水位 (TWD)：NT$%.2f\n",
 	KeyInsightPromptTask: `
 請用繁體中文分析整個投資組合（不要逐檔重複已列出的數據，聚焦組合層級的判斷）：
 1. 集中度風險：單一持股或單一產業是否佔比過高（產業請根據你自己對這些標的的認識判斷，不用等資料提供）

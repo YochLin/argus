@@ -4,15 +4,19 @@ import type { Dictionary } from "../i18n";
 interface Props {
   positions: Position[];
   dict: Dictionary;
+  // currency is Phase 6's per-market symbol ("$"/"NT$", see api.ts's
+  // currencySymbol) — defaults to "$" so every pre-Phase-6 caller is
+  // unaffected.
+  currency?: string;
 }
 
-function fmtMoney(v: number): string {
-  return `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function fmtMoney(v: number, currency: string): string {
+  return `${currency}${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function fmtSignedMoney(v: number): string {
+function fmtSignedMoney(v: number, currency: string): string {
   const sign = v > 0 ? "+" : v < 0 ? "-" : "";
-  return `${sign}${fmtMoney(Math.abs(v))}`;
+  return `${sign}${fmtMoney(Math.abs(v), currency)}`;
 }
 
 function fmtPct(v: number): string {
@@ -20,7 +24,7 @@ function fmtPct(v: number): string {
   return `${sign}${v.toFixed(2)}%`;
 }
 
-export function PositionsTable({ positions, dict }: Props) {
+export function PositionsTable({ positions, dict, currency = "$" }: Props) {
   if (positions.length === 0) {
     return <div className="empty-message">{dict.noPositions}</div>;
   }
@@ -41,11 +45,11 @@ export function PositionsTable({ positions, dict }: Props) {
           <tr key={p.ticker}>
             <td>{p.ticker}</td>
             <td>{p.shares}</td>
-            <td>{fmtMoney(p.avgCost)}</td>
-            <td>{fmtMoney(p.price)}</td>
-            <td>{fmtMoney(p.marketValue)}</td>
+            <td>{fmtMoney(p.avgCost, currency)}</td>
+            <td>{fmtMoney(p.price, currency)}</td>
+            <td>{fmtMoney(p.marketValue, currency)}</td>
             <td className={p.unrealizedPnL >= 0 ? "profit" : "loss"}>
-              {fmtSignedMoney(p.unrealizedPnL)} ({fmtPct(p.unrealizedPnLPct)})
+              {fmtSignedMoney(p.unrealizedPnL, currency)} ({fmtPct(p.unrealizedPnLPct)})
             </td>
           </tr>
         ))}
