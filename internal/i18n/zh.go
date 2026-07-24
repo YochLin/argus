@@ -411,6 +411,7 @@ var zhMessages = map[Key]string{
 	KeyQuoteTimeLine:           "- 報價時間: %s\n",
 	KeyNewsHeader:              "- 近期新聞:\n",
 	KeyNewsItem:                "  %d. [%s] %s\n",
+	KeyNewsSummaryLine:         "     %s\n",
 	KeyFundamentalsSummaryLine: "- 基本面：本益比 %.1f｜股價淨值比 %.1f｜ROE %.1f%%｜毛利率 %.1f%%｜營業利益率 %.1f%%｜淨利率 %.1f%%｜負債權益比 %.2f｜營收年增率 %.1f%%｜EPS年增率 %.1f%%｜股息殖利率 %.2f%%｜Beta %.2f｜EPS(TTM) %.2f｜流動比率 %.2f｜市值 $%.0fM｜距52週高點 %+.1f%%｜距52週低點 %+.1f%%\n",
 	KeyMonthRevenueYoYLine:     "- 月營收年增率：%+.1f%%\n",
 	KeyAnalystRatingLine:       "- 分析師評等（%s）：強力買進 %d｜買進 %d｜持有 %d｜賣出 %d｜強力賣出 %d\n",

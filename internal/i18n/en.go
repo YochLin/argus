@@ -422,6 +422,7 @@ Keep the reply concise — under 300 words total.
 	KeyQuoteTimeLine:           "- Quote Time: %s\n",
 	KeyNewsHeader:              "- Recent News:\n",
 	KeyNewsItem:                "  %d. [%s] %s\n",
+	KeyNewsSummaryLine:         "     %s\n",
 	KeyFundamentalsSummaryLine: "- Fundamentals: P/E %.1f | P/B %.1f | ROE %.1f%% | Gross Margin %.1f%% | Operating Margin %.1f%% | Net Margin %.1f%% | Debt/Equity %.2f | Revenue YoY %.1f%% | EPS YoY %.1f%% | Dividend Yield %.2f%% | Beta %.2f | EPS(TTM) %.2f | Current Ratio %.2f | Market Cap $%.0fM | From 52W High %+.1f%% | From 52W Low %+.1f%%\n",
 	KeyMonthRevenueYoYLine:     "- Month Revenue YoY: %+.1f%%\n",
 	KeyAnalystRatingLine:       "- Analyst Ratings (%s): Strong Buy %d | Buy %d | Hold %d | Sell %d | Strong Sell %d\n",

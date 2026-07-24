@@ -97,7 +97,18 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   (unlike `/company-news`) isn't scoped to any ticker — it's the whole-market/macro news source for the
   `/recommend`/daily-report news summary, not per-ticker headlines. No client-side filtering logic here
   (unlike `filterEarningsCalendar`), so no dedicated test file — same as `finnhub.go`'s other simple
-  passthrough methods. `AnalystRatingProvider` (`analystrating.go`, Phase 3.7) is Finnhub-only for the
+  passthrough methods. `NewsItem.Summary` (Phase 3 剩餘項) is populated by both `Finnhub.GetNews` and
+  `GetMarketNews` straight from the same `/company-news`/`/news` response that already carries
+  `headline` — live-checked against the real endpoint (2026-07-24): it's a real 1–2 sentence teaser, not
+  an echo of the headline, so rendering it costs zero extra requests. `Yahoo.GetNews` leaves it `""` (its
+  `/v1/finance/search` response has no such field) — `internal/llm`'s renderer treats that as "no
+  summary" and skips the line, never printing an empty one. Fetching full article text (the
+  `internal/webfetch` path used for chat's article-digestion mode) was evaluated and rejected for this
+  per-headline case: it's one extra HTTP request per news item (up to `marketNewsLimit`=10 for the
+  market-news block plus 5 per ticker), most financial news sites paywall or JS-render past the teaser,
+  and `webfetch.Fetch` already treats short/failed extraction as an error to surface, not degrade — doing
+  that N times per report would be slow and unreliable for a quality gain the free `Summary` field mostly
+  already provides. `AnalystRatingProvider` (`analystrating.go`, Phase 3.7) is Finnhub-only for the
   same reason as `FundamentalsProvider` — and unlike `EarningsProvider`'s calendar, `/stock/recommendation`
   has no whole-market/unfiltered form at all, so `GetAnalystRating(ticker)` is a genuine one-ticker-per-call
   endpoint like `GetFundamentals`, not a client-side-filtered batch call like `filterEarningsCalendar`.
