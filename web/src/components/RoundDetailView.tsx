@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createChart,
   type IChartApi,
@@ -26,7 +26,6 @@ interface Props {
 export function RoundDetailView({ dict, ticker, start, onBack }: Props) {
   const [detail, setDetail] = useState<RoundDetail | null>(null);
   const [error, setError] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
 
@@ -42,9 +41,20 @@ export function RoundDetailView({ dict, ticker, start, onBack }: Props) {
       .catch(() => setError(true));
   }, [ticker, start]);
 
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const chart = createChart(containerRef.current, {
+  // Callback ref rather than useRef+mount-effect: the container div only
+  // enters the DOM once `detail` has loaded (see the `{detail && (...)}`
+  // below), so a `useEffect(..., [])` mount effect would already have run
+  // — and bailed on a null containerRef.current — before the div ever
+  // existed, permanently skipping chart creation. A callback ref fires
+  // exactly when the node is actually attached/detached, whenever that is.
+  const containerRef = useCallback((node: HTMLDivElement | null) => {
+    if (chartRef.current) {
+      chartRef.current.remove();
+      chartRef.current = null;
+      seriesRef.current = null;
+    }
+    if (!node) return;
+    const chart = createChart(node, {
       layout: { background: { color: "transparent" }, textColor: "#9AA6BC" },
       grid: { vertLines: { color: "#26314B" }, horzLines: { color: "#26314B" } },
       rightPriceScale: { borderColor: "#26314B" },
@@ -60,12 +70,6 @@ export function RoundDetailView({ dict, ticker, start, onBack }: Props) {
     });
     chartRef.current = chart;
     seriesRef.current = series;
-
-    return () => {
-      chart.remove();
-      chartRef.current = null;
-      seriesRef.current = null;
-    };
   }, []);
 
   useEffect(() => {
