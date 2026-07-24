@@ -128,6 +128,7 @@ func main() {
 	var analystRatingProvider data.AnalystRatingProvider
 	var earningsProvider data.EarningsProvider
 	var marketNewsProvider data.MarketNewsProvider
+	var companyNameProvider data.CompanyNameProvider
 	fundamentalsRouter := &data.FundamentalsRouter{}
 	if finnhubKey != "" {
 		finnhub := data.NewFinnhub(finnhubKey)
@@ -140,9 +141,14 @@ func main() {
 	// FINMIND_TOKEN gates TW fundamentals the same way FINNHUB_API_KEY gates
 	// US (Phase 6 PR3) — FinMind has no Yahoo-style Multi fallback to sit
 	// behind, it's the only TW fundamentals source there is (see
-	// internal/data/finmind.go).
+	// internal/data/finmind.go). Reused as the CompanyNameProvider too (its
+	// TaiwanStockInfo lookup, see finmind.go's GetCompanyName) — same client,
+	// not a second one, since there's nothing FinMind-specific about that
+	// call that would justify a separate instance.
 	if finmindToken != "" {
-		fundamentalsRouter.TW = data.NewFinMind(finmindToken)
+		finmind := data.NewFinMind(finmindToken)
+		fundamentalsRouter.TW = finmind
+		companyNameProvider = finmind
 	}
 	// fundamentalsProvider stays nil (not a router wrapping two nil fields)
 	// when neither key is set, preserving every existing `if b.fundamentals
@@ -177,6 +183,7 @@ func main() {
 		AnalystRating:       analystRatingProvider,
 		Earnings:            earningsProvider,
 		MarketNews:          marketNewsProvider,
+		CompanyNames:        companyNameProvider,
 		History:             yahoo,
 		LLM:                 llmClient,
 		Lang:                lang,
