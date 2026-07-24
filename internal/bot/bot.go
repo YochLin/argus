@@ -2,19 +2,14 @@ package bot
 
 import (
 	"context"
-	"fmt"
-	"log"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/llm"
 	"argus/internal/signals"
-
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 var cst = time.FixedZone("CST", 8*3600)
@@ -48,7 +43,7 @@ const (
 )
 
 type Bot struct {
-	api           *tgbotapi.BotAPI
+	channel       Channel
 	db            *db.DB
 	provider      data.Provider
 	fundamentals  data.FundamentalsProvider  // nil if FINNHUB_API_KEY isn't set
@@ -59,7 +54,6 @@ type Bot struct {
 	history       data.HistoryProvider
 	llm           *llm.Client
 	detector      *signals.Detector
-	chatID        int64
 	lang          i18n.Lang
 
 	// stopLossPct/trailingStopPct (STOP_LOSS_PCT/TRAILING_STOP_PCT env,
@@ -89,8 +83,9 @@ type Bot struct {
 	// later message reach that conversation history before an earlier one.
 	// 32 is generous slack for a single-user bot; if it ever fills up, the
 	// user has 32 unanswered messages backlogged, and blocking is the right
-	// thing to do at that point anyway.
-	chatQueue chan *tgbotapi.Message
+	// thing to do at that point anyway. Holds trimmed message text — dispatch
+	// does the trimming once, before enqueueing.
+	chatQueue chan string
 
 	// now returns the current time; RunDailyReport's market.IsTradingDay
 	// guard reads through this instead of calling time.Now() directly so a
@@ -136,19 +131,22 @@ type Config struct {
 }
 
 func New(cfg Config) (*Bot, error) {
-	var api *tgbotapi.BotAPI
-	var err error
-	if cfg.APIEndpoint != "" {
-		api, err = tgbotapi.NewBotAPIWithAPIEndpoint(cfg.Token, cfg.APIEndpoint)
-	} else {
-		api, err = tgbotapi.NewBotAPI(cfg.Token)
-	}
+	channel, err := NewTelegramChannel(cfg.Token, cfg.APIEndpoint, cfg.ChatID)
 	if err != nil {
-		return nil, fmt.Errorf("telegram: %w", err)
+		return nil, err
 	}
-	log.Printf("Telegram bot authorized: @%s", api.Self.UserName)
+	return NewWithChannel(channel, cfg), nil
+}
+
+// NewWithChannel builds a Bot against an already-constructed Channel,
+// bypassing New's Telegram-specific construction (NewTelegramChannel) — the
+// seam a future second messaging channel (its own package implementing
+// Channel, per CLAUDE.md's 訊息通道介面 note) or a test would use instead of
+// New. Mirrors internal/llm's NewClient/NewClientWithProvider split for the
+// same reason: every real call site still goes through New.
+func NewWithChannel(channel Channel, cfg Config) *Bot {
 	return &Bot{
-		api:                 api,
+		channel:             channel,
 		db:                  cfg.DB,
 		provider:            cfg.Provider,
 		fundamentals:        cfg.Fundamentals,
@@ -159,115 +157,32 @@ func New(cfg Config) (*Bot, error) {
 		history:             cfg.History,
 		llm:                 cfg.LLM,
 		detector:            signals.NewDetector(cfg.Lang),
-		chatID:              cfg.ChatID,
 		lang:                cfg.Lang,
 		stopLossPct:         cfg.StopLossPct,
 		trailingStopPct:     cfg.TrailingStopPct,
 		trailingStopATRMult: cfg.TrailingStopATRMult,
 		riskPctPerTrade:     cfg.RiskPctPerTrade,
-		chatQueue:           make(chan *tgbotapi.Message, 32),
+		chatQueue:           make(chan string, 32),
 		now:                 time.Now,
-	}, nil
+	}
 }
-
-// telegramMaxMessageLen is a conservative cap on outgoing message length.
-// Telegram's actual sendMessage limit is 4096 characters; this project stays
-// well under it since splitMessage counts runes (not the UTF-16 code units
-// Telegram's limit is really specified in — astral-plane emoji like 📊 need
-// two of those per rune) and BotAPI.Send returns "message is too long" as a
-// plain error that Send only logs, never surfaces to the user. /track is the
-// command most likely to hit this: its length grows with
-// watchlist-size × lookback-days (see handleTrack), so even a modest
-// watchlist can produce a multi-thousand-character report after a week of
-// daily reports.
-const telegramMaxMessageLen = 3500
 
 func (b *Bot) Send(text string) {
-	for _, chunk := range splitMessage(text, telegramMaxMessageLen) {
-		msg := tgbotapi.NewMessage(b.chatID, chunk)
-		msg.ParseMode = "Markdown"
-		if _, err := b.api.Send(msg); err != nil {
-			log.Printf("send error: %v", err)
-		}
-	}
-}
-
-// splitMessage breaks text into chunks of at most limit runes, splitting
-// only at line boundaries so a Markdown entity opened and closed within a
-// single line (e.g. "*AAPL*") never gets split across two messages — every
-// i18n line template in this package opens and closes its own markdown
-// within one line, so this preserves valid Markdown per chunk. A single line
-// longer than limit on its own (shouldn't happen with today's templates) is
-// hard-split by rune as a last resort, so content is never silently dropped.
-func splitMessage(text string, limit int) []string {
-	if utf8.RuneCountInString(text) <= limit {
-		return []string{text}
-	}
-
-	var chunks []string
-	var current strings.Builder
-	currentLen := 0
-	flush := func() {
-		if current.Len() > 0 {
-			chunks = append(chunks, current.String())
-			current.Reset()
-			currentLen = 0
-		}
-	}
-
-	for _, line := range strings.SplitAfter(text, "\n") {
-		if line == "" {
-			continue
-		}
-		lineLen := utf8.RuneCountInString(line)
-		if lineLen > limit {
-			flush()
-			runes := []rune(line)
-			for len(runes) > 0 {
-				n := limit
-				if n > len(runes) {
-					n = len(runes)
-				}
-				chunks = append(chunks, string(runes[:n]))
-				runes = runes[n:]
-			}
-			continue
-		}
-		if currentLen+lineLen > limit {
-			flush()
-		}
-		current.WriteString(line)
-		currentLen += lineLen
-	}
-	flush()
-	return chunks
+	b.channel.Send(text)
 }
 
 func (b *Bot) Run(ctx context.Context) {
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
-	updates := b.api.GetUpdatesChan(u)
-
 	go b.chatWorker(ctx)
 
-	for {
-		select {
-		case <-ctx.Done():
+	b.channel.Listen(ctx, func(u Update) {
+		if u.Callback != nil {
+			go b.handleCallbackQuery(ctx, *u.Callback)
 			return
-		case update, ok := <-updates:
-			if !ok {
-				return
-			}
-			if update.CallbackQuery != nil {
-				go b.handleCallbackQuery(ctx, update.CallbackQuery)
-				continue
-			}
-			if update.Message == nil {
-				continue
-			}
-			b.dispatch(ctx, update.Message)
 		}
-	}
+		if u.Message != nil {
+			b.dispatch(ctx, u.Message)
+		}
+	})
 }
 
 // dispatch routes an incoming message. Commands are independent one-shot
@@ -275,18 +190,44 @@ func (b *Bot) Run(ctx context.Context) {
 // /recommend) doesn't block a quick one (e.g. /status) sent right after it.
 // Plain-text chat messages instead go on chatQueue, so chatWorker answers
 // them one at a time in arrival order — see the chatQueue field comment.
-func (b *Bot) dispatch(ctx context.Context, msg *tgbotapi.Message) {
-	if msg.Command() != "" {
-		go b.handleMessage(ctx, msg)
+func (b *Bot) dispatch(ctx context.Context, msg *InMessage) {
+	if cmd, args, ok := parseCommand(msg.Text); ok {
+		go b.handleMessage(ctx, cmd, args)
 		return
 	}
-	if strings.TrimSpace(msg.Text) == "" {
+	text := strings.TrimSpace(msg.Text)
+	if text == "" {
 		return
 	}
 	select {
-	case b.chatQueue <- msg:
+	case b.chatQueue <- text:
 	case <-ctx.Done():
 	}
+}
+
+// parseCommand splits a channel-agnostic inbound message into a command and
+// its arguments, mirroring tgbotapi.Message's Command()/CommandArguments()
+// closely enough for this project's actual usage: a leading "/word",
+// optionally suffixed "@botname" (Telegram appends this in group chats),
+// then everything after the first space as args. Working over plain text
+// rather than a specific channel's inbound event type is what lets dispatch
+// stay channel-agnostic.
+func parseCommand(text string) (cmd, args string, ok bool) {
+	if !strings.HasPrefix(text, "/") {
+		return "", "", false
+	}
+	fields := strings.SplitN(text, " ", 2)
+	cmd = strings.TrimPrefix(fields[0], "/")
+	if at := strings.IndexByte(cmd, '@'); at != -1 {
+		cmd = cmd[:at]
+	}
+	if cmd == "" {
+		return "", "", false
+	}
+	if len(fields) == 2 {
+		args = strings.TrimSpace(fields[1])
+	}
+	return cmd, args, true
 }
 
 // chatWorker drains chatQueue on a single goroutine so chat replies stay in
@@ -297,16 +238,13 @@ func (b *Bot) chatWorker(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case msg := <-b.chatQueue:
-			b.handleChat(ctx, strings.TrimSpace(msg.Text))
+		case text := <-b.chatQueue:
+			b.handleChat(ctx, text)
 		}
 	}
 }
 
-func (b *Bot) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
-	cmd := msg.Command()
-	args := strings.TrimSpace(msg.CommandArguments())
-
+func (b *Bot) handleMessage(ctx context.Context, cmd, args string) {
 	switch cmd {
 	case "add":
 		b.handleAdd(args)

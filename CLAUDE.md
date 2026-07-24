@@ -877,6 +877,21 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   would only compound an already-known-wrong figure. `buildChatContext`/`handleList`/`handleStatus`
   (no-argument form) are unchanged — they still read the all-market `GetWatchlist()`, since "everything
   I'm watching" is exactly what those want.
+  The 架構債「訊息通道介面」item resolved the Project section's Telegram-coupling note above:
+  `internal/bot/channel.go` declares a `Channel` interface (`Listen`/`Send`/`SendWithButtons`/
+  `EditMessage`/`AnswerCallback`) plus channel-agnostic `Update`/`InMessage`/`InCallback`/`Button`/
+  `MessageRef` types, and `internal/bot/telegram.go` (new file) is the sole implementation — the only
+  file in this package that imports `tgbotapi`. `Bot` holds a `channel Channel` field instead of a
+  `*tgbotapi.BotAPI`; `New(cfg Config)` builds the default `telegramChannel` via `NewTelegramChannel`
+  and hands it to the exported `NewWithChannel(channel Channel, cfg Config) *Bot`, mirroring
+  `internal/llm`'s `NewClient`/`NewClientWithProvider` split — `New` is still the only real call site,
+  `NewWithChannel` is the seam a future second channel package (Discord/CLI, per this file's Project
+  section) or a test would use instead. Command parsing moved off tgbotapi's `Message.Command()`/
+  `CommandArguments()` onto a hand-rolled `parseCommand(text) (cmd, args string, ok bool)` (leading
+  `/word`, optional `@botname` suffix, rest-after-first-space as args) so `dispatch` never needs a
+  Telegram-specific inbound type. `MessageRef` is deliberately still Telegram-shaped internally (a
+  chat ID + message ID pair) rather than a more abstract shape — there's no second `Channel`
+  implementation yet to design that abstraction against, so guessing now would just be premature.
 - `internal/mcptools` — Phase 3.5's read-only MCP (Model Context Protocol) tool surface for chat, using
   the official `github.com/modelcontextprotocol/go-sdk`. `NewServer(lang, provider, history, fundamentals,
   earnings)` builds an `*mcp.Server` and registers seven tools (`tools.go`'s `registerTools`): `get_quote`/

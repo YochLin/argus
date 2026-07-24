@@ -6,22 +6,18 @@ import (
 	"argus/internal/i18n"
 )
 
-func TestTickerActionKeyboard(t *testing.T) {
-	kb := tickerActionKeyboard(i18n.EN, "AAPL")
+func TestTickerActionButtons(t *testing.T) {
+	buttons := tickerActionButtons(i18n.EN, "AAPL")
 
-	if len(kb.InlineKeyboard) != 1 || len(kb.InlineKeyboard[0]) != 3 {
-		t.Fatalf("tickerActionKeyboard() rows = %+v, want exactly one row of 3 buttons", kb.InlineKeyboard)
+	if len(buttons) != 3 {
+		t.Fatalf("tickerActionButtons() = %+v, want exactly 3 buttons", buttons)
 	}
 
-	row := kb.InlineKeyboard[0]
 	wantPrefixes := []string{callbackCheckPrefix, callbackBuyPrefix, callbackSellPrefix}
-	for i, btn := range row {
-		if btn.CallbackData == nil {
-			t.Fatalf("button %d has nil CallbackData", i)
-		}
+	for i, btn := range buttons {
 		want := wantPrefixes[i] + "AAPL"
-		if *btn.CallbackData != want {
-			t.Errorf("button %d CallbackData = %q, want %q", i, *btn.CallbackData, want)
+		if btn.Data != want {
+			t.Errorf("button %d Data = %q, want %q", i, btn.Data, want)
 		}
 	}
 }

@@ -4,8 +4,6 @@ import (
 	"log"
 
 	"argus/internal/i18n"
-
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 // callbackCheckPrefix/callbackBuyPrefix/callbackSellPrefix identify a
@@ -19,7 +17,7 @@ const (
 	callbackSellPrefix  = "act_sell:"
 )
 
-// tickerActionKeyboard is the [Check]/[Buy]/[Sell] row attached to every
+// tickerActionButtons is the [Check]/[Buy]/[Sell] row attached to every
 // per-ticker message in Daily Report/`/recommend`/`/portfolio` (UX quick
 // win — see PLAN.md). Buy/Sell can't actually prefill Telegram's message
 // input box: switch_inline_query_current_chat needs Inline Mode enabled via
@@ -27,25 +25,19 @@ const (
 // leaving it editable for the user to add shares/price (verified against
 // the live Bot API, not assumed) — so those two reply with a copy-pasteable
 // command template instead (see handleBuyQuickAction/handleSellQuickAction).
-func tickerActionKeyboard(lang i18n.Lang, ticker string) tgbotapi.InlineKeyboardMarkup {
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(i18n.T(lang, i18n.KeyCheckButton), callbackCheckPrefix+ticker),
-			tgbotapi.NewInlineKeyboardButtonData(i18n.T(lang, i18n.KeyBuyButton), callbackBuyPrefix+ticker),
-			tgbotapi.NewInlineKeyboardButtonData(i18n.T(lang, i18n.KeySellButton), callbackSellPrefix+ticker),
-		),
-	)
+func tickerActionButtons(lang i18n.Lang, ticker string) []Button {
+	return []Button{
+		{Label: i18n.T(lang, i18n.KeyCheckButton), Data: callbackCheckPrefix + ticker},
+		{Label: i18n.T(lang, i18n.KeyBuyButton), Data: callbackBuyPrefix + ticker},
+		{Label: i18n.T(lang, i18n.KeySellButton), Data: callbackSellPrefix + ticker},
+	}
 }
 
-// sendWithTickerActions sends text with tickerActionKeyboard attached,
-// bypassing Send's chunking helper — every caller here is a single
-// per-ticker line, never long enough to need splitting, and a chunked
-// message would leave the buttons attached to just the last fragment.
+// sendWithTickerActions sends text with tickerActionButtons attached — every
+// caller here is a single per-ticker line, never long enough to need
+// Send's chunking.
 func (b *Bot) sendWithTickerActions(ticker, text string) {
-	msg := tgbotapi.NewMessage(b.chatID, text)
-	msg.ParseMode = "Markdown"
-	msg.ReplyMarkup = tickerActionKeyboard(b.lang, ticker)
-	if _, err := b.api.Send(msg); err != nil {
+	if err := b.channel.SendWithButtons(text, tickerActionButtons(b.lang, ticker)); err != nil {
 		log.Printf("send with ticker actions: %v", err)
 	}
 }
