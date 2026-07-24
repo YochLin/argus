@@ -325,6 +325,9 @@ func buildRecommendationPrompt(lang i18n.Lang, watchlist []StockData, candidates
 		sb.WriteString(i18n.T(lang, i18n.KeyRecMarketNewsHeader))
 		for i, n := range marketNews {
 			fmt.Fprint(&sb, i18n.T(lang, i18n.KeyNewsItem, i+1, n.Source, n.Headline))
+			if n.Summary != "" {
+				fmt.Fprint(&sb, i18n.T(lang, i18n.KeyNewsSummaryLine, n.Summary))
+			}
 		}
 		sb.WriteString("\n")
 	}
@@ -489,6 +492,9 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 				break
 			}
 			fmt.Fprint(sb, i18n.T(lang, i18n.KeyNewsItem, i+1, n.Source, n.Headline))
+			if n.Summary != "" {
+				fmt.Fprint(sb, i18n.T(lang, i18n.KeyNewsSummaryLine, n.Summary))
+			}
 		}
 	}
 
@@ -587,6 +593,9 @@ func buildExplorePrompt(lang i18n.Lang, marketNews []data.NewsItem, exclude []st
 	sb.WriteString(i18n.T(lang, i18n.KeyExplorePromptIntro))
 	for i, n := range marketNews {
 		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyNewsItem, i+1, n.Source, n.Headline))
+		if n.Summary != "" {
+			fmt.Fprint(&sb, i18n.T(lang, i18n.KeyNewsSummaryLine, n.Summary))
+		}
 	}
 	sb.WriteString("\n")
 	sb.WriteString(i18n.T(lang, i18n.KeyExploreExcludeLine, strings.Join(exclude, ", ")))
