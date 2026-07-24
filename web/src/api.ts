@@ -112,6 +112,23 @@ export interface RoundDetail {
   trades: Transaction[];
 }
 
+export interface ChartLevel {
+  price: number;
+  touches: number;
+  firstDate: string;
+  lastDate: string;
+}
+
+export interface Chart {
+  ticker: string;
+  candles: Candle[];
+  levels: ChartLevel[];
+}
+
+export interface Tickers {
+  tickers: string[];
+}
+
 async function getJSON<T>(url: string): Promise<T> {
   const res = await fetch(url);
   if (!res.ok) {
@@ -144,4 +161,12 @@ export function fetchRoundDetail(ticker: string, start: string): Promise<RoundDe
   return getJSON<RoundDetail>(
     `/api/round-detail?ticker=${encodeURIComponent(ticker)}&start=${encodeURIComponent(start)}`,
   );
+}
+
+export function fetchChart(ticker: string): Promise<Chart> {
+  return getJSON<Chart>(`/api/chart?ticker=${encodeURIComponent(ticker)}`);
+}
+
+export function fetchTickers(market: Market = "us"): Promise<Tickers> {
+  return getJSON<Tickers>(`/api/tickers?market=${market}`);
 }
