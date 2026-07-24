@@ -21,6 +21,7 @@ var enMessages = map[Key]string{
 	KeyWatchlistQueryFailed:      "Failed to query watchlist: %v",
 	KeyLLMFailed:                 "LLM analysis failed: %v",
 	KeyNoRecommendations:         "The LLM returned no recommendations — try again later.",
+	KeyRecParseFailed:            "Could not parse the LLM's recommendation reply (unexpected format); raw reply has been logged: %v",
 	KeyRecommendationsTitle:      "🤖 *Today's Recommendations*\n\n",
 	KeyRecommendUsage:            "Usage: /recommend [tw|us] (no argument = run both US and TW reports in sequence)",
 	KeyRecWatchlistSectionTitle:  "📋 *Watchlist & Holdings*\n",

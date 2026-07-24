@@ -24,6 +24,7 @@ var zhMessages = map[Key]string{
 	KeyWatchlistQueryFailed:      "查詢自選股失敗：%v",
 	KeyLLMFailed:                 "LLM 分析失敗：%v",
 	KeyNoRecommendations:         "LLM 未回傳推薦標的，請稍後再試。",
+	KeyRecParseFailed:            "無法解析 LLM 回覆的推薦內容（格式與預期不符），原始回覆已寫入 log：%v",
 	KeyRecommendationsTitle:      "🤖 *今日推薦標的*\n\n",
 	KeyRecommendUsage:            "用法：/recommend [tw|us]（不帶參數＝依序跑美股與台股兩份報告）",
 	KeyRecWatchlistSectionTitle:  "📋 *自選股與持倉*\n",
