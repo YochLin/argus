@@ -213,12 +213,17 @@ func buildRoundDetail(database dbReader, history data.HistoryProvider, ticker, s
 		return roundDetailResponse{}, err
 	}
 
+	mm := roundMAEMFE(candles, found.Legs, found.StartDate, found.EndDate, now)
+
 	resp := roundDetailResponse{
-		Ticker:  ticker,
-		Start:   found.StartDate,
-		End:     found.EndDate,
-		Candles: []candleResponse{},
-		Trades:  []transactionResponse{},
+		Ticker:    ticker,
+		Start:     found.StartDate,
+		End:       found.EndDate,
+		Candles:   []candleResponse{},
+		Trades:    []transactionResponse{},
+		MAEPct:    mm.MAEPct,
+		MFEPct:    mm.MFEPct,
+		HasMAEMFE: mm.OK,
 	}
 	for _, c := range candles {
 		if c.Date.Before(windowStart) || c.Date.After(windowEnd) {

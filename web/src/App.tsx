@@ -9,6 +9,7 @@ import { RoundsListView } from "./components/RoundsListView";
 import { RoundDetailView } from "./components/RoundDetailView";
 import { ChartListView } from "./components/ChartListView";
 import { ChartView } from "./components/ChartView";
+import { ReportsView } from "./components/ReportsView";
 
 // Four client-side routes (dashboard, calendar, round list, round detail)
 // don't justify pulling in a routing library — a hand-rolled route
@@ -89,6 +90,8 @@ export default function App() {
         onBack={() => navigate("/rounds")}
       />
     );
+  } else if (path === "/reports") {
+    body = <ReportsView dict={dict} market={market} />;
   } else if (path === "/chart") {
     const ticker = params.get("ticker");
     body = ticker ? (

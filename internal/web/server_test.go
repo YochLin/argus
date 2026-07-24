@@ -124,6 +124,32 @@ func TestHandleRounds(t *testing.T) {
 	}
 }
 
+func TestHandleReports(t *testing.T) {
+	sell := tx("AAPL", "SELL", 10, 120, "2026-06-10")
+	sell.RealizedPnL = 200
+	s := testServer()
+	s.db = &fakeDB{txs: []db.Transaction{
+		tx("AAPL", "BUY", 10, 100, "2026-06-01"),
+		sell,
+	}}
+	s.mux = http.NewServeMux()
+	s.mux.HandleFunc("GET /api/reports", s.handleReports)
+
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/reports", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	var got reportsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(got.ByTicker) != 1 || got.ByTicker[0].Key != "AAPL" || got.ByTicker[0].N != 1 {
+		t.Errorf("ByTicker = %+v, want 1 AAPL group with n=1", got.ByTicker)
+	}
+}
+
 func TestHandleRoundDetail(t *testing.T) {
 	s := testServer()
 	s.db = &fakeDB{txs: []db.Transaction{

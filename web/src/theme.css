@@ -439,3 +439,76 @@ th {
 .round-detail-title {
   margin-bottom: 8px;
 }
+
+/* Phase 5 PR4's report page (docs/phase-5-web-dashboard.md §A1/A2/A5). */
+.report-section {
+  margin-bottom: 16px;
+}
+
+.low-sample-row {
+  color: var(--ink-2);
+}
+
+.tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.stat-note {
+  color: var(--ink-2);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.mae-mfe-track {
+  display: flex;
+  align-items: center;
+  height: 10px;
+  background: var(--bg);
+  border-radius: 4px;
+  margin-top: 8px;
+}
+
+.mae-mfe-half {
+  flex: 1;
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+.mae-mfe-half-loss {
+  justify-content: flex-end;
+}
+
+.mae-mfe-loss {
+  height: 100%;
+  background: var(--loss);
+}
+
+.mae-mfe-zero {
+  width: 2px;
+  height: 100%;
+  background: var(--ink-3);
+  flex-shrink: 0;
+}
+
+.mae-mfe-win {
+  height: 100%;
+  background: var(--profit);
+}
+
+.mae-mfe-labels {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin-top: 6px;
+}

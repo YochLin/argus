@@ -197,6 +197,20 @@ func TestBuildRoundDetail(t *testing.T) {
 		t.Errorf("GetHistory called with (%q, %q), want (AAPL, 1y) for a round this recent",
 			hist.lastTicker, hist.lastRange)
 	}
+
+	// MAE/MFE window is the round's own [start, end] (06-01..06-10), not the
+	// padded chart window — the 06-20 candle (+25% vs cost 100) must not
+	// leak into MFE, which should come out as +20% (06-10's close, the
+	// round's actual exit day).
+	if !got.HasMAEMFE {
+		t.Fatal("HasMAEMFE = false, want true")
+	}
+	if got.MAEPct != 0 {
+		t.Errorf("MAEPct = %v, want 0 (entry day's own close never dips below cost)", got.MAEPct)
+	}
+	if got.MFEPct != 20 {
+		t.Errorf("MFEPct = %v, want 20 (bounded by the round's own end date, not the padded window)", got.MFEPct)
+	}
 }
 
 func TestBuildRoundDetail_RoundNotFound(t *testing.T) {
