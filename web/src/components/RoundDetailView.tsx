@@ -23,6 +23,37 @@ interface Props {
 // the round — green arrow-up below the bar for a BUY, red arrow-down above
 // for a SELL, the same profit/loss color convention as everywhere else in
 // the dashboard.
+// MAEMFEBar is Phase 5 PR4's approximate MAE/MFE visualization (design doc
+// §A2: "回合明細頁畫 MAE/MFE 長條" — the closest available substitute for
+// an R-Multiple bar until a per-trade stop price exists to compute one).
+// A plain two-sided bar off a shared zero line rather than a chart library
+// addition: this is one number pair, not a series.
+function MAEMFEBar({ dict, maePct, mfePct }: { dict: Dictionary; maePct: number; mfePct: number }) {
+  const range = Math.max(Math.abs(maePct), Math.abs(mfePct), 1) * 1.15;
+  const losePct = (Math.abs(Math.min(maePct, 0)) / range) * 100;
+  const winPct = (Math.max(mfePct, 0) / range) * 100;
+
+  return (
+    <div className="card report-section">
+      <div className="eyebrow">MAE / MFE</div>
+      <div className="mae-mfe-track">
+        <div className="mae-mfe-half mae-mfe-half-loss">
+          <div className="mae-mfe-loss" style={{ width: `${losePct}%` }} />
+        </div>
+        <div className="mae-mfe-zero" />
+        <div className="mae-mfe-half mae-mfe-half-win">
+          <div className="mae-mfe-win" style={{ width: `${winPct}%` }} />
+        </div>
+      </div>
+      <div className="mae-mfe-labels">
+        <span className="loss">MAE {maePct.toFixed(1)}%</span>
+        <span className="profit">MFE +{mfePct.toFixed(1)}%</span>
+      </div>
+      <div className="stat-note">{dict.maeMfeRoundNote}</div>
+    </div>
+  );
+}
+
 export function RoundDetailView({ dict, ticker, start, onBack }: Props) {
   const [detail, setDetail] = useState<RoundDetail | null>(null);
   const [error, setError] = useState(false);
@@ -113,6 +144,7 @@ export function RoundDetailView({ dict, ticker, start, onBack }: Props) {
             {detail.ticker} · {detail.start} → {detail.end || dict.open}
           </div>
           <div className="card chart-card" ref={containerRef} />
+          {detail.hasMaeMfe && <MAEMFEBar dict={dict} maePct={detail.maePct} mfePct={detail.mfePct} />}
           <div className="card">
             <TradesTable dict={dict} transactions={detail.trades} currency={currencySymbol(marketOf(ticker))} />
           </div>

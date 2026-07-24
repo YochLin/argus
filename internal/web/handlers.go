@@ -101,13 +101,20 @@ type roundSummary struct {
 // roundDetailResponse is /api/round-detail's body: one round's daily
 // candles (padded before/after — see buildRoundDetail) plus its own legs as
 // trades, for the round detail page's lightweight-charts K-line and buy/
-// sell markers.
+// sell markers. MAEPct/MFEPct (Phase 5 PR4, design doc §A2) are the round's
+// own approximate max adverse/favorable excursion, computed from the same
+// candles already fetched here — HasMAEMFE is false only when the round's
+// window has no matching candle data at all (shouldn't normally happen for
+// a real round, but a delisted/renamed ticker could hit it).
 type roundDetailResponse struct {
-	Ticker  string                `json:"ticker"`
-	Start   string                `json:"start"`
-	End     string                `json:"end"`
-	Candles []candleResponse      `json:"candles"`
-	Trades  []transactionResponse `json:"trades"`
+	Ticker    string                `json:"ticker"`
+	Start     string                `json:"start"`
+	End       string                `json:"end"`
+	Candles   []candleResponse      `json:"candles"`
+	Trades    []transactionResponse `json:"trades"`
+	MAEPct    float64               `json:"maePct"`
+	MFEPct    float64               `json:"mfePct"`
+	HasMAEMFE bool                  `json:"hasMaeMfe"`
 }
 
 type candleResponse struct {
@@ -231,6 +238,23 @@ func (s *Server) handleRoundDetail(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("web: build round detail: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to build round detail")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleReports(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if p := recover(); p != nil {
+			log.Printf("web: panic in handleReports: %v", p)
+			writeError(w, http.StatusInternalServerError, "internal error")
+		}
+	}()
+
+	resp, err := buildReports(s.db, s.history, marketParam(r))
+	if err != nil {
+		log.Printf("web: build reports: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build reports")
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)

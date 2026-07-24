@@ -22,6 +22,7 @@ const links: Array<{ path: string; label: (dict: Dictionary) => string; icon: Re
   { path: "/calendar", label: (d) => d.navCalendar, icon: <CalendarIcon /> },
   { path: "/rounds", label: (d) => d.navRounds, icon: <RoundsIcon /> },
   { path: "/chart", label: (d) => d.navChart, icon: <ChartIcon /> },
+  { path: "/reports", label: (d) => d.navReports, icon: <ReportsIcon /> },
 ];
 
 function isActive(linkPath: string, path: string): boolean {
@@ -122,6 +123,17 @@ function ChartIcon() {
     <svg {...iconProps} aria-hidden="true">
       <polyline points="2,11 6,6 9,8.5 14,3" />
       <line x1="2" y1="14" x2="14" y2="14" />
+    </svg>
+  );
+}
+
+function ReportsIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <rect x="2" y="1.5" width="12" height="13" rx="1" />
+      <line x1="4.5" y1="5" x2="11.5" y2="5" />
+      <line x1="4.5" y1="8" x2="11.5" y2="8" />
+      <line x1="4.5" y1="11" x2="9" y2="11" />
     </svg>
   );
 }

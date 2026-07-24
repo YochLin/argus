@@ -110,6 +110,9 @@ export interface RoundDetail {
   end: string; // "" while still open
   candles: Candle[];
   trades: Transaction[];
+  maePct: number;
+  mfePct: number;
+  hasMaeMfe: boolean;
 }
 
 export interface ChartLevel {
@@ -127,6 +130,56 @@ export interface Chart {
 
 export interface Tickers {
   tickers: string[];
+}
+
+// ReportGroup mirrors internal/web/reports.go's ReportGroup — one row of a
+// grouped performance report (Phase 5 PR4, docs/phase-5-web-dashboard.md
+// §A1). winRate is a fraction 0-1 (same convention as KPIs.winRate);
+// avgReturnPct is already scaled (12.3 means 12.3%), same convention as
+// Position.unrealizedPnLPct.
+export interface ReportGroup {
+  key: string;
+  n: number;
+  winRate: number;
+  profitFactor: number;
+  avgReturnPct: number;
+  totalRealizedPnL: number;
+  avgHoldingDays: number;
+  lowSample: boolean;
+}
+
+export interface FeeSummary {
+  totalFees: number;
+  pctOfRealizedPnL: number;
+}
+
+export interface StreakStats {
+  bestTradePnL: number;
+  worstTradePnL: number;
+  avgWinPnL: number;
+  avgLossPnL: number;
+  longestWinStreak: number;
+  longestLossStreak: number;
+}
+
+// MAEMFESummary mirrors internal/web/maefe.go's MAEMFESummary — the report
+// page's "on average, how much of the available run-up did exits actually
+// capture" aggregate over every closed round (§A2). avgCapturedPct is
+// realized return over MFE, already scaled (100 = captured all of it).
+export interface MAEMFESummary {
+  avgCapturedPct: number;
+  n: number;
+  lowSample: boolean;
+}
+
+export interface Reports {
+  byTicker: ReportGroup[];
+  byHoldingDays: ReportGroup[];
+  byEntryMonth: ReportGroup[];
+  byEntryWeekday: ReportGroup[];
+  fees: FeeSummary;
+  streaks: StreakStats;
+  maeMfe: MAEMFESummary;
 }
 
 async function getJSON<T>(url: string): Promise<T> {
@@ -169,4 +222,8 @@ export function fetchChart(ticker: string): Promise<Chart> {
 
 export function fetchTickers(market: Market = "us"): Promise<Tickers> {
   return getJSON<Tickers>(`/api/tickers?market=${market}`);
+}
+
+export function fetchReports(market: Market = "us"): Promise<Reports> {
+  return getJSON<Reports>(`/api/reports?market=${market}`);
 }

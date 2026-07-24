@@ -66,6 +66,7 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /api/calendar", s.handleCalendar)
 	s.mux.HandleFunc("GET /api/rounds", s.handleRounds)
 	s.mux.HandleFunc("GET /api/round-detail", s.handleRoundDetail)
+	s.mux.HandleFunc("GET /api/reports", s.handleReports)
 	s.mux.HandleFunc("GET /api/chart", s.handleChart)
 	s.mux.HandleFunc("GET /api/tickers", s.handleTickers)
 	s.mux.Handle("/", spaHandler())
