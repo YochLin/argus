@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createChart, type IChartApi, type IPriceLine, type ISeriesApi, type Time } from "lightweight-charts";
 import { currencySymbol, fetchChart, marketOf, type Chart, type ChartLevel } from "../api";
 import type { Dictionary } from "../i18n";
@@ -53,7 +53,6 @@ function classifyLevels(levels: ChartLevel[], lastClose: number): ClassifiedLeve
 export function ChartView({ dict, ticker, onBack }: Props) {
   const [chart, setChart] = useState<Chart | null>(null);
   const [error, setError] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const priceLinesRef = useRef<IPriceLine[]>([]);
@@ -70,9 +69,21 @@ export function ChartView({ dict, ticker, onBack }: Props) {
       .catch(() => setError(true));
   }, [ticker]);
 
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const c = createChart(containerRef.current, {
+  // Callback ref rather than useRef+mount-effect: the container div only
+  // enters the DOM once `chart` has loaded (see the `if (!chart) return`
+  // below), so a `useEffect(..., [])` mount effect would already have run
+  // — and bailed on a null containerRef.current — before the div ever
+  // existed, permanently skipping chart creation. A callback ref fires
+  // exactly when the node is actually attached/detached, whenever that is.
+  const containerRef = useCallback((node: HTMLDivElement | null) => {
+    if (chartRef.current) {
+      chartRef.current.remove();
+      chartRef.current = null;
+      seriesRef.current = null;
+      priceLinesRef.current = [];
+    }
+    if (!node) return;
+    const c = createChart(node, {
       layout: { background: { color: "transparent" }, textColor: "#9AA6BC" },
       grid: { vertLines: { color: "#26314B" }, horzLines: { color: "#26314B" } },
       rightPriceScale: { borderColor: "#26314B" },
@@ -88,13 +99,6 @@ export function ChartView({ dict, ticker, onBack }: Props) {
     });
     chartRef.current = c;
     seriesRef.current = series;
-
-    return () => {
-      c.remove();
-      chartRef.current = null;
-      seriesRef.current = null;
-      priceLinesRef.current = [];
-    };
   }, []);
 
   const classified = chart && chart.candles.length > 0 ? classifyLevels(chart.levels, chart.candles[chart.candles.length - 1].close) : [];
