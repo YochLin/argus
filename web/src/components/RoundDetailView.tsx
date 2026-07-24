@@ -6,7 +6,7 @@ import {
   type SeriesMarker,
   type Time,
 } from "lightweight-charts";
-import { currencySymbol, fetchRoundDetail, marketOf, type RoundDetail } from "../api";
+import { currencySymbol, fetchRoundDetail, marketOf, tickerLabel, type RoundDetail } from "../api";
 import type { Dictionary } from "../i18n";
 import { TradesTable } from "./TradesTable";
 
@@ -15,6 +15,8 @@ interface Props {
   ticker: string;
   start: string;
   onBack: () => void;
+  // names is /api/company-names' TW ticker → Chinese-name map (see App.tsx).
+  names?: Record<string, string>;
 }
 
 // Phase 5 PR3's round detail page: lightweight-charts daily candlesticks
@@ -54,7 +56,7 @@ function MAEMFEBar({ dict, maePct, mfePct }: { dict: Dictionary; maePct: number;
   );
 }
 
-export function RoundDetailView({ dict, ticker, start, onBack }: Props) {
+export function RoundDetailView({ dict, ticker, start, onBack, names = {} }: Props) {
   const [detail, setDetail] = useState<RoundDetail | null>(null);
   const [error, setError] = useState(false);
   const chartRef = useRef<IChartApi | null>(null);
@@ -141,12 +143,17 @@ export function RoundDetailView({ dict, ticker, start, onBack }: Props) {
       {detail && (
         <>
           <div className="eyebrow round-detail-title">
-            {detail.ticker} · {detail.start} → {detail.end || dict.open}
+            {tickerLabel(detail.ticker, names)} · {detail.start} → {detail.end || dict.open}
           </div>
           <div className="card chart-card" ref={containerRef} />
           {detail.hasMaeMfe && <MAEMFEBar dict={dict} maePct={detail.maePct} mfePct={detail.mfePct} />}
           <div className="card">
-            <TradesTable dict={dict} transactions={detail.trades} currency={currencySymbol(marketOf(ticker))} />
+            <TradesTable
+              dict={dict}
+              transactions={detail.trades}
+              currency={currencySymbol(marketOf(ticker))}
+              names={names}
+            />
           </div>
         </>
       )}

@@ -132,6 +132,22 @@ export interface Tickers {
   tickers: string[];
 }
 
+// CompanyNames mirrors internal/web/handlers.go's companyNamesResponse —
+// TW ticker → Chinese short name ("2330" → "台積電"). Empty (never null)
+// when FINMIND_TOKEN isn't configured server-side.
+export interface CompanyNames {
+  names: Record<string, string>;
+}
+
+// tickerLabel mirrors internal/data.TickerLabel's display format
+// ("台積電(2330)"): a ticker with a resolved name renders as name(ticker),
+// anything else — every US ticker, and a TW ticker whose lookup failed —
+// stays the bare ticker.
+export function tickerLabel(ticker: string, names: Record<string, string>): string {
+  const name = names[ticker];
+  return name ? `${name}(${ticker})` : ticker;
+}
+
 // ReportGroup mirrors internal/web/reports.go's ReportGroup — one row of a
 // grouped performance report (Phase 5 PR4, docs/phase-5-web-dashboard.md
 // §A1). winRate is a fraction 0-1 (same convention as KPIs.winRate);
@@ -226,4 +242,8 @@ export function fetchTickers(market: Market = "us"): Promise<Tickers> {
 
 export function fetchReports(market: Market = "us"): Promise<Reports> {
   return getJSON<Reports>(`/api/reports?market=${market}`);
+}
+
+export function fetchCompanyNames(): Promise<CompanyNames> {
+  return getJSON<CompanyNames>("/api/company-names");
 }

@@ -1,4 +1,4 @@
-import type { Position } from "../api";
+import { tickerLabel, type Position } from "../api";
 import type { Dictionary } from "../i18n";
 
 interface Props {
@@ -12,6 +12,10 @@ interface Props {
   // support-resistance.md §5.1) — optional so every pre-existing call site
   // that doesn't pass it keeps rendering a plain, unclickable ticker cell.
   onTickerClick?: (ticker: string) => void;
+  // names is /api/company-names' TW ticker → Chinese-name map (see App.tsx)
+  // — optional with an empty default so a caller without it renders bare
+  // tickers, same degrade as the backend without FINMIND_TOKEN.
+  names?: Record<string, string>;
 }
 
 function fmtMoney(v: number, currency: string): string {
@@ -28,7 +32,7 @@ function fmtPct(v: number): string {
   return `${sign}${v.toFixed(2)}%`;
 }
 
-export function PositionsTable({ positions, dict, currency = "$", onTickerClick }: Props) {
+export function PositionsTable({ positions, dict, currency = "$", onTickerClick, names = {} }: Props) {
   if (positions.length === 0) {
     return <div className="empty-message">{dict.noPositions}</div>;
   }
@@ -56,10 +60,10 @@ export function PositionsTable({ positions, dict, currency = "$", onTickerClick 
                     onTickerClick(p.ticker);
                   }}
                 >
-                  {p.ticker}
+                  {tickerLabel(p.ticker, names)}
                 </a>
               ) : (
-                p.ticker
+                tickerLabel(p.ticker, names)
               )}
             </td>
             <td>{p.shares}</td>

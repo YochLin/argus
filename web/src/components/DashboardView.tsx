@@ -13,6 +13,9 @@ interface Props {
   // to PositionsTable, whose ticker cell becomes a link only when this is
   // provided.
   onTickerClick?: (ticker: string) => void;
+  // names is /api/company-names' TW ticker → Chinese-name map (see App.tsx),
+  // forwarded to PositionsTable.
+  names?: Record<string, string>;
 }
 
 // The dashboard screen's body, pulled out of App.tsx (Phase 5 PR2) so App
@@ -20,7 +23,7 @@ interface Props {
 // fetch/loading/error state rather than App prefetching everything upfront.
 // Phase 6: refetches whenever the market toggle changes (see App.tsx),
 // since /api/dashboard's numbers are market-scoped (buildDashboard).
-export function DashboardView({ dict, market, onTickerClick }: Props) {
+export function DashboardView({ dict, market, onTickerClick, names }: Props) {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [error, setError] = useState(false);
 
@@ -66,7 +69,13 @@ export function DashboardView({ dict, market, onTickerClick }: Props) {
       <PnlChart curve={curve} />
       <div className="card">
         <div className="eyebrow">{dict.positions}</div>
-        <PositionsTable positions={positions} dict={dict} currency={currency} onTickerClick={onTickerClick} />
+        <PositionsTable
+          positions={positions}
+          dict={dict}
+          currency={currency}
+          onTickerClick={onTickerClick}
+          names={names}
+        />
       </div>
     </>
   );
