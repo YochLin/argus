@@ -187,7 +187,7 @@ func (b *Bot) sendRecGroup(titleKey i18n.Key, recs []llm.Recommendation, sizing 
 	}
 	b.Send(i18n.T(b.lang, titleKey))
 	for _, r := range recs {
-		b.sendWithTickerActions(r.Ticker, formatRecLine(b.lang, r, sizing))
+		b.sendWithTickerActions(r.Ticker, formatRecLine(b.lang, r, sizing, b.tickerLabel(r.Ticker)))
 	}
 }
 
@@ -196,13 +196,15 @@ func (b *Bot) sendRecGroup(titleKey i18n.Key, recs []llm.Recommendation, sizing 
 // API. sizing is buildSizingLines' ticker->KeySizingLine text (Phase 3.11
 // PR1 §3.4) — nil or a missing entry just renders no sizing line for that
 // rec, same degrade-by-omission convention as everywhere else in this
-// pipeline.
-func formatRecLine(lang i18n.Lang, r llm.Recommendation, sizing map[string]string) string {
+// pipeline. label is the display form of r.Ticker (see Bot.tickerLabel) —
+// passed in rather than computed here so this stays a pure, Bot-free
+// function.
+func formatRecLine(lang i18n.Lang, r llm.Recommendation, sizing map[string]string, label string) string {
 	var sb strings.Builder
 	if r.Action != "" {
-		fmt.Fprintf(&sb, "*%s* — %s\n%s\n", r.Ticker, r.Action, r.Reason)
+		fmt.Fprintf(&sb, "*%s* — %s\n%s\n", label, r.Action, r.Reason)
 	} else {
-		fmt.Fprintf(&sb, "*%s*\n%s\n", r.Ticker, r.Reason)
+		fmt.Fprintf(&sb, "*%s*\n%s\n", label, r.Reason)
 	}
 	if line, ok := sizing[r.Ticker]; ok {
 		sb.WriteString(line)
@@ -356,7 +358,7 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 			continue
 		}
 		news, _ := b.provider.GetNews(t, 5)
-		stock := llm.StockData{Quote: q, News: news}
+		stock := llm.StockData{Quote: q, News: news, CompanyName: b.companyName(t)}
 		fetchFundamentals := includeFundamentals || extraFundamentals[t]
 		if fetchFundamentals && b.fundamentals != nil {
 			if fd, err := b.fundamentals.GetFundamentals(t); err != nil {

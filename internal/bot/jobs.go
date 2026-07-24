@@ -787,7 +787,7 @@ func (b *Bot) checkStopLossAlerts(positions []db.Position, prices map[string]flo
 			if !shouldAlert {
 				continue
 			}
-			lines = append(lines, i18n.T(b.lang, i18n.KeyStopPriceHit, p.Ticker, p.StopPrice, price))
+			lines = append(lines, i18n.T(b.lang, i18n.KeyStopPriceHit, b.tickerLabel(p.Ticker), p.StopPrice, price))
 			continue
 		}
 
@@ -804,7 +804,7 @@ func (b *Bot) checkStopLossAlerts(positions []db.Position, prices map[string]flo
 		if !shouldAlert {
 			continue
 		}
-		lines = append(lines, i18n.T(b.lang, i18n.KeyStopLossAlertLine, p.Ticker, p.AvgCost, price, lossPct))
+		lines = append(lines, i18n.T(b.lang, i18n.KeyStopLossAlertLine, b.tickerLabel(p.Ticker), p.AvgCost, price, lossPct))
 	}
 	if len(lines) == 0 {
 		return
@@ -926,9 +926,9 @@ func (b *Bot) checkTrailingStopAlerts(positions []db.Position, prices map[string
 			continue
 		}
 		if atrBased {
-			lines = append(lines, i18n.T(b.lang, i18n.KeyTrailingStopAlertLineATR, p.Ticker, peak, price, drawdownPct, thresholdPct, b.trailingStopATRMult))
+			lines = append(lines, i18n.T(b.lang, i18n.KeyTrailingStopAlertLineATR, b.tickerLabel(p.Ticker), peak, price, drawdownPct, thresholdPct, b.trailingStopATRMult))
 		} else {
-			lines = append(lines, i18n.T(b.lang, i18n.KeyTrailingStopAlertLine, p.Ticker, peak, price, drawdownPct))
+			lines = append(lines, i18n.T(b.lang, i18n.KeyTrailingStopAlertLine, b.tickerLabel(p.Ticker), peak, price, drawdownPct))
 		}
 	}
 	if len(lines) == 0 {
@@ -1019,7 +1019,7 @@ func (b *Bot) checkTargetAlerts(positions []db.Position, prices map[string]float
 		if !shouldAlert {
 			continue
 		}
-		lines = append(lines, i18n.T(b.lang, i18n.KeyTargetReached, p.Ticker, targetRMultiple, target, price))
+		lines = append(lines, i18n.T(b.lang, i18n.KeyTargetReached, b.tickerLabel(p.Ticker), targetRMultiple, target, price))
 	}
 	if len(lines) == 0 {
 		return
@@ -1083,7 +1083,7 @@ func (b *Bot) checkMA5BreakAlerts(positions []db.Position, prices map[string]flo
 		if !shouldAlert {
 			continue
 		}
-		lines = append(lines, i18n.T(b.lang, i18n.KeyMA5Break, p.Ticker, ma5, price))
+		lines = append(lines, i18n.T(b.lang, i18n.KeyMA5Break, b.tickerLabel(p.Ticker), ma5, price))
 	}
 	if len(lines) == 0 {
 		return

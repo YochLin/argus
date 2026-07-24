@@ -12,6 +12,14 @@ import (
 type StockData struct {
 	Quote *data.Quote
 	News  []data.NewsItem
+	// CompanyName is the ticker's resolved display name (e.g. "台積電" for
+	// 2330), set only for a TW ticker Argus could resolve one for (see
+	// bot.companyName/data.CompanyNameProvider) — "" for a US ticker (its
+	// symbol is already human-readable) or an unresolvable TW one.
+	// writeStockSection renders it via data.TickerLabel instead of the bare
+	// ticker in the section header, same attach-what's-available convention
+	// as every other optional field here.
+	CompanyName string
 	// Fundamentals and Statement are optional (nil when Finnhub isn't
 	// configured). Statement is deliberately left unset for broad
 	// multi-ticker calls (e.g. /recommend's market-mover candidates) to
@@ -367,7 +375,7 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 	if q == nil {
 		return
 	}
-	fmt.Fprint(sb, i18n.T(lang, i18n.KeyStockHeader, q.Ticker))
+	fmt.Fprint(sb, i18n.T(lang, i18n.KeyStockHeader, data.TickerLabel(q.Ticker, s.CompanyName)))
 	fmt.Fprint(sb, i18n.T(lang, i18n.KeyPriceLine, q.Price, q.ChangePercent))
 	fmt.Fprint(sb, i18n.T(lang, i18n.KeyOHLLine, q.Open, q.High, q.Low))
 	// Prefer Technicals.Volume (from Yahoo's history endpoint) over

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"sync"
 	"time"
 
 	"argus/internal/market"
@@ -26,13 +27,17 @@ type FinMind struct {
 	token   string
 	client  *http.Client
 	baseURL string // overridable in tests, defaults to the real API
+
+	nameMu    sync.Mutex
+	nameCache map[string]string // ticker -> company name, see GetCompanyName
 }
 
 func NewFinMind(token string) *FinMind {
 	return &FinMind{
-		token:   token,
-		client:  &http.Client{Timeout: 10 * time.Second},
-		baseURL: "https://api.finmindtrade.com/api/v4/data",
+		token:     token,
+		client:    &http.Client{Timeout: 10 * time.Second},
+		baseURL:   "https://api.finmindtrade.com/api/v4/data",
+		nameCache: make(map[string]string),
 	}
 }
 
@@ -241,4 +246,48 @@ func quarterLabel(dateStr string) string {
 		return "TW"
 	}
 	return fmt.Sprintf("Q%d", (int(t.Month())-1)/3+1)
+}
+
+type finmindInfoRow struct {
+	StockName string `json:"stock_name"`
+}
+
+// GetCompanyName resolves ticker's Chinese short name (e.g. "台積電" for
+// 2330) via TaiwanStockInfo, the CompanyNameProvider counterpart to
+// GetFundamentals — this is the one FinMind dataset with no start_date
+// concept at all (it's a static reference table, not a time series), so it's
+// called with an empty startDate, which f.get's query-string building
+// already tolerates (live-verified 2026-07-24: FinMind ignores an empty
+// start_date param rather than erroring). A ticker can carry more than one
+// row (e.g. a listing-type change) but they share the same stock_name, so
+// the first row wins. Results are cached forever in nameCache: a company's
+// short name is effectively static for the life of this process, unlike
+// every other FinMind dataset here which is a genuine time series worth
+// re-fetching.
+func (f *FinMind) GetCompanyName(ticker string) (string, error) {
+	if market.Of(ticker) != market.TW {
+		return "", errNotTWTicker
+	}
+
+	f.nameMu.Lock()
+	if name, ok := f.nameCache[ticker]; ok {
+		f.nameMu.Unlock()
+		return name, nil
+	}
+	f.nameMu.Unlock()
+
+	var rows []finmindInfoRow
+	if err := f.get("TaiwanStockInfo", ticker, "", &rows); err != nil {
+		return "", err
+	}
+	if len(rows) == 0 || rows[0].StockName == "" {
+		return "", fmt.Errorf("finmind: no company name for %s", ticker)
+	}
+	name := rows[0].StockName
+
+	f.nameMu.Lock()
+	f.nameCache[ticker] = name
+	f.nameMu.Unlock()
+
+	return name, nil
 }

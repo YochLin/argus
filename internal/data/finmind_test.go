@@ -20,6 +20,9 @@ func TestFinMindTWGuard(t *testing.T) {
 	if _, err := f.GetFinancialStatements("AAPL", "quarterly"); err != errNotTWTicker {
 		t.Errorf("GetFinancialStatements(AAPL) error = %v, want errNotTWTicker", err)
 	}
+	if _, err := f.GetCompanyName("AAPL"); err != errNotTWTicker {
+		t.Errorf("GetCompanyName(AAPL) error = %v, want errNotTWTicker", err)
+	}
 }
 
 // finmindServer serves recorded 2330 (TSMC) responses — live-curled from
@@ -54,6 +57,11 @@ func finmindServer(t *testing.T) *httptest.Server {
 			w.Write([]byte(`{"msg":"success","status":200,"data":[
 				{"date":"2025-07-01","stock_id":"2330","country":"Taiwan","revenue":263708978000,"revenue_month":6,"revenue_year":2025,"create_time":"2025-07-10"},
 				{"date":"2026-07-01","stock_id":"2330","country":"Taiwan","revenue":442679969000,"revenue_month":6,"revenue_year":2026,"create_time":"2026-07-13"}
+			]}`))
+		case "TaiwanStockInfo":
+			w.Write([]byte(`{"msg":"success","status":200,"data":[
+				{"industry_category":"半導體業","stock_id":"2330","stock_name":"台積電","type":"twse","date":"2026-07-24"},
+				{"industry_category":"電子工業","stock_id":"2330","stock_name":"台積電","type":"twse","date":"2026-07-24"}
 			]}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -115,6 +123,54 @@ func TestFinMindGetFinancialStatements(t *testing.T) {
 	// No balance sheet / cash flow data in this dataset — must stay 0.
 	if st.TotalAssets != 0 || st.OperatingCashFlow != 0 {
 		t.Errorf("TotalAssets/OperatingCashFlow = %v/%v, want 0 (dataset has no such fields)", st.TotalAssets, st.OperatingCashFlow)
+	}
+}
+
+func TestFinMindGetCompanyName(t *testing.T) {
+	srv := finmindServer(t)
+	defer srv.Close()
+
+	f := NewFinMind("")
+	f.baseURL = srv.URL
+
+	name, err := f.GetCompanyName("2330")
+	if err != nil {
+		t.Fatalf("GetCompanyName: %v", err)
+	}
+	if name != "台積電" {
+		t.Errorf("GetCompanyName(2330) = %q, want 台積電", name)
+	}
+}
+
+// TestFinMindGetCompanyNameCaches confirms a second call for the same
+// ticker is served from nameCache rather than hitting the network again —
+// a company's short name is effectively static, unlike every other FinMind
+// dataset this client fetches, which is a genuine time series.
+func TestFinMindGetCompanyNameCaches(t *testing.T) {
+	var requests int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"msg":"success","status":200,"data":[
+			{"industry_category":"半導體業","stock_id":"2330","stock_name":"台積電","type":"twse","date":"2026-07-24"}
+		]}`))
+	}))
+	defer srv.Close()
+
+	f := NewFinMind("")
+	f.baseURL = srv.URL
+
+	for i := 0; i < 3; i++ {
+		name, err := f.GetCompanyName("2330")
+		if err != nil {
+			t.Fatalf("GetCompanyName call %d: %v", i, err)
+		}
+		if name != "台積電" {
+			t.Errorf("GetCompanyName call %d = %q, want 台積電", i, name)
+		}
+	}
+	if requests != 1 {
+		t.Errorf("requests = %d, want 1 (later calls should hit nameCache)", requests)
 	}
 }
 

@@ -70,7 +70,7 @@ func TestDedup(t *testing.T) {
 func TestFormatQuote(t *testing.T) {
 	t.Run("positive change shows up arrow", func(t *testing.T) {
 		q := &data.Quote{Ticker: "AAPL", Price: 200, ChangePercent: 1.5, Open: 198, High: 201, Low: 197}
-		out := formatQuote(i18n.EN, q)
+		out := formatQuote(i18n.EN, q, q.Ticker)
 		if !strings.Contains(out, "▲") {
 			t.Errorf("formatQuote() = %q, want it to contain up arrow", out)
 		}
@@ -81,11 +81,44 @@ func TestFormatQuote(t *testing.T) {
 
 	t.Run("negative change shows down arrow", func(t *testing.T) {
 		q := &data.Quote{Ticker: "AAPL", Price: 200, ChangePercent: -1.5, Open: 198, High: 201, Low: 197}
-		out := formatQuote(i18n.EN, q)
+		out := formatQuote(i18n.EN, q, q.Ticker)
 		if !strings.Contains(out, "▼") {
 			t.Errorf("formatQuote() = %q, want it to contain down arrow", out)
 		}
 	})
+}
+
+// fakeCompanyNames is a minimal data.CompanyNameProvider stub for
+// TestTickerLabel/TestCompanyName — a static map avoids pulling in FinMind's
+// HTTP-mocking machinery for what's just Bot's TW-gating logic.
+type fakeCompanyNames struct {
+	names map[string]string
+}
+
+func (f fakeCompanyNames) GetCompanyName(ticker string) (string, error) {
+	if name, ok := f.names[ticker]; ok {
+		return name, nil
+	}
+	return "", fmt.Errorf("no name for %s", ticker)
+}
+
+func TestBotTickerLabel(t *testing.T) {
+	b := &Bot{companyNames: fakeCompanyNames{names: map[string]string{"2330": "台積電"}}}
+
+	if got := b.tickerLabel("2330"); got != "台積電(2330)" {
+		t.Errorf("tickerLabel(2330) = %q, want 台積電(2330)", got)
+	}
+	if got := b.tickerLabel("AAPL"); got != "AAPL" {
+		t.Errorf("tickerLabel(AAPL) = %q, want AAPL unchanged (US ticker, no lookup)", got)
+	}
+	if got := b.tickerLabel("2454"); got != "2454" {
+		t.Errorf("tickerLabel(2454) = %q, want bare ticker (unresolvable TW name degrades gracefully)", got)
+	}
+
+	bNoProvider := &Bot{}
+	if got := bNoProvider.tickerLabel("2330"); got != "2330" {
+		t.Errorf("tickerLabel(2330) with nil companyNames = %q, want bare ticker", got)
+	}
 }
 
 func TestDaysUntil(t *testing.T) {
@@ -650,7 +683,7 @@ func TestSplitRecsBySource(t *testing.T) {
 func TestFormatRecLine(t *testing.T) {
 	t.Run("includes the action separator when Action is set", func(t *testing.T) {
 		r := llm.Recommendation{Ticker: "MSFT", Action: "BUY", Reason: "cloud growth."}
-		got := formatRecLine(i18n.EN, r, nil)
+		got := formatRecLine(i18n.EN, r, nil, r.Ticker)
 		want := "*MSFT* — BUY\ncloud growth.\n"
 		if got != want {
 			t.Errorf("formatRecLine() = %q, want %q", got, want)
@@ -659,7 +692,7 @@ func TestFormatRecLine(t *testing.T) {
 
 	t.Run("empty action omits the action separator", func(t *testing.T) {
 		r := llm.Recommendation{Ticker: "AAPL", Reason: "no action line."}
-		got := formatRecLine(i18n.EN, r, nil)
+		got := formatRecLine(i18n.EN, r, nil, r.Ticker)
 		want := "*AAPL*\nno action line.\n"
 		if got != want {
 			t.Errorf("formatRecLine() = %q, want %q", got, want)
@@ -669,7 +702,7 @@ func TestFormatRecLine(t *testing.T) {
 	t.Run("a sizing line for a ticker in the map is appended after the reason", func(t *testing.T) {
 		r := llm.Recommendation{Ticker: "AAPL", Action: "BUY", Reason: "breakout."}
 		sizing := map[string]string{"AAPL": "sizing info\n"}
-		got := formatRecLine(i18n.EN, r, sizing)
+		got := formatRecLine(i18n.EN, r, sizing, r.Ticker)
 		want := "*AAPL* — BUY\nbreakout.\nsizing info\n"
 		if got != want {
 			t.Errorf("formatRecLine() = %q, want %q", got, want)
@@ -678,7 +711,7 @@ func TestFormatRecLine(t *testing.T) {
 
 	t.Run("a ticker missing from sizing renders no sizing line", func(t *testing.T) {
 		r := llm.Recommendation{Ticker: "TSLA", Action: "SELL", Reason: "overextended."}
-		got := formatRecLine(i18n.EN, r, map[string]string{"AAPL": "sizing info\n"})
+		got := formatRecLine(i18n.EN, r, map[string]string{"AAPL": "sizing info\n"}, r.Ticker)
 		want := "*TSLA* — SELL\noverextended.\n"
 		if got != want {
 			t.Errorf("formatRecLine() = %q, want %q", got, want)

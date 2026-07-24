@@ -52,12 +52,37 @@ func daysUntil(dateStr string) int {
 	return int(target.Sub(today).Hours() / 24)
 }
 
-func formatQuote(lang i18n.Lang, q *data.Quote) string {
+func formatQuote(lang i18n.Lang, q *data.Quote, label string) string {
 	arrow := "▲"
 	if q.ChangePercent < 0 {
 		arrow = "▼"
 	}
-	return i18n.T(lang, i18n.KeyQuoteLine, q.Ticker, q.Price, arrow, q.ChangePercent, q.Open, q.High, q.Low)
+	return i18n.T(lang, i18n.KeyQuoteLine, label, q.Price, arrow, q.ChangePercent, q.Open, q.High, q.Low)
+}
+
+// companyName resolves ticker's display name via b.companyNames — "" (not
+// an error) for a US ticker (already human-readable, no lookup needed), a
+// nil provider (FINMIND_TOKEN unset), or a failed lookup, so every caller
+// can treat "" as "no name available" without a separate error check. See
+// data.CompanyNameProvider.
+func (b *Bot) companyName(ticker string) string {
+	if b.companyNames == nil || market.Of(ticker) != market.TW {
+		return ""
+	}
+	name, err := b.companyNames.GetCompanyName(ticker)
+	if err != nil {
+		return ""
+	}
+	return name
+}
+
+// tickerLabel formats ticker for display as "name(ticker)" (e.g.
+// "台積電(2330)") when a company name can be resolved, and returns ticker
+// unchanged otherwise (US tickers, or a TW ticker with no resolvable name) —
+// the single call site every user-facing message should go through instead
+// of printing a bare ticker directly.
+func (b *Bot) tickerLabel(ticker string) string {
+	return data.TickerLabel(ticker, b.companyName(ticker))
 }
 
 func todayDate() string {

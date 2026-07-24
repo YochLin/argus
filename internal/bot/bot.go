@@ -55,6 +55,7 @@ type Bot struct {
 	analystRating data.AnalystRatingProvider // nil if FINNHUB_API_KEY isn't set
 	earnings      data.EarningsProvider      // nil if FINNHUB_API_KEY isn't set
 	marketNews    data.MarketNewsProvider    // nil if FINNHUB_API_KEY isn't set
+	companyNames  data.CompanyNameProvider   // nil if FINMIND_TOKEN isn't set
 	history       data.HistoryProvider
 	llm           *llm.Client
 	detector      *signals.Detector
@@ -117,6 +118,7 @@ type Config struct {
 	AnalystRating       data.AnalystRatingProvider // nil if FINNHUB_API_KEY isn't set
 	Earnings            data.EarningsProvider      // nil if FINNHUB_API_KEY isn't set
 	MarketNews          data.MarketNewsProvider    // nil if FINNHUB_API_KEY isn't set
+	CompanyNames        data.CompanyNameProvider   // nil if FINMIND_TOKEN isn't set
 	History             data.HistoryProvider
 	LLM                 *llm.Client
 	Lang                i18n.Lang
@@ -153,6 +155,7 @@ func New(cfg Config) (*Bot, error) {
 		analystRating:       cfg.AnalystRating,
 		earnings:            cfg.Earnings,
 		marketNews:          cfg.MarketNews,
+		companyNames:        cfg.CompanyNames,
 		history:             cfg.History,
 		llm:                 cfg.LLM,
 		detector:            signals.NewDetector(cfg.Lang),

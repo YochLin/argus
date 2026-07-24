@@ -31,7 +31,7 @@ func (b *Bot) handleAdd(ticker string) {
 		b.Send(i18n.T(b.lang, i18n.KeyAddFailed, err))
 		return
 	}
-	b.Send(i18n.T(b.lang, i18n.KeyAddSuccess, ticker))
+	b.Send(i18n.T(b.lang, i18n.KeyAddSuccess, b.tickerLabel(ticker)))
 }
 
 func (b *Bot) handleRemove(ticker string) {
@@ -44,7 +44,7 @@ func (b *Bot) handleRemove(ticker string) {
 		b.Send(i18n.T(b.lang, i18n.KeyRemoveFailed, err))
 		return
 	}
-	b.Send(i18n.T(b.lang, i18n.KeyRemoveSuccess, ticker))
+	b.Send(i18n.T(b.lang, i18n.KeyRemoveSuccess, b.tickerLabel(ticker)))
 }
 
 func (b *Bot) handleList() {
@@ -57,7 +57,11 @@ func (b *Bot) handleList() {
 		b.Send(i18n.T(b.lang, i18n.KeyWatchlistEmptyHint))
 		return
 	}
-	b.Send(i18n.T(b.lang, i18n.KeyWatchlistTitle) + strings.Join(tickers, "\n"))
+	labels := make([]string, len(tickers))
+	for i, t := range tickers {
+		labels[i] = b.tickerLabel(t)
+	}
+	b.Send(i18n.T(b.lang, i18n.KeyWatchlistTitle) + strings.Join(labels, "\n"))
 }
 
 func (b *Bot) handleStatus(ticker string) {
@@ -77,10 +81,10 @@ func (b *Bot) handleStatus(ticker string) {
 		for _, t := range tickers {
 			q, err := b.provider.GetQuote(t)
 			if err != nil {
-				sb.WriteString(i18n.T(b.lang, i18n.KeyQuoteUnavailable, t))
+				sb.WriteString(i18n.T(b.lang, i18n.KeyQuoteUnavailable, b.tickerLabel(t)))
 				continue
 			}
-			sb.WriteString(formatQuote(b.lang, q))
+			sb.WriteString(formatQuote(b.lang, q, b.tickerLabel(t)))
 			sb.WriteString("\n\n")
 		}
 		b.Send(sb.String())
@@ -89,10 +93,10 @@ func (b *Bot) handleStatus(ticker string) {
 
 	q, err := b.provider.GetQuote(ticker)
 	if err != nil {
-		b.Send(i18n.T(b.lang, i18n.KeyQuoteFailed, ticker, err))
+		b.Send(i18n.T(b.lang, i18n.KeyQuoteFailed, b.tickerLabel(ticker), err))
 		return
 	}
-	b.Send(formatQuote(b.lang, q))
+	b.Send(formatQuote(b.lang, q, b.tickerLabel(ticker)))
 }
 
 // parseRecommendMarketArg parses /recommend's optional [tw|us] argument
@@ -168,16 +172,17 @@ func (b *Bot) handleCheck(ctx context.Context, ticker string) {
 		return
 	}
 
-	b.Send(i18n.T(b.lang, i18n.KeyAnalyzingTicker, ticker))
+	label := b.tickerLabel(ticker)
+	b.Send(i18n.T(b.lang, i18n.KeyAnalyzingTicker, label))
 
 	q, err := b.provider.GetQuote(ticker)
 	if err != nil {
-		b.Send(i18n.T(b.lang, i18n.KeyQuoteFailed, ticker, err))
+		b.Send(i18n.T(b.lang, i18n.KeyQuoteFailed, label, err))
 		return
 	}
 	news, _ := b.provider.GetNews(ticker, 5)
 
-	stock := llm.StockData{Quote: q, News: news}
+	stock := llm.StockData{Quote: q, News: news, CompanyName: b.companyName(ticker)}
 	if b.fundamentals != nil {
 		if fd, err := b.fundamentals.GetFundamentals(ticker); err != nil {
 			log.Printf("fundamentals %s: %v", ticker, err)
@@ -213,7 +218,7 @@ func (b *Bot) handleCheck(ctx context.Context, ticker string) {
 		return
 	}
 
-	b.Send(i18n.T(b.lang, i18n.KeyCheckResultTitle, ticker, result))
+	b.Send(i18n.T(b.lang, i18n.KeyCheckResultTitle, label, result))
 }
 
 // handleTrack reviews recommendations from the past N days (default 7)
@@ -478,7 +483,7 @@ func (b *Bot) handleStop(args string) {
 		return
 	}
 	if !ok {
-		b.Send(i18n.T(b.lang, i18n.KeyStopNoPosition, ticker))
+		b.Send(i18n.T(b.lang, i18n.KeyStopNoPosition, b.tickerLabel(ticker)))
 		return
 	}
 
@@ -499,7 +504,7 @@ func (b *Bot) handleStop(args string) {
 
 	if err := b.db.SetStopPrice(ticker, price); err != nil {
 		if errors.Is(err, db.ErrNoPosition) {
-			b.Send(i18n.T(b.lang, i18n.KeyStopNoPosition, ticker))
+			b.Send(i18n.T(b.lang, i18n.KeyStopNoPosition, b.tickerLabel(ticker)))
 			return
 		}
 		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
@@ -508,7 +513,7 @@ func (b *Bot) handleStop(args string) {
 
 	distPct := (suggestion.LatestClose - price) / suggestion.LatestClose * 100
 	riskPerShare := pos.AvgCost - price
-	b.Send(i18n.T(b.lang, i18n.KeyStopSet, ticker, price, distPct, riskPerShare))
+	b.Send(i18n.T(b.lang, i18n.KeyStopSet, b.tickerLabel(ticker), price, distPct, riskPerShare))
 }
 
 // showStop renders /stop TICKER's no-price branch: the current setting (or
@@ -519,9 +524,9 @@ func (b *Bot) handleStop(args string) {
 func (b *Bot) showStop(ticker string, pos db.Position) {
 	var sb strings.Builder
 	if pos.StopPrice > 0 {
-		sb.WriteString(i18n.T(b.lang, i18n.KeyStopShow, ticker, pos.StopPrice))
+		sb.WriteString(i18n.T(b.lang, i18n.KeyStopShow, b.tickerLabel(ticker), pos.StopPrice))
 	} else {
-		sb.WriteString(i18n.T(b.lang, i18n.KeyStopNotSet, ticker, b.stopLossPct))
+		sb.WriteString(i18n.T(b.lang, i18n.KeyStopNotSet, b.tickerLabel(ticker), b.stopLossPct))
 	}
 
 	suggestion, ok := b.computeStopSuggestion(ticker)
@@ -974,14 +979,14 @@ func (b *Bot) sendPortfolioSection(m market.MarketID, positions []db.Position) {
 	for _, p := range marketPositions {
 		q, err := b.provider.GetQuote(p.Ticker)
 		if err != nil {
-			b.sendWithTickerActions(p.Ticker, i18n.T(b.lang, i18n.KeyQuoteUnavailable, p.Ticker))
+			b.sendWithTickerActions(p.Ticker, i18n.T(b.lang, i18n.KeyQuoteUnavailable, b.tickerLabel(p.Ticker)))
 			continue
 		}
 		marketValue := p.Shares * q.Price
 		unrealized := (q.Price - p.AvgCost) * p.Shares
 		unrealizedPct := (q.Price - p.AvgCost) / p.AvgCost * 100
 		totalValue += marketValue
-		line := i18n.T(b.lang, i18n.KeyPortfolioLine, p.Ticker, p.Shares, p.AvgCost, q.Price, marketValue, unrealized, unrealizedPct)
+		line := i18n.T(b.lang, i18n.KeyPortfolioLine, b.tickerLabel(p.Ticker), p.Shares, p.AvgCost, q.Price, marketValue, unrealized, unrealizedPct)
 		if note := lotSuffix(b.lang, m, p.Shares); note != "" {
 			// KeyPortfolioLine ends "...%%)\n\n" — splice the note onto that
 			// last content line rather than appending after the trailing
@@ -1237,12 +1242,12 @@ func (b *Bot) handleFundamentals(ticker string) {
 	fd, fdErr := b.fundamentals.GetFundamentals(ticker)
 	st, stErr := b.fundamentals.GetFinancialStatements(ticker, "annual")
 	if fdErr != nil && stErr != nil {
-		b.Send(i18n.T(b.lang, i18n.KeyFundamentalsFailed, ticker, fdErr))
+		b.Send(i18n.T(b.lang, i18n.KeyFundamentalsFailed, b.tickerLabel(ticker), fdErr))
 		return
 	}
 
 	var sb strings.Builder
-	sb.WriteString(i18n.T(b.lang, i18n.KeyFundamentalsTitle, ticker))
+	sb.WriteString(i18n.T(b.lang, i18n.KeyFundamentalsTitle, b.tickerLabel(ticker)))
 	if fd != nil {
 		sb.WriteString(render.Fundamentals(b.lang, fd))
 		sb.WriteString("\n\n")
@@ -1382,19 +1387,19 @@ func (b *Bot) handleThesis(args string) {
 			return
 		}
 		if !ok {
-			b.Send(i18n.T(b.lang, i18n.KeyThesisNotSet, ticker, ticker))
+			b.Send(i18n.T(b.lang, i18n.KeyThesisNotSet, b.tickerLabel(ticker), ticker))
 			return
 		}
-		b.Send(i18n.T(b.lang, i18n.KeyThesisCurrent, ticker, thesis))
+		b.Send(i18n.T(b.lang, i18n.KeyThesisCurrent, b.tickerLabel(ticker), thesis))
 		return
 	}
 
 	thesis := strings.TrimSpace(parts[1])
 	if err := b.db.SetThesis(ticker, thesis); err != nil {
-		b.Send(i18n.T(b.lang, i18n.KeyThesisSetFailed, ticker, err))
+		b.Send(i18n.T(b.lang, i18n.KeyThesisSetFailed, b.tickerLabel(ticker), err))
 		return
 	}
-	b.Send(i18n.T(b.lang, i18n.KeyThesisSetSuccess, ticker, thesis))
+	b.Send(i18n.T(b.lang, i18n.KeyThesisSetSuccess, b.tickerLabel(ticker), thesis))
 }
 
 // handleChat replies to a plain-text (non-command) message using the LLM
