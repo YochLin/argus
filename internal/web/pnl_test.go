@@ -2,6 +2,7 @@ package web
 
 import (
 	"testing"
+	"time"
 
 	"argus/internal/db"
 )
@@ -183,5 +184,106 @@ func TestExpectancy(t *testing.T) {
 	sells := []db.Transaction{{RealizedPnL: 10}, {RealizedPnL: -4}, {RealizedPnL: 6}}
 	if got := Expectancy(sells); got != 4 {
 		t.Errorf("Expectancy() = %v, want 4 ((10-4+6)/3)", got)
+	}
+}
+
+func mustDate(t *testing.T, s string) time.Time {
+	t.Helper()
+	d, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		t.Fatalf("parse %q: %v", s, err)
+	}
+	return d
+}
+
+func TestYTDStart(t *testing.T) {
+	tests := []struct{ now, want string }{
+		{"2026-07-15", "2026-01-01"},
+		{"2026-01-01", "2026-01-01"},
+		{"2026-12-31", "2026-01-01"},
+	}
+	for _, tt := range tests {
+		if got := YTDStart(mustDate(t, tt.now)); got != tt.want {
+			t.Errorf("YTDStart(%s) = %s, want %s", tt.now, got, tt.want)
+		}
+	}
+}
+
+func TestQTDStart(t *testing.T) {
+	tests := []struct{ now, want string }{
+		{"2026-01-15", "2026-01-01"},
+		{"2026-03-31", "2026-01-01"},
+		{"2026-04-01", "2026-04-01"},
+		{"2026-06-30", "2026-04-01"},
+		{"2026-07-01", "2026-07-01"},
+		{"2026-09-30", "2026-07-01"},
+		{"2026-10-01", "2026-10-01"},
+		{"2026-12-31", "2026-10-01"},
+	}
+	for _, tt := range tests {
+		if got := QTDStart(mustDate(t, tt.now)); got != tt.want {
+			t.Errorf("QTDStart(%s) = %s, want %s", tt.now, got, tt.want)
+		}
+	}
+}
+
+func TestHTDStart(t *testing.T) {
+	tests := []struct{ now, want string }{
+		{"2026-01-01", "2026-01-01"},
+		{"2026-06-30", "2026-01-01"},
+		{"2026-07-01", "2026-07-01"},
+		{"2026-12-31", "2026-07-01"},
+	}
+	for _, tt := range tests {
+		if got := HTDStart(mustDate(t, tt.now)); got != tt.want {
+			t.Errorf("HTDStart(%s) = %s, want %s", tt.now, got, tt.want)
+		}
+	}
+}
+
+func TestCurveValueBefore(t *testing.T) {
+	curve := []DateValue{
+		{Date: "2026-01-05", Value: 10},
+		{Date: "2026-02-10", Value: 25},
+		{Date: "2026-03-20", Value: 15},
+	}
+	if got := curveValueBefore(curve, "2026-03-01"); got != 25 {
+		t.Errorf("curveValueBefore(before 03-01) = %v, want 25 (last point strictly before)", got)
+	}
+	if got := curveValueBefore(curve, "2026-01-01"); got != 0 {
+		t.Errorf("curveValueBefore(before everything) = %v, want 0", got)
+	}
+	if got := curveValueBefore(nil, "2026-01-01"); got != 0 {
+		t.Errorf("curveValueBefore(nil) = %v, want 0", got)
+	}
+}
+
+func TestPeriodReturnPct(t *testing.T) {
+	curve := []DateValue{
+		{Date: "2025-12-31", Value: 100},
+		{Date: "2026-06-15", Value: 150},
+	}
+
+	// Baseline before the curve's history starts: period P&L is the full
+	// curve (nothing to subtract), 50/1000*100 = 5%.
+	if pct, ok := PeriodReturnPct(curve, "2026-01-01", 1000, true); !ok || pct != 5 {
+		t.Errorf("PeriodReturnPct(baseline before curve) = (%v, %v), want (5, true)", pct, ok)
+	}
+
+	// haveBaseline false → not computable.
+	if _, ok := PeriodReturnPct(curve, "2026-01-01", 1000, false); ok {
+		t.Errorf("PeriodReturnPct(no baseline) ok = true, want false")
+	}
+
+	// baseline == 0 → not computable (division would be meaningless).
+	if _, ok := PeriodReturnPct(curve, "2026-01-01", 0, true); ok {
+		t.Errorf("PeriodReturnPct(zero baseline) ok = true, want false")
+	}
+
+	// periodStart predates the whole curve (every curve point postdates
+	// it): curveValueBefore returns 0, so period P&L is the full curve
+	// range (150), 150/500*100 = 30%.
+	if pct, ok := PeriodReturnPct(curve, "2025-01-01", 500, true); !ok || pct != 30 {
+		t.Errorf("PeriodReturnPct(period predates history) = (%v, %v), want (30, true)", pct, ok)
 	}
 }

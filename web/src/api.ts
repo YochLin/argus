@@ -38,6 +38,14 @@ export interface KPIs {
   profitFactor: number;
   expectancy: number;
   maxDrawdown: number;
+  // ytd/qtd/htdReturnPct are already-scaled percentages (12.3 means 12.3%,
+  // same convention as Position.unrealizedPnLPct/ReportGroup.avgReturnPct —
+  // not a 0-1 fraction like winRate). null means "no net worth baseline yet"
+  // (fresh account, or history postdates the period) — render that as "—",
+  // never as 0%.
+  ytdReturnPct: number | null;
+  qtdReturnPct: number | null;
+  htdReturnPct: number | null;
 }
 
 export interface Position {

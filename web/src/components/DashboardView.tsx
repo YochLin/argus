@@ -65,6 +65,9 @@ export function DashboardView({ dict, market, onTickerClick, names }: Props) {
           colorMode="loss"
           currency={currency}
         />
+        <KpiCard label={dict.ytdReturn} value={kpis.ytdReturnPct} format="percentValue" colorMode="pnl" />
+        <KpiCard label={dict.qtdReturn} value={kpis.qtdReturnPct} format="percentValue" colorMode="pnl" />
+        <KpiCard label={dict.htdReturn} value={kpis.htdReturnPct} format="percentValue" colorMode="pnl" />
       </div>
       <PnlChart curve={curve} />
       <div className="card">

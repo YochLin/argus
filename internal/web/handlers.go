@@ -36,6 +36,14 @@ type kpisResponse struct {
 	ProfitFactor float64 `json:"profitFactor"`
 	Expectancy   float64 `json:"expectancy"`
 	MaxDrawdown  float64 `json:"maxDrawdown"`
+	// YTDReturnPct/QTDReturnPct/HTDReturnPct are *float64 (not omitempty) so
+	// "no usable baseline yet" (see pnl.go's PeriodReturnPct) serializes as
+	// an explicit JSON null, never an omitted key or a misleading 0 —
+	// docs/phase-5-web-dashboard.md's "don't pad missing data with zero"
+	// principle.
+	YTDReturnPct *float64 `json:"ytdReturnPct"`
+	QTDReturnPct *float64 `json:"qtdReturnPct"`
+	HTDReturnPct *float64 `json:"htdReturnPct"`
 }
 
 type positionResponse struct {

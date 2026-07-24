@@ -16,6 +16,9 @@ export interface Dictionary {
   profitFactor: string;
   expectancy: string;
   maxDrawdown: string;
+  ytdReturn: string;
+  qtdReturn: string;
+  htdReturn: string;
   positions: string;
   ticker: string;
   shares: string;
@@ -89,6 +92,9 @@ const en: Dictionary = {
   profitFactor: "PROFIT FACTOR",
   expectancy: "EXPECTANCY",
   maxDrawdown: "MAX DRAWDOWN",
+  ytdReturn: "YTD RETURN",
+  qtdReturn: "QTD RETURN",
+  htdReturn: "HTD RETURN",
   positions: "Positions",
   ticker: "Ticker",
   shares: "Shares",
@@ -162,6 +168,9 @@ const zh: Dictionary = {
   profitFactor: "PROFIT FACTOR",
   expectancy: "EXPECTANCY",
   maxDrawdown: "MAX DRAWDOWN",
+  ytdReturn: "YTD RETURN",
+  qtdReturn: "QTD RETURN",
+  htdReturn: "HTD RETURN",
   positions: "持倉",
   ticker: "標的",
   shares: "股數",
