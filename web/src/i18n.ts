@@ -231,6 +231,16 @@ const zh: Dictionary = {
 
 const dictionaries: Record<string, Dictionary> = { en, zh };
 
+export type Lang = "zh" | "en";
+
 export function getDictionary(lang: string): Dictionary {
   return dictionaries[lang] ?? dictionaries.zh;
+}
+
+// normalizeLang collapses whatever string /api/config or localStorage held
+// into a valid Lang, defaulting to zh — same fallback getDictionary applies,
+// but usable where the Lang itself (not just the dictionary) is needed,
+// e.g. highlighting the active button in Sidebar's language toggle.
+export function normalizeLang(lang: string | null): Lang {
+  return lang === "en" ? "en" : "zh";
 }

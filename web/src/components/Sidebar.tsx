@@ -1,5 +1,5 @@
 import type { MouseEvent, ReactNode } from "react";
-import type { Dictionary } from "../i18n";
+import type { Dictionary, Lang } from "../i18n";
 import type { Market } from "../api";
 
 interface Props {
@@ -8,6 +8,8 @@ interface Props {
   dict: Dictionary;
   market: Market;
   onMarketChange: (market: Market) => void;
+  lang: Lang;
+  onLangChange: (lang: Lang) => void;
 }
 
 // /round (the detail page reached by clicking a row in /rounds) has no nav
@@ -34,7 +36,7 @@ function isActive(linkPath: string, path: string): boolean {
 // buttons, not worth a dedicated file, and the sidebar is already the
 // shell-level chrome every page shares (same reasoning as the wordmark
 // living here instead of on each view).
-export function Sidebar({ path, onNavigate, dict, market, onMarketChange }: Props) {
+export function Sidebar({ path, onNavigate, dict, market, onMarketChange, lang, onLangChange }: Props) {
   return (
     <div className="sidebar">
       <div className="sidebar-wordmark">
@@ -52,6 +54,25 @@ export function Sidebar({ path, onNavigate, dict, market, onMarketChange }: Prop
           onClick={() => onMarketChange("tw")}
         >
           TW
+        </button>
+      </div>
+      {/* Language toggle — same two-button shape and CSS as the market
+          toggle above. BOT_LANGUAGE only sets the first-visit default; this
+          persists the user's pick in localStorage (see App.tsx). Labels stay
+          in their own language (中文 always in Chinese, EN always in
+          English) so each is readable exactly when it's the one you need. */}
+      <div className="market-toggle lang-toggle" role="group" aria-label="language">
+        <button
+          className={`market-toggle-btn${lang === "zh" ? " active" : ""}`}
+          onClick={() => onLangChange("zh")}
+        >
+          中文
+        </button>
+        <button
+          className={`market-toggle-btn${lang === "en" ? " active" : ""}`}
+          onClick={() => onLangChange("en")}
+        >
+          EN
         </button>
       </div>
       <nav className="sidebar-nav">

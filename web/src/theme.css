@@ -172,6 +172,13 @@ a {
   background: var(--surface);
 }
 
+/* The language toggle (Sidebar.tsx) reuses the market toggle's pill styling
+   wholesale; it only pulls itself closer than the sidebar's default 24px
+   gap so the two pills read as one settings cluster. */
+.lang-toggle {
+  margin-top: -14px;
+}
+
 .sidebar-nav {
   display: flex;
   flex-direction: column;
