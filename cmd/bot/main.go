@@ -211,7 +211,13 @@ func main() {
 		// second db.OpenReadOnly one — unlike the MCP subprocess, this
 		// isn't a separate process, and database/sql connections already
 		// support concurrent use from other goroutines.
-		webServer := web.New(web.Config{DB: database, Provider: provider, History: yahoo, Lang: lang})
+		webServer := web.New(web.Config{
+			DB:           database,
+			Provider:     provider,
+			History:      yahoo,
+			Lang:         lang,
+			CompanyNames: companyNameProvider,
+		})
 		go func() {
 			if err := webServer.Run(ctx, webAddr); err != nil {
 				log.Printf("web: server error: %v", err)

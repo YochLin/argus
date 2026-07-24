@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import { fetchTickers, type Market } from "../api";
+import { fetchTickers, tickerLabel, type Market } from "../api";
 import type { Dictionary } from "../i18n";
 
 interface Props {
   dict: Dictionary;
   market: Market;
   onOpenTicker: (ticker: string) => void;
+  // names is /api/company-names' TW ticker → Chinese-name map (see App.tsx).
+  names?: Record<string, string>;
 }
 
 // Phase 7's /chart list page: the ticker picker for the support/resistance
@@ -14,7 +16,7 @@ interface Props {
 // sourced from /api/tickers instead of /api/rounds since a round only
 // exists for a ticker that's actually been traded, while a chart is useful
 // for anything being watched.
-export function ChartListView({ dict, market, onOpenTicker }: Props) {
+export function ChartListView({ dict, market, onOpenTicker, names = {} }: Props) {
   const [tickers, setTickers] = useState<string[] | null>(null);
   const [error, setError] = useState(false);
 
@@ -56,7 +58,7 @@ export function ChartListView({ dict, market, onOpenTicker }: Props) {
                 if (e.key === "Enter" || e.key === " ") onOpenTicker(t);
               }}
             >
-              <td>{t}</td>
+              <td>{tickerLabel(t, names)}</td>
             </tr>
           ))}
         </tbody>

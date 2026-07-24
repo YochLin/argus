@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
-import { currencySymbol, fetchReports, type Market, type ReportGroup, type Reports } from "../api";
+import { currencySymbol, fetchReports, tickerLabel, type Market, type ReportGroup, type Reports } from "../api";
 import type { Dictionary } from "../i18n";
 import { KpiCard } from "./KpiCard";
 
 interface Props {
   dict: Dictionary;
   market: Market;
+  // names is /api/company-names' TW ticker → Chinese-name map (see App.tsx),
+  // applied only to the "By Ticker" group table's row labels.
+  names?: Record<string, string>;
 }
 
 function fmtPct(v: number): string {
@@ -32,9 +35,12 @@ const weekdayIndex: Record<string, number> = {
   Saturday: 6,
 };
 
-type Dimension = "plain" | "month" | "weekday";
+type Dimension = "plain" | "ticker" | "month" | "weekday";
 
-function groupLabel(dict: Dictionary, dimension: Dimension, key: string): string {
+function groupLabel(dict: Dictionary, dimension: Dimension, key: string, names: Record<string, string>): string {
+  if (dimension === "ticker") {
+    return tickerLabel(key, names);
+  }
   if (dimension === "month") {
     const idx = parseInt(key, 10) - 1;
     return dict.months[idx] ?? key;
@@ -52,12 +58,14 @@ function GroupTable({
   groups,
   currency,
   dimension,
+  names = {},
 }: {
   dict: Dictionary;
   title: string;
   groups: ReportGroup[];
   currency: string;
   dimension: Dimension;
+  names?: Record<string, string>;
 }) {
   if (groups.length === 0) {
     return null;
@@ -81,7 +89,7 @@ function GroupTable({
           {groups.map((g) => (
             <tr key={g.key} className={g.lowSample ? "low-sample-row" : ""}>
               <td>
-                {groupLabel(dict, dimension, g.key)}
+                {groupLabel(dict, dimension, g.key, names)}
                 {g.lowSample && <span className="tag">{dict.lowSampleTag}</span>}
               </td>
               <td>{g.n}</td>
@@ -133,7 +141,7 @@ function StatCard({
 // independently omitted when empty (GroupTable returns null) rather than
 // shown with a "no data" placeholder — with few trades, most dimensions
 // legitimately have nothing yet.
-export function ReportsView({ dict, market }: Props) {
+export function ReportsView({ dict, market, names = {} }: Props) {
   const [reports, setReports] = useState<Reports | null>(null);
   const [error, setError] = useState(false);
 
@@ -184,7 +192,14 @@ export function ReportsView({ dict, market }: Props) {
         )}
       </div>
 
-      <GroupTable dict={dict} title={dict.reportsByTicker} groups={reports.byTicker} currency={currency} dimension="plain" />
+      <GroupTable
+        dict={dict}
+        title={dict.reportsByTicker}
+        groups={reports.byTicker}
+        currency={currency}
+        dimension="ticker"
+        names={names}
+      />
       <GroupTable
         dict={dict}
         title={dict.reportsByHoldingDays}

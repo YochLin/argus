@@ -38,6 +38,11 @@ type Config struct {
 	Provider data.Provider
 	History  data.HistoryProvider
 	Lang     i18n.Lang
+	// CompanyNames resolves TW tickers' Chinese short names for display
+	// (/api/company-names). nil when FINMIND_TOKEN isn't configured — the
+	// endpoint then returns an empty map and the frontend shows bare
+	// tickers, same optionality as bot.Config.CompanyNames.
+	CompanyNames data.CompanyNameProvider
 }
 
 // Server is Argus's read-only web dashboard (Phase 5 PR1 — see
@@ -45,19 +50,21 @@ type Config struct {
 // access only (Tailscale/SSH tunnel), so it deliberately has no auth/HTTPS
 // of its own.
 type Server struct {
-	db      dbReader
-	quotes  quoteGetter
-	history data.HistoryProvider
-	lang    i18n.Lang
-	mux     *http.ServeMux
+	db           dbReader
+	quotes       quoteGetter
+	history      data.HistoryProvider
+	lang         i18n.Lang
+	companyNames data.CompanyNameProvider
+	mux          *http.ServeMux
 }
 
 func New(cfg Config) *Server {
 	s := &Server{
-		db:      cfg.DB,
-		quotes:  newQuoteCache(cfg.Provider),
-		history: cfg.History,
-		lang:    cfg.Lang,
+		db:           cfg.DB,
+		quotes:       newQuoteCache(cfg.Provider),
+		history:      cfg.History,
+		lang:         cfg.Lang,
+		companyNames: cfg.CompanyNames,
 	}
 	s.mux = http.NewServeMux()
 	s.mux.HandleFunc("GET /api/config", s.handleConfig)
@@ -69,6 +76,7 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /api/reports", s.handleReports)
 	s.mux.HandleFunc("GET /api/chart", s.handleChart)
 	s.mux.HandleFunc("GET /api/tickers", s.handleTickers)
+	s.mux.HandleFunc("GET /api/company-names", s.handleCompanyNames)
 	s.mux.Handle("/", spaHandler())
 	return s
 }

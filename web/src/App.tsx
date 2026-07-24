@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchConfig, fetchStatus, type Market, type Status } from "./api";
+import { fetchCompanyNames, fetchConfig, fetchStatus, type Market, type Status } from "./api";
 import { getDictionary, normalizeLang, type Lang } from "./i18n";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
@@ -53,6 +53,14 @@ export default function App() {
     return stored === null ? null : normalizeLang(stored);
   });
   const [status, setStatus] = useState<Status | null>(null);
+  // names is /api/company-names' TW ticker -> Chinese short name map — see
+  // internal/web/companynames.go. Fetched once at the shell level (not
+  // per-market, since the endpoint itself isn't market-scoped: it covers
+  // every TW ticker the user has any relationship with regardless of
+  // toggle position) and threaded down to every view that renders a
+  // ticker. Defaults to {} so every view can index it unconditionally
+  // before this resolves, same degrade as a failed/absent FINMIND_TOKEN.
+  const [names, setNames] = useState<Record<string, string>>({});
   const [route, navigate] = useRoute();
   // Phase 6's US/TW toggle (docs/phase-6-tw-market.md §4.4) — lifted here
   // (not per-view state) since it's shell-level chrome shared by every page,
@@ -76,6 +84,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // /api/company-names' failure isn't fatal either — every view already
+    // defaults `names` to {} and falls back to a bare ticker.
+    fetchCompanyNames()
+      .then((r) => setNames(r.names))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     // /api/status's failure isn't fatal either — an empty status-bar shell
     // is a fine degrade. Refetches whenever the market toggle changes, since
     // the watching-count/benchmark line is market-scoped (see
@@ -91,12 +107,13 @@ export default function App() {
 
   let body;
   if (path === "/calendar") {
-    body = <CalendarView dict={dict} market={market} />;
+    body = <CalendarView dict={dict} market={market} names={names} />;
   } else if (path === "/rounds") {
     body = (
       <RoundsListView
         dict={dict}
         market={market}
+        names={names}
         onOpenRound={(ticker, start) =>
           navigate(`/round?ticker=${encodeURIComponent(ticker)}&start=${encodeURIComponent(start)}`)
         }
@@ -108,19 +125,21 @@ export default function App() {
         dict={dict}
         ticker={params.get("ticker") ?? ""}
         start={params.get("start") ?? ""}
+        names={names}
         onBack={() => navigate("/rounds")}
       />
     );
   } else if (path === "/reports") {
-    body = <ReportsView dict={dict} market={market} />;
+    body = <ReportsView dict={dict} market={market} names={names} />;
   } else if (path === "/chart") {
     const ticker = params.get("ticker");
     body = ticker ? (
-      <ChartView dict={dict} ticker={ticker} onBack={() => navigate("/chart")} />
+      <ChartView dict={dict} ticker={ticker} names={names} onBack={() => navigate("/chart")} />
     ) : (
       <ChartListView
         dict={dict}
         market={market}
+        names={names}
         onOpenTicker={(t) => navigate(`/chart?ticker=${encodeURIComponent(t)}`)}
       />
     );
@@ -129,6 +148,7 @@ export default function App() {
       <DashboardView
         dict={dict}
         market={market}
+        names={names}
         onTickerClick={(t) => navigate(`/chart?ticker=${encodeURIComponent(t)}`)}
       />
     );

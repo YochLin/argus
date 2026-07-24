@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import { currencySymbol, fetchRounds, type Market, type RoundSummary } from "../api";
+import { currencySymbol, fetchRounds, tickerLabel, type Market, type RoundSummary } from "../api";
 import type { Dictionary } from "../i18n";
 
 interface Props {
   dict: Dictionary;
   market: Market;
   onOpenRound: (ticker: string, start: string) => void;
+  // names is /api/company-names' TW ticker → Chinese-name map (see App.tsx).
+  names?: Record<string, string>;
 }
 
 function fmtSigned(v: number, currency: string): string {
@@ -18,7 +20,7 @@ function fmtSigned(v: number, currency: string): string {
 // first — an open round (still held) has no End date, shown as dict.open
 // instead. Phase 6: restricted to market's own rounds (see
 // internal/web/rounds.go's buildRounds), refetched on toggle change.
-export function RoundsListView({ dict, market, onOpenRound }: Props) {
+export function RoundsListView({ dict, market, onOpenRound, names = {} }: Props) {
   const [rounds, setRounds] = useState<RoundSummary[] | null>(null);
   const [error, setError] = useState(false);
   const currency = currencySymbol(market);
@@ -65,7 +67,7 @@ export function RoundsListView({ dict, market, onOpenRound }: Props) {
                 if (e.key === "Enter" || e.key === " ") onOpenRound(r.ticker, r.start);
               }}
             >
-              <td>{r.ticker}</td>
+              <td>{tickerLabel(r.ticker, names)}</td>
               <td>{r.start}</td>
               <td>{r.open ? <span className="eyebrow">{dict.open}</span> : r.end}</td>
               <td>{r.shares}</td>

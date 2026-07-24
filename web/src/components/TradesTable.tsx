@@ -1,4 +1,4 @@
-import type { Transaction } from "../api";
+import { tickerLabel, type Transaction } from "../api";
 import type { Dictionary } from "../i18n";
 
 interface Props {
@@ -9,6 +9,9 @@ interface Props {
   // currencySymbol) — defaults to "$" so every pre-Phase-6 caller is
   // unaffected.
   currency?: string;
+  // names is /api/company-names' TW ticker → Chinese-name map — optional
+  // with an empty default, same degrade convention as PositionsTable.
+  names?: Record<string, string>;
 }
 
 function fmtSigned(v: number, currency: string): string {
@@ -20,7 +23,7 @@ function fmtSigned(v: number, currency: string): string {
 // (Phase 5 PR2/PR3) — same six columns, same BUY/SELL/realizedPnL
 // formatting, so this was pulled out rather than kept as two near-identical
 // copies once a second caller showed up.
-export function TradesTable({ dict, transactions, emptyMessage, currency = "$" }: Props) {
+export function TradesTable({ dict, transactions, emptyMessage, currency = "$", names = {} }: Props) {
   if (transactions.length === 0) {
     return <div className="empty-message">{emptyMessage ?? dict.noTransactions}</div>;
   }
@@ -39,7 +42,7 @@ export function TradesTable({ dict, transactions, emptyMessage, currency = "$" }
       <tbody>
         {transactions.map((t, i) => (
           <tr key={i}>
-            <td>{t.ticker}</td>
+            <td>{tickerLabel(t.ticker, names)}</td>
             <td className={t.side === "BUY" ? "profit" : "loss"}>{t.side === "BUY" ? dict.buy : dict.sell}</td>
             <td>{t.shares}</td>
             <td>

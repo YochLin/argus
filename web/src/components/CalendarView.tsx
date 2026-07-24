@@ -6,6 +6,9 @@ import { TradesTable } from "./TradesTable";
 interface Props {
   dict: Dictionary;
   market: Market;
+  // names is /api/company-names' TW ticker → Chinese-name map (see App.tsx),
+  // forwarded to the click-a-day panel's TradesTable.
+  names?: Record<string, string>;
 }
 
 interface Cell {
@@ -67,7 +70,7 @@ function weekTotal(week: Cell[]): number {
   return week.reduce((sum, c) => sum + (c.value ?? 0), 0);
 }
 
-export function CalendarView({ dict, market }: Props) {
+export function CalendarView({ dict, market, names }: Props) {
   const [month, setMonth] = useState(currentMonth());
   const [calendar, setCalendar] = useState<Calendar | null>(null);
   const [error, setError] = useState(false);
@@ -168,6 +171,7 @@ export function CalendarView({ dict, market }: Props) {
                 dict={dict}
                 transactions={transactionsByDate.get(selectedDate) ?? []}
                 currency={currency}
+                names={names}
               />
             </div>
           )}

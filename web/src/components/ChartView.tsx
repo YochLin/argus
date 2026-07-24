@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createChart, type IChartApi, type IPriceLine, type ISeriesApi, type Time } from "lightweight-charts";
-import { currencySymbol, fetchChart, marketOf, type Chart, type ChartLevel } from "../api";
+import { currencySymbol, fetchChart, marketOf, tickerLabel, type Chart, type ChartLevel } from "../api";
 import type { Dictionary } from "../i18n";
 
 interface Props {
   dict: Dictionary;
   ticker: string;
   onBack: () => void;
+  // names is /api/company-names' TW ticker → Chinese-name map (see App.tsx).
+  names?: Record<string, string>;
 }
 
 // maxPlottedPerSide caps how many support/resistance lines get drawn on the
@@ -50,7 +52,7 @@ function classifyLevels(levels: ChartLevel[], lastClose: number): ClassifiedLeve
 // signals.PriceLevels (internal/web's /api/chart). A visual reference tool
 // only — no alerts, nothing written to signal_states, see the design doc's
 // "誠實價值評估".
-export function ChartView({ dict, ticker, onBack }: Props) {
+export function ChartView({ dict, ticker, onBack, names = {} }: Props) {
   const [chart, setChart] = useState<Chart | null>(null);
   const [error, setError] = useState(false);
   const chartRef = useRef<IChartApi | null>(null);
@@ -157,7 +159,7 @@ export function ChartView({ dict, ticker, onBack }: Props) {
       <button className="back-link" onClick={onBack}>
         {dict.back}
       </button>
-      <div className="eyebrow round-detail-title">{chart.ticker}</div>
+      <div className="eyebrow round-detail-title">{tickerLabel(chart.ticker, names)}</div>
       <div className="card chart-card" ref={containerRef} />
       <div className="card">
         <div className="eyebrow">
