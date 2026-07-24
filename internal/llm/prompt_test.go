@@ -183,6 +183,35 @@ func TestWriteStockSectionRendersBollingerWhenPresent(t *testing.T) {
 	}
 }
 
+// TestWriteStockSectionOmitsMonthRevenueYoYWhenZero covers Phase 6 PR3: this
+// field is TW-only (FinMind) and 0 for every US ticker's Fundamentals (from
+// Finnhub, which has no monthly-revenue concept), so it must not render a
+// misleading "0.0%" line for a US recommendation.
+func TestWriteStockSectionOmitsMonthRevenueYoYWhenZero(t *testing.T) {
+	var sb strings.Builder
+	writeStockSection(&sb, i18n.EN, StockData{
+		Quote:        &data.Quote{Ticker: "AAPL", Price: 200},
+		Fundamentals: &data.Fundamentals{PE: 28.5}, // MonthRevenueYoYPct left 0
+	})
+
+	if got := sb.String(); strings.Contains(got, "Month Revenue YoY") {
+		t.Errorf("writeStockSection() should omit the Month Revenue YoY line when it's 0, got:\n%s", got)
+	}
+}
+
+func TestWriteStockSectionRendersMonthRevenueYoYWhenPresent(t *testing.T) {
+	var sb strings.Builder
+	writeStockSection(&sb, i18n.EN, StockData{
+		Quote:        &data.Quote{Ticker: "2330", Price: 1200},
+		Fundamentals: &data.Fundamentals{PE: 32.3, MonthRevenueYoYPct: 67.9},
+	})
+
+	got := sb.String()
+	if !strings.Contains(got, "Month Revenue YoY") || !strings.Contains(got, "67.9") {
+		t.Errorf("writeStockSection() should render the Month Revenue YoY line when non-zero, got:\n%s", got)
+	}
+}
+
 func TestBuildTradeReviewPromptMinimal(t *testing.T) {
 	trade := ClosedTrade{
 		Ticker: "AAPL",

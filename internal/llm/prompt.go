@@ -498,6 +498,12 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 			fd.DebtToEquity, fd.RevenueGrowthYoY, fd.EPSGrowthYoY, fd.DividendYieldPct, fd.Beta,
 			fd.EPS, fd.CurrentRatio, fd.MarketCapMillion,
 			pctFrom(q.Price, fd.Week52High), pctFrom(q.Price, fd.Week52Low)))
+		// TW-only (FinMind, Phase 6 PR3) — 0 for every US ticker, so kept
+		// out of the packed summary line above and skipped like the MA
+		// lines below rather than rendering a misleading "0.0%".
+		if fd.MonthRevenueYoYPct != 0 {
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyMonthRevenueYoYLine, fd.MonthRevenueYoYPct))
+		}
 	}
 
 	if ar := s.AnalystRating; ar != nil {

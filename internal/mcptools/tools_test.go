@@ -283,6 +283,37 @@ func TestGetFundamentals(t *testing.T) {
 	}
 }
 
+// TestGetFundamentalsRoutesTWToFinMind covers Phase 6 PR3: ts.fundamentals
+// is a data.FundamentalsRouter (US=Finnhub, TW=FinMind in production) rather
+// than a single provider, so a TW ticker must reach the TW-side fake, not
+// the US-side one — this is the "real data instead of the existing error"
+// change the design doc called for, exercised as an mcptools-level
+// integration test rather than re-testing FundamentalsRouter's own dispatch
+// logic (already covered in internal/data/fundamentals_test.go).
+func TestGetFundamentalsRoutesTWToFinMind(t *testing.T) {
+	ts := &toolset{
+		provider: &fakeProvider{},
+		history:  &fakeHistory{},
+		lang:     i18n.EN,
+		fundamentals: &data.FundamentalsRouter{
+			US: &fakeFundamentals{fd: &data.Fundamentals{Ticker: "AAPL", PE: 30.5}},
+			TW: &fakeFundamentals{fd: &data.Fundamentals{Ticker: "2330", PE: 32.3, DividendYieldPct: 0.91}},
+		},
+	}
+	session := connectTool(t, ts)
+
+	text, isError := callText(t, session, "get_fundamentals", map[string]any{"ticker": "2330"})
+	if isError {
+		t.Fatalf("get_fundamentals(2330) returned an error result: %s", text)
+	}
+	if !strings.Contains(text, "2330") || !strings.Contains(text, "32.3") {
+		t.Errorf("get_fundamentals(2330) should route to the TW fake, got:\n%s", text)
+	}
+	if strings.Contains(text, "30.5") {
+		t.Errorf("get_fundamentals(2330) should not return the US fake's data, got:\n%s", text)
+	}
+}
+
 func TestGetUpcomingEarnings(t *testing.T) {
 	ts := &toolset{
 		provider: &fakeProvider{},

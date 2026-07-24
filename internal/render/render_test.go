@@ -38,6 +38,30 @@ func TestFinancialStatement(t *testing.T) {
 	}
 }
 
+// TestFinancialStatementSkipsEmptySections covers a TW filing (FinMind,
+// Phase 6 PR3): TotalAssets/TotalLiabilities/TotalEquity/OperatingCashFlow/
+// CapEx/FreeCashFlow are all genuinely unavailable (0), and both sections
+// must be omitted entirely rather than rendering a misleading "$0M" trio.
+func TestFinancialStatementSkipsEmptySections(t *testing.T) {
+	st := &data.FinancialStatement{
+		Form:       "Q1",
+		FiscalYear: 2026,
+		PeriodEnd:  "2026-03-31",
+		Revenue:    1134103440000,
+		DilutedEPS: 22.08,
+	}
+	out := FinancialStatement(i18n.EN, st)
+	if strings.Contains(out, "Balance Sheet") {
+		t.Errorf("FinancialStatement() = %q, want no Balance Sheet section when all its fields are 0", out)
+	}
+	if strings.Contains(out, "Cash Flow") {
+		t.Errorf("FinancialStatement() = %q, want no Cash Flow section when all its fields are 0", out)
+	}
+	if !strings.Contains(out, "22.08") {
+		t.Errorf("FinancialStatement() = %q, want the diluted EPS still rendered", out)
+	}
+}
+
 func TestCommaf(t *testing.T) {
 	tests := []struct {
 		in   float64

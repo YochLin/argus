@@ -410,6 +410,7 @@ const (
 	KeyNewsHeader              Key = "news_header"
 	KeyNewsItem                Key = "news_item"
 	KeyFundamentalsSummaryLine Key = "fundamentals_summary_line"
+	KeyMonthRevenueYoYLine     Key = "month_revenue_yoy_line"
 	KeyAnalystRatingLine       Key = "analyst_rating_line"
 	KeyAnalystRatingTrendLine  Key = "analyst_rating_trend_line"
 	KeyStatementSummaryLine    Key = "statement_summary_line"

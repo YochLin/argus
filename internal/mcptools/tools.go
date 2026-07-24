@@ -86,11 +86,13 @@ func (ts *toolset) withCache(ctx context.Context, key string, ttl time.Duration,
 	return result, nil
 }
 
-// registerTools adds every tool this build has a provider for.
-// Fundamentals/statements/earnings are Finnhub-only (see internal/data) and
-// simply aren't registered when their provider is nil, so a client's
-// tools/list never advertises a tool that would always fail — the same
-// nil-check-and-degrade shape as Bot.fundamentals elsewhere in the project.
+// registerTools adds every tool this build has a provider for. Earnings is
+// Finnhub-only (see internal/data); fundamentals/statements route through a
+// data.FundamentalsRouter (Finnhub for US, FinMind for TW — Phase 6 PR3)
+// that's non-nil as long as either backing key is configured. Either way,
+// a nil provider simply isn't registered, so a client's tools/list never
+// advertises a tool that would always fail — the same nil-check-and-degrade
+// shape as Bot.fundamentals elsewhere in the project.
 func registerTools(s *mcp.Server, ts *toolset) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_quote",
@@ -120,12 +122,12 @@ func registerTools(s *mcp.Server, ts *toolset) {
 	if ts.fundamentals != nil {
 		mcp.AddTool(s, &mcp.Tool{
 			Name:        "get_fundamentals",
-			Description: "Get valuation, profitability, financial-health, and growth ratios for a US stock ticker (P/E, P/B, ROE, margins, debt/equity, revenue growth, dividend yield, etc.).",
+			Description: "Get valuation, profitability, financial-health, and growth ratios for a US or Taiwan stock ticker (P/E, P/B, ROE, margins, debt/equity, revenue growth, dividend yield, etc.). Taiwan tickers have narrower coverage (P/E, P/B, dividend yield, EPS, gross margin, month-revenue YoY only — no ROE/ROA/beta/52-week range).",
 		}, ts.getFundamentals)
 
 		mcp.AddTool(s, &mcp.Tool{
 			Name:        "get_financial_statements",
-			Description: "Get the key income statement, balance sheet, and cash flow line items from a US stock ticker's most recent 10-K or 10-Q filing.",
+			Description: "Get the key income statement line items from a US or Taiwan stock ticker's most recent filing (10-K/10-Q for US, latest quarter for Taiwan). Taiwan filings have no balance sheet or cash flow figures.",
 		}, ts.getFinancialStatements)
 	}
 
