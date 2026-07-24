@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"log"
 	"sort"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
+	"argus/internal/llm"
 	"argus/internal/market"
 	"argus/internal/signals"
 )
@@ -324,7 +326,11 @@ func (b *Bot) runDailyReport(ctx context.Context, m market.MarketID) {
 
 	summary, recs, err := b.llm.GenerateRecommendations(ctx, in.watchlist, in.candidates, in.marketNews, in.marketContext, in.recentLessons, m == market.TW)
 	if err != nil {
-		b.Send(i18n.T(b.lang, i18n.KeyLLMFailed, err))
+		if errors.Is(err, llm.ErrRecommendationParseFailed) {
+			b.Send(i18n.T(b.lang, i18n.KeyRecParseFailed, err))
+		} else {
+			b.Send(i18n.T(b.lang, i18n.KeyLLMFailed, err))
+		}
 		return
 	}
 

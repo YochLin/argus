@@ -2,11 +2,25 @@ package llm
 
 import (
 	"context"
+	"errors"
+	"log"
+	"strings"
 	"sync"
 
 	"argus/internal/data"
 	"argus/internal/i18n"
 )
+
+// ErrRecommendationParseFailed is returned by GenerateRecommendations when
+// the LLM replied with non-empty text but parseRecommendations extracted
+// zero [TICKER: ...] blocks from it — almost always a formatting drift
+// between the model's reply and what the parser expects, not a legitimate
+// "nothing to recommend" answer (the prompt always asks for 3–5 picks). This
+// is distinct from len(recs)==0 with a nil error, which callers still treat
+// as "no recommendations" — see PLAN.md's LLM 解析失敗觀測 note for why this
+// is a log+notify signal rather than the JSON-output rewrite that was
+// considered and rejected.
+var ErrRecommendationParseFailed = errors.New("llm: no parseable recommendation blocks in reply")
 
 // Client drives an LLM through an ordered chain of Providers (today: Claude
 // via ACP first, optionally Google Antigravity as a fallback — see
@@ -111,7 +125,25 @@ func (c *Client) GenerateRecommendations(ctx context.Context, watchlist []StockD
 	if len(marketNews) > 0 {
 		summary = parseMarketSummary(raw, i18n.T(c.lang, i18n.KeyMarketSummaryMarker))
 	}
-	return summary, parseRecommendations(c.lang, raw), nil
+	recs = parseRecommendations(c.lang, raw)
+	if strings.TrimSpace(raw) != "" && len(recs) == 0 {
+		log.Printf("llm: GenerateRecommendations parsed 0 recommendations from a non-empty reply (%d chars); raw reply follows:\n%s", len(raw), truncateForLog(raw))
+		return "", nil, ErrRecommendationParseFailed
+	}
+	return summary, recs, nil
+}
+
+// truncateForLog caps a raw LLM reply before it goes into a log line — the
+// full reply is only useful for debugging a parse-format drift, and an
+// unbounded model reply (there's no per-token cost via ACP to keep it short)
+// shouldn't be free to bloat the log file without limit.
+func truncateForLog(s string) string {
+	const maxLogRunes = 4000
+	r := []rune(s)
+	if len(r) <= maxLogRunes {
+		return s
+	}
+	return string(r[:maxLogRunes]) + "... (truncated)"
 }
 
 // CheckStock performs instant analysis of a single ticker.
