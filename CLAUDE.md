@@ -127,6 +127,41 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   for a placeholder `FINNHUB_API_KEY`). `GetUpcomingEarnings` deliberately has no guard: it's one
   whole-market call filtered client-side, so a TW ticker just never matches rather than costing anything
   extra.
+  Phase 6 PR3 (docs/phase-6-tw-market.md) added `finmind.go`'s `FinMind`, the `FundamentalsProvider` for TW
+  (Finnhub's free tier doesn't cover Taiwan at all — see `errTWNotSupported` above). `FINMIND_TOKEN` is
+  presence-gated exactly like `FINNHUB_API_KEY`, even though live-testing (2026-07-24) showed every
+  dataset used here (`TaiwanStockPER`, `TaiwanStockFinancialStatements`, `TaiwanStockMonthRevenue`) returns
+  real data completely unauthenticated — this project still requires a token before constructing a client
+  at all, matching the "commit to a real account before depending on a data source" convention rather than
+  quietly running anonymous. `GetFundamentals` covers PE/PB/dividend yield (`TaiwanStockPER`, a daily
+  dataset — most recent row), EPS and a derived gross margin (`GrossProfit/Revenue` from the latest
+  `TaiwanStockFinancialStatements` quarter), and `Fundamentals.MonthRevenueYoYPct` (new field,
+  `TaiwanStockMonthRevenue` — same month a year prior, found by scanning ~14 months of history since the
+  dataset has no YoY field of its own). Every other `Fundamentals` field (ROE, ROA, Beta, 52-week range,
+  ...) stays 0 — FinMind's free datasets don't carry them — a documented partial-coverage gap, not a bug.
+  `GetFinancialStatements`'s `freq` parameter is accepted for interface parity but not applied:
+  `TaiwanStockFinancialStatements` only ever returns single-quarter figures with no verified
+  annual/cumulative endpoint, so `Form` is a bare `"Q1"`.."Q4"` label rather than a real filing type, and
+  `TotalAssets`/`TotalLiabilities`/`TotalEquity`/`OperatingCashFlow`/`CapEx`/`FreeCashFlow` stay 0 — this
+  dataset is income-statement-only, no balance sheet or cash flow figures exist in it at all.
+  **`MarketNewsProvider` was not implemented for TW** despite being in this PR's original scope: live
+  testing found `TaiwanStockNews` without a `data_id` (the whole-market form mirroring Finnhub's
+  `/news?category=general`) returns `{"msg":"Your level is free. Please update your user level."}` even
+  with a token — a paid FinMind sponsor tier, not something a free/registered token unlocks. The fallback
+  of aggregating per-ticker news across the TW watchlist was also rejected: it would just duplicate the
+  per-ticker news each stock's own prompt section already renders via Yahoo's `GetNews`, not real
+  market/macro news. `gatherRecommendationInputs`'s pre-existing `if m == market.US` nil-degrade for
+  `marketNews` (see `internal/bot` below) is therefore unchanged — the 15:00 TW daily report has no market
+  news summary block, a known/accepted gap (see docs/phase-6-tw-market.md §7), not an oversight.
+  `data.FundamentalsRouter` (`fundamentals.go`) is the per-market dispatch this PR needed: it implements
+  `FundamentalsProvider` by routing on `market.Of(ticker)` to its `US`/`TW` fields, each independently
+  nilable exactly like `Finnhub`/`FinMind` construction is independently gated on
+  `FINNHUB_API_KEY`/`FINMIND_TOKEN` — every existing `if b.fundamentals != nil`/`if ts.fundamentals != nil`
+  nil-check in `internal/bot`/`internal/mcptools` keeps its pre-PR3 shape unchanged, since the router itself
+  is non-nil as long as either key is configured; only routing to a market whose backing provider is itself
+  nil returns a Go error, which every caller already handles via its existing "no fundamentals data"
+  degrade path. `main.go` builds one `FundamentalsRouter` and passes it to both `bot.Config.Fundamentals`
+  and `mcptools.Run`'s fundamentals parameter — same router, not two separately-constructed ones.
 - `internal/db` — thin wrapper around `database/sql` + `modernc.org/sqlite` (pure-Go, no cgo). Owns nine
   tables: `watchlist`, `daily_snapshots`, `recommendations` (with `action` BUY/SELL/HOLD, `price` at
   recommendation time, and `source` — `"watchlist"`/`"movers"`/`"scan"`, migration 5, `""` for rows saved
@@ -356,6 +391,12 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   being fetched but never rendered: `EPS`, `CurrentRatio`, `MarketCapMillion`, and `Week52High`/
   `Week52Low` converted to "% from 52-week high/low" via a `pctFrom(price, ref)` helper that returns 0
   when `ref` is 0 (a ticker Finnhub hasn't got a 52-week range for yet) rather than dividing by zero.
+  `Fundamentals.MonthRevenueYoYPct` (Phase 6 PR3, TW-only via FinMind — see `internal/data` above) is
+  deliberately *not* a sixth verb on `KeyFundamentalsSummaryLine`: that line's other 15 fields are
+  near-always-populated Finnhub values for a US ticker, so packing in a field that's always exactly 0 for
+  every US ticker would print a misleading "Month Revenue YoY 0.0%" on every US recommendation. It's its
+  own key, `KeyMonthRevenueYoYLine`, rendered right after the summary line and skipped when 0 — same
+  per-field-degrades-independently convention as the `MA20`/`MA50`/`MA200` lines just above.
   `StockData.PrevRec` (Phase 3.8, `*PrevRecommendation`) is the same attach-and-render pattern once more,
   for recommendation continuity: `bot.loadPrevRecs`/`fetchStockData` only set it when a prior
   `db.Recommendation.Action` is non-empty (skips legacy pre-action rows and any the model failed to parse
@@ -464,6 +505,11 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   hand. `internal/bot`'s `/fundamentals` command and `internal/mcptools`'s `get_fundamentals`/
   `get_financial_statements` tools both call into this package now; `mcptools`'s wrappers just prepend
   their MCP-specific ticker-header line before calling it (see that package's entry).
+  `FinancialStatement` (Phase 6 PR3) now skips its Balance Sheet and Cash Flow sections entirely when every
+  field in that section is 0, rather than unconditionally printing them — a TW filing (FinMind) has no
+  such data at all (see `internal/data`'s entry), and would otherwise render a misleading `$0M` trio in
+  both sections. A no-op for every pre-existing US caller: a real 10-K/10-Q filing's figures are never
+  exactly 0.
 - `internal/webfetch` — Phase 3's "article digestion" chat mode: `ExtractURL(text)` (pure, regex-based)
   finds the first `http(s)` URL in a chat message, and `Fetch(ctx, url)` downloads and extracts that
   page's readable text via `golang.org/x/net/html`, skipping `script`/`style`/`nav`/`header`/`footer`/
@@ -887,6 +933,14 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `writePortfolioSection` — for the same can't-share-an-import reason as `formatFundamentals`), rendering
   up to two market-scoped blocks with independent `GetRealizedPnL(m)` subtotals instead of one combined
   figure that would silently sum TWD and USD together.
+  Phase 6 PR3 delivers on that "FinMind support is what turns that into real data" note: `main.go` now
+  passes a `data.FundamentalsRouter` (US=Finnhub, TW=FinMind) as the `fundamentals` constructor argument
+  instead of a bare Finnhub client, and `ts.fundamentals`'s nil-check (`registerTools`) becomes "at least
+  one of the router's two fields is non-nil" for free — the field's static type is still just
+  `data.FundamentalsProvider`, so no signature changed here at all. `get_fundamentals`/
+  `get_financial_statements`'s tool descriptions were updated from "US stock ticker" to "US or Taiwan
+  stock ticker" (with a note on TW's narrower field coverage) so the LLM stops assuming these tools are
+  US-only now that they return real TW data instead of always erroring.
 - `internal/web` — Phase 5 PR1's read-only web dashboard (see
   [docs/phase-5-web-dashboard.md](docs/phase-5-web-dashboard.md)): an in-process HTTP server gated by the
   `WEB_ADDR` env var (empty = off, same presence-of-config convention as `FINNHUB_API_KEY`), started as a

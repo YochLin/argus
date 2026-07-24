@@ -32,6 +32,14 @@ type Fundamentals struct {
 	Week52High         float64
 	Week52Low          float64
 	BookValuePerShare  float64
+	// MonthRevenueYoYPct is TW-only (FinMind's TaiwanStockMonthRevenue,
+	// Phase 6 PR3) — 0 for every US ticker, since Finnhub has no monthly
+	// revenue concept. writeStockSection in internal/llm renders it as its
+	// own line, skipped when 0, rather than folding it into
+	// KeyFundamentalsSummaryLine's single packed line — that line's other
+	// 15 fields are near-always-populated Finnhub values, so a 16th verb
+	// would render a misleading "0.0%" on every US recommendation.
+	MonthRevenueYoYPct float64
 }
 
 // FinancialStatement holds the key line items from a single annual (10-K) or
@@ -54,13 +62,57 @@ type FinancialStatement struct {
 	FreeCashFlow      float64
 }
 
-// FundamentalsProvider is implemented only by Finnhub. Unlike Provider,
-// there's no Yahoo fallback to wrap this in a Multi for — Yahoo's
-// fundamentals endpoint is blocked without a crumb/cookie handshake we
-// deliberately don't implement (fragile, unofficial API, easy to break).
+// FundamentalsProvider is implemented by Finnhub (US) and FinMind (TW —
+// Phase 6 PR3, finmind.go). Unlike Provider, there's no Yahoo fallback to
+// wrap either in a Multi for: Yahoo's fundamentals endpoint is blocked
+// without a crumb/cookie handshake we deliberately don't implement
+// (fragile, unofficial API, easy to break), and FinMind is the only TW
+// fundamentals source there is.
 type FundamentalsProvider interface {
 	GetFundamentals(ticker string) (*Fundamentals, error)
 	GetFinancialStatements(ticker, freq string) (*FinancialStatement, error)
+}
+
+// FundamentalsRouter implements FundamentalsProvider by dispatching on
+// market.Of(ticker) — US and TW are each independently nilable (mirroring
+// how Finnhub/FinMind construction is independently gated on
+// FINNHUB_API_KEY/FINMIND_TOKEN), so callers keep the exact
+// "if b.fundamentals != nil" nil-check shape they had before this router
+// existed (see docs/phase-6-tw-market.md §6) — only routing to a market
+// whose backing provider is itself nil returns an error, the same outcome
+// as that provider being entirely absent before this router existed.
+type FundamentalsRouter struct {
+	US FundamentalsProvider // nil if FINNHUB_API_KEY isn't set
+	TW FundamentalsProvider // nil if FINMIND_TOKEN isn't set
+}
+
+func (r *FundamentalsRouter) providerFor(ticker string) (FundamentalsProvider, error) {
+	if market.Of(ticker) == market.TW {
+		if r.TW == nil {
+			return nil, fmt.Errorf("fundamentals: no taiwan provider configured (set FINMIND_TOKEN)")
+		}
+		return r.TW, nil
+	}
+	if r.US == nil {
+		return nil, fmt.Errorf("fundamentals: no us provider configured (set FINNHUB_API_KEY)")
+	}
+	return r.US, nil
+}
+
+func (r *FundamentalsRouter) GetFundamentals(ticker string) (*Fundamentals, error) {
+	p, err := r.providerFor(ticker)
+	if err != nil {
+		return nil, err
+	}
+	return p.GetFundamentals(ticker)
+}
+
+func (r *FundamentalsRouter) GetFinancialStatements(ticker, freq string) (*FinancialStatement, error) {
+	p, err := r.providerFor(ticker)
+	if err != nil {
+		return nil, err
+	}
+	return p.GetFinancialStatements(ticker, freq)
 }
 
 func (f *Finnhub) GetFundamentals(ticker string) (*Fundamentals, error) {

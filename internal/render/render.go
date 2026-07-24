@@ -56,15 +56,24 @@ func FinancialStatement(lang i18n.Lang, st *data.FinancialStatement) string {
 	sb.WriteString(i18n.T(lang, i18n.KeyNetIncome, Commaf(st.NetIncome/1e6)))
 	sb.WriteString(i18n.T(lang, i18n.KeyDilutedEPS, st.DilutedEPS))
 
-	sb.WriteString(i18n.T(lang, i18n.KeyBalanceSheetHeader))
-	sb.WriteString(i18n.T(lang, i18n.KeyTotalAssets, Commaf(st.TotalAssets/1e6)))
-	sb.WriteString(i18n.T(lang, i18n.KeyTotalLiabilities, Commaf(st.TotalLiabilities/1e6)))
-	sb.WriteString(i18n.T(lang, i18n.KeyTotalEquity, Commaf(st.TotalEquity/1e6)))
+	// TW filings (FinMind, Phase 6 PR3) carry income-statement figures only —
+	// no balance sheet or cash flow data at all — so each section is
+	// skipped outright when every one of its fields is 0 rather than
+	// rendering a misleading "$0M" trio. A real US filing's figures are
+	// never exactly 0, so this is a no-op for every pre-existing caller.
+	if st.TotalAssets != 0 || st.TotalLiabilities != 0 || st.TotalEquity != 0 {
+		sb.WriteString(i18n.T(lang, i18n.KeyBalanceSheetHeader))
+		sb.WriteString(i18n.T(lang, i18n.KeyTotalAssets, Commaf(st.TotalAssets/1e6)))
+		sb.WriteString(i18n.T(lang, i18n.KeyTotalLiabilities, Commaf(st.TotalLiabilities/1e6)))
+		sb.WriteString(i18n.T(lang, i18n.KeyTotalEquity, Commaf(st.TotalEquity/1e6)))
+	}
 
-	sb.WriteString(i18n.T(lang, i18n.KeyCashFlowHeader))
-	sb.WriteString(i18n.T(lang, i18n.KeyOperatingCashFlow, Commaf(st.OperatingCashFlow/1e6)))
-	sb.WriteString(i18n.T(lang, i18n.KeyCapEx, Commaf(st.CapEx/1e6)))
-	sb.WriteString(i18n.T(lang, i18n.KeyFreeCashFlow, Commaf(st.FreeCashFlow/1e6)))
+	if st.OperatingCashFlow != 0 || st.CapEx != 0 || st.FreeCashFlow != 0 {
+		sb.WriteString(i18n.T(lang, i18n.KeyCashFlowHeader))
+		sb.WriteString(i18n.T(lang, i18n.KeyOperatingCashFlow, Commaf(st.OperatingCashFlow/1e6)))
+		sb.WriteString(i18n.T(lang, i18n.KeyCapEx, Commaf(st.CapEx/1e6)))
+		sb.WriteString(i18n.T(lang, i18n.KeyFreeCashFlow, Commaf(st.FreeCashFlow/1e6)))
+	}
 	return sb.String()
 }
 

@@ -44,6 +44,7 @@ func main() {
 	telegramToken := mustEnv("TELEGRAM_BOT_TOKEN")
 	chatIDStr := mustEnv("TELEGRAM_CHAT_ID")
 	finnhubKey := os.Getenv("FINNHUB_API_KEY")
+	finmindToken := os.Getenv("FINMIND_TOKEN")
 	recommendModel := envOr("CLAUDE_RECOMMEND_MODEL", "opus")
 	checkModel := envOr("CLAUDE_CHECK_MODEL", "sonnet")
 	chatModel := envOr("CLAUDE_CHAT_MODEL", "sonnet")
@@ -124,17 +125,31 @@ func main() {
 	// closes (for RSI/MACD) go the other way: Finnhub's free tier blocks
 	// /stock/candle entirely, so history is Yahoo-only.
 	var providers []data.Provider
-	var fundamentalsProvider data.FundamentalsProvider
 	var analystRatingProvider data.AnalystRatingProvider
 	var earningsProvider data.EarningsProvider
 	var marketNewsProvider data.MarketNewsProvider
+	fundamentalsRouter := &data.FundamentalsRouter{}
 	if finnhubKey != "" {
 		finnhub := data.NewFinnhub(finnhubKey)
 		providers = append(providers, finnhub)
-		fundamentalsProvider = finnhub
+		fundamentalsRouter.US = finnhub
 		analystRatingProvider = finnhub
 		earningsProvider = finnhub
 		marketNewsProvider = finnhub
+	}
+	// FINMIND_TOKEN gates TW fundamentals the same way FINNHUB_API_KEY gates
+	// US (Phase 6 PR3) — FinMind has no Yahoo-style Multi fallback to sit
+	// behind, it's the only TW fundamentals source there is (see
+	// internal/data/finmind.go).
+	if finmindToken != "" {
+		fundamentalsRouter.TW = data.NewFinMind(finmindToken)
+	}
+	// fundamentalsProvider stays nil (not a router wrapping two nil fields)
+	// when neither key is set, preserving every existing `if b.fundamentals
+	// != nil` nil-check's pre-Phase-6-PR3 behavior exactly.
+	var fundamentalsProvider data.FundamentalsProvider
+	if fundamentalsRouter.US != nil || fundamentalsRouter.TW != nil {
+		fundamentalsProvider = fundamentalsRouter
 	}
 	yahoo := data.NewYahoo()
 	providers = append(providers, yahoo)
@@ -256,20 +271,30 @@ func runMCPServer() {
 		log.Println("no .env file found, reading env from environment")
 	}
 	finnhubKey := os.Getenv("FINNHUB_API_KEY")
+	finmindToken := os.Getenv("FINMIND_TOKEN")
 	lang := i18n.Parse(envOr("BOT_LANGUAGE", "zh"))
 
 	// Same provider construction as main(): Finnhub-only tools
-	// (fundamentals/statements/earnings) stay nil without a key, same as
-	// Bot.fundamentals — mcptools.NewServer skips registering their tools
-	// in that case rather than registering a tool that always fails.
+	// (statements/earnings) stay nil without a key, same as Bot's — and
+	// fundamentalsProvider is the same US/TW FundamentalsRouter as main()
+	// (Phase 6 PR3) — mcptools.NewServer's nil-check on it only skips
+	// registering get_fundamentals/get_financial_statements when *both*
+	// keys are absent, not just Finnhub's.
 	var providers []data.Provider
-	var fundamentalsProvider data.FundamentalsProvider
 	var earningsProvider data.EarningsProvider
+	fundamentalsRouter := &data.FundamentalsRouter{}
 	if finnhubKey != "" {
 		finnhub := data.NewFinnhub(finnhubKey)
 		providers = append(providers, finnhub)
-		fundamentalsProvider = finnhub
+		fundamentalsRouter.US = finnhub
 		earningsProvider = finnhub
+	}
+	if finmindToken != "" {
+		fundamentalsRouter.TW = data.NewFinMind(finmindToken)
+	}
+	var fundamentalsProvider data.FundamentalsProvider
+	if fundamentalsRouter.US != nil || fundamentalsRouter.TW != nil {
+		fundamentalsProvider = fundamentalsRouter
 	}
 	yahoo := data.NewYahoo()
 	providers = append(providers, yahoo)
