@@ -10,8 +10,6 @@ import (
 
 	"argus/internal/db"
 	"argus/internal/i18n"
-
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 // callbackConfirmPrefix/callbackRejectPrefix identify a Telegram inline
@@ -99,72 +97,54 @@ func (b *Bot) describePendingAction(a db.PendingAction) (string, bool) {
 }
 
 // sendPendingActionConfirmation sends text with a Confirm/Reject inline
-// keyboard, bypassing Send's chunking helper (these messages are always
-// short, hand-composed templates, never user-scale content).
+// keyboard (these messages are always short, hand-composed templates, never
+// user-scale content needing Send's chunking).
 func (b *Bot) sendPendingActionConfirmation(id int64, text string) error {
-	msg := tgbotapi.NewMessage(b.chatID, text)
-	msg.ParseMode = "Markdown"
-	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(i18n.T(b.lang, i18n.KeyConfirmButton), fmt.Sprintf("%s%d", callbackConfirmPrefix, id)),
-			tgbotapi.NewInlineKeyboardButtonData(i18n.T(b.lang, i18n.KeyRejectButton), fmt.Sprintf("%s%d", callbackRejectPrefix, id)),
-		),
-	)
-	_, err := b.api.Send(msg)
-	return err
+	buttons := []Button{
+		{Label: i18n.T(b.lang, i18n.KeyConfirmButton), Data: fmt.Sprintf("%s%d", callbackConfirmPrefix, id)},
+		{Label: i18n.T(b.lang, i18n.KeyRejectButton), Data: fmt.Sprintf("%s%d", callbackRejectPrefix, id)},
+	}
+	return b.channel.SendWithButtons(text, buttons)
 }
 
 // handleCallbackQuery processes a tap on any inline keyboard button this
 // bot sends — pending-action confirm/reject (below) and per-ticker quick
 // actions (quick_actions.go's callbackCheckPrefix/callbackBuyPrefix/
 // callbackSellPrefix, checked first since they're a different callback_data
-// namespace). Both always answer the callback query first (clears
-// Telegram's loading spinner on the button) regardless of outcome.
+// namespace). Both always answer the callback query first (clears the
+// channel's loading spinner, if it has one) regardless of outcome.
 // Pending-action taps then edit the original message in place to show the
 // result instead of sending a new one, so the chat doesn't accumulate a
 // stray "confirmed"/"rejected" line under the original proposal; quick
 // actions instead send a fresh message (a per-ticker message that already
 // has its own buttons stays untouched, so it can still be tapped again).
-func (b *Bot) handleCallbackQuery(ctx context.Context, cq *tgbotapi.CallbackQuery) {
-	if cq.Message == nil || cq.Message.Chat == nil || cq.Message.Chat.ID != b.chatID {
-		return
-	}
-
-	if ticker, ok := strings.CutPrefix(cq.Data, callbackCheckPrefix); ok {
-		b.answerCallback(cq.ID)
+func (b *Bot) handleCallbackQuery(ctx context.Context, cb InCallback) {
+	if ticker, ok := strings.CutPrefix(cb.Data, callbackCheckPrefix); ok {
+		b.channel.AnswerCallback(cb.ID)
 		go b.handleCheck(ctx, ticker)
 		return
 	}
-	if ticker, ok := strings.CutPrefix(cq.Data, callbackBuyPrefix); ok {
-		b.answerCallback(cq.ID)
+	if ticker, ok := strings.CutPrefix(cb.Data, callbackBuyPrefix); ok {
+		b.channel.AnswerCallback(cb.ID)
 		b.Send(i18n.T(b.lang, i18n.KeyBuyCommandTemplate, ticker))
 		return
 	}
-	if ticker, ok := strings.CutPrefix(cq.Data, callbackSellPrefix); ok {
-		b.answerCallback(cq.ID)
+	if ticker, ok := strings.CutPrefix(cb.Data, callbackSellPrefix); ok {
+		b.channel.AnswerCallback(cb.ID)
 		b.Send(i18n.T(b.lang, i18n.KeySellCommandTemplate, ticker))
 		return
 	}
 
-	id, confirm, ok := parseCallbackData(cq.Data)
+	id, confirm, ok := parseCallbackData(cb.Data)
 	if !ok {
 		return
 	}
 
-	b.answerCallback(cq.ID)
+	b.channel.AnswerCallback(cb.ID)
 
 	resultText := b.resolvePendingAction(ctx, id, confirm)
-	edit := tgbotapi.NewEditMessageText(cq.Message.Chat.ID, cq.Message.MessageID, resultText)
-	if _, err := b.api.Send(edit); err != nil {
+	if err := b.channel.EditMessage(cb.MsgRef, resultText); err != nil {
 		log.Printf("pending actions: edit confirmation message: %v", err)
-	}
-}
-
-// answerCallback clears Telegram's loading spinner on a tapped inline
-// keyboard button. Shared by every handleCallbackQuery branch.
-func (b *Bot) answerCallback(id string) {
-	if _, err := b.api.Request(tgbotapi.NewCallback(id, "")); err != nil {
-		log.Printf("callback query: answer: %v", err)
 	}
 }
 

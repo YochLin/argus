@@ -15,6 +15,35 @@ import (
 	"argus/internal/market"
 )
 
+func TestParseCommand(t *testing.T) {
+	tests := []struct {
+		name     string
+		text     string
+		wantCmd  string
+		wantArgs string
+		wantOK   bool
+	}{
+		{"bare command", "/status", "status", "", true},
+		{"command with args", "/add AAPL", "add", "AAPL", true},
+		{"command with multi-word args", "/buy AAPL 10 200", "buy", "AAPL 10 200", true},
+		{"botname suffix stripped", "/status@my_bot", "status", "", true},
+		{"botname suffix with args", "/add@my_bot AAPL", "add", "AAPL", true},
+		{"plain text is not a command", "hello there", "", "", false},
+		{"empty text is not a command", "", "", "", false},
+		{"bare slash is not a command", "/", "", "", false},
+		{"args get trimmed", "/add   AAPL  ", "add", "AAPL", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd, args, ok := parseCommand(tt.text)
+			if cmd != tt.wantCmd || args != tt.wantArgs || ok != tt.wantOK {
+				t.Errorf("parseCommand(%q) = (%q, %q, %v), want (%q, %q, %v)",
+					tt.text, cmd, args, ok, tt.wantCmd, tt.wantArgs, tt.wantOK)
+			}
+		})
+	}
+}
+
 func TestDedup(t *testing.T) {
 	tests := []struct {
 		name string
