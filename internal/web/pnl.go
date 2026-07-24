@@ -5,6 +5,7 @@ package web
 
 import (
 	"sort"
+	"time"
 
 	"argus/internal/db"
 )
@@ -265,4 +266,67 @@ func Expectancy(sells []db.Transaction) float64 {
 		total += s.RealizedPnL
 	}
 	return total / float64(len(sells))
+}
+
+// YTDStart/QTDStart/HTDStart return the start date ("YYYY-MM-DD") of the
+// calendar period now falls in — year, quarter, and half-year respectively.
+// HTD's halves are Jan 1 (H1) and Jul 1 (H2). These take now as a parameter
+// (rather than calling time.Now() themselves) purely so tests can pin down
+// period-boundary edge cases (year/quarter/half rollovers) deterministically
+// — buildDashboard still calls time.Now() itself, same un-injected-clock
+// convention it already uses for its "to" cutoff.
+func YTDStart(now time.Time) string {
+	return time.Date(now.Year(), time.January, 1, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
+}
+
+func QTDStart(now time.Time) string {
+	quarterStartMonth := time.Month((int(now.Month()-1)/3)*3 + 1)
+	return time.Date(now.Year(), quarterStartMonth, 1, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
+}
+
+func HTDStart(now time.Time) string {
+	half := time.January
+	if now.Month() >= time.July {
+		half = time.July
+	}
+	return time.Date(now.Year(), half, 1, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
+}
+
+// curveValueBefore returns the value of the last curve point dated strictly
+// before date, or 0 if there's no such point (the whole curve postdates
+// date — i.e. the account's trading history only starts partway into the
+// period being measured, so the period's P&L is simply the curve's full
+// value with no earlier point to subtract).
+func curveValueBefore(curve []DateValue, date string) float64 {
+	var v float64
+	for _, c := range curve {
+		if c.Date >= date {
+			break
+		}
+		v = c.Value
+	}
+	return v
+}
+
+// PeriodReturnPct computes a period's cash-flow-neutral return % — period
+// P&L (curve's value at periodStart's boundary subtracted from its latest
+// value) divided by baseline (net worth at the start of the period). This is
+// deliberately not a raw net-worth diff: docs/phase-5-web-dashboard.md
+// already rejected that approach for the daily P&L calendar because a
+// deposit/buy on the first day of the period would be miscounted as profit
+// — curve (from DailyPnL/CumulativeCurve) already carries that same-day
+// fill-price correction, so it's the correct numerator here too.
+// ok=false when there's no usable baseline (haveBaseline is false, or
+// baseline is exactly 0 — division would be meaningless) — callers must
+// treat that as "can't compute," never render a misleading 0%.
+func PeriodReturnPct(curve []DateValue, periodStart string, baseline float64, haveBaseline bool) (pct float64, ok bool) {
+	if !haveBaseline || baseline == 0 {
+		return 0, false
+	}
+	var endValue float64
+	if len(curve) > 0 {
+		endValue = curve[len(curve)-1].Value
+	}
+	periodPnL := endValue - curveValueBefore(curve, periodStart)
+	return periodPnL / baseline * 100, true
 }

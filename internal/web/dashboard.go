@@ -71,6 +71,41 @@ type dbReader interface {
 	GetDailySnapshotsForTickers(tickers []string, from, to string) ([]db.DailySnapshot, error)
 	GetWatchlist() ([]string, error)
 	GetLatestSnapshot(ticker string) (db.DailySnapshot, bool, error)
+	GetNetWorthOnOrBefore(date string, m market.MarketID) (float64, bool, error)
+	GetNetWorthRange(from, to string, m market.MarketID) ([]db.NetWorthPoint, error)
+}
+
+// netWorthBaseline resolves the capital base for a period starting at
+// periodStart: the net worth as of the day before periodStart, or — if the
+// account's history doesn't reach that far back — the earliest net worth
+// snapshot on record within the period itself. That fallback mirrors
+// internal/bot/jobs.go's buildMonthlyReportBlock (same "baseline, haveBaseline
+// = values[0], true" idiom), not a new convention. A query failure logs and
+// is treated the same as "no data," matching every other single-query
+// degrade in this file.
+func netWorthBaseline(database dbReader, periodStart string, m market.MarketID, today string) (float64, bool) {
+	dayBefore, err := time.Parse("2006-01-02", periodStart)
+	if err != nil {
+		log.Printf("web: dashboard: parse period start %q: %v", periodStart, err)
+		return 0, false
+	}
+	dayBeforeStr := dayBefore.AddDate(0, 0, -1).Format("2006-01-02")
+
+	if baseline, ok, err := database.GetNetWorthOnOrBefore(dayBeforeStr, m); err != nil {
+		log.Printf("web: dashboard: get net worth on or before %s: %v", dayBeforeStr, err)
+	} else if ok {
+		return baseline, true
+	}
+
+	points, err := database.GetNetWorthRange(periodStart, today, m)
+	if err != nil {
+		log.Printf("web: dashboard: get net worth range: %v", err)
+		return 0, false
+	}
+	if len(points) == 0 {
+		return 0, false
+	}
+	return points[0].Total, true
 }
 
 // buildStatus assembles the /api/status response — the shell-level status
@@ -142,7 +177,8 @@ func buildDashboard(database dbReader, quotes quoteGetter, m market.MarketID) (d
 			tickers = append(tickers, t)
 		}
 		from := txs[0].Date // GetAllTransactions is date-ordered; the first row is the earliest.
-		to := time.Now().Format("2006-01-02")
+		now := time.Now()
+		to := now.Format("2006-01-02")
 
 		snapshots, err := database.GetDailySnapshotsForTickers(tickers, from, to)
 		if err != nil {
@@ -158,6 +194,25 @@ func buildDashboard(database dbReader, quotes quoteGetter, m market.MarketID) (d
 			resp.KPIs.NetPnL = curve[len(curve)-1].Value
 		}
 		resp.KPIs.MaxDrawdown = MaxDrawdownAbs(curve)
+
+		ytdStart := YTDStart(now)
+		if base, ok := netWorthBaseline(database, ytdStart, m, to); ok {
+			if pct, ok := PeriodReturnPct(curve, ytdStart, base, ok); ok {
+				resp.KPIs.YTDReturnPct = &pct
+			}
+		}
+		qtdStart := QTDStart(now)
+		if base, ok := netWorthBaseline(database, qtdStart, m, to); ok {
+			if pct, ok := PeriodReturnPct(curve, qtdStart, base, ok); ok {
+				resp.KPIs.QTDReturnPct = &pct
+			}
+		}
+		htdStart := HTDStart(now)
+		if base, ok := netWorthBaseline(database, htdStart, m, to); ok {
+			if pct, ok := PeriodReturnPct(curve, htdStart, base, ok); ok {
+				resp.KPIs.HTDReturnPct = &pct
+			}
+		}
 	}
 
 	resp.Positions = make([]positionResponse, 0, len(positions))
