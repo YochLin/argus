@@ -119,6 +119,29 @@ type candleResponse struct {
 	Volume int64   `json:"volume"`
 }
 
+// chartResponse is /api/chart's body: ticker's ~1y of daily candles plus the
+// support/resistance levels computed from that same window (chart.go's
+// buildChart). Candles/Levels are "[]" not "null" when empty, same
+// dashboard.go convention.
+type chartResponse struct {
+	Ticker  string           `json:"ticker"`
+	Candles []candleResponse `json:"candles"`
+	Levels  []levelResponse  `json:"levels"`
+}
+
+type levelResponse struct {
+	Price     float64 `json:"price"`
+	Touches   int     `json:"touches"`
+	FirstDate string  `json:"firstDate"`
+	LastDate  string  `json:"lastDate"`
+}
+
+// tickersResponse is /api/tickers' body - the /chart list page's ticker
+// picker source (chart.go's buildTickers).
+type tickersResponse struct {
+	Tickers []string `json:"tickers"`
+}
+
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, configResponse{Lang: string(s.lang)})
 }
@@ -208,6 +231,46 @@ func (s *Server) handleRoundDetail(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("web: build round detail: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to build round detail")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleChart(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if p := recover(); p != nil {
+			log.Printf("web: panic in handleChart: %v", p)
+			writeError(w, http.StatusInternalServerError, "internal error")
+		}
+	}()
+
+	ticker := r.URL.Query().Get("ticker")
+	if ticker == "" {
+		writeError(w, http.StatusBadRequest, "ticker is required")
+		return
+	}
+
+	resp, err := buildChart(s.history, ticker)
+	if err != nil {
+		log.Printf("web: build chart for %s: %v", ticker, err)
+		writeError(w, http.StatusInternalServerError, "failed to build chart")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleTickers(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if p := recover(); p != nil {
+			log.Printf("web: panic in handleTickers: %v", p)
+			writeError(w, http.StatusInternalServerError, "internal error")
+		}
+	}()
+
+	resp, err := buildTickers(s.db, marketParam(r))
+	if err != nil {
+		log.Printf("web: build tickers: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build tickers")
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)

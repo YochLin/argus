@@ -47,6 +47,14 @@ export interface Dictionary {
   open: string;
   noRounds: string;
   back: string;
+  navChart: string;
+  support: string;
+  resistance: string;
+  touches: string;
+  lastTouch: string;
+  levelType: string;
+  noLevels: string;
+  pickTicker: string;
 }
 
 const en: Dictionary = {
@@ -86,6 +94,14 @@ const en: Dictionary = {
   open: "OPEN",
   noRounds: "No trade rounds yet.",
   back: "‹ Back",
+  navChart: "Chart",
+  support: "Support",
+  resistance: "Resistance",
+  touches: "Touches",
+  lastTouch: "Last touch",
+  levelType: "Type",
+  noLevels: "No significant levels",
+  pickTicker: "Pick a ticker",
 };
 
 const zh: Dictionary = {
@@ -125,6 +141,14 @@ const zh: Dictionary = {
   open: "進行中",
   noRounds: "目前沒有交易回合。",
   back: "‹ 返回",
+  navChart: "個股圖",
+  support: "支撐",
+  resistance: "壓力",
+  touches: "觸碰次數",
+  lastTouch: "最後觸碰",
+  levelType: "類型",
+  noLevels: "無明顯支撐/壓力位",
+  pickTicker: "選擇標的",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

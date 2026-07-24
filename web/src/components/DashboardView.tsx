@@ -8,6 +8,11 @@ import { PositionsTable } from "./PositionsTable";
 interface Props {
   dict: Dictionary;
   market: Market;
+  // onTickerClick is Phase 7's drill-down from a held position into its
+  // /chart page (docs/phase-7-support-resistance.md §5.1) — threaded down
+  // to PositionsTable, whose ticker cell becomes a link only when this is
+  // provided.
+  onTickerClick?: (ticker: string) => void;
 }
 
 // The dashboard screen's body, pulled out of App.tsx (Phase 5 PR2) so App
@@ -15,7 +20,7 @@ interface Props {
 // fetch/loading/error state rather than App prefetching everything upfront.
 // Phase 6: refetches whenever the market toggle changes (see App.tsx),
 // since /api/dashboard's numbers are market-scoped (buildDashboard).
-export function DashboardView({ dict, market }: Props) {
+export function DashboardView({ dict, market, onTickerClick }: Props) {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [error, setError] = useState(false);
 
@@ -61,7 +66,7 @@ export function DashboardView({ dict, market }: Props) {
       <PnlChart curve={curve} />
       <div className="card">
         <div className="eyebrow">{dict.positions}</div>
-        <PositionsTable positions={positions} dict={dict} currency={currency} />
+        <PositionsTable positions={positions} dict={dict} currency={currency} onTickerClick={onTickerClick} />
       </div>
     </>
   );

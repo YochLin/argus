@@ -7,6 +7,8 @@ import { DashboardView } from "./components/DashboardView";
 import { CalendarView } from "./components/CalendarView";
 import { RoundsListView } from "./components/RoundsListView";
 import { RoundDetailView } from "./components/RoundDetailView";
+import { ChartListView } from "./components/ChartListView";
+import { ChartView } from "./components/ChartView";
 
 // Four client-side routes (dashboard, calendar, round list, round detail)
 // don't justify pulling in a routing library — a hand-rolled route
@@ -87,8 +89,25 @@ export default function App() {
         onBack={() => navigate("/rounds")}
       />
     );
+  } else if (path === "/chart") {
+    const ticker = params.get("ticker");
+    body = ticker ? (
+      <ChartView dict={dict} ticker={ticker} onBack={() => navigate("/chart")} />
+    ) : (
+      <ChartListView
+        dict={dict}
+        market={market}
+        onOpenTicker={(t) => navigate(`/chart?ticker=${encodeURIComponent(t)}`)}
+      />
+    );
   } else {
-    body = <DashboardView dict={dict} market={market} />;
+    body = (
+      <DashboardView
+        dict={dict}
+        market={market}
+        onTickerClick={(t) => navigate(`/chart?ticker=${encodeURIComponent(t)}`)}
+      />
+    );
   }
 
   return (

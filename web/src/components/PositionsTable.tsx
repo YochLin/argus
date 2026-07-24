@@ -8,6 +8,10 @@ interface Props {
   // currencySymbol) — defaults to "$" so every pre-Phase-6 caller is
   // unaffected.
   currency?: string;
+  // onTickerClick is Phase 7's drill-down into /chart (docs/phase-7-
+  // support-resistance.md §5.1) — optional so every pre-existing call site
+  // that doesn't pass it keeps rendering a plain, unclickable ticker cell.
+  onTickerClick?: (ticker: string) => void;
 }
 
 function fmtMoney(v: number, currency: string): string {
@@ -24,7 +28,7 @@ function fmtPct(v: number): string {
   return `${sign}${v.toFixed(2)}%`;
 }
 
-export function PositionsTable({ positions, dict, currency = "$" }: Props) {
+export function PositionsTable({ positions, dict, currency = "$", onTickerClick }: Props) {
   if (positions.length === 0) {
     return <div className="empty-message">{dict.noPositions}</div>;
   }
@@ -43,7 +47,21 @@ export function PositionsTable({ positions, dict, currency = "$" }: Props) {
       <tbody>
         {positions.map((p) => (
           <tr key={p.ticker}>
-            <td>{p.ticker}</td>
+            <td>
+              {onTickerClick ? (
+                <a
+                  href={`/chart?ticker=${encodeURIComponent(p.ticker)}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onTickerClick(p.ticker);
+                  }}
+                >
+                  {p.ticker}
+                </a>
+              ) : (
+                p.ticker
+              )}
+            </td>
             <td>{p.shares}</td>
             <td>{fmtMoney(p.avgCost, currency)}</td>
             <td>{fmtMoney(p.price, currency)}</td>
