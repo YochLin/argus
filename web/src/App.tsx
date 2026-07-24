@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchConfig, fetchStatus, type Market, type Status } from "./api";
-import { getDictionary, type Dictionary } from "./i18n";
+import { getDictionary, normalizeLang, type Lang } from "./i18n";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { DashboardView } from "./components/DashboardView";
@@ -37,8 +37,21 @@ function useRoute(): [string, (route: string) => void] {
   return [route, navigate];
 }
 
+// localStorage key for the user's language override. Absent means "follow
+// the server's BOT_LANGUAGE default"; the toggle writes it and it wins over
+// /api/config from then on. Language preference is a per-browser display
+// choice, so localStorage (not a server setting) is the right home for it.
+const langStorageKey = "argus-lang";
+
 export default function App() {
-  const [dict, setDict] = useState<Dictionary>(getDictionary("zh"));
+  // serverLang is /api/config's BOT_LANGUAGE default; userLang is the
+  // toggle's override, persisted in localStorage. The override wins when
+  // present — the server value only decides the first-visit default.
+  const [serverLang, setServerLang] = useState<Lang>("zh");
+  const [userLang, setUserLang] = useState<Lang | null>(() => {
+    const stored = localStorage.getItem(langStorageKey);
+    return stored === null ? null : normalizeLang(stored);
+  });
   const [status, setStatus] = useState<Status | null>(null);
   const [route, navigate] = useRoute();
   // Phase 6's US/TW toggle (docs/phase-6-tw-market.md §4.4) — lifted here
@@ -46,11 +59,19 @@ export default function App() {
   // same reasoning as Sidebar/StatusBar living above the routed body.
   const [market, setMarket] = useState<Market>("us");
 
+  const lang = userLang ?? serverLang;
+  const dict = getDictionary(lang);
+
+  const changeLang = (next: Lang) => {
+    localStorage.setItem(langStorageKey, next);
+    setUserLang(next);
+  };
+
   useEffect(() => {
     // /api/config's failure isn't fatal — the page still works with the zh
     // default dictionary.
     fetchConfig()
-      .then((cfg) => setDict(getDictionary(cfg.lang)))
+      .then((cfg) => setServerLang(normalizeLang(cfg.lang)))
       .catch(() => {});
   }, []);
 
@@ -115,7 +136,15 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <Sidebar path={path} onNavigate={navigate} dict={dict} market={market} onMarketChange={setMarket} />
+      <Sidebar
+        path={path}
+        onNavigate={navigate}
+        dict={dict}
+        market={market}
+        onMarketChange={setMarket}
+        lang={lang}
+        onLangChange={changeLang}
+      />
       <div className="app-main">
         {status ? (
           <StatusBar status={status} dict={dict} market={market} />
