@@ -140,6 +140,21 @@ type roundDetailResponse struct {
 	MAEPct    float64               `json:"maePct"`
 	MFEPct    float64               `json:"mfePct"`
 	HasMAEMFE bool                  `json:"hasMaeMfe"`
+	// Thesis/Lessons (Phase 8 PR4, docs/phase-8-trader-analytics.md §6.2) are
+	// read-only attachments from db.GetThesis/GetLessonsForTickers, each
+	// degrading independently (a query failure logs and leaves the field at
+	// its zero value — nil/[]) rather than failing the whole response, same
+	// attach-what's-available convention as buildClosedTradeReview.
+	// Thesis is nil when unset — it's the *current* thesis on record, not
+	// necessarily what it was when this round was open (thesis has no
+	// history table), so the frontend labels it accordingly.
+	Thesis  *string          `json:"thesis"`
+	Lessons []lessonResponse `json:"lessons"`
+}
+
+type lessonResponse struct {
+	Date   string `json:"date"`
+	Lesson string `json:"lesson"`
 }
 
 type candleResponse struct {
@@ -301,6 +316,23 @@ func (s *Server) handleRoundDetail(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("web: build round detail: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to build round detail")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleDistributions(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if p := recover(); p != nil {
+			log.Printf("web: panic in handleDistributions: %v", p)
+			writeError(w, http.StatusInternalServerError, "internal error")
+		}
+	}()
+
+	resp, err := buildDistributions(s.db, s.history, marketParam(r))
+	if err != nil {
+		log.Printf("web: build distributions: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build distributions")
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)

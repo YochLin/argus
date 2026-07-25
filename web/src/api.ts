@@ -122,6 +122,11 @@ export interface Candle {
   volume: number;
 }
 
+export interface Lesson {
+  date: string;
+  lesson: string;
+}
+
 export interface RoundDetail {
   ticker: string;
   start: string;
@@ -131,6 +136,13 @@ export interface RoundDetail {
   maePct: number;
   mfePct: number;
   hasMaeMfe: boolean;
+  // thesis/lessons (Phase 8 PR4) are read-only attachments. thesis is the
+  // *current* thesis on record (db.GetThesis), not necessarily what it was
+  // when this round was open — there's no thesis history table. null means
+  // neither exists nor loaded successfully; the frontend renders no block
+  // either way.
+  thesis: string | null;
+  lessons: Lesson[];
 }
 
 export interface ChartLevel {
@@ -302,6 +314,36 @@ export interface RecPerformance {
   best: RecPerfExtreme[];
   worst: RecPerfExtreme[];
 }
+// RMultipleSample/HoldingReturnSample/MAEReturnSample/Distributions mirror
+// internal/web/distributions.go's response types (Phase 8 PR4) — three
+// independent per-closed-round datasets (one sample per round, not per
+// SELL leg — see that file's doc comment on why the unit differs from
+// ReportGroup's).
+export interface RMultipleSample {
+  ticker: string;
+  r: number;
+}
+
+export interface HoldingReturnSample {
+  ticker: string;
+  holdingDays: number;
+  realizedPnL: number;
+}
+
+export interface MAEReturnSample {
+  ticker: string;
+  maePct: number;
+  returnPct: number;
+}
+
+export interface Distributions {
+  rMultiples: RMultipleSample[];
+  noStopCount: number;
+  earliestRDate: string; // "" when no round has a computable R yet
+  holdingReturns: HoldingReturnSample[];
+  maeReturns: MAEReturnSample[];
+  skippedMaeCount: number;
+}
 
 async function getJSON<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -363,4 +405,7 @@ export function fetchMonthly(market: Market = "us"): Promise<Monthly> {
 
 export function fetchRecPerformance(market: Market = "us"): Promise<RecPerformance> {
   return getJSON<RecPerformance>(`/api/rec-performance?market=${market}`);
+}
+export function fetchDistributions(market: Market = "us"): Promise<Distributions> {
+  return getJSON<Distributions>(`/api/distributions?market=${market}`);
 }

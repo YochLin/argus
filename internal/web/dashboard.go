@@ -80,6 +80,10 @@ type dbReader interface {
 	// 8 PR3) — the same whole-history read argus eval's CLI uses, so the two
 	// reports are guaranteed to score identically off the same database.
 	GetRecommendationsSince(fromDate string) ([]db.Recommendation, error)
+	// GetThesis/GetLessonsForTickers back rounds.go's round-detail thesis/
+	// lessons attachment (Phase 8 PR4).
+	GetThesis(ticker string) (string, bool, error)
+	GetLessonsForTickers(tickers []string) (map[string][]db.Lesson, error)
 }
 
 // netWorthBaseline resolves the capital base for a period starting at

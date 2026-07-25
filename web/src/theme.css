@@ -556,3 +556,81 @@ th {
   font-size: 12px;
   margin-top: 6px;
 }
+
+/* Phase 8 PR4's distribution views (docs/phase-8-trader-analytics.md §6.1):
+   a hand-rolled bar histogram and SVG scatter plot, no charting library —
+   see Histogram.tsx/ScatterChart.tsx's own doc comments for why. */
+.histogram {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 160px;
+  margin-top: 8px;
+}
+
+.histogram-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+
+.histogram-bar-track {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.histogram-bar {
+  width: 100%;
+  min-height: 1px;
+  border-radius: 2px 2px 0 0;
+}
+
+.histogram-bar-profit {
+  background: var(--profit);
+}
+
+.histogram-bar-loss {
+  background: var(--loss);
+}
+
+.histogram-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  margin-top: 4px;
+}
+
+.scatter-chart {
+  width: 100%;
+  height: 240px;
+  margin-top: 8px;
+}
+
+.scatter-axis {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.scatter-point-profit {
+  fill: var(--profit);
+  fill-opacity: 0.75;
+}
+
+.scatter-point-loss {
+  fill: var(--loss);
+  fill-opacity: 0.75;
+}
+
+/* Phase 8 PR4's round-detail thesis/lessons blocks (§6.2). */
+.lessons-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

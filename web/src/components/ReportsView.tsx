@@ -10,6 +10,7 @@ import {
   type Reports,
 } from "../api";
 import type { Dictionary } from "../i18n";
+import { DistributionsSection } from "./DistributionsSection";
 import { KpiCard } from "./KpiCard";
 import { MonthlyGrid } from "./MonthlyGrid";
 
@@ -237,6 +238,8 @@ export function ReportsView({ dict, market, names = {} }: Props) {
         currency={currency}
         dimension="weekday"
       />
+
+      <DistributionsSection dict={dict} market={market} />
     </>
   );
 }

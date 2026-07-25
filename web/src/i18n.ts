@@ -113,6 +113,17 @@ export interface Dictionary {
   hitRate: string;
   avgExcessReturn: string;
   noRecData: string;
+  thesisLabel: string;
+  currentThesisNote: string;
+  lessonsLabel: string;
+  rMultipleHistogram: string;
+  rMultipleNote: string;
+  noStopSamples: string;
+  holdingDaysScatter: string;
+  maeReturnScatter: string;
+  maeReturnNote: string;
+  skippedSamples: string;
+  noDistributionData: string;
 }
 
 const en: Dictionary = {
@@ -218,6 +229,17 @@ const en: Dictionary = {
   hitRate: "Hit Rate",
   avgExcessReturn: "Avg Excess Return",
   noRecData: "No scorable recommendations yet.",
+  thesisLabel: "THESIS",
+  currentThesisNote: "current thesis on record — may have changed since this round closed",
+  lessonsLabel: "TRADE LESSONS",
+  rMultipleHistogram: "R-MULTIPLE DISTRIBUTION",
+  rMultipleNote: "R data accumulating since",
+  noStopSamples: "no-stop samples",
+  holdingDaysScatter: "HOLDING DAYS VS REALIZED P&L",
+  maeReturnScatter: "MAE VS RETURN (CLOSE-ONLY APPROXIMATION)",
+  maeReturnNote: "x = deepest adverse close % from entry, y = final return % — close prices only, intraday extremes aren't available",
+  skippedSamples: "skipped (no snapshot data)",
+  noDistributionData: "No closed rounds yet.",
 };
 
 const zh: Dictionary = {
@@ -323,6 +345,17 @@ const zh: Dictionary = {
   hitRate: "命中率",
   avgExcessReturn: "平均超額報酬",
   noRecData: "尚無可評分的推薦紀錄。",
+  thesisLabel: "持有論點",
+  currentThesisNote: "目前記錄的論點——回合平倉後論點可能已改寫",
+  lessonsLabel: "交易教訓",
+  rMultipleHistogram: "R-MULTIPLE 分布",
+  rMultipleNote: "R 資料自",
+  noStopSamples: "無停損樣本",
+  holdingDaysScatter: "持有天數 vs 已實現損益",
+  maeReturnScatter: "MAE vs 報酬（以收盤價近似）",
+  maeReturnNote: "x = 期間內對進場價最深不利收盤 %，y = 最終報酬 %——僅收盤價，無盤中極值",
+  skippedSamples: "略過（無快照資料）",
+  noDistributionData: "目前沒有已平倉回合。",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

@@ -213,6 +213,46 @@ func TestBuildRoundDetail(t *testing.T) {
 	}
 }
 
+// TestBuildRoundDetail_ThesisAndLessons pins Phase 8 PR4's read-only
+// attachment (docs/phase-8-trader-analytics.md §6.2): both present, and
+// both absent (nil/empty rather than an error) when neither is on record.
+func TestBuildRoundDetail_ThesisAndLessons(t *testing.T) {
+	fdb := &fakeDB{
+		txs: []db.Transaction{
+			tx("AAPL", "BUY", 10, 100, "2026-06-01"),
+			tx("AAPL", "SELL", 10, 120, "2026-06-10"),
+		},
+		thesis: map[string]string{"AAPL": "long-term AI capex beneficiary"},
+		lessons: map[string][]db.Lesson{
+			"AAPL": {{Date: "2026-06-11", Lesson: "should have sized in more slowly"}},
+		},
+	}
+	hist := &fakeHistory{candles: map[string][]data.Candle{"AAPL": {candle("2026-06-01", 100), candle("2026-06-10", 120)}}}
+
+	got, err := buildRoundDetail(fdb, hist, "AAPL", "2026-06-01")
+	if err != nil {
+		t.Fatalf("buildRoundDetail() error = %v", err)
+	}
+	if got.Thesis == nil || *got.Thesis != "long-term AI capex beneficiary" {
+		t.Errorf("Thesis = %v, want the recorded thesis", got.Thesis)
+	}
+	if len(got.Lessons) != 1 || got.Lessons[0].Lesson != "should have sized in more slowly" {
+		t.Errorf("Lessons = %+v, want the one recorded lesson", got.Lessons)
+	}
+
+	fdbEmpty := &fakeDB{txs: fdb.txs}
+	got2, err := buildRoundDetail(fdbEmpty, hist, "AAPL", "2026-06-01")
+	if err != nil {
+		t.Fatalf("buildRoundDetail() error = %v", err)
+	}
+	if got2.Thesis != nil {
+		t.Errorf("Thesis = %v, want nil (none on record)", *got2.Thesis)
+	}
+	if len(got2.Lessons) != 0 {
+		t.Errorf("Lessons = %+v, want empty", got2.Lessons)
+	}
+}
+
 func TestBuildRoundDetail_RoundNotFound(t *testing.T) {
 	fdb := &fakeDB{
 		txs: []db.Transaction{

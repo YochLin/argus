@@ -35,6 +35,10 @@ type fakeDB struct {
 
 	// recs backs GetRecommendationsSince for recperf_test.go.
 	recs []db.Recommendation
+	// thesis/lessons back GetThesis/GetLessonsForTickers for rounds_test.go's
+	// thesis/lessons attachment tests (Phase 8 PR4).
+	thesis  map[string]string
+	lessons map[string][]db.Lesson
 }
 
 func (f *fakeDB) GetPositions() ([]db.Position, error)          { return f.positions, nil }
@@ -70,6 +74,19 @@ func (f *fakeDB) GetSetting(key string) (string, bool, error) {
 }
 func (f *fakeDB) GetRecommendationsSince(fromDate string) ([]db.Recommendation, error) {
 	return f.recs, nil
+}
+func (f *fakeDB) GetThesis(ticker string) (string, bool, error) {
+	v, ok := f.thesis[ticker]
+	return v, ok, nil
+}
+func (f *fakeDB) GetLessonsForTickers(tickers []string) (map[string][]db.Lesson, error) {
+	out := make(map[string][]db.Lesson)
+	for _, t := range tickers {
+		if ls, ok := f.lessons[t]; ok {
+			out[t] = ls
+		}
+	}
+	return out, nil
 }
 
 // fakeQuotes implements quoteGetter for tests.
