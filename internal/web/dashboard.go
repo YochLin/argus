@@ -162,7 +162,9 @@ func buildDashboard(database dbReader, quotes quoteGetter, m market.MarketID) (d
 
 	sells := FilterSells(txs)
 	resp := dashboardResponse{
-		Curve: []DateValue{}, // never nil — JSON "[]", not "null", when there's no history yet
+		Curve:     []DateValue{}, // never nil — JSON "[]", not "null", when there's no history yet
+		Drawdown:  []DateValue{},
+		Benchmark: []DateValue{},
 		KPIs: kpisResponse{
 			WinRate:      WinRate(sells),
 			ProfitFactor: ProfitFactor(sells),
@@ -183,7 +185,18 @@ func buildDashboard(database dbReader, quotes quoteGetter, m market.MarketID) (d
 		now := time.Now()
 		to := now.Format("2006-01-02")
 
-		snapshots, err := database.GetDailySnapshotsForTickers(tickers, from, to)
+		// benchTicker rides along in the same batched snapshot query rather
+		// than a second round-trip — daily_snapshots already carries it
+		// (snapshotBenchmark writes it every closing-snapshot run) and
+		// DailyPnL safely ignores a ticker with no matching transactions
+		// (openingShares is 0 for it, so its snapshot rows never contribute
+		// P&L), so including it here costs nothing extra.
+		benchTicker := benchmarkFor(m)
+		snapshotTickers := tickers
+		if !tickerSet[benchTicker] {
+			snapshotTickers = append(snapshotTickers, benchTicker)
+		}
+		snapshots, err := database.GetDailySnapshotsForTickers(snapshotTickers, from, to)
 		if err != nil {
 			return dashboardResponse{}, err
 		}
@@ -197,6 +210,24 @@ func buildDashboard(database dbReader, quotes quoteGetter, m market.MarketID) (d
 			resp.KPIs.NetPnL = curve[len(curve)-1].Value
 		}
 		resp.KPIs.MaxDrawdown = MaxDrawdownAbs(curve)
+		if dd := DrawdownSeries(curve); dd != nil {
+			resp.Drawdown = dd
+		}
+
+		benchCloses := make(map[string]float64)
+		for _, s := range snapshots {
+			if s.Ticker == benchTicker {
+				benchCloses[s.Date] = s.Close
+			}
+		}
+		benchCurve := BenchmarkReplay(txs, benchCloses)
+		if benchCurve != nil {
+			resp.Benchmark = benchCurve
+			if len(curve) > 0 {
+				alpha := curve[len(curve)-1].Value - benchCurve[len(benchCurve)-1].Value
+				resp.KPIs.BenchmarkAlpha = &alpha
+			}
+		}
 
 		ytdStart := YTDStart(now)
 		if base, ok := netWorthBaseline(database, ytdStart, m, to); ok {

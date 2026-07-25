@@ -208,6 +208,29 @@ func MaxDrawdownAbs(cumulative []DateValue) float64 {
 	return maxDD
 }
 
+// DrawdownSeries returns curve's underwater series — dd[i] = curve[i].Value
+// minus the running peak of curve[0..i].Value, always <= 0 — the "how far
+// below the all-time-high is the account right now" view (Phase 8 PR2, see
+// docs/phase-8-trader-analytics.md §4.1). Pure derivation of the existing
+// cumulative curve, zero new data: mirrors MaxDrawdownAbs's own running-peak
+// walk but keeps every point instead of just the max, so the two are
+// necessarily consistent — MaxDrawdownAbs(curve) always equals the lowest
+// value in DrawdownSeries(curve).
+func DrawdownSeries(curve []DateValue) []DateValue {
+	if len(curve) == 0 {
+		return nil
+	}
+	out := make([]DateValue, len(curve))
+	peak := curve[0].Value
+	for i, c := range curve {
+		if c.Value > peak {
+			peak = c.Value
+		}
+		out[i] = DateValue{Date: c.Date, Value: c.Value - peak}
+	}
+	return out
+}
+
 // FilterSells returns just the SELL rows of txs, in order — the KPI
 // functions below all sample "every SELL transaction" per
 // docs/phase-5-web-dashboard.md's statistical-unit decision (not FIFO

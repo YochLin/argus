@@ -25,8 +25,20 @@ func marketParam(r *http.Request) market.MarketID {
 // language decision: the frontend picks zh/en display text itself from
 // /api/config's lang, so internal/i18n never needs touching for this API.
 type dashboardResponse struct {
-	KPIs      kpisResponse       `json:"kpis"`
-	Curve     []DateValue        `json:"curve"`
+	KPIs  kpisResponse `json:"kpis"`
+	Curve []DateValue  `json:"curve"`
+	// Drawdown is Curve's underwater series (pnl.go's DrawdownSeries, Phase 8
+	// PR2) — always <= 0, same length/date axis as Curve, "[]" not "null"
+	// when there's no history yet.
+	Drawdown []DateValue `json:"drawdown"`
+	// Benchmark is the same-cash-flow SPY/0050 replay (benchmark.go's
+	// BenchmarkReplay, Phase 8 PR2) in the same cumulative-P&L-amount units
+	// as Curve, directly overlayable on the same chart/axis. Its date axis
+	// starts wherever daily_snapshots' benchmark history begins, which may
+	// be later than Curve's own start — see docs/phase-8-trader-analytics.md
+	// §7's accepted gap. "[]" not "null" when there's no benchmark history
+	// in range yet.
+	Benchmark []DateValue        `json:"benchmark"`
 	Positions []positionResponse `json:"positions"`
 }
 
@@ -44,6 +56,11 @@ type kpisResponse struct {
 	YTDReturnPct *float64 `json:"ytdReturnPct"`
 	QTDReturnPct *float64 `json:"qtdReturnPct"`
 	HTDReturnPct *float64 `json:"htdReturnPct"`
+	// BenchmarkAlpha is Curve's terminal value minus Benchmark's terminal
+	// value (Phase 8 PR2) — nil when there's no benchmark curve in range yet
+	// (same "explicit null over a misleading zero" convention as the
+	// period-return fields above).
+	BenchmarkAlpha *float64 `json:"benchmarkAlpha"`
 }
 
 type positionResponse struct {

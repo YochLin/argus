@@ -93,6 +93,10 @@ export interface Dictionary {
   openRisk: string;
   noStopSet: string;
   belowStop: string;
+  benchmarkAlpha: string;
+  myPortfolio: string;
+  benchmarkReplay: string;
+  drawdownChart: string;
 }
 
 const en: Dictionary = {
@@ -178,6 +182,10 @@ const en: Dictionary = {
   openRisk: "Open Risk",
   noStopSet: "no stop",
   belowStop: "below stop",
+  benchmarkAlpha: "ALPHA VS BENCHMARK",
+  myPortfolio: "My portfolio",
+  benchmarkReplay: "Same cash flow into SPY/0050",
+  drawdownChart: "DRAWDOWN",
 };
 
 const zh: Dictionary = {
@@ -263,6 +271,10 @@ const zh: Dictionary = {
   openRisk: "Open Risk",
   noStopSet: "未設停損",
   belowStop: "已跌破停損",
+  benchmarkAlpha: "超額報酬 vs 大盤",
+  myPortfolio: "我的組合",
+  benchmarkReplay: "同金流買 SPY／0050",
+  drawdownChart: "水下曲線",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

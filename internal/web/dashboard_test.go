@@ -143,6 +143,49 @@ func TestBuildDashboard_PositionsAndKPIs(t *testing.T) {
 	}
 }
 
+func TestBuildDashboard_BenchmarkAndDrawdown(t *testing.T) {
+	fdb := &fakeDB{
+		positions: []db.Position{{Ticker: "AAPL", Shares: 10, AvgCost: 100}},
+		txs: []db.Transaction{
+			tx("AAPL", "BUY", 10, 100, "2026-07-01"),
+		},
+		snapshots: []db.DailySnapshot{
+			snap("AAPL", "2026-07-01", 100),
+			snap("AAPL", "2026-07-02", 90),
+			snap("SPY", "2026-07-01", 500),
+			snap("SPY", "2026-07-02", 505),
+		},
+	}
+	quotes := &fakeQuotes{quotes: map[string]*data.Quote{"AAPL": {Ticker: "AAPL", Price: 90}}}
+
+	got, err := buildDashboard(fdb, quotes, market.US)
+	if err != nil {
+		t.Fatalf("buildDashboard() error = %v", err)
+	}
+
+	// AAPL dropped from 100 to 90 on 10 shares: curve ends at -100, so
+	// Drawdown's last point must equal the curve's own last point exactly.
+	if len(got.Drawdown) != len(got.Curve) {
+		t.Fatalf("Drawdown len = %d, Curve len = %d, want equal", len(got.Drawdown), len(got.Curve))
+	}
+	if last := got.Drawdown[len(got.Drawdown)-1]; last.Value != got.Curve[len(got.Curve)-1].Value {
+		t.Errorf("Drawdown last = %v, want equal to Curve last %v", last.Value, got.Curve[len(got.Curve)-1].Value)
+	}
+
+	// Benchmark should be non-empty (SPY snapshots exist in range) and
+	// BenchmarkAlpha should be set — the real curve lost money while SPY
+	// mirrored the same $1000 investment and gained.
+	if len(got.Benchmark) == 0 {
+		t.Fatalf("Benchmark = %v, want non-empty", got.Benchmark)
+	}
+	if got.KPIs.BenchmarkAlpha == nil {
+		t.Fatal("KPIs.BenchmarkAlpha = nil, want set")
+	}
+	if *got.KPIs.BenchmarkAlpha >= 0 {
+		t.Errorf("BenchmarkAlpha = %v, want negative (real portfolio underperformed SPY)", *got.KPIs.BenchmarkAlpha)
+	}
+}
+
 func TestBuildStatus(t *testing.T) {
 	fdb := &fakeDB{
 		watchlist: []string{"AAPL", "MSFT", "NVDA"},

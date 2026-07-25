@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { currencySymbol, fetchDashboard, type Dashboard, type Market } from "../api";
 import type { Dictionary } from "../i18n";
+import { DrawdownChart } from "./DrawdownChart";
 import { KpiCard } from "./KpiCard";
 import { PnlChart } from "./PnlChart";
 import { PositionsTable } from "./PositionsTable";
@@ -42,7 +43,7 @@ export function DashboardView({ dict, market, onTickerClick, names }: Props) {
     return <div className="loading">{dict.loading}</div>;
   }
 
-  const { kpis, curve, positions } = dashboard;
+  const { kpis, curve, drawdown, benchmark, positions } = dashboard;
   const currency = currencySymbol(market);
 
   return (
@@ -68,8 +69,21 @@ export function DashboardView({ dict, market, onTickerClick, names }: Props) {
         <KpiCard label={dict.ytdReturn} value={kpis.ytdReturnPct} format="percentValue" colorMode="pnl" />
         <KpiCard label={dict.qtdReturn} value={kpis.qtdReturnPct} format="percentValue" colorMode="pnl" />
         <KpiCard label={dict.htdReturn} value={kpis.htdReturnPct} format="percentValue" colorMode="pnl" />
+        <KpiCard
+          label={dict.benchmarkAlpha}
+          value={kpis.benchmarkAlpha}
+          format="currency"
+          colorMode="pnl"
+          currency={currency}
+        />
       </div>
-      <PnlChart curve={curve} />
+      <PnlChart curve={curve} benchmark={benchmark} dict={dict} />
+      {drawdown.length > 0 && (
+        <>
+          <div className="eyebrow">{dict.drawdownChart}</div>
+          <DrawdownChart drawdown={drawdown} />
+        </>
+      )}
       <div className="card">
         <div className="eyebrow">{dict.positions}</div>
         <PositionsTable
