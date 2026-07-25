@@ -1,7 +1,17 @@
 import { useEffect, useState } from "react";
-import { currencySymbol, fetchReports, tickerLabel, type Market, type ReportGroup, type Reports } from "../api";
+import {
+  currencySymbol,
+  fetchMonthly,
+  fetchReports,
+  tickerLabel,
+  type Market,
+  type Monthly,
+  type ReportGroup,
+  type Reports,
+} from "../api";
 import type { Dictionary } from "../i18n";
 import { KpiCard } from "./KpiCard";
+import { MonthlyGrid } from "./MonthlyGrid";
 
 interface Props {
   dict: Dictionary;
@@ -143,6 +153,7 @@ function StatCard({
 // legitimately have nothing yet.
 export function ReportsView({ dict, market, names = {} }: Props) {
   const [reports, setReports] = useState<Reports | null>(null);
+  const [monthly, setMonthly] = useState<Monthly | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -151,6 +162,10 @@ export function ReportsView({ dict, market, names = {} }: Props) {
     fetchReports(market)
       .then(setReports)
       .catch(() => setError(true));
+    setMonthly(null);
+    fetchMonthly(market)
+      .then(setMonthly)
+      .catch(() => {}); // the monthly grid degrades independently — a failure here shouldn't hide the rest of the page
   }, [market]);
 
   if (error) {
@@ -168,6 +183,7 @@ export function ReportsView({ dict, market, names = {} }: Props) {
 
   return (
     <>
+      {monthly && <MonthlyGrid dict={dict} years={monthly.years} currency={currency} />}
       <div className="kpi-grid">
         <KpiCard label={dict.bestTrade} value={streaks.bestTradePnL} format="currency" colorMode="pnl" currency={currency} />
         <KpiCard label={dict.worstTrade} value={streaks.worstTradePnL} format="currency" colorMode="pnl" currency={currency} />

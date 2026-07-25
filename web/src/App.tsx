@@ -11,6 +11,7 @@ import { ChartListView } from "./components/ChartListView";
 import { ChartView } from "./components/ChartView";
 import { ReportsView } from "./components/ReportsView";
 import { RiskView } from "./components/RiskView";
+import { RecsView } from "./components/RecsView";
 
 // Four client-side routes (dashboard, calendar, round list, round detail)
 // don't justify pulling in a routing library — a hand-rolled route
@@ -132,6 +133,8 @@ export default function App() {
     );
   } else if (path === "/reports") {
     body = <ReportsView dict={dict} market={market} names={names} />;
+  } else if (path === "/recs") {
+    body = <RecsView dict={dict} market={market} />;
   } else if (path === "/risk") {
     body = (
       <RiskView

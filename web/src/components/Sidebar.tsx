@@ -26,6 +26,7 @@ const links: Array<{ path: string; label: (dict: Dictionary) => string; icon: Re
   { path: "/rounds", label: (d) => d.navRounds, icon: <RoundsIcon /> },
   { path: "/chart", label: (d) => d.navChart, icon: <ChartIcon /> },
   { path: "/reports", label: (d) => d.navReports, icon: <ReportsIcon /> },
+  { path: "/recs", label: (d) => d.navRecs, icon: <RecsIcon /> },
 ];
 
 function isActive(linkPath: string, path: string): boolean {
@@ -166,6 +167,15 @@ function ReportsIcon() {
       <line x1="4.5" y1="5" x2="11.5" y2="5" />
       <line x1="4.5" y1="8" x2="11.5" y2="8" />
       <line x1="4.5" y1="11" x2="9" y2="11" />
+    </svg>
+  );
+}
+
+function RecsIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 5 V8 L10.5 9.5" />
     </svg>
   );
 }

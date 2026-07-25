@@ -76,6 +76,10 @@ type dbReader interface {
 	// GetSetting backs risk.go's cash-balance lookup (Phase 8 PR1) — the same
 	// settings key internal/bot's loadCash reads, see cashSettingKeyFor.
 	GetSetting(key string) (string, bool, error)
+	// GetRecommendationsSince backs recperf.go's /api/rec-performance (Phase
+	// 8 PR3) — the same whole-history read argus eval's CLI uses, so the two
+	// reports are guaranteed to score identically off the same database.
+	GetRecommendationsSince(fromDate string) ([]db.Recommendation, error)
 }
 
 // netWorthBaseline resolves the capital base for a period starting at

@@ -32,6 +32,9 @@ type fakeDB struct {
 	// settings backs GetSetting for risk_test.go's cash-balance lookup —
 	// nil/absent-key behaves as "never set," same as a real settings table.
 	settings map[string]string
+
+	// recs backs GetRecommendationsSince for recperf_test.go.
+	recs []db.Recommendation
 }
 
 func (f *fakeDB) GetPositions() ([]db.Position, error)          { return f.positions, nil }
@@ -64,6 +67,9 @@ func (f *fakeDB) GetNetWorthRange(from, to string, m market.MarketID) ([]db.NetW
 func (f *fakeDB) GetSetting(key string) (string, bool, error) {
 	v, ok := f.settings[key]
 	return v, ok, nil
+}
+func (f *fakeDB) GetRecommendationsSince(fromDate string) ([]db.Recommendation, error) {
+	return f.recs, nil
 }
 
 // fakeQuotes implements quoteGetter for tests.
