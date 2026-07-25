@@ -61,6 +61,7 @@ type Server struct {
 	lang             i18n.Lang
 	companyNames     data.CompanyNameProvider
 	heatThresholdPct float64
+	recPerf          *recPerfStore
 	mux              *http.ServeMux
 }
 
@@ -73,6 +74,7 @@ func New(cfg Config) *Server {
 		companyNames:     cfg.CompanyNames,
 		heatThresholdPct: cfg.RiskHeatPct,
 	}
+	s.recPerf = newRecPerfStore(s.db, s.history)
 	s.mux = http.NewServeMux()
 	s.mux.HandleFunc("GET /api/config", s.handleConfig)
 	s.mux.HandleFunc("GET /api/status", s.handleStatus)
@@ -81,10 +83,12 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /api/rounds", s.handleRounds)
 	s.mux.HandleFunc("GET /api/round-detail", s.handleRoundDetail)
 	s.mux.HandleFunc("GET /api/reports", s.handleReports)
+	s.mux.HandleFunc("GET /api/monthly", s.handleMonthly)
 	s.mux.HandleFunc("GET /api/chart", s.handleChart)
 	s.mux.HandleFunc("GET /api/tickers", s.handleTickers)
 	s.mux.HandleFunc("GET /api/company-names", s.handleCompanyNames)
 	s.mux.HandleFunc("GET /api/risk", s.handleRisk)
+	s.mux.HandleFunc("GET /api/rec-performance", s.handleRecPerformance)
 	s.mux.Handle("/", spaHandler())
 	return s
 }

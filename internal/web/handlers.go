@@ -323,6 +323,23 @@ func (s *Server) handleReports(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+func (s *Server) handleMonthly(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if p := recover(); p != nil {
+			log.Printf("web: panic in handleMonthly: %v", p)
+			writeError(w, http.StatusInternalServerError, "internal error")
+		}
+	}()
+
+	resp, err := buildMonthly(s.db, marketParam(r))
+	if err != nil {
+		log.Printf("web: build monthly: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build monthly")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
 func (s *Server) handleChart(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if p := recover(); p != nil {
@@ -375,6 +392,23 @@ func (s *Server) handleRisk(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("web: build risk: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to build risk")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleRecPerformance(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if p := recover(); p != nil {
+			log.Printf("web: panic in handleRecPerformance: %v", p)
+			writeError(w, http.StatusInternalServerError, "internal error")
+		}
+	}()
+
+	resp, err := s.recPerf.Get(marketParam(r))
+	if err != nil {
+		log.Printf("web: build rec-performance: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build rec-performance")
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)

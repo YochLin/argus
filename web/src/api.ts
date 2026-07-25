@@ -245,6 +245,64 @@ export interface Reports {
   maeMfe: MAEMFESummary;
 }
 
+// YearlyPnL mirrors internal/web/monthly.go's YearlyPnL (Phase 8 PR3) — one
+// row of the Reports page's monthly P&L grid. months[i] is null for a month
+// with no data day at all (not 0) — render as an empty cell, not "$0".
+export interface YearlyPnL {
+  year: number;
+  months: (number | null)[]; // index 0 = January ... 11 = December
+  total: number;
+}
+
+export interface Monthly {
+  years: YearlyPnL[];
+}
+
+// RecPerfStatsCell/RecPerfGroup mirror internal/web/recperf.go's
+// recPerfStatsCell/recPerfGroup (Phase 8 PR3) — hitRatePct/avgReturnPct/
+// avgExcessPct are already-scaled percentages, same convention as
+// ReportGroup's own fields.
+export interface RecPerfStatsCell {
+  horizon: number;
+  n: number;
+  hitRatePct: number;
+  avgReturnPct: number;
+  avgExcessPct: number;
+  lowSample: boolean;
+}
+
+export interface RecPerfGroup {
+  key: string;
+  cells: RecPerfStatsCell[];
+}
+
+export interface RecPerfExtreme {
+  ticker: string;
+  date: string;
+  action: string;
+  entryPrice: number;
+  excessReturnPct: number;
+}
+
+export interface RecPerfCounts {
+  total: number;
+  hold: number;
+  scorable: number;
+  unscorable: number;
+}
+
+// RecPerformance mirrors internal/web/recperf.go's recPerformanceResponse —
+// /recs page's data, scored via the same internal/receval functions `argus
+// eval` uses, so the two reports agree exactly off the same database.
+export interface RecPerformance {
+  counts: RecPerfCounts;
+  horizons: number[];
+  bySource: RecPerfGroup[];
+  byAction: RecPerfGroup[];
+  best: RecPerfExtreme[];
+  worst: RecPerfExtreme[];
+}
+
 async function getJSON<T>(url: string): Promise<T> {
   const res = await fetch(url);
   if (!res.ok) {
@@ -297,4 +355,12 @@ export function fetchCompanyNames(): Promise<CompanyNames> {
 
 export function fetchRisk(market: Market = "us"): Promise<Risk> {
   return getJSON<Risk>(`/api/risk?market=${market}`);
+}
+
+export function fetchMonthly(market: Market = "us"): Promise<Monthly> {
+  return getJSON<Monthly>(`/api/monthly?market=${market}`);
+}
+
+export function fetchRecPerformance(market: Market = "us"): Promise<RecPerformance> {
+  return getJSON<RecPerformance>(`/api/rec-performance?market=${market}`);
 }

@@ -97,6 +97,22 @@ export interface Dictionary {
   myPortfolio: string;
   benchmarkReplay: string;
   drawdownChart: string;
+  monthlyPnl: string;
+  yearTotal: string;
+  navRecs: string;
+  recCounts: string;
+  recTotal: string;
+  recScorable: string;
+  recUnscorable: string;
+  recHold: string;
+  recBySource: string;
+  recByAction: string;
+  recBest: string;
+  recWorst: string;
+  horizonDays: string;
+  hitRate: string;
+  avgExcessReturn: string;
+  noRecData: string;
 }
 
 const en: Dictionary = {
@@ -186,6 +202,22 @@ const en: Dictionary = {
   myPortfolio: "My portfolio",
   benchmarkReplay: "Same cash flow into SPY/0050",
   drawdownChart: "DRAWDOWN",
+  monthlyPnl: "MONTHLY P&L",
+  yearTotal: "Total",
+  navRecs: "Recs",
+  recCounts: "RECOMMENDATION COVERAGE",
+  recTotal: "Total",
+  recScorable: "Scorable",
+  recUnscorable: "Unscorable",
+  recHold: "Hold",
+  recBySource: "By Source",
+  recByAction: "By Action",
+  recBest: "Best",
+  recWorst: "Worst",
+  horizonDays: "Horizon (days)",
+  hitRate: "Hit Rate",
+  avgExcessReturn: "Avg Excess Return",
+  noRecData: "No scorable recommendations yet.",
 };
 
 const zh: Dictionary = {
@@ -275,6 +307,22 @@ const zh: Dictionary = {
   myPortfolio: "我的組合",
   benchmarkReplay: "同金流買 SPY／0050",
   drawdownChart: "水下曲線",
+  monthlyPnl: "月度損益",
+  yearTotal: "年度合計",
+  navRecs: "推薦成效",
+  recCounts: "推薦覆蓋率",
+  recTotal: "總筆數",
+  recScorable: "可評分",
+  recUnscorable: "無法評分",
+  recHold: "HOLD",
+  recBySource: "依來源",
+  recByAction: "依動作",
+  recBest: "表現最佳",
+  recWorst: "表現最差",
+  horizonDays: "交易日視窗",
+  hitRate: "命中率",
+  avgExcessReturn: "平均超額報酬",
+  noRecData: "尚無可評分的推薦紀錄。",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };
