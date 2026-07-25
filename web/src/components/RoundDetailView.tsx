@@ -147,6 +147,25 @@ export function RoundDetailView({ dict, ticker, start, onBack, names = {} }: Pro
           </div>
           <div className="card chart-card" ref={containerRef} />
           {detail.hasMaeMfe && <MAEMFEBar dict={dict} maePct={detail.maePct} mfePct={detail.mfePct} />}
+          {detail.thesis && (
+            <div className="card report-section">
+              <div className="eyebrow">{dict.thesisLabel}</div>
+              <div className="stat-note">{dict.currentThesisNote}</div>
+              <p>{detail.thesis}</p>
+            </div>
+          )}
+          {detail.lessons.length > 0 && (
+            <div className="card report-section">
+              <div className="eyebrow">{dict.lessonsLabel}</div>
+              <ul className="lessons-list">
+                {detail.lessons.map((l, i) => (
+                  <li key={i}>
+                    <span className="stat-note">{l.date}</span> {l.lesson}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="card">
             <TradesTable
               dict={dict}
