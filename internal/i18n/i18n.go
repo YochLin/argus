@@ -519,4 +519,26 @@ const (
 	// to catch a US-holiday rerun, just applied at report-open time instead
 	// of after the fact.
 	KeyTWDailyReportMarketClosed Key = "tw_daily_report_market_closed"
+
+	// argus eval (docs/offline-rec-eval.md) — the offline batch scorer for
+	// the recommendations table's full history, run manually from a
+	// terminal rather than the bot/Telegram. cmd/bot/eval.go is the only
+	// caller.
+	KeyEvalTitle                 Key = "eval_title"
+	KeyEvalFetching              Key = "eval_fetching"
+	KeyEvalOverviewTitle         Key = "eval_overview_title"
+	KeyEvalSourceTitle           Key = "eval_source_title"
+	KeyEvalMarketTitle           Key = "eval_market_title"
+	KeyEvalStatsLine             Key = "eval_stats_line"
+	KeyEvalExtremesTitle         Key = "eval_extremes_title"
+	KeyEvalExtremesBest          Key = "eval_extremes_best"
+	KeyEvalExtremesWorst         Key = "eval_extremes_worst"
+	KeyEvalExtremeLine           Key = "eval_extreme_line"
+	KeyEvalCountsTitle           Key = "eval_counts_title"
+	KeyEvalCountHold             Key = "eval_count_hold"
+	KeyEvalCountUnscorable       Key = "eval_count_unscorable"
+	KeyEvalCountUnscorableReason Key = "eval_count_unscorable_reason"
+	KeyEvalCountImmature         Key = "eval_count_immature"
+	KeyEvalCSVSaved              Key = "eval_csv_saved"
+	KeyEvalNoData                Key = "eval_no_data"
 )
