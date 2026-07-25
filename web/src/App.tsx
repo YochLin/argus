@@ -10,6 +10,7 @@ import { RoundDetailView } from "./components/RoundDetailView";
 import { ChartListView } from "./components/ChartListView";
 import { ChartView } from "./components/ChartView";
 import { ReportsView } from "./components/ReportsView";
+import { RiskView } from "./components/RiskView";
 
 // Four client-side routes (dashboard, calendar, round list, round detail)
 // don't justify pulling in a routing library — a hand-rolled route
@@ -131,6 +132,15 @@ export default function App() {
     );
   } else if (path === "/reports") {
     body = <ReportsView dict={dict} market={market} names={names} />;
+  } else if (path === "/risk") {
+    body = (
+      <RiskView
+        dict={dict}
+        market={market}
+        names={names}
+        onTickerClick={(t) => navigate(`/chart?ticker=${encodeURIComponent(t)}`)}
+      />
+    );
   } else if (path === "/chart") {
     const ticker = params.get("ticker");
     body = ticker ? (

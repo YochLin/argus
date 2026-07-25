@@ -81,6 +81,11 @@ func main() {
 	// it's opt-in rather than shipped with a default like stopLossPct/
 	// trailingStopPct's 10/15.
 	riskPctPerTrade := envOrFloat("RISK_PCT_PER_TRADE", 0)
+	// RISK_HEAT_PCT (Phase 8 PR1) is the /risk page's portfolio-heat warning
+	// threshold — defaults to 6.0 (a textbook-common figure, not backtested)
+	// when unset; <=0 disables the frontend's warning line entirely, same
+	// "<=0 means disabled" convention as STOP_LOSS_PCT/TRAILING_STOP_PCT.
+	riskHeatPct := envOrFloat("RISK_HEAT_PCT", 6.0)
 
 	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
 	if err != nil {
@@ -226,6 +231,7 @@ func main() {
 			History:      yahoo,
 			Lang:         lang,
 			CompanyNames: companyNameProvider,
+			RiskHeatPct:  riskHeatPct,
 		})
 		go func() {
 			if err := webServer.Run(ctx, webAddr); err != nil {

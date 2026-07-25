@@ -21,6 +21,7 @@ interface Props {
 // three links un-highlighted on the round detail page.
 const links: Array<{ path: string; label: (dict: Dictionary) => string; icon: ReactNode }> = [
   { path: "/", label: (d) => d.navDashboard, icon: <DashboardIcon /> },
+  { path: "/risk", label: (d) => d.navRisk, icon: <RiskIcon /> },
   { path: "/calendar", label: (d) => d.navCalendar, icon: <CalendarIcon /> },
   { path: "/rounds", label: (d) => d.navRounds, icon: <RoundsIcon /> },
   { path: "/chart", label: (d) => d.navChart, icon: <ChartIcon /> },
@@ -135,6 +136,16 @@ function RoundsIcon() {
       <rect x="6.5" y="3" width="3" height="7" />
       <line x1="12" y1="3" x2="12" y2="13" />
       <rect x="10.5" y="6" width="3" height="4" />
+    </svg>
+  );
+}
+
+function RiskIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <path d="M8 1.5 14 4.5 V9 C14 12 11.5 14 8 14.5 C4.5 14 2 12 2 9 V4.5 Z" />
+      <line x1="8" y1="5.5" x2="8" y2="9" />
+      <line x1="8" y1="10.5" x2="8" y2="11" />
     </svg>
   );
 }

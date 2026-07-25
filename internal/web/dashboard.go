@@ -73,6 +73,9 @@ type dbReader interface {
 	GetLatestSnapshot(ticker string) (db.DailySnapshot, bool, error)
 	GetNetWorthOnOrBefore(date string, m market.MarketID) (float64, bool, error)
 	GetNetWorthRange(from, to string, m market.MarketID) ([]db.NetWorthPoint, error)
+	// GetSetting backs risk.go's cash-balance lookup (Phase 8 PR1) — the same
+	// settings key internal/bot's loadCash reads, see cashSettingKeyFor.
+	GetSetting(key string) (string, bool, error)
 }
 
 // netWorthBaseline resolves the capital base for a period starting at

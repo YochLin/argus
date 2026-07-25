@@ -84,6 +84,15 @@ export interface Dictionary {
   longestLossStreak: string;
   noReportData: string;
   months: [string, string, string, string, string, string, string, string, string, string, string, string];
+  navRisk: string;
+  portfolioHeat: string;
+  accountValue: string;
+  cashLevel: string;
+  weight: string;
+  stopPriceCol: string;
+  openRisk: string;
+  noStopSet: string;
+  belowStop: string;
 }
 
 const en: Dictionary = {
@@ -160,6 +169,15 @@ const en: Dictionary = {
   longestLossStreak: "Longest Loss Streak",
   noReportData: "No closed trades yet.",
   months: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+  navRisk: "Risk",
+  portfolioHeat: "PORTFOLIO HEAT",
+  accountValue: "ACCOUNT VALUE",
+  cashLevel: "CASH LEVEL",
+  weight: "Weight",
+  stopPriceCol: "Stop",
+  openRisk: "Open Risk",
+  noStopSet: "no stop",
+  belowStop: "below stop",
 };
 
 const zh: Dictionary = {
@@ -236,6 +254,15 @@ const zh: Dictionary = {
   longestLossStreak: "最長連敗",
   noReportData: "尚無已平倉交易。",
   months: ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"],
+  navRisk: "風險",
+  portfolioHeat: "PORTFOLIO HEAT",
+  accountValue: "帳戶總值",
+  cashLevel: "現金水位",
+  weight: "占比",
+  stopPriceCol: "停損價",
+  openRisk: "Open Risk",
+  noStopSet: "未設停損",
+  belowStop: "已跌破停損",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

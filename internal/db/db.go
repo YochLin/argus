@@ -76,7 +76,10 @@ type Position struct {
 
 // Transaction is one recorded buy or sell. RealizedPnL is only meaningful
 // for SELL rows (0 for BUY) — proceeds minus the shares' cost basis at
-// AvgCost, minus fee.
+// AvgCost, minus fee. StopPrice (Phase 8 PR1, migration 13) is likewise
+// SELL-only: the position's stop_price at the moment of sale, 0 for every
+// BUY row and for any SELL predating this migration or made with no stop
+// set — see RecordSell and docs/phase-8-trader-analytics.md §3.1.
 type Transaction struct {
 	ID          int64
 	Ticker      string
@@ -86,6 +89,7 @@ type Transaction struct {
 	Fee         float64
 	Date        string
 	RealizedPnL float64
+	StopPrice   float64
 	Market      string // "us" / "tw" — derived from Ticker via market.Of at write time, never caller-supplied (Phase 6, see migration 12)
 	CreatedAt   time.Time
 }
@@ -407,6 +411,17 @@ var migrations = []string{
 	DROP TABLE net_worth_snapshots;
 	ALTER TABLE net_worth_snapshots_new RENAME TO net_worth_snapshots;
 	`,
+	// 13: transactions gains stop_price (Phase 8 PR1, see
+	// docs/phase-8-trader-analytics.md §3.1) — only SELL rows ever get a
+	// non-zero value, written by RecordSell from the position's stop_price
+	// at the moment of sale (before that row is deleted on a full close).
+	// BUY rows stay 0: a stop is normally set after entry via /stop, so
+	// "the stop at entry" usually doesn't exist yet. 0 is the same unset/
+	// pre-migration sentinel positions.stop_price already uses. This is
+	// what lets R-multiple (realized P&L ÷ initial risk) be computed per
+	// closed round from here on — Phase 3.11's stop-loss data finally has
+	// a place to persist past a position closing out.
+	`ALTER TABLE transactions ADD COLUMN stop_price REAL NOT NULL DEFAULT 0;`,
 }
 
 func (d *DB) migrate() error {
@@ -658,8 +673,8 @@ func (d *DB) RecordSell(ticker string, shares, price, fee float64, date string) 
 	}
 	defer tx.Rollback()
 
-	var existingShares, existingCost float64
-	err = tx.QueryRow(`SELECT shares, avg_cost FROM positions WHERE ticker = ?`, ticker).Scan(&existingShares, &existingCost)
+	var existingShares, existingCost, stopPrice float64
+	err = tx.QueryRow(`SELECT shares, avg_cost, stop_price FROM positions WHERE ticker = ?`, ticker).Scan(&existingShares, &existingCost, &stopPrice)
 	if err == sql.ErrNoRows {
 		return Position{}, 0, ErrNoPosition
 	}
@@ -688,9 +703,9 @@ func (d *DB) RecordSell(ticker string, shares, price, fee float64, date string) 
 	}
 
 	if _, err := tx.Exec(`
-		INSERT INTO transactions (ticker, side, shares, price, fee, date, realized_pnl, market)
-		VALUES (?, 'SELL', ?, ?, ?, ?, ?, ?)`,
-		ticker, shares, price, fee, date, realizedPnL, string(market.Of(ticker)),
+		INSERT INTO transactions (ticker, side, shares, price, fee, date, realized_pnl, stop_price, market)
+		VALUES (?, 'SELL', ?, ?, ?, ?, ?, ?, ?)`,
+		ticker, shares, price, fee, date, realizedPnL, stopPrice, string(market.Of(ticker)),
 	); err != nil {
 		return Position{}, 0, err
 	}
@@ -839,7 +854,7 @@ func (d *DB) GetPeakClose(ticker, sinceDate string) (float64, bool, error) {
 // into trade rounds (see bot.lastClosedRound).
 func (d *DB) GetTransactions(ticker string) ([]Transaction, error) {
 	rows, err := d.conn.Query(`
-		SELECT id, ticker, side, shares, price, fee, date, realized_pnl, market, created_at
+		SELECT id, ticker, side, shares, price, fee, date, realized_pnl, stop_price, market, created_at
 		FROM transactions WHERE ticker = ? ORDER BY date, id`,
 		ticker,
 	)
@@ -851,7 +866,7 @@ func (d *DB) GetTransactions(ticker string) ([]Transaction, error) {
 	var txs []Transaction
 	for rows.Next() {
 		var t Transaction
-		if err := rows.Scan(&t.ID, &t.Ticker, &t.Side, &t.Shares, &t.Price, &t.Fee, &t.Date, &t.RealizedPnL, &t.Market, &t.CreatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Ticker, &t.Side, &t.Shares, &t.Price, &t.Fee, &t.Date, &t.RealizedPnL, &t.StopPrice, &t.Market, &t.CreatedAt); err != nil {
 			return nil, err
 		}
 		txs = append(txs, t)
@@ -867,7 +882,7 @@ func (d *DB) GetTransactions(ticker string) ([]Transaction, error) {
 // aggregate, which only needs a window's totals, not per-row detail).
 func (d *DB) GetAllTransactions() ([]Transaction, error) {
 	rows, err := d.conn.Query(`
-		SELECT id, ticker, side, shares, price, fee, date, realized_pnl, market, created_at
+		SELECT id, ticker, side, shares, price, fee, date, realized_pnl, stop_price, market, created_at
 		FROM transactions ORDER BY date, id`,
 	)
 	if err != nil {
@@ -878,7 +893,7 @@ func (d *DB) GetAllTransactions() ([]Transaction, error) {
 	var txs []Transaction
 	for rows.Next() {
 		var t Transaction
-		if err := rows.Scan(&t.ID, &t.Ticker, &t.Side, &t.Shares, &t.Price, &t.Fee, &t.Date, &t.RealizedPnL, &t.Market, &t.CreatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Ticker, &t.Side, &t.Shares, &t.Price, &t.Fee, &t.Date, &t.RealizedPnL, &t.StopPrice, &t.Market, &t.CreatedAt); err != nil {
 			return nil, err
 		}
 		txs = append(txs, t)

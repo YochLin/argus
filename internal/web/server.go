@@ -43,6 +43,11 @@ type Config struct {
 	// endpoint then returns an empty map and the frontend shows bare
 	// tickers, same optionality as bot.Config.CompanyNames.
 	CompanyNames data.CompanyNameProvider
+	// RiskHeatPct is the /risk page's portfolio-heat warning threshold (env
+	// RISK_HEAT_PCT, Phase 8 PR1) — <=0 means "don't draw a warning line,"
+	// same convention as internal/bot's STOP_LOSS_PCT. main.go defaults it
+	// to 6.0 when the env var is unset.
+	RiskHeatPct float64
 }
 
 // Server is Argus's read-only web dashboard (Phase 5 PR1 — see
@@ -50,21 +55,23 @@ type Config struct {
 // access only (Tailscale/SSH tunnel), so it deliberately has no auth/HTTPS
 // of its own.
 type Server struct {
-	db           dbReader
-	quotes       quoteGetter
-	history      data.HistoryProvider
-	lang         i18n.Lang
-	companyNames data.CompanyNameProvider
-	mux          *http.ServeMux
+	db               dbReader
+	quotes           quoteGetter
+	history          data.HistoryProvider
+	lang             i18n.Lang
+	companyNames     data.CompanyNameProvider
+	heatThresholdPct float64
+	mux              *http.ServeMux
 }
 
 func New(cfg Config) *Server {
 	s := &Server{
-		db:           cfg.DB,
-		quotes:       newQuoteCache(cfg.Provider),
-		history:      cfg.History,
-		lang:         cfg.Lang,
-		companyNames: cfg.CompanyNames,
+		db:               cfg.DB,
+		quotes:           newQuoteCache(cfg.Provider),
+		history:          cfg.History,
+		lang:             cfg.Lang,
+		companyNames:     cfg.CompanyNames,
+		heatThresholdPct: cfg.RiskHeatPct,
 	}
 	s.mux = http.NewServeMux()
 	s.mux.HandleFunc("GET /api/config", s.handleConfig)
@@ -77,6 +84,7 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /api/chart", s.handleChart)
 	s.mux.HandleFunc("GET /api/tickers", s.handleTickers)
 	s.mux.HandleFunc("GET /api/company-names", s.handleCompanyNames)
+	s.mux.HandleFunc("GET /api/risk", s.handleRisk)
 	s.mux.Handle("/", spaHandler())
 	return s
 }

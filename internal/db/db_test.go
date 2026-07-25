@@ -335,6 +335,53 @@ func TestSetStopPrice(t *testing.T) {
 	}
 }
 
+// TestRecordSellStopPrice pins Phase 8 PR1's migration 13 behavior (see
+// docs/phase-8-trader-analytics.md §3.1): a SELL transaction records the
+// position's stop_price at the moment of sale, BUY rows and sells with no
+// stop set stay at the 0 sentinel.
+func TestRecordSellStopPrice(t *testing.T) {
+	d := newTestDB(t)
+
+	if _, err := d.RecordBuy("AAPL", 10, 200, 0, "2026-07-01"); err != nil {
+		t.Fatalf("RecordBuy() error = %v", err)
+	}
+	if err := d.SetStopPrice("AAPL", 190); err != nil {
+		t.Fatalf("SetStopPrice() error = %v", err)
+	}
+	if _, _, err := d.RecordSell("AAPL", 10, 210, 0, "2026-07-05"); err != nil {
+		t.Fatalf("RecordSell() error = %v", err)
+	}
+
+	if _, err := d.RecordBuy("MSFT", 5, 300, 0, "2026-07-01"); err != nil {
+		t.Fatalf("RecordBuy() error = %v", err)
+	}
+	if _, _, err := d.RecordSell("MSFT", 5, 310, 0, "2026-07-06"); err != nil {
+		t.Fatalf("RecordSell() error = %v", err)
+	}
+
+	aaplTxs, err := d.GetTransactions("AAPL")
+	if err != nil {
+		t.Fatalf("GetTransactions(AAPL) error = %v", err)
+	}
+	if len(aaplTxs) != 2 {
+		t.Fatalf("GetTransactions(AAPL) = %+v, want 2 rows", aaplTxs)
+	}
+	if aaplTxs[0].Side != "BUY" || aaplTxs[0].StopPrice != 0 {
+		t.Errorf("AAPL BUY row StopPrice = %v, want 0", aaplTxs[0].StopPrice)
+	}
+	if aaplTxs[1].Side != "SELL" || aaplTxs[1].StopPrice != 190 {
+		t.Errorf("AAPL SELL row StopPrice = %v, want 190", aaplTxs[1].StopPrice)
+	}
+
+	msftTxs, err := d.GetTransactions("MSFT")
+	if err != nil {
+		t.Fatalf("GetTransactions(MSFT) error = %v", err)
+	}
+	if len(msftTxs) != 2 || msftTxs[1].StopPrice != 0 {
+		t.Errorf("GetTransactions(MSFT) = %+v, want SELL row StopPrice=0 (no stop was set)", msftTxs)
+	}
+}
+
 func TestGetPositionsOrdering(t *testing.T) {
 	d := newTestDB(t)
 
