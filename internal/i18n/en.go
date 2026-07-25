@@ -487,4 +487,22 @@ Keep the reply concise — under 300 words total.
 
 	KeyDailyReportMarketClosed:   "📅 US markets are closed today — skipping the daily report.",
 	KeyTWDailyReportMarketClosed: "📅 TW markets are closed today — skipping the TW daily report.",
+
+	KeyEvalTitle:                 "=== Offline Recommendation Evaluation ===\n",
+	KeyEvalFetching:              "Fetching history... (%d/%d %s)\n",
+	KeyEvalOverviewTitle:         "\n[Overview: action x horizon]\n",
+	KeyEvalSourceTitle:           "\n[By source: source x horizon]\n",
+	KeyEvalMarketTitle:           "\n[Market: %s]\n",
+	KeyEvalStatsLine:             "  %s %dd (n=%d): hit rate %.1f%%, avg return %+.2f%%, median %+.2f%%, avg excess %+.2f%%\n",
+	KeyEvalExtremesTitle:         "\n[%dd excess return extremes]\n",
+	KeyEvalExtremesBest:          "Best %d:\n",
+	KeyEvalExtremesWorst:         "Worst %d:\n",
+	KeyEvalExtremeLine:           "  %s %s %s @ $%.2f -> %dd: %+.2f%% (excess %+.2f%%, MFE %+.2f%% / MAE %+.2f%%)\n",
+	KeyEvalCountsTitle:           "\n[Honest counts]\n",
+	KeyEvalCountHold:             "  Not scored (HOLD/no action): %d\n",
+	KeyEvalCountUnscorable:       "  Unscorable: %d\n",
+	KeyEvalCountUnscorableReason: "    - %s: %d\n",
+	KeyEvalCountImmature:         "  Window not yet matured (%dd): %d\n",
+	KeyEvalCSVSaved:              "\nDetail CSV written to: %s\n",
+	KeyEvalNoData:                "No scorable recommendations found.\n",
 }

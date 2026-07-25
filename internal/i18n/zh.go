@@ -476,4 +476,22 @@ var zhMessages = map[Key]string{
 
 	KeyDailyReportMarketClosed:   "📅 今天美股休市，暫停產出每日報告。",
 	KeyTWDailyReportMarketClosed: "📅 今天台股休市，暫停產出台股日報。",
+
+	KeyEvalTitle:                 "=== 離線推薦評估報告 ===\n",
+	KeyEvalFetching:              "抓取歷史資料中... (%d/%d %s)\n",
+	KeyEvalOverviewTitle:         "\n[總覽：動作 × 視窗]\n",
+	KeyEvalSourceTitle:           "\n[來源分解：來源 × 視窗]\n",
+	KeyEvalMarketTitle:           "\n[市場：%s]\n",
+	KeyEvalStatsLine:             "  %s %d日 (n=%d)：命中率 %.1f%%，平均報酬 %+.2f%%，中位數 %+.2f%%，平均超額 %+.2f%%\n",
+	KeyEvalExtremesTitle:         "\n[%d 日超額報酬 極端案例]\n",
+	KeyEvalExtremesBest:          "最佳 Top %d：\n",
+	KeyEvalExtremesWorst:         "最差 Top %d：\n",
+	KeyEvalExtremeLine:           "  %s %s %s @ $%.2f -> %d日：%+.2f%%（超額 %+.2f%%，MFE %+.2f%% / MAE %+.2f%%）\n",
+	KeyEvalCountsTitle:           "\n[誠實計數]\n",
+	KeyEvalCountHold:             "  未評分（HOLD/無動作）：%d 筆\n",
+	KeyEvalCountUnscorable:       "  無法評分：%d 筆\n",
+	KeyEvalCountUnscorableReason: "    - %s：%d 筆\n",
+	KeyEvalCountImmature:         "  視窗未到期（%d日）：%d 筆\n",
+	KeyEvalCSVSaved:              "\n已輸出明細 CSV：%s\n",
+	KeyEvalNoData:                "沒有可評分的推薦記錄。\n",
 }

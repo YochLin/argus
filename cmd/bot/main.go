@@ -37,6 +37,15 @@ func main() {
 		return
 	}
 
+	// "eval" runs the offline recommendation-history scorer (see
+	// docs/offline-rec-eval.md, cmd/bot/eval.go) instead of the Telegram
+	// bot — a manual, one-shot terminal tool, same never-needs-Telegram-env
+	// branch shape as "mcp" above.
+	if len(os.Args) > 1 && os.Args[1] == "eval" {
+		runEval()
+		return
+	}
+
 	if err := godotenv.Load(); err != nil {
 		log.Println("no .env file found, reading env from environment")
 	}
