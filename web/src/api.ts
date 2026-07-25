@@ -46,6 +46,9 @@ export interface KPIs {
   ytdReturnPct: number | null;
   qtdReturnPct: number | null;
   htdReturnPct: number | null;
+  // benchmarkAlpha is curve's terminal value minus benchmark's terminal
+  // value (Phase 8 PR2) — null when there's no benchmark curve in range yet.
+  benchmarkAlpha: number | null;
 }
 
 export interface Position {
@@ -67,6 +70,13 @@ export interface Status {
 export interface Dashboard {
   kpis: KPIs;
   curve: DateValue[];
+  // drawdown is curve's underwater series (Phase 8 PR2, always <= 0), same
+  // date axis as curve.
+  drawdown: DateValue[];
+  // benchmark is the same-cash-flow SPY/0050 replay (Phase 8 PR2), in the
+  // same cumulative-P&L-amount units as curve — its date axis may start
+  // later than curve's own (see docs/phase-8-trader-analytics.md §7).
+  benchmark: DateValue[];
   positions: Position[];
 }
 

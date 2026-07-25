@@ -136,6 +136,47 @@ func TestMaxDrawdownAbs(t *testing.T) {
 	}
 }
 
+func TestDrawdownSeries(t *testing.T) {
+	tests := []struct {
+		name string
+		vals []float64
+		want []float64
+	}{
+		{"empty", nil, nil},
+		{"monotonic up", []float64{0, 5, 10}, []float64{0, 0, 0}},
+		{"peak then trough then recovery", []float64{0, 10, -5, 8}, []float64{0, 0, -15, -2}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			curve := make([]DateValue, len(tt.vals))
+			for i, v := range tt.vals {
+				curve[i] = DateValue{Date: "d", Value: v}
+			}
+			got := DrawdownSeries(curve)
+			if len(got) != len(tt.want) {
+				t.Fatalf("DrawdownSeries(%v) = %v, want len %d", tt.vals, got, len(tt.want))
+			}
+			for i, w := range tt.want {
+				if got[i].Value != w {
+					t.Errorf("DrawdownSeries(%v)[%d] = %v, want %v", tt.vals, i, got[i].Value, w)
+				}
+			}
+			// Pinned invariant: DrawdownSeries' lowest point always equals
+			// MaxDrawdownAbs(curve) — the two are meant to visually
+			// corroborate on the dashboard.
+			var lowest float64
+			for _, g := range got {
+				if g.Value < lowest {
+					lowest = g.Value
+				}
+			}
+			if want := MaxDrawdownAbs(curve); -lowest != want {
+				t.Errorf("lowest drawdown point %v != MaxDrawdownAbs %v", -lowest, want)
+			}
+		})
+	}
+}
+
 func TestFilterSells(t *testing.T) {
 	txs := []db.Transaction{
 		tx("AAPL", "BUY", 1, 100, "d1"),
