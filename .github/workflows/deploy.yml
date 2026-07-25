@@ -36,7 +36,7 @@ jobs:
       # $GOMODCACHE/$GOCACHE already sit on local disk between deploys for
       # free — the network round-trip here would be pure overhead.
       # No setup-node here: this self-hosted runner is the VPS itself,
-      # which scripts/vps/provision.sh already provisions with Node.js —
+      # which scripts/vps/setup-env.sh already provisions with Node.js —
       # same reasoning as skipping setup-go's cache above, an ephemeral
       # hosted runner's bootstrap step is this runner's permanent state.
       - name: Build frontend

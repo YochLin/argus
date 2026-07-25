@@ -28,6 +28,10 @@ type fakeDB struct {
 	// leaves them at) behaves as "no net worth data on record."
 	netWorthOnOrBeforeFn func(date string, m market.MarketID) (float64, bool, error)
 	netWorthRangeFn      func(from, to string, m market.MarketID) ([]db.NetWorthPoint, error)
+
+	// settings backs GetSetting for risk_test.go's cash-balance lookup —
+	// nil/absent-key behaves as "never set," same as a real settings table.
+	settings map[string]string
 }
 
 func (f *fakeDB) GetPositions() ([]db.Position, error)          { return f.positions, nil }
@@ -56,6 +60,10 @@ func (f *fakeDB) GetNetWorthRange(from, to string, m market.MarketID) ([]db.NetW
 		return f.netWorthRangeFn(from, to, m)
 	}
 	return nil, nil
+}
+func (f *fakeDB) GetSetting(key string) (string, bool, error) {
+	v, ok := f.settings[key]
+	return v, ok, nil
 }
 
 // fakeQuotes implements quoteGetter for tests.

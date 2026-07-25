@@ -469,6 +469,15 @@ th {
   vertical-align: middle;
 }
 
+/* Phase 8 PR1's /risk page (docs/phase-8-trader-analytics.md §3.3): a red
+   variant of .tag for "no stop set" / "already below stop" badges — these
+   are warnings, not neutral metadata like the reports page's low-sample
+   tag. */
+.tag.warn {
+  color: var(--loss);
+  border-color: var(--loss);
+}
+
 .stat-note {
   color: var(--ink-2);
   font-size: 12px;
