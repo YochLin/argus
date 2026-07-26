@@ -5,6 +5,7 @@ on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
+    branches: [main]
 
 # 防止兩次部署同時跑（第二次觸發會排隊等第一次結束）— a burst of merges to
 # main queues up their deploy runs one after another rather than overlapping.
@@ -15,15 +16,13 @@ concurrency:
 jobs:
   deploy:
     runs-on: self-hosted
-    # workflow_run fires for CI on every branch/PR it runs against, not just
-    # main, and fires regardless of whether CI passed — gate on both so a
-    # failing or non-main CI run never triggers a deploy. workflow_dispatch
-    # has no workflow_run event to check, so it's let through unconditionally
-    # as the manual "force deploy now" escape hatch.
+    # workflow_run only fires when CI completes on the main branch (due to the
+    # branches filter above). We check conclusion == 'success' to ensure CI
+    # passed before deploying. workflow_dispatch has no workflow_run event
+    # and is let through unconditionally for manual triggers.
     if: >
       github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.head_branch == 'main' &&
-       github.event.workflow_run.conclusion == 'success')
+      github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: actions/checkout@v4
         with:

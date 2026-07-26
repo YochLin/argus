@@ -124,6 +124,11 @@ export interface Dictionary {
   maeReturnNote: string;
   skippedSamples: string;
   noDistributionData: string;
+  // themeLight/themeDark are TopBar's toggle-button label — shown for the
+  // *action* the button performs (switch to X), not the current state, same
+  // convention as Sidebar's market/lang pills labeling the destination.
+  themeLight: string;
+  themeDark: string;
 }
 
 const en: Dictionary = {
@@ -240,6 +245,8 @@ const en: Dictionary = {
   maeReturnNote: "x = deepest adverse close % from entry, y = final return % — close prices only, intraday extremes aren't available",
   skippedSamples: "skipped (no snapshot data)",
   noDistributionData: "No closed rounds yet.",
+  themeLight: "Light",
+  themeDark: "Dark",
 };
 
 const zh: Dictionary = {
@@ -356,6 +363,8 @@ const zh: Dictionary = {
   maeReturnNote: "x = 期間內對進場價最深不利收盤 %，y = 最終報酬 %——僅收盤價，無盤中極值",
   skippedSamples: "略過（無快照資料）",
   noDistributionData: "目前沒有已平倉回合。",
+  themeLight: "日間",
+  themeDark: "夜間",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

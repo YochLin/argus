@@ -84,6 +84,9 @@ type dbReader interface {
 	// lessons attachment (Phase 8 PR4).
 	GetThesis(ticker string) (string, bool, error)
 	GetLessonsForTickers(tickers []string) (map[string][]db.Lesson, error)
+	// GetRealizedPnL backs buildStatus's sidebar account-overview card — the
+	// same all-time-SELL-total definition internal/bot's /portfolio uses.
+	GetRealizedPnL(m market.MarketID) (float64, error)
 }
 
 // netWorthBaseline resolves the capital base for a period starting at
@@ -126,7 +129,16 @@ func netWorthBaseline(database dbReader, periodStart string, m market.MarketID, 
 // logs and leaves that field at its zero value. m selects which market's
 // watchlist count/benchmark to show (Phase 6, see
 // docs/phase-6-tw-market.md §4.4).
-func buildStatus(database dbReader, m market.MarketID) statusResponse {
+//
+// AccountValue/NetPnL/WinRate/TradeCount (added for the sidebar's account-
+// overview card, mirroring Figma reference layout) reuse the exact same
+// definitions buildDashboard/buildRisk already use elsewhere — live position
+// value + declared cash for AccountValue (buildRisk's accountValue), the
+// all-time realized-SELL total for NetPnL (db.GetRealizedPnL, same figure
+// internal/bot's /portfolio shows), and pnl.go's FilterSells/WinRate for the
+// win-rate/trade-count pair — no new "what counts as account value" logic
+// gets invented here.
+func buildStatus(database dbReader, quotes quoteGetter, m market.MarketID) statusResponse {
 	var status statusResponse
 	watchlist, err := database.GetWatchlist()
 	if err != nil {
@@ -140,6 +152,40 @@ func buildStatus(database dbReader, m market.MarketID) statusResponse {
 		status.SPYChangePct = bench.ChangePercent
 		status.LastCloseDate = bench.Date
 	}
+
+	if positions, err := database.GetPositions(); err != nil {
+		log.Printf("web: status: get positions: %v", err)
+	} else {
+		var totalValue float64
+		for _, p := range filterPositionsByMarket(positions, m) {
+			q, err := quotes.GetQuote(p.Ticker)
+			if err != nil {
+				log.Printf("web: status: get quote for %s: %v", p.Ticker, err)
+				continue
+			}
+			totalValue += q.Price * p.Shares
+		}
+		cash, err := loadCash(database, m)
+		if err != nil {
+			log.Printf("web: status: load cash for %s: %v", m, err)
+		}
+		status.AccountValue = totalValue + cash
+	}
+
+	if netPnL, err := database.GetRealizedPnL(m); err != nil {
+		log.Printf("web: status: get realized pnl: %v", err)
+	} else {
+		status.NetPnL = netPnL
+	}
+
+	if txs, err := database.GetAllTransactions(); err != nil {
+		log.Printf("web: status: get transactions: %v", err)
+	} else {
+		sells := FilterSells(filterTransactionsByMarket(txs, m))
+		status.TradeCount = len(sells)
+		status.WinRate = WinRate(sells)
+	}
+
 	return status
 }
 

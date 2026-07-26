@@ -85,19 +85,24 @@ export function ChartView({ dict, ticker, onBack, names = {} }: Props) {
       priceLinesRef.current = [];
     }
     if (!node) return;
+    // ponytail: fixed dark-palette grid/axis colors regardless of the
+    // App.tsx light/dark toggle -- lightweight-charts takes plain JS
+    // config, not CSS vars, and no view threads isDark down to this
+    // component yet. Upgrade: accept an isDark prop and branch these per
+    // theme.css:root.light.
     const c = createChart(node, {
       layout: { background: { color: "transparent" }, textColor: "#9AA6BC" },
-      grid: { vertLines: { color: "#26314B" }, horzLines: { color: "#26314B" } },
-      rightPriceScale: { borderColor: "#26314B" },
-      timeScale: { borderColor: "#26314B" },
+      grid: { vertLines: { color: "#334155" }, horzLines: { color: "#334155" } },
+      rightPriceScale: { borderColor: "#334155" },
+      timeScale: { borderColor: "#334155" },
       autoSize: true,
     });
     const series = c.addCandlestickSeries({
-      upColor: "#2FBF71",
-      downColor: "#E5484D",
+      upColor: "#10B981",
+      downColor: "#EF4444",
       borderVisible: false,
-      wickUpColor: "#2FBF71",
-      wickDownColor: "#E5484D",
+      wickUpColor: "#10B981",
+      wickDownColor: "#EF4444",
     });
     chartRef.current = c;
     seriesRef.current = series;
@@ -127,7 +132,7 @@ export function ChartView({ dict, ticker, onBack, names = {} }: Props) {
       .map((l) =>
         series.createPriceLine({
           price: l.price,
-          color: l.isSupport ? "#2FBF71" : "#E5484D",
+          color: l.isSupport ? "#10B981" : "#EF4444",
           lineWidth: 1,
           lineStyle: 2, // dashed
           axisLabelVisible: true,

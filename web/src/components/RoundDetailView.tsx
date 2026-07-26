@@ -87,19 +87,24 @@ export function RoundDetailView({ dict, ticker, start, onBack, names = {} }: Pro
       seriesRef.current = null;
     }
     if (!node) return;
+    // ponytail: fixed dark-palette grid/axis colors regardless of the
+    // App.tsx light/dark toggle -- lightweight-charts takes plain JS
+    // config, not CSS vars, and no view threads isDark down to this
+    // component yet. Upgrade: accept an isDark prop and branch these per
+    // theme.css:root.light.
     const chart = createChart(node, {
       layout: { background: { color: "transparent" }, textColor: "#9AA6BC" },
-      grid: { vertLines: { color: "#26314B" }, horzLines: { color: "#26314B" } },
-      rightPriceScale: { borderColor: "#26314B" },
-      timeScale: { borderColor: "#26314B" },
+      grid: { vertLines: { color: "#334155" }, horzLines: { color: "#334155" } },
+      rightPriceScale: { borderColor: "#334155" },
+      timeScale: { borderColor: "#334155" },
       autoSize: true,
     });
     const series = chart.addCandlestickSeries({
-      upColor: "#2FBF71",
-      downColor: "#E5484D",
+      upColor: "#10B981",
+      downColor: "#EF4444",
       borderVisible: false,
-      wickUpColor: "#2FBF71",
-      wickDownColor: "#E5484D",
+      wickUpColor: "#10B981",
+      wickDownColor: "#EF4444",
     });
     chartRef.current = chart;
     seriesRef.current = series;
@@ -125,7 +130,7 @@ export function RoundDetailView({ dict, ticker, start, onBack, names = {} }: Pro
     const markers: SeriesMarker<Time>[] = trades.map((t) => ({
       time: t.date as Time,
       position: t.side === "BUY" ? "belowBar" : "aboveBar",
-      color: t.side === "BUY" ? "#2FBF71" : "#E5484D",
+      color: t.side === "BUY" ? "#10B981" : "#EF4444",
       shape: t.side === "BUY" ? "arrowUp" : "arrowDown",
       text: `${t.side} ${t.shares}@${currency}${t.price.toFixed(2)}`,
     }));

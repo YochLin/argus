@@ -14,7 +14,7 @@ interface Props {
   currency?: string;
 }
 
-function formatValue(value: number, format: KpiFormat, currency: string): string {
+export function formatValue(value: number, format: KpiFormat, currency: string): string {
   switch (format) {
     case "currency": {
       // P&L numbers always carry an explicit sign — design doc: color is a

@@ -3,6 +3,7 @@ import { fetchCompanyNames, fetchConfig, fetchStatus, type Market, type Status }
 import { getDictionary, normalizeLang, type Lang } from "./i18n";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
+import { TopBar } from "./components/TopBar";
 import { DashboardView } from "./components/DashboardView";
 import { CalendarView } from "./components/CalendarView";
 import { RoundsListView } from "./components/RoundsListView";
@@ -44,6 +45,10 @@ function useRoute(): [string, (route: string) => void] {
 // /api/config from then on. Language preference is a per-browser display
 // choice, so localStorage (not a server setting) is the right home for it.
 const langStorageKey = "argus-lang";
+// Same pattern for the dark/light toggle (TopBar, Figma reference layout) —
+// a per-browser display choice, no server default to fall back to. Absent
+// means dark, matching every pre-existing screenshot/expectation.
+const themeStorageKey = "argus-theme";
 
 export default function App() {
   // serverLang is /api/config's BOT_LANGUAGE default; userLang is the
@@ -68,6 +73,7 @@ export default function App() {
   // (not per-view state) since it's shell-level chrome shared by every page,
   // same reasoning as Sidebar/StatusBar living above the routed body.
   const [market, setMarket] = useState<Market>("us");
+  const [isDark, setIsDark] = useState<boolean>(() => localStorage.getItem(themeStorageKey) !== "light");
 
   const lang = userLang ?? serverLang;
   const dict = getDictionary(lang);
@@ -76,6 +82,19 @@ export default function App() {
     localStorage.setItem(langStorageKey, next);
     setUserLang(next);
   };
+
+  const toggleTheme = () => {
+    const next = !isDark;
+    localStorage.setItem(themeStorageKey, next ? "dark" : "light");
+    setIsDark(next);
+  };
+
+  // :root.light (theme.css) carries every light-mode token override — see
+  // its own doc comment for what's ported from the Figma reference and what
+  // known corner (lightweight-charts' fixed dark grid/axis colors) is cut.
+  useEffect(() => {
+    document.documentElement.classList.toggle("light", !isDark);
+  }, [isDark]);
 
   useEffect(() => {
     // /api/config's failure isn't fatal — the page still works with the zh
@@ -169,16 +188,17 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <Sidebar
-        path={path}
-        onNavigate={navigate}
-        dict={dict}
-        market={market}
-        onMarketChange={setMarket}
-        lang={lang}
-        onLangChange={changeLang}
-      />
+      <Sidebar path={path} onNavigate={navigate} dict={dict} market={market} status={status} />
       <div className="app-main">
+        <TopBar
+          market={market}
+          onMarketChange={setMarket}
+          isDark={isDark}
+          onToggleTheme={toggleTheme}
+          lang={lang}
+          onLangChange={changeLang}
+          dict={dict}
+        />
         {status ? (
           <StatusBar status={status} dict={dict} market={market} />
         ) : (
