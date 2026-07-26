@@ -77,6 +77,13 @@ type statusResponse struct {
 	WatchingCount int     `json:"watchingCount"`
 	SPYChangePct  float64 `json:"spyChangePct"`
 	LastCloseDate string  `json:"lastCloseDate"`
+	// AccountValue/NetPnL/WinRate/TradeCount back the sidebar's
+	// account-overview card (see buildStatus's doc comment for each field's
+	// exact definition).
+	AccountValue float64 `json:"accountValue"`
+	NetPnL       float64 `json:"netPnL"`
+	WinRate      float64 `json:"winRate"`
+	TradeCount   int     `json:"tradeCount"`
 }
 
 type configResponse struct {
@@ -239,7 +246,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	writeJSON(w, http.StatusOK, buildStatus(s.db, marketParam(r)))
+	writeJSON(w, http.StatusOK, buildStatus(s.db, s.quotes, marketParam(r)))
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {

@@ -65,6 +65,13 @@ export interface Status {
   watchingCount: number;
   spyChangePct: number;
   lastCloseDate: string;
+  // accountValue/netPnL/winRate/tradeCount back the sidebar's
+  // account-overview card — see internal/web/dashboard.go's buildStatus for
+  // each field's exact definition.
+  accountValue: number;
+  netPnL: number;
+  winRate: number;
+  tradeCount: number;
 }
 
 export interface Dashboard {

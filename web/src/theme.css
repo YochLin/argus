@@ -1,26 +1,52 @@
-/* Design tokens per docs/phase-5-web-dashboard.md's 2026-07-16 design
-   session — dark-only ("守望者終端"): deep blue-black, not neutral black,
-   amber accent, green-up/red-down (US convention, not Taiwan's
-   red-up/green-down), P&L always signed. Change any value here only after
-   re-running the dataviz palette validator — these are not eyeballed. */
+/* Design tokens, retheme applied 2026-07-26 to match a Figma reference design
+   ("股市交易平台"): amber gives way to an indigo accent on a slate base,
+   green-up/red-down (US convention, not Taiwan's red-up/green-down)
+   unchanged, P&L always signed. Dark is still the default (matches every
+   pre-existing screenshot/expectation); :root.light below is a real,
+   working light mode (values ported from the same Figma reference's own
+   light-mode branch, not eyeballed) toggled by App.tsx's theme switch. */
 :root {
-  --bg: #0d1220;
-  --surface: #141c2e;
-  --border: #26314b;
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --surface-2: #182033; /* .card's gradient's second stop (dark only — flat in light mode) */
+  --card-shadow: 0 0 0 1px var(--border), 0 4px 20px -4px rgba(0, 0, 0, 0.5);
+  --card-glow-shadow: 0 0 0 1px rgba(129, 140, 248, 0.22), 0 8px 32px -8px rgba(0, 0, 0, 0.7),
+    0 0 40px -24px #818cf8;
+  --border: #334155;
   --ink: #e8ecf2;
   --ink-2: #9aa6bc;
   --ink-3: #64708a;
-  --accent: #e0a13e;
-  --profit: #2fbf71;
-  --loss: #e5484d;
-  --s1: #c07f27;
-  --s2: #6b8fd8;
+  --accent: #818cf8;
+  --profit: #10b981;
+  --loss: #ef4444;
+  --s1: #f59e0b;
+  --s2: #60a5fa;
   --s3: #31a08d;
-  --s4: #a06bd8;
+  --s4: #a78bfa;
 
   --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-  --font-sans: "IBM Plex Sans", "PingFang TC", "Microsoft JhengHei", "Noto Sans TC",
+  --font-sans: "Plus Jakarta Sans", "PingFang TC", "Microsoft JhengHei", "Noto Sans TC",
     -apple-system, sans-serif;
+}
+
+/* Light mode — ported from the Figma reference's own light :root values.
+   profit/loss/series colors (--s1..--s4/--profit/--loss) are theme-invariant
+   in that same reference (plain constants, not gated by dark/light), so they
+   aren't repeated here. lightweight-charts' own configs (PnlChart,
+   DrawdownChart, ChartView, RoundDetailView) are a known exception — see the
+   ponytail note on those files: their grid/axis colors stay fixed to the
+   dark palette regardless of this toggle. */
+:root.light {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-2: #ffffff;
+  --card-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 0 0 1px rgba(226, 232, 240, 0.8);
+  --card-glow-shadow: 0 0 0 1px rgba(99, 102, 241, 0.28), 0 4px 20px -4px rgba(99, 102, 241, 0.14);
+  --border: #e2e8f0;
+  --ink: #0f172a;
+  --ink-2: #475569;
+  --ink-3: #94a3b8;
+  --accent: #6366f1;
 }
 
 * {
@@ -78,10 +104,16 @@ a {
 }
 
 .card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  background: linear-gradient(145deg, var(--surface) 0%, var(--surface-2) 100%);
+  box-shadow: var(--card-shadow);
+  border-radius: 12px;
   padding: 16px;
+}
+
+/* Optional glow modifier for hero cards (net worth KPI, main P&L chart) —
+   pure box-shadow, no extra DOM element needed. */
+.card--glow {
+  box-shadow: var(--card-glow-shadow);
 }
 
 .status-bar {
@@ -152,7 +184,7 @@ a {
 
 .market-toggle-btn {
   flex: 1;
-  padding: 6px 0;
+  padding: 6px 10px;
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.06em;
@@ -172,17 +204,114 @@ a {
   background: var(--surface);
 }
 
-/* The language toggle (Sidebar.tsx) reuses the market toggle's pill styling
-   wholesale; it only pulls itself closer than the sidebar's default 24px
-   gap so the two pills read as one settings cluster. */
-.lang-toggle {
-  margin-top: -14px;
-}
-
+/* The language toggle (TopBar.tsx) reuses this pill styling wholesale — the
+   US/TW market toggle that originally lived here moved to TopBar's own
+   topbar-tab styling instead, matching the Figma reference layout. */
 .sidebar-nav {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* TopBar (Figma reference layout: market switch top-left, language + theme
+   toggles grouped top-right) replaces the sidebar's old market-toggle
+   position. */
+.topbar {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar-tabs {
+  display: flex;
+}
+
+.topbar-tab {
+  position: relative;
+  padding: 12px 20px;
+  background: none;
+  border: none;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.topbar-tab:hover {
+  color: var(--ink-2);
+}
+
+.topbar-tab.active {
+  color: var(--ink);
+}
+
+.topbar-tab.active::after {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+/* Right-hand cluster (Figma reference layout): language toggle paired
+   directly beside the theme toggle, in that order, both right-aligned. */
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 16px;
+}
+
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  color: var(--ink-2);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  background: var(--surface);
+}
+
+/* Sidebar's bottom account-overview card (Figma reference layout). Pinned
+   to the bottom via margin-top: auto in the sidebar's flex column. */
+.sidebar-account {
+  margin-top: auto;
+}
+
+.sidebar-account-value {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+.sidebar-account-pnl {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.sidebar-account-stats {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--ink-3);
 }
 
 .side-link {
@@ -417,11 +546,11 @@ th {
 }
 
 .cal-cell.profit-bg {
-  background: rgba(47, 191, 113, 0.14);
+  background: rgba(16, 185, 129, 0.14);
 }
 
 .cal-cell.loss-bg {
-  background: rgba(229, 72, 77, 0.14);
+  background: rgba(239, 68, 68, 0.14);
 }
 
 .cal-day-num {

@@ -28,18 +28,22 @@ export function PnlChart({ curve, benchmark, dict }: Props) {
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const chart = createChart(containerRef.current, {
+    // ponytail: fixed dark-palette grid/axis colors regardless of the App.tsx
+      // light/dark toggle -- lightweight-charts takes plain JS config, not CSS
+      // vars, and no view threads isDark down to this component yet. Upgrade:
+      // accept an isDark prop and branch these per theme.css:root.light.
+const chart = createChart(containerRef.current, {
       layout: { background: { color: "transparent" }, textColor: "#9AA6BC" },
       grid: {
-        vertLines: { color: "#26314B" },
-        horzLines: { color: "#26314B" },
+        vertLines: { color: "#334155" },
+        horzLines: { color: "#334155" },
       },
-      rightPriceScale: { borderColor: "#26314B" },
-      timeScale: { borderColor: "#26314B" },
+      rightPriceScale: { borderColor: "#334155" },
+      timeScale: { borderColor: "#334155" },
       autoSize: true,
     });
     const series = chart.addAreaSeries({
-      lineColor: "#C07F27", // --s1
+      lineColor: "#F59E0B", // --s1
       topColor: "rgba(192, 127, 39, 0.3)",
       bottomColor: "rgba(192, 127, 39, 0.0)",
       lineWidth: 2,
@@ -82,7 +86,7 @@ export function PnlChart({ curve, benchmark, dict }: Props) {
       {showLegend && (
         <div className="chart-legend">
           <span className="chart-legend-item">
-            <span className="chart-legend-dot" style={{ background: "#C07F27" }} />
+            <span className="chart-legend-dot" style={{ background: "#F59E0B" }} />
             {dict.myPortfolio}
           </span>
           <span className="chart-legend-item">

@@ -1,15 +1,17 @@
 import type { MouseEvent, ReactNode } from "react";
-import type { Dictionary, Lang } from "../i18n";
-import type { Market } from "../api";
+import type { Dictionary } from "../i18n";
+import { currencySymbol, type Market, type Status } from "../api";
+import { formatValue } from "./KpiCard";
 
 interface Props {
   path: string;
   onNavigate: (path: string) => void;
   dict: Dictionary;
   market: Market;
-  onMarketChange: (market: Market) => void;
-  lang: Lang;
-  onLangChange: (lang: Lang) => void;
+  // status backs the bottom account-overview card (Figma reference layout)
+  // — null while /api/status hasn't resolved yet, same "render nothing"
+  // degrade App.tsx's own StatusBar placeholder already uses.
+  status: Status | null;
 }
 
 // /round (the detail page reached by clicking a row in /rounds) has no nav
@@ -33,49 +35,11 @@ function isActive(linkPath: string, path: string): boolean {
   return linkPath === path || (linkPath === "/rounds" && path === "/round");
 }
 
-// Phase 6's US/TW toggle (docs/phase-6-tw-market.md §4.4: "tab 或
-// select,樣式從簡") lives here rather than as its own component — it's two
-// buttons, not worth a dedicated file, and the sidebar is already the
-// shell-level chrome every page shares (same reasoning as the wordmark
-// living here instead of on each view).
-export function Sidebar({ path, onNavigate, dict, market, onMarketChange, lang, onLangChange }: Props) {
+export function Sidebar({ path, onNavigate, dict, market, status }: Props) {
   return (
     <div className="sidebar">
       <div className="sidebar-wordmark">
         ARGUS <span className="cursor">▮</span>
-      </div>
-      <div className="market-toggle" role="group" aria-label="market">
-        <button
-          className={`market-toggle-btn${market === "us" ? " active" : ""}`}
-          onClick={() => onMarketChange("us")}
-        >
-          US
-        </button>
-        <button
-          className={`market-toggle-btn${market === "tw" ? " active" : ""}`}
-          onClick={() => onMarketChange("tw")}
-        >
-          TW
-        </button>
-      </div>
-      {/* Language toggle — same two-button shape and CSS as the market
-          toggle above. BOT_LANGUAGE only sets the first-visit default; this
-          persists the user's pick in localStorage (see App.tsx). Labels stay
-          in their own language (中文 always in Chinese, EN always in
-          English) so each is readable exactly when it's the one you need. */}
-      <div className="market-toggle lang-toggle" role="group" aria-label="language">
-        <button
-          className={`market-toggle-btn${lang === "zh" ? " active" : ""}`}
-          onClick={() => onLangChange("zh")}
-        >
-          中文
-        </button>
-        <button
-          className={`market-toggle-btn${lang === "en" ? " active" : ""}`}
-          onClick={() => onLangChange("en")}
-        >
-          EN
-        </button>
       </div>
       <nav className="sidebar-nav">
         {links.map((link) => (
@@ -93,6 +57,20 @@ export function Sidebar({ path, onNavigate, dict, market, onMarketChange, lang, 
           </a>
         ))}
       </nav>
+      {status && (
+        <div className="card sidebar-account">
+          <div className="eyebrow">{dict.accountValue}</div>
+          <div className="sidebar-account-value mono">
+            {formatValue(status.accountValue, "currency", currencySymbol(market))}
+          </div>
+          <div className={`sidebar-account-pnl mono ${status.netPnL >= 0 ? "profit" : "loss"}`}>
+            {formatValue(status.netPnL, "currency", currencySymbol(market))} {dict.netPnL}
+          </div>
+          <div className="sidebar-account-stats">
+            {status.tradeCount} {dict.trades} · {dict.winRate} {(status.winRate * 100).toFixed(1)}%
+          </div>
+        </div>
+      )}
     </div>
   );
 }

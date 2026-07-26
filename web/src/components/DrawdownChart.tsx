@@ -19,18 +19,22 @@ export function DrawdownChart({ drawdown }: Props) {
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const chart = createChart(containerRef.current, {
+    // ponytail: fixed dark-palette grid/axis colors regardless of the App.tsx
+      // light/dark toggle -- lightweight-charts takes plain JS config, not CSS
+      // vars, and no view threads isDark down to this component yet. Upgrade:
+      // accept an isDark prop and branch these per theme.css:root.light.
+const chart = createChart(containerRef.current, {
       layout: { background: { color: "transparent" }, textColor: "#9AA6BC" },
       grid: {
-        vertLines: { color: "#26314B" },
-        horzLines: { color: "#26314B" },
+        vertLines: { color: "#334155" },
+        horzLines: { color: "#334155" },
       },
-      rightPriceScale: { borderColor: "#26314B" },
-      timeScale: { borderColor: "#26314B" },
+      rightPriceScale: { borderColor: "#334155" },
+      timeScale: { borderColor: "#334155" },
       autoSize: true,
     });
     const series = chart.addAreaSeries({
-      lineColor: "#E5484D", // --loss
+      lineColor: "#EF4444", // --loss
       topColor: "rgba(229, 72, 77, 0.0)",
       bottomColor: "rgba(229, 72, 77, 0.35)",
       lineWidth: 1,

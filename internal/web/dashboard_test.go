@@ -39,6 +39,10 @@ type fakeDB struct {
 	// thesis/lessons attachment tests (Phase 8 PR4).
 	thesis  map[string]string
 	lessons map[string][]db.Lesson
+
+	// realizedPnL backs GetRealizedPnL for the sidebar account-overview
+	// status tests below — nil (zero value) behaves as "no closed trades."
+	realizedPnL map[market.MarketID]float64
 }
 
 func (f *fakeDB) GetPositions() ([]db.Position, error)          { return f.positions, nil }
@@ -88,6 +92,7 @@ func (f *fakeDB) GetLessonsForTickers(tickers []string) (map[string][]db.Lesson,
 	}
 	return out, nil
 }
+func (f *fakeDB) GetRealizedPnL(m market.MarketID) (float64, error) { return f.realizedPnL[m], nil }
 
 // fakeQuotes implements quoteGetter for tests.
 type fakeQuotes struct {
@@ -216,13 +221,45 @@ func TestBuildStatus(t *testing.T) {
 		spyOK:     true,
 	}
 
-	got := buildStatus(fdb, market.US)
+	got := buildStatus(fdb, &fakeQuotes{}, market.US)
 
 	if got.WatchingCount != 3 {
 		t.Errorf("WatchingCount = %d, want 3", got.WatchingCount)
 	}
 	if got.SPYChangePct != 0.42 || got.LastCloseDate != "2026-07-15" {
 		t.Errorf("Status = %+v, want SPY +0.42%% on 2026-07-15", got)
+	}
+}
+
+// TestBuildStatus_AccountOverview covers the sidebar account-overview
+// card's fields: AccountValue (position value + cash), NetPnL (all-time
+// realized), and WinRate/TradeCount (over closed SELLs only).
+func TestBuildStatus_AccountOverview(t *testing.T) {
+	fdb := &fakeDB{
+		positions: []db.Position{{Ticker: "AAPL", Shares: 10, AvgCost: 100}},
+		txs: []db.Transaction{
+			tx("AAPL", "BUY", 10, 100, "2026-07-01"),
+			{Ticker: "AAPL", Side: "SELL", Shares: 5, Price: 120, Date: "2026-07-10", RealizedPnL: 100},
+			{Ticker: "AAPL", Side: "SELL", Shares: 5, Price: 90, Date: "2026-07-12", RealizedPnL: -50},
+		},
+		settings:    map[string]string{cashSettingKey: "5000"},
+		realizedPnL: map[market.MarketID]float64{market.US: 50},
+	}
+	quotes := &fakeQuotes{quotes: map[string]*data.Quote{"AAPL": {Ticker: "AAPL", Price: 160}}}
+
+	got := buildStatus(fdb, quotes, market.US)
+
+	if want := 10*160.0 + 5000; got.AccountValue != want {
+		t.Errorf("AccountValue = %v, want %v (position value + cash)", got.AccountValue, want)
+	}
+	if got.NetPnL != 50 {
+		t.Errorf("NetPnL = %v, want 50 (from GetRealizedPnL)", got.NetPnL)
+	}
+	if got.TradeCount != 2 {
+		t.Errorf("TradeCount = %d, want 2 (two SELLs)", got.TradeCount)
+	}
+	if got.WinRate != 0.5 {
+		t.Errorf("WinRate = %v, want 0.5 (1 of 2 SELLs profitable)", got.WinRate)
 	}
 }
 
@@ -273,7 +310,7 @@ func TestBuildStatus_MarketFilter(t *testing.T) {
 		twBenchOK: true,
 	}
 
-	us := buildStatus(fdb, market.US)
+	us := buildStatus(fdb, &fakeQuotes{}, market.US)
 	if us.WatchingCount != 1 {
 		t.Errorf("buildStatus(US) WatchingCount = %d, want 1 (AAPL only)", us.WatchingCount)
 	}
@@ -281,7 +318,7 @@ func TestBuildStatus_MarketFilter(t *testing.T) {
 		t.Errorf("buildStatus(US) SPYChangePct = %v, want 0.42", us.SPYChangePct)
 	}
 
-	tw := buildStatus(fdb, market.TW)
+	tw := buildStatus(fdb, &fakeQuotes{}, market.TW)
 	if tw.WatchingCount != 2 {
 		t.Errorf("buildStatus(TW) WatchingCount = %d, want 2 (2330, 0050)", tw.WatchingCount)
 	}
