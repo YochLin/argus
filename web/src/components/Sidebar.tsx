@@ -52,8 +52,8 @@ export function Sidebar({ path, onNavigate, dict, market, status }: Props) {
               onNavigate(link.path);
             }}
           >
-            {link.icon}
-            {link.label(dict)}
+            <span className="side-link-icon">{link.icon}</span>
+            <span className="side-link-label">{link.label(dict)}</span>
           </a>
         ))}
       </nav>
