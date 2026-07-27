@@ -1,5 +1,11 @@
+import { useEffect, useRef, useState } from "react";
 import type { Market } from "../api";
 import type { Dictionary, Lang } from "../i18n";
+
+const LANGS: Array<{ id: Lang; flag: string; code: string; label: string }> = [
+  { id: "zh", flag: "🇹🇼", code: "中文", label: "繁體中文" },
+  { id: "en", flag: "🇺🇸", code: "EN", label: "English" },
+];
 
 interface Props {
   market: Market;
@@ -41,25 +47,59 @@ export function TopBar({
         </button>
       </div>
       <div className="topbar-right">
-        <div className="market-toggle" role="group" aria-label="language">
-          <button
-            className={`market-toggle-btn${lang === "zh" ? " active" : ""}`}
-            onClick={() => onLangChange("zh")}
-          >
-            中文
-          </button>
-          <button
-            className={`market-toggle-btn${lang === "en" ? " active" : ""}`}
-            onClick={() => onLangChange("en")}
-          >
-            EN
-          </button>
-        </div>
+        <LangDropdown lang={lang} onLangChange={onLangChange} />
         <button className="theme-toggle" onClick={onToggleTheme} aria-label="toggle theme">
           {isDark ? <SunIcon /> : <MoonIcon />}
           <span>{isDark ? dict.themeLight : dict.themeDark}</span>
         </button>
       </div>
+    </div>
+  );
+}
+
+function LangDropdown({ lang, onLangChange }: { lang: Lang; onLangChange: (lang: Lang) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const current = LANGS.find((l) => l.id === lang) ?? LANGS[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div className="lang-dropdown" ref={ref}>
+      <button
+        className="lang-dropdown-trigger"
+        onClick={() => setOpen((v) => !v)}
+        aria-label="change language"
+      >
+        <GlobeIcon />
+        <span>{current.code}</span>
+        <ChevronDownIcon className={`lang-dropdown-chevron${open ? " open" : ""}`} />
+      </button>
+      {open && (
+        <div className="lang-dropdown-panel">
+          {LANGS.map((l) => (
+            <button
+              key={l.id}
+              className={`lang-dropdown-item${l.id === lang ? " active" : ""}`}
+              onClick={() => {
+                onLangChange(l.id);
+                setOpen(false);
+              }}
+            >
+              <span>{l.flag}</span>
+              <span className="lang-dropdown-item-label">{l.label}</span>
+              {l.id === lang && <span className="lang-dropdown-item-dot" />}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -93,6 +133,24 @@ function MoonIcon() {
   return (
     <svg {...iconProps} aria-hidden="true">
       <path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5 5.5 5.5 0 1 0 13.5 9.5Z" />
+    </svg>
+  );
+}
+
+function GlobeIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <circle cx="8" cy="8" r="6.5" />
+      <line x1="1.5" y1="8" x2="14.5" y2="8" />
+      <path d="M8 1.5c-2.2 1.8-2.2 11.2 0 13 2.2-1.8 2.2-11.2 0-13Z" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon({ className }: { className?: string }) {
+  return (
+    <svg {...iconProps} width={10} height={10} className={className} aria-hidden="true">
+      <polyline points="3,6 8,11 13,6" />
     </svg>
   );
 }
