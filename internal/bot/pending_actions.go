@@ -213,13 +213,14 @@ func (b *Bot) executePendingAction(ctx context.Context, action db.PendingAction)
 		if !ok {
 			return i18n.T(b.lang, i18n.KeyPendingActionExecFailed)
 		}
-		return b.recordBuy(p.Ticker, p.Shares, p.Price, p.Fee, p.Date)
+		msg, _ := b.recordBuy(p.Ticker, p.Shares, p.Price, p.Fee, p.Date)
+		return msg
 	case db.PendingActionRecordSell:
 		p, ok := decodeTradePayload(action.Payload)
 		if !ok {
 			return i18n.T(b.lang, i18n.KeyPendingActionExecFailed)
 		}
-		msg, closed, stopPrice := b.recordSell(p.Ticker, p.Shares, p.Price, p.Fee, p.Date)
+		msg, closed, stopPrice, _ := b.recordSell(p.Ticker, p.Shares, p.Price, p.Fee, p.Date)
 		if closed {
 			go b.reviewClosedTrade(ctx, p.Ticker, stopPrice)
 		}

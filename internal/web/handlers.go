@@ -71,6 +71,11 @@ type positionResponse struct {
 	MarketValue      float64 `json:"marketValue"`
 	UnrealizedPnL    float64 `json:"unrealizedPnL"`
 	UnrealizedPnLPct float64 `json:"unrealizedPnLPct"`
+	// StopPrice (Phase 10, docs/phase-10-web-trade-input.md §4.3) is
+	// db.Position.StopPrice passed straight through — 0 means unset, same
+	// sentinel convention as the DB column itself; the frontend renders that
+	// as "—" rather than a misleading $0.00.
+	StopPrice float64 `json:"stopPrice"`
 }
 
 type statusResponse struct {
@@ -84,6 +89,10 @@ type statusResponse struct {
 	NetPnL       float64 `json:"netPnL"`
 	WinRate      float64 `json:"winRate"`
 	TradeCount   int     `json:"tradeCount"`
+	// Writable (Phase 10, docs/phase-10-web-trade-input.md §4.1) mirrors
+	// whether WEB_PASSWORD is configured — the frontend uses this to decide
+	// whether to render any trade-input UI at all, not just disable it.
+	Writable bool `json:"writable"`
 }
 
 type configResponse struct {
@@ -246,7 +255,9 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	writeJSON(w, http.StatusOK, buildStatus(s.db, s.quotes, marketParam(r)))
+	resp := buildStatus(s.db, s.quotes, marketParam(r))
+	resp.Writable = s.password != ""
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {

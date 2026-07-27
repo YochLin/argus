@@ -1069,7 +1069,10 @@ func TestRecordSellClosedFlag(t *testing.T) {
 		t.Fatalf("SetStopPrice() error = %v", err)
 	}
 
-	msg, closed, stopPrice := b.recordSell("AAPL", 4, 220, 0, "2026-06-10")
+	msg, closed, stopPrice, err := b.recordSell("AAPL", 4, 220, 0, "2026-06-10")
+	if err != nil {
+		t.Errorf("recordSell() error = %v, want nil for a valid partial sell", err)
+	}
 	if closed {
 		t.Errorf("recordSell() closed = true for a partial sell, want false; msg = %q", msg)
 	}
@@ -1077,7 +1080,10 @@ func TestRecordSellClosedFlag(t *testing.T) {
 		t.Errorf("recordSell() stopPrice = %v, want 180 (read before the sell)", stopPrice)
 	}
 
-	msg, closed, stopPrice = b.recordSell("AAPL", 6, 230, 0, "2026-06-20")
+	msg, closed, stopPrice, err = b.recordSell("AAPL", 6, 230, 0, "2026-06-20")
+	if err != nil {
+		t.Errorf("recordSell() error = %v, want nil for a valid closing sell", err)
+	}
 	if !closed {
 		t.Errorf("recordSell() closed = false for a sell down to 0 shares, want true; msg = %q", msg)
 	}
@@ -1085,7 +1091,10 @@ func TestRecordSellClosedFlag(t *testing.T) {
 		t.Errorf("recordSell() stopPrice = %v, want 180 for the sell that fully closed the position", stopPrice)
 	}
 
-	msg, closed, stopPrice = b.recordSell("AAPL", 1, 200, 0, "2026-06-21")
+	msg, closed, stopPrice, err = b.recordSell("AAPL", 1, 200, 0, "2026-06-21")
+	if err == nil {
+		t.Errorf("recordSell() error = nil, want ErrNoPosition (no position left)")
+	}
 	if closed {
 		t.Errorf("recordSell() closed = true on an error path (no position left), want false; msg = %q", msg)
 	}

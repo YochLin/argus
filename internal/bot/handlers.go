@@ -481,43 +481,59 @@ func (b *Bot) handleStop(args string) {
 		return
 	}
 
-	pos, ok, err := b.db.GetPosition(ticker)
-	if err != nil {
-		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
-		return
-	}
-	if !ok {
-		b.Send(i18n.T(b.lang, i18n.KeyStopNoPosition, b.tickerLabel(ticker)))
-		return
-	}
-
 	if !hasPrice {
+		pos, ok, err := b.db.GetPosition(ticker)
+		if err != nil {
+			b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
+			return
+		}
+		if !ok {
+			b.Send(i18n.T(b.lang, i18n.KeyStopNoPosition, b.tickerLabel(ticker)))
+			return
+		}
 		b.showStop(ticker, pos)
 		return
 	}
 
-	suggestion, refOK := b.computeStopSuggestion(ticker)
-	if !refOK {
-		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, "no reference price available"))
-		return
+	msg, _ := b.setStop(ticker, price)
+	b.Send(msg)
+}
+
+// setStop is handleStop's price-setting core (the "<ticker> <price>"
+// branch), pulled out so ExecuteSetStop (internal/web's POST /api/stop, see
+// docs/phase-10-web-trade-input.md §4.2) validates identically instead of
+// duplicating the "must sit below latest close" check — that close is the
+// same one computeStopSuggestion already computes for the candidate display,
+// so both entry points reject against exactly the number the user would see.
+func (b *Bot) setStop(ticker string, price float64) (string, error) {
+	pos, ok, err := b.db.GetPosition(ticker)
+	if err != nil {
+		return i18n.T(b.lang, i18n.KeyQueryFailed, err), err
 	}
-	if price >= suggestion.LatestClose {
-		b.Send(i18n.T(b.lang, i18n.KeyStopInvalidPrice, price, suggestion.LatestClose))
-		return
+	if !ok {
+		return i18n.T(b.lang, i18n.KeyStopNoPosition, b.tickerLabel(ticker)), db.ErrNoPosition
 	}
 
-	if err := b.db.SetStopPrice(ticker, price); err != nil {
+	suggestion, refOK := b.computeStopSuggestion(ticker)
+	if !refOK {
+		err = fmt.Errorf("no reference price available")
+		return i18n.T(b.lang, i18n.KeyQueryFailed, err), err
+	}
+	if price >= suggestion.LatestClose {
+		err = fmt.Errorf("stop price must be below latest close")
+		return i18n.T(b.lang, i18n.KeyStopInvalidPrice, price, suggestion.LatestClose), err
+	}
+
+	if err = b.db.SetStopPrice(ticker, price); err != nil {
 		if errors.Is(err, db.ErrNoPosition) {
-			b.Send(i18n.T(b.lang, i18n.KeyStopNoPosition, b.tickerLabel(ticker)))
-			return
+			return i18n.T(b.lang, i18n.KeyStopNoPosition, b.tickerLabel(ticker)), err
 		}
-		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
-		return
+		return i18n.T(b.lang, i18n.KeyQueryFailed, err), err
 	}
 
 	distPct := (suggestion.LatestClose - price) / suggestion.LatestClose * 100
 	riskPerShare := pos.AvgCost - price
-	b.Send(i18n.T(b.lang, i18n.KeyStopSet, b.tickerLabel(ticker), price, distPct, riskPerShare))
+	return i18n.T(b.lang, i18n.KeyStopSet, b.tickerLabel(ticker), price, distPct, riskPerShare), nil
 }
 
 // showStop renders /stop TICKER's no-price branch: the current setting (or
@@ -597,15 +613,19 @@ func (b *Bot) handleBuy(args string) {
 	if date == "" {
 		date = todayDate()
 	}
-	b.Send(b.recordBuy(ticker, shares, price, fee, date))
+	msg, _ := b.recordBuy(ticker, shares, price, fee, date)
+	b.Send(msg)
 }
 
 // recordBuy is handleBuy's core, pulled out so a confirmed Phase 4
 // pending-action proposal (record_buy, see internal/mcptools'
 // trade_write_tools.go) can execute the exact same logic and produce the
 // exact same confirmation text as typing /buy directly — see
-// executePendingAction.
-func (b *Bot) recordBuy(ticker string, shares, price, fee float64, date string) string {
+// executePendingAction. err is nil on success, purely for a caller that
+// needs to distinguish success/failure programmatically (ExecuteBuy, see
+// docs/phase-10-web-trade-input.md §4.2) without re-parsing msg's already
+// i18n-rendered text.
+func (b *Bot) recordBuy(ticker string, shares, price, fee float64, date string) (string, error) {
 	// Read any stop price already on the position before the buy — RecordBuy
 	// deliberately doesn't touch it, but buyStopSuggestion's add-on note
 	// needs to know it was there.
@@ -618,13 +638,34 @@ func (b *Bot) recordBuy(ticker string, shares, price, fee float64, date string) 
 
 	pos, err := b.db.RecordBuy(ticker, shares, price, fee, date)
 	if err != nil {
-		return i18n.T(b.lang, i18n.KeyBuyFailed, err)
+		return i18n.T(b.lang, i18n.KeyBuyFailed, err), err
 	}
 	if err := b.db.AddTicker(ticker); err != nil {
 		log.Printf("buy: add %s to watchlist: %v", ticker, err)
 	}
 	msg := i18n.T(b.lang, i18n.KeyBuySuccess, ticker, shares, price, fee, pos.Shares, pos.AvgCost) + b.thesisNudge(ticker)
-	return msg + b.buyStopSuggestion(ticker, existingStopPrice)
+	return msg + b.buyStopSuggestion(ticker, existingStopPrice), nil
+}
+
+// ExecuteBuy is ExecuteSell/ExecuteSetStop's sibling: internal/web's POST
+// /api/trade/buy calls this instead of db.RecordBuy directly, so a web
+// order gets the exact same Telegram confirmation push and watchlist
+// auto-add /buy itself produces (see docs/phase-10-web-trade-input.md §4.2's
+// "one write path" rule). Validation mirrors parseTradeArgs' semantics;
+// date is expected already resolved (defaulted to today) by the caller, the
+// same "date defaults in the handler, not the shared function" convention
+// parseTradeArgs' own callers follow. On invalid input this still sends
+// (and returns) the same KeyBuyUsage text a malformed /buy command would.
+func (b *Bot) ExecuteBuy(ticker string, shares, price, fee float64, date string) (string, error) {
+	ticker = strings.ToUpper(strings.TrimSpace(ticker))
+	if ticker == "" || shares <= 0 || price <= 0 || fee < 0 {
+		msg := i18n.T(b.lang, i18n.KeyBuyUsage)
+		b.Send(msg)
+		return msg, fmt.Errorf("invalid buy arguments")
+	}
+	msg, err := b.recordBuy(ticker, shares, price, fee, date)
+	b.Send(msg)
+	return msg, err
 }
 
 // thesisNudge returns a one-line nudge to record a holding thesis when
@@ -662,7 +703,7 @@ func (b *Bot) handleSell(ctx context.Context, args string) {
 	if date == "" {
 		date = todayDate()
 	}
-	msg, closed, stopPrice := b.recordSell(ticker, shares, price, fee, date)
+	msg, closed, stopPrice, _ := b.recordSell(ticker, shares, price, fee, date)
 	b.Send(msg)
 	if closed {
 		go b.reviewClosedTrade(ctx, ticker, stopPrice)
@@ -678,10 +719,12 @@ func (b *Bot) handleSell(ctx context.Context, args string) {
 // is the position's stop price as it stood right before this sell (Phase
 // 3.11 PR1 §3.5) — read via GetPosition *before* calling db.RecordSell,
 // since a full close deletes the positions row and takes the stop price
-// with it; always 0 on an error path or when no stop had ever been set.
-func (b *Bot) recordSell(ticker string, shares, price, fee float64, date string) (msg string, closed bool, stopPrice float64) {
-	if prevPos, ok, err := b.db.GetPosition(ticker); err != nil {
-		log.Printf("sell %s: get position for stop price: %v", ticker, err)
+// with it; always 0 on an error path or when no stop had ever been set. err
+// is nil on success, same "for a programmatic caller, not for re-parsing
+// msg" purpose as recordBuy's (see ExecuteSell).
+func (b *Bot) recordSell(ticker string, shares, price, fee float64, date string) (msg string, closed bool, stopPrice float64, err error) {
+	if prevPos, ok, gerr := b.db.GetPosition(ticker); gerr != nil {
+		log.Printf("sell %s: get position for stop price: %v", ticker, gerr)
 	} else if ok {
 		stopPrice = prevPos.StopPrice
 	}
@@ -690,14 +733,49 @@ func (b *Bot) recordSell(ticker string, shares, price, fee float64, date string)
 	if err != nil {
 		switch {
 		case errors.Is(err, db.ErrNoPosition):
-			return i18n.T(b.lang, i18n.KeySellNoPosition, ticker), false, 0
+			return i18n.T(b.lang, i18n.KeySellNoPosition, ticker), false, 0, err
 		case errors.Is(err, db.ErrInsufficientShares):
-			return i18n.T(b.lang, i18n.KeySellInsufficientShares, ticker), false, 0
+			return i18n.T(b.lang, i18n.KeySellInsufficientShares, ticker), false, 0, err
 		default:
-			return i18n.T(b.lang, i18n.KeySellFailed, err), false, 0
+			return i18n.T(b.lang, i18n.KeySellFailed, err), false, 0, err
 		}
 	}
-	return i18n.T(b.lang, i18n.KeySellSuccess, ticker, shares, price, fee, realizedPnL, pos.Shares), pos.Shares == 0, stopPrice
+	return i18n.T(b.lang, i18n.KeySellSuccess, ticker, shares, price, fee, realizedPnL, pos.Shares), pos.Shares == 0, stopPrice, nil
+}
+
+// ExecuteSell is ExecuteBuy's sibling for internal/web's POST
+// /api/trade/sell (see docs/phase-10-web-trade-input.md §4.2) — same
+// validation/Telegram-parity shape, plus triggering the same sell-review
+// goroutine handleSell kicks off on a closing sell.
+func (b *Bot) ExecuteSell(ctx context.Context, ticker string, shares, price, fee float64, date string) (string, error) {
+	ticker = strings.ToUpper(strings.TrimSpace(ticker))
+	if ticker == "" || shares <= 0 || price <= 0 || fee < 0 {
+		msg := i18n.T(b.lang, i18n.KeySellUsage)
+		b.Send(msg)
+		return msg, fmt.Errorf("invalid sell arguments")
+	}
+	msg, closed, stopPrice, err := b.recordSell(ticker, shares, price, fee, date)
+	b.Send(msg)
+	if closed {
+		go b.reviewClosedTrade(ctx, ticker, stopPrice)
+	}
+	return msg, err
+}
+
+// ExecuteSetStop is ExecuteBuy's sibling for internal/web's POST /api/stop
+// (see docs/phase-10-web-trade-input.md §4.2), reusing setStop's validation
+// so the web form rejects a stop price at/above the latest close the exact
+// same way /stop TICKER PRICE does.
+func (b *Bot) ExecuteSetStop(ticker string, price float64) (string, error) {
+	ticker = strings.ToUpper(strings.TrimSpace(ticker))
+	if ticker == "" || price <= 0 {
+		msg := i18n.T(b.lang, i18n.KeyStopUsage)
+		b.Send(msg)
+		return msg, fmt.Errorf("invalid stop arguments")
+	}
+	msg, err := b.setStop(ticker, price)
+	b.Send(msg)
+	return msg, err
 }
 
 // tradeRound is a fully closed round trip in a ticker's transaction history:
