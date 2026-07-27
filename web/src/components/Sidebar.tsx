@@ -61,7 +61,8 @@ export function Sidebar({ path, onNavigate, dict, market, status }: Props) {
         <div className="card sidebar-account">
           <div className="eyebrow">{dict.accountValue}</div>
           <div className="sidebar-account-value mono">
-            {formatValue(status.accountValue, "currency", currencySymbol(market))}
+            {currencySymbol(market)}
+            {status.accountValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </div>
           <div className={`sidebar-account-pnl mono ${status.netPnL >= 0 ? "profit" : "loss"}`}>
             {formatValue(status.netPnL, "currency", currencySymbol(market))} {dict.netPnL}
