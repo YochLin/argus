@@ -32,6 +32,40 @@ func (noDataProvider) GetHistory(string, string) ([]data.Candle, error) {
 	return nil, errors.New("no data")
 }
 
+// quoteOnlyProvider is a data.Provider stub returning a fixed GetQuote price
+// and erroring on everything else — paired with noDataProvider's history
+// stub, this exercises computeStopSuggestion's live-quote fallback path
+// (Phase 3.11 PR1) without needing real market data.
+type quoteOnlyProvider struct{ price float64 }
+
+func (p quoteOnlyProvider) Name() string { return "quote-stub" }
+func (p quoteOnlyProvider) GetQuote(string) (*data.Quote, error) {
+	return &data.Quote{Price: p.price}, nil
+}
+func (quoteOnlyProvider) GetNews(string, int) ([]data.NewsItem, error) {
+	return nil, errors.New("no data")
+}
+func (quoteOnlyProvider) GetMarketMovers() ([]string, error) { return nil, errors.New("no data") }
+
+// fakeChannel is a no-op Channel stub, standing in for the real Telegram
+// channel in tests that exercise a code path calling b.Send/SendWithButtons
+// (e.g. Phase 10's recordBuy/recordSell/setStop, called directly by
+// ExecuteBuy/ExecuteSell/ExecuteSetStop rather than only through a
+// handle*-then-Send pair) without a real bot API connection. Sent messages
+// are recorded so a test can assert on them if it needs to.
+type fakeChannel struct {
+	sent []string
+}
+
+func (f *fakeChannel) Listen(context.Context, func(Update)) {}
+func (f *fakeChannel) Send(text string)                     { f.sent = append(f.sent, text) }
+func (f *fakeChannel) SendWithButtons(text string, buttons []Button) error {
+	f.sent = append(f.sent, text)
+	return nil
+}
+func (f *fakeChannel) EditMessage(MessageRef, string) error { return nil }
+func (f *fakeChannel) AnswerCallback(string)                {}
+
 func newPendingActionsTestBot(t *testing.T) (*Bot, *db.DB) {
 	t.Helper()
 	d, err := db.New(filepath.Join(t.TempDir(), "test.db"))
@@ -39,7 +73,7 @@ func newPendingActionsTestBot(t *testing.T) (*Bot, *db.DB) {
 		t.Fatalf("db.New() error = %v", err)
 	}
 	t.Cleanup(func() { d.Close() })
-	return &Bot{db: d, lang: i18n.EN, provider: noDataProvider{}, history: noDataProvider{}}, d
+	return &Bot{db: d, lang: i18n.EN, provider: noDataProvider{}, history: noDataProvider{}, channel: &fakeChannel{}}, d
 }
 
 func TestParseCallbackData(t *testing.T) {

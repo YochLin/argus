@@ -305,7 +305,7 @@ func buildDashboard(database dbReader, quotes quoteGetter, m market.MarketID) (d
 
 	resp.Positions = make([]positionResponse, 0, len(positions))
 	for _, p := range positions {
-		pr := positionResponse{Ticker: p.Ticker, Shares: p.Shares, AvgCost: p.AvgCost}
+		pr := positionResponse{Ticker: p.Ticker, Shares: p.Shares, AvgCost: p.AvgCost, StopPrice: p.StopPrice}
 		q, err := quotes.GetQuote(p.Ticker)
 		if err != nil {
 			log.Printf("web: dashboard: get quote for %s: %v", p.Ticker, err)

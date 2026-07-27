@@ -48,6 +48,16 @@ type Config struct {
 	// same convention as internal/bot's STOP_LOSS_PCT. main.go defaults it
 	// to 6.0 when the env var is unset.
 	RiskHeatPct float64
+	// Password (env WEB_PASSWORD, Phase 10) gates the write endpoints —
+	// empty means writes are off entirely (login + all five write routes
+	// simply aren't registered, so they 404), same presence-of-config
+	// convention as WEB_ADDR itself. See docs/phase-10-web-trade-input.md
+	// §4.1.
+	Password string
+	// Trade is the write-endpoint seam onto *bot.Bot (buy/sell/stop) — nil
+	// whenever Password is empty, since New only wires the write routes up
+	// in that case.
+	Trade TradeExecutor
 }
 
 // Server is Argus's read-only web dashboard (Phase 5 PR1 — see
@@ -56,23 +66,29 @@ type Config struct {
 // of its own.
 type Server struct {
 	db               dbReader
+	watchlistDB      watchlistWriter
 	quotes           quoteGetter
 	history          data.HistoryProvider
 	lang             i18n.Lang
 	companyNames     data.CompanyNameProvider
 	heatThresholdPct float64
 	recPerf          *recPerfStore
+	password         string
+	trade            TradeExecutor
 	mux              *http.ServeMux
 }
 
 func New(cfg Config) *Server {
 	s := &Server{
 		db:               cfg.DB,
+		watchlistDB:      cfg.DB,
 		quotes:           newQuoteCache(cfg.Provider),
 		history:          cfg.History,
 		lang:             cfg.Lang,
 		companyNames:     cfg.CompanyNames,
 		heatThresholdPct: cfg.RiskHeatPct,
+		password:         cfg.Password,
+		trade:            cfg.Trade,
 	}
 	s.recPerf = newRecPerfStore(s.db, s.history)
 	s.mux = http.NewServeMux()
@@ -90,6 +106,18 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /api/company-names", s.handleCompanyNames)
 	s.mux.HandleFunc("GET /api/risk", s.handleRisk)
 	s.mux.HandleFunc("GET /api/rec-performance", s.handleRecPerformance)
+	// Write routes (Phase 10) are always registered, but requireWritable
+	// 404s every one of them when no password is configured (see Config.
+	// Password's doc comment) — registering unconditionally, rather than
+	// skipping registration, is what makes that a real 404 instead of
+	// falling through to spaHandler's SPA-fallback 200. See
+	// docs/phase-10-web-trade-input.md §4.1.
+	s.mux.HandleFunc("POST /api/login", s.requireWritable(s.handleLogin))
+	s.mux.HandleFunc("POST /api/trade/buy", s.requireWritable(s.requireAuth(s.handleTradeBuy)))
+	s.mux.HandleFunc("POST /api/trade/sell", s.requireWritable(s.requireAuth(s.handleTradeSell)))
+	s.mux.HandleFunc("POST /api/stop", s.requireWritable(s.requireAuth(s.handleSetStop)))
+	s.mux.HandleFunc("POST /api/watchlist/add", s.requireWritable(s.requireAuth(s.handleWatchlistAdd)))
+	s.mux.HandleFunc("POST /api/watchlist/remove", s.requireWritable(s.requireAuth(s.handleWatchlistRemove)))
 	s.mux.Handle("/", spaHandler())
 	return s
 }

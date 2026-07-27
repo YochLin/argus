@@ -65,6 +65,12 @@ func main() {
 	// give-a-default shape, since binding a port at all is the thing that
 	// needs to be opted into.
 	webAddr := os.Getenv("WEB_ADDR")
+	// WEB_PASSWORD (Phase 10, docs/phase-10-web-trade-input.md §4.1) gates
+	// the dashboard's write endpoints — empty disables writes entirely, same
+	// presence-of-config convention as WEB_ADDR itself. Meaningless without
+	// WEB_ADDR also set, but no extra validation beyond that: an unreachable
+	// server's password setting is simply inert.
+	webPassword := os.Getenv("WEB_PASSWORD")
 	// Phase 3.8 exit-discipline thresholds: positive percentages, 0 disables
 	// the corresponding daily-report check entirely. Defaults are a starting
 	// point, not backed by any backtest yet — see PLAN.md's Phase 3.8 note
@@ -232,6 +238,8 @@ func main() {
 			Lang:         lang,
 			CompanyNames: companyNameProvider,
 			RiskHeatPct:  riskHeatPct,
+			Password:     webPassword,
+			Trade:        telegramBot,
 		})
 		go func() {
 			if err := webServer.Run(ctx, webAddr); err != nil {
