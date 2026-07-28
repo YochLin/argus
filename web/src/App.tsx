@@ -13,6 +13,8 @@ import { ChartView } from "./components/ChartView";
 import { ReportsView } from "./components/ReportsView";
 import { RiskView } from "./components/RiskView";
 import { RecsView } from "./components/RecsView";
+import { TradeModal, type TradeMode } from "./components/TradeModal";
+import { LoginModal } from "./components/LoginModal";
 
 // Four client-side routes (dashboard, calendar, round list, round detail)
 // don't justify pulling in a routing library — a hand-rolled route
@@ -74,6 +76,23 @@ export default function App() {
   // same reasoning as Sidebar/StatusBar living above the routed body.
   const [market, setMarket] = useState<Market>("us");
   const [isDark, setIsDark] = useState<boolean>(() => localStorage.getItem(themeStorageKey) !== "light");
+  // Phase 10 write-input state (docs/phase-10-web-trade-input.md §4.3): one
+  // shared TradeModal instance for every entry point (PositionsTable's row
+  // buttons, TopBar's global "+ Trade"), one shared LoginModal for any 401
+  // any of them hits, and a refreshSignal bumped after a successful write
+  // so the currently-visible view's own data fetch picks up the change —
+  // simpler than threading a refetch callback through every view.
+  const [tradeModal, setTradeModal] = useState<{
+    mode: TradeMode;
+    ticker: string;
+    editableTicker?: boolean;
+    prefillPrice?: number;
+  } | null>(null);
+  const [authRetry, setAuthRetry] = useState<(() => void) | null>(null);
+  const [refreshSignal, setRefreshSignal] = useState(0);
+
+  const openTrade = (mode: TradeMode, ticker: string, prefillPrice?: number) =>
+    setTradeModal({ mode, ticker, prefillPrice });
 
   const lang = userLang ?? serverLang;
   const dict = getDictionary(lang);
@@ -173,6 +192,9 @@ export default function App() {
         market={market}
         names={names}
         onOpenTicker={(t) => navigate(`/chart?ticker=${encodeURIComponent(t)}`)}
+        writable={status?.writable ?? false}
+        onUnauthorized={(retry) => setAuthRetry(() => retry)}
+        onSuccess={() => setRefreshSignal((n) => n + 1)}
       />
     );
   } else {
@@ -182,6 +204,8 @@ export default function App() {
         market={market}
         names={names}
         onTickerClick={(t) => navigate(`/chart?ticker=${encodeURIComponent(t)}`)}
+        onTrade={status?.writable ? openTrade : undefined}
+        refreshSignal={refreshSignal}
       />
     );
   }
@@ -198,6 +222,8 @@ export default function App() {
           lang={lang}
           onLangChange={changeLang}
           dict={dict}
+          writable={status?.writable ?? false}
+          onAddTrade={() => setTradeModal({ mode: "buy", ticker: "", editableTicker: true })}
         />
         {status ? (
           <StatusBar status={status} dict={dict} market={market} />
@@ -206,6 +232,29 @@ export default function App() {
         )}
         <div className="content">{body}</div>
       </div>
+      {tradeModal && (
+        <TradeModal
+          dict={dict}
+          mode={tradeModal.mode}
+          ticker={tradeModal.ticker}
+          editableTicker={tradeModal.editableTicker}
+          prefillPrice={tradeModal.prefillPrice}
+          onClose={() => setTradeModal(null)}
+          onSuccess={() => setRefreshSignal((n) => n + 1)}
+          onUnauthorized={(retry) => setAuthRetry(() => retry)}
+        />
+      )}
+      {authRetry && (
+        <LoginModal
+          dict={dict}
+          onClose={() => setAuthRetry(null)}
+          onSuccess={() => {
+            const retry = authRetry;
+            setAuthRetry(null);
+            retry();
+          }}
+        />
+      )}
     </div>
   );
 }

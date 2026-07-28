@@ -59,6 +59,9 @@ export interface Position {
   marketValue: number;
   unrealizedPnL: number;
   unrealizedPnLPct: number;
+  // stopPrice (Phase 10) mirrors db.Position.StopPrice — 0 means unset,
+  // same sentinel convention as RiskPosition.stopPrice.
+  stopPrice: number;
 }
 
 export interface Status {
@@ -72,6 +75,10 @@ export interface Status {
   netPnL: number;
   winRate: number;
   tradeCount: number;
+  // writable (Phase 10) mirrors whether WEB_PASSWORD is configured
+  // server-side — the frontend renders no trade-input UI at all (not just
+  // disabled) when this is false. See internal/web/auth.go.
+  writable: boolean;
 }
 
 export interface Dashboard {
@@ -415,4 +422,78 @@ export function fetchRecPerformance(market: Market = "us"): Promise<RecPerforman
 }
 export function fetchDistributions(market: Market = "us"): Promise<Distributions> {
   return getJSON<Distributions>(`/api/distributions?market=${market}`);
+}
+
+// --- Phase 10 write endpoints (docs/phase-10-web-trade-input.md) ---
+// Mirrors internal/web/trade.go/auth.go's request/response shapes. Every
+// write endpoint is same-origin POST + JSON, gated server-side on the
+// requireWritable/requireAuth cookie check — fetch's default
+// credentials: "same-origin" already sends the session cookie, no extra
+// option needed.
+
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function postJSON<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const message = (data as { error?: string })?.error ?? `HTTP ${res.status}`;
+    throw new ApiError(res.status, message);
+  }
+  return data as T;
+}
+
+export interface TradeRequest {
+  ticker: string;
+  shares: number;
+  price: number;
+  fee?: number;
+  date?: string;
+}
+
+export interface StopRequest {
+  ticker: string;
+  price: number;
+}
+
+// TradeResponse's message is the exact Telegram-confirmation-text the
+// server would have sent for the equivalent /buy, /sell, or /stop command
+// (see docs/phase-10-web-trade-input.md §4.2) — render it verbatim, no
+// frontend-side translation needed.
+export interface TradeResponse {
+  message: string;
+}
+
+export function login(password: string): Promise<{ ok: boolean }> {
+  return postJSON("/api/login", { password });
+}
+
+export function executeBuy(req: TradeRequest): Promise<TradeResponse> {
+  return postJSON("/api/trade/buy", req);
+}
+
+export function executeSell(req: TradeRequest): Promise<TradeResponse> {
+  return postJSON("/api/trade/sell", req);
+}
+
+export function setStopPrice(req: StopRequest): Promise<TradeResponse> {
+  return postJSON("/api/stop", req);
+}
+
+export function addWatchlistTicker(ticker: string): Promise<TradeResponse> {
+  return postJSON("/api/watchlist/add", { ticker });
+}
+
+export function removeWatchlistTicker(ticker: string): Promise<TradeResponse> {
+  return postJSON("/api/watchlist/remove", { ticker });
 }

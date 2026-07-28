@@ -5,6 +5,7 @@ import { DrawdownChart } from "./DrawdownChart";
 import { KpiCard } from "./KpiCard";
 import { PnlChart } from "./PnlChart";
 import { PositionsTable } from "./PositionsTable";
+import type { TradeMode } from "./TradeModal";
 
 interface Props {
   dict: Dictionary;
@@ -17,6 +18,12 @@ interface Props {
   // names is /api/company-names' TW ticker → Chinese-name map (see App.tsx),
   // forwarded to PositionsTable.
   names?: Record<string, string>;
+  // onTrade/refreshSignal (Phase 10) forward to PositionsTable's row
+  // buttons — onTrade opens App.tsx's shared TradeModal, refreshSignal is
+  // bumped by App after a successful write so this view's own dashboard
+  // fetch picks up the new position/stop-price state.
+  onTrade?: (mode: TradeMode, ticker: string, prefillPrice?: number) => void;
+  refreshSignal?: number;
 }
 
 // The dashboard screen's body, pulled out of App.tsx (Phase 5 PR2) so App
@@ -24,7 +31,7 @@ interface Props {
 // fetch/loading/error state rather than App prefetching everything upfront.
 // Phase 6: refetches whenever the market toggle changes (see App.tsx),
 // since /api/dashboard's numbers are market-scoped (buildDashboard).
-export function DashboardView({ dict, market, onTickerClick, names }: Props) {
+export function DashboardView({ dict, market, onTickerClick, names, onTrade, refreshSignal }: Props) {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [error, setError] = useState(false);
 
@@ -34,7 +41,7 @@ export function DashboardView({ dict, market, onTickerClick, names }: Props) {
     fetchDashboard(market)
       .then(setDashboard)
       .catch(() => setError(true));
-  }, [market]);
+  }, [market, refreshSignal]);
 
   if (error) {
     return <div className="error-message">{dict.error}</div>;
@@ -92,6 +99,7 @@ export function DashboardView({ dict, market, onTickerClick, names }: Props) {
           currency={currency}
           onTickerClick={onTickerClick}
           names={names}
+          onTrade={onTrade}
         />
       </div>
     </>
