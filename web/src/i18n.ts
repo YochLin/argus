@@ -129,6 +129,26 @@ export interface Dictionary {
   // convention as Sidebar's market/lang pills labeling the destination.
   themeLight: string;
   themeDark: string;
+  // Phase 10 (docs/phase-10-web-trade-input.md §4.3): TradeModal/LoginModal
+  // copy plus PositionsTable/ChartListView's new write-affordance labels.
+  // Server-side confirmation/error text (e.g. TradeResponse.message) is
+  // never re-translated here — these keys are only for chrome the backend
+  // never sends a string for.
+  addTrade: string;
+  tradeBuyTitle: string;
+  tradeSellTitle: string;
+  tradeStopTitle: string;
+  advancedOptions: string;
+  tradeDate: string;
+  submit: string;
+  cancel: string;
+  close: string;
+  loginTitle: string;
+  password: string;
+  login: string;
+  addTickerPlaceholder: string;
+  add: string;
+  remove: string;
 }
 
 const en: Dictionary = {
@@ -247,6 +267,21 @@ const en: Dictionary = {
   noDistributionData: "No closed rounds yet.",
   themeLight: "Light",
   themeDark: "Dark",
+  addTrade: "+ Trade",
+  tradeBuyTitle: "Buy",
+  tradeSellTitle: "Sell",
+  tradeStopTitle: "Set Stop",
+  advancedOptions: "Advanced",
+  tradeDate: "Date",
+  submit: "Submit",
+  cancel: "Cancel",
+  close: "Close",
+  loginTitle: "Log In",
+  password: "Password",
+  login: "Log In",
+  addTickerPlaceholder: "Add ticker…",
+  add: "Add",
+  remove: "Remove",
 };
 
 const zh: Dictionary = {
@@ -365,6 +400,21 @@ const zh: Dictionary = {
   noDistributionData: "目前沒有已平倉回合。",
   themeLight: "日間",
   themeDark: "夜間",
+  addTrade: "＋交易",
+  tradeBuyTitle: "買入",
+  tradeSellTitle: "賣出",
+  tradeStopTitle: "設定停損",
+  advancedOptions: "進階選項",
+  tradeDate: "日期",
+  submit: "送出",
+  cancel: "取消",
+  close: "關閉",
+  loginTitle: "登入",
+  password: "密碼",
+  login: "登入",
+  addTickerPlaceholder: "新增標的…",
+  add: "新增",
+  remove: "移除",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

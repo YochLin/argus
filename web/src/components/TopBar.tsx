@@ -15,6 +15,11 @@ interface Props {
   lang: Lang;
   onLangChange: (lang: Lang) => void;
   dict: Dictionary;
+  // writable/onAddTrade (Phase 10, docs/phase-10-web-trade-input.md §2
+  // item 6) — the shell-level "+ Trade" entry point, absent entirely (not
+  // just disabled) when WEB_PASSWORD isn't configured server-side.
+  writable?: boolean;
+  onAddTrade?: () => void;
 }
 
 // Shell-level top bar (Figma reference layout): market switch on the left,
@@ -29,6 +34,8 @@ export function TopBar({
   lang,
   onLangChange,
   dict,
+  writable = false,
+  onAddTrade,
 }: Props) {
   return (
     <div className="topbar">
@@ -47,6 +54,11 @@ export function TopBar({
         </button>
       </div>
       <div className="topbar-right">
+        {writable && (
+          <button className="theme-toggle" onClick={onAddTrade}>
+            {dict.addTrade}
+          </button>
+        )}
         <LangDropdown lang={lang} onLangChange={onLangChange} />
         <button className="theme-toggle" onClick={onToggleTheme} aria-label="toggle theme">
           {isDark ? <SunIcon /> : <MoonIcon />}
