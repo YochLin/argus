@@ -167,6 +167,11 @@ const (
 	KeyWeeklyNetWorthLineWithCashTWD Key = "weekly_net_worth_line_with_cash_twd"
 	KeyWeeklyEarningsPreviewTitle    Key = "weekly_earnings_preview_title"
 	KeyWeeklyEarningsPreviewLine     Key = "weekly_earnings_preview_line"
+	// KeyWeeklyEarningsPreviewLineEstimated is KeyWeeklyEarningsPreviewLine's
+	// counterpart for a TW statutory-deadline proxy entry (see
+	// data.GetTWUpcomingEarnings) — same three args, worded as a filing
+	// deadline rather than a confirmed per-company earnings date.
+	KeyWeeklyEarningsPreviewLineEstimated Key = "weekly_earnings_preview_line_estimated"
 
 	KeyMonthlyReportTitle         Key = "monthly_report_title"
 	KeyMonthlyReportSparklineLine Key = "monthly_report_sparkline_line"
@@ -223,6 +228,11 @@ const (
 
 	KeyEarningsAlertTitle Key = "earnings_alert_title"
 	KeyEarningsAlertLine  Key = "earnings_alert_line"
+	// KeyEarningsAlertLineEstimated is KeyEarningsAlertLine's counterpart
+	// for a TW statutory-deadline proxy entry (see
+	// data.GetTWUpcomingEarnings) — same three args, worded as a filing
+	// deadline rather than a confirmed per-company earnings date.
+	KeyEarningsAlertLineEstimated Key = "earnings_alert_line_estimated"
 
 	KeyUniverseUsage         Key = "universe_usage"
 	KeyUniverseSummary       Key = "universe_summary"
@@ -351,25 +361,31 @@ const (
 	// GenerateRecommendations' isTW flag is set, so the model knows this
 	// batch is Taiwan-listed (TWD pricing, ±10% daily move limit) rather than
 	// its default US assumption.
-	KeyRecTWMarketNote      Key = "rec_tw_market_note"
-	KeyMarketRegimeHeader   Key = "market_regime_header"
-	KeyMarketRegimeSPYLine  Key = "market_regime_spy_line"
-	KeyMarketRegimeVIXLine  Key = "market_regime_vix_line"
-	KeyRiskOn               Key = "risk_on"
-	KeyRiskOff              Key = "risk_off"
-	KeyVIXCalm              Key = "vix_calm"
-	KeyVIXNormal            Key = "vix_normal"
-	KeyVIXPanic             Key = "vix_panic"
-	KeyRecMarketNewsHeader  Key = "rec_market_news_header"
-	KeyRecWatchlistHeader   Key = "rec_watchlist_header"
-	KeyRecNoWatchlist       Key = "rec_no_watchlist"
-	KeyRecMoversHeader      Key = "rec_movers_header"
-	KeyRecNoCandidates      Key = "rec_no_candidates"
-	KeyRecMarketSummaryTask Key = "rec_market_summary_task"
-	KeyRecTaskBlock         Key = "rec_task_block"
-	KeyReasonMarker         Key = "reason_marker"
-	KeyActionMarker         Key = "action_marker"
-	KeyMarketSummaryMarker  Key = "market_summary_marker"
+	KeyRecTWMarketNote     Key = "rec_tw_market_note"
+	KeyMarketRegimeHeader  Key = "market_regime_header"
+	KeyMarketRegimeSPYLine Key = "market_regime_spy_line"
+	KeyMarketRegimeVIXLine Key = "market_regime_vix_line"
+	// KeyMarketRegimeVolProxyLine renders MarketContext.VolProxyPct, TW's
+	// VIX substitute (no TW volatility-index dataset exists, free or paid
+	// — see the field's own doc comment). Its own line/wording, never
+	// reusing KeyMarketRegimeVIXLine, since it's an ATR-derived proxy, not
+	// an options-implied index value.
+	KeyMarketRegimeVolProxyLine Key = "market_regime_vol_proxy_line"
+	KeyRiskOn                   Key = "risk_on"
+	KeyRiskOff                  Key = "risk_off"
+	KeyVIXCalm                  Key = "vix_calm"
+	KeyVIXNormal                Key = "vix_normal"
+	KeyVIXPanic                 Key = "vix_panic"
+	KeyRecMarketNewsHeader      Key = "rec_market_news_header"
+	KeyRecWatchlistHeader       Key = "rec_watchlist_header"
+	KeyRecNoWatchlist           Key = "rec_no_watchlist"
+	KeyRecMoversHeader          Key = "rec_movers_header"
+	KeyRecNoCandidates          Key = "rec_no_candidates"
+	KeyRecMarketSummaryTask     Key = "rec_market_summary_task"
+	KeyRecTaskBlock             Key = "rec_task_block"
+	KeyReasonMarker             Key = "reason_marker"
+	KeyActionMarker             Key = "action_marker"
+	KeyMarketSummaryMarker      Key = "market_summary_marker"
 
 	KeyExplorePromptIntro Key = "explore_prompt_intro"
 	KeyExploreExcludeLine Key = "explore_exclude_line"
@@ -425,21 +441,27 @@ const (
 	KeyPositionLine            Key = "position_line"
 	KeyPrevRecLine             Key = "prev_rec_line"
 	KeyEarningsLine            Key = "earnings_line"
-	KeyScanHitLine             Key = "scan_hit_line"
-	KeyThesisLine              Key = "thesis_line"
-	KeyVsSPYLine               Key = "vs_spy_line"
-	KeyTechnicalsSummaryLine   Key = "technicals_summary_line"
-	KeyTechnicalsMALine        Key = "technicals_ma_line"
-	KeyVolumeRatioLine         Key = "volume_ratio_line"
-	KeyATRLine                 Key = "atr_line"
-	KeyBollingerLine           Key = "bollinger_line"
-	KeyCandlesHeader           Key = "candles_header"
-	KeyCandleLine              Key = "candle_line"
-	KeyTrendBullish            Key = "trend_bullish"
-	KeyTrendBearish            Key = "trend_bearish"
-	KeyTrendUnknown            Key = "trend_unknown"
-	KeyAboveMA                 Key = "above_ma"
-	KeyBelowMA                 Key = "below_ma"
+	// KeyEarningsLineEstimated is KeyEarningsLine's counterpart for a TW
+	// statutory-deadline proxy (see data.GetTWUpcomingEarnings): same two
+	// args, worded as a filing deadline rather than a confirmed
+	// per-company earnings date, so the model doesn't overweight it as
+	// firm certainty a specific company will report exactly then.
+	KeyEarningsLineEstimated Key = "earnings_line_estimated"
+	KeyScanHitLine           Key = "scan_hit_line"
+	KeyThesisLine            Key = "thesis_line"
+	KeyVsSPYLine             Key = "vs_spy_line"
+	KeyTechnicalsSummaryLine Key = "technicals_summary_line"
+	KeyTechnicalsMALine      Key = "technicals_ma_line"
+	KeyVolumeRatioLine       Key = "volume_ratio_line"
+	KeyATRLine               Key = "atr_line"
+	KeyBollingerLine         Key = "bollinger_line"
+	KeyCandlesHeader         Key = "candles_header"
+	KeyCandleLine            Key = "candle_line"
+	KeyTrendBullish          Key = "trend_bullish"
+	KeyTrendBearish          Key = "trend_bearish"
+	KeyTrendUnknown          Key = "trend_unknown"
+	KeyAboveMA               Key = "above_ma"
+	KeyBelowMA               Key = "below_ma"
 )
 
 // Keys used by internal/mcptools (read-only MCP tool result/error text

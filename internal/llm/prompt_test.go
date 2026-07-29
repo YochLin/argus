@@ -137,6 +137,38 @@ func TestWriteStockSectionOmitsThesisAndVsSPYWhenNil(t *testing.T) {
 	}
 }
 
+func TestWriteStockSectionEarningsEstimatedWording(t *testing.T) {
+	t.Run("real earnings date uses the confirmed wording", func(t *testing.T) {
+		var sb strings.Builder
+		writeStockSection(&sb, i18n.EN, StockData{
+			Quote:    &data.Quote{Ticker: "AAPL", Price: 200},
+			Earnings: &Earnings{Date: "2026-08-01", DaysUntil: 3},
+		})
+		got := sb.String()
+		if !strings.Contains(got, "Earnings date:") {
+			t.Errorf("writeStockSection() missing confirmed-earnings wording, got:\n%s", got)
+		}
+		if strings.Contains(got, "statutory filing deadline") {
+			t.Errorf("writeStockSection() should not use the estimated wording for a real earnings date, got:\n%s", got)
+		}
+	})
+
+	t.Run("TW statutory-deadline proxy uses the estimated wording", func(t *testing.T) {
+		var sb strings.Builder
+		writeStockSection(&sb, i18n.EN, StockData{
+			Quote:    &data.Quote{Ticker: "2330", Price: 900},
+			Earnings: &Earnings{Date: "2026-08-14", DaysUntil: 3, Estimated: true},
+		})
+		got := sb.String()
+		if !strings.Contains(got, "statutory filing deadline") {
+			t.Errorf("writeStockSection() missing estimated-deadline wording, got:\n%s", got)
+		}
+		if strings.Contains(got, "Earnings date:") {
+			t.Errorf("writeStockSection() should not use the confirmed-earnings wording for an estimated deadline, got:\n%s", got)
+		}
+	})
+}
+
 func TestWriteStockSectionRendersCandles(t *testing.T) {
 	var sb strings.Builder
 	writeStockSection(&sb, i18n.EN, StockData{
@@ -387,6 +419,26 @@ func TestWriteMarketContext(t *testing.T) {
 		}
 		if !strings.Contains(got, "high panic") {
 			t.Errorf("writeMarketContext() missing high-panic label, got:\n%s", got)
+		}
+	})
+
+	t.Run("VolProxyPct renders TW's volatility-proxy line instead of VIX", func(t *testing.T) {
+		var sb strings.Builder
+		writeMarketContext(&sb, i18n.EN, &MarketContext{SPYPrice: 45, SPYMA50: 44, SPYMA200: 43, VolProxyPct: 2.5})
+		got := sb.String()
+		if !strings.Contains(got, "Volatility proxy") {
+			t.Errorf("writeMarketContext() missing volatility-proxy line, got:\n%s", got)
+		}
+		if strings.Contains(got, "VIX") {
+			t.Errorf("writeMarketContext() should not render a VIX line when only VolProxyPct is set, got:\n%s", got)
+		}
+	})
+
+	t.Run("VolProxyPct zero omits the volatility-proxy line", func(t *testing.T) {
+		var sb strings.Builder
+		writeMarketContext(&sb, i18n.EN, &MarketContext{SPYPrice: 45, SPYMA50: 44, SPYMA200: 43})
+		if strings.Contains(sb.String(), "Volatility proxy") {
+			t.Errorf("writeMarketContext() should omit volatility-proxy line when VolProxyPct is 0, got:\n%s", sb.String())
 		}
 	})
 }

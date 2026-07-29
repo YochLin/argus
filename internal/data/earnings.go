@@ -8,9 +8,10 @@ import (
 // EarningsEvent is a single scheduled earnings report date, from Finnhub's
 // earnings calendar.
 type EarningsEvent struct {
-	Ticker string
-	Date   string // YYYY-MM-DD
-	Hour   string // "bmo" (before open), "amc" (after close), "dmh" (during hours), or "" if unspecified
+	Ticker    string
+	Date      string // YYYY-MM-DD
+	Hour      string // "bmo" (before open), "amc" (after close), "dmh" (during hours), or "" if unspecified
+	Estimated bool   // true for GetTWUpcomingEarnings' statutory-deadline proxy — see its own doc comment
 }
 
 // EarningsProvider is implemented only by Finnhub — same reasoning as

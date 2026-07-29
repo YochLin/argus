@@ -181,6 +181,13 @@ func main() {
 	providers = append(providers, yahoo)
 	provider := data.NewMulti(providers...)
 
+	// twMovers/twMarketNews (2026-07-28 TW data-gap PR) need no API key —
+	// TWSE's OpenAPI and cnyes are both free/keyless — so unlike
+	// fundamentalsProvider/earningsProvider above they're constructed
+	// unconditionally, same as yahoo/History.
+	twMovers := data.NewTWSE()
+	twMarketNews := data.NewCnyes()
+
 	llmClient := llm.NewClient(recommendModel, checkModel, chatModel, lang)
 	// Antigravity fallback is opt-in, not presence-of-config-gated like
 	// Finnhub above: agy has no read-only mode for non-interactive calls (see
@@ -203,6 +210,8 @@ func main() {
 		AnalystRating:       analystRatingProvider,
 		Earnings:            earningsProvider,
 		MarketNews:          marketNewsProvider,
+		TWMarketNews:        twMarketNews,
+		TWMovers:            twMovers,
 		CompanyNames:        companyNameProvider,
 		History:             yahoo,
 		LLM:                 llmClient,

@@ -43,16 +43,14 @@ type recommendationInputs struct {
 // ticker sets. Returns the db.GetWatchlistByMarket error verbatim (both
 // callers render it via the same KeyWatchlistQueryFailed message and abort).
 //
-// Candidate sourcing is asymmetric by market (Phase 6 PR2 §5.1): US gets
-// market-movers ∪ today's US-market scan hits, exactly as before PR2 existed
-// — GetMarketMovers/exploreCandidates are both US-only features (see their
-// own doc comments) with no TW equivalent. TW gets *only* today's TW-market
-// scan hits (RunUniverseScan(ctx, market.TW)'s output) — there is no TW
-// movers/explore source in this phase. marketNews is similarly US-only for
-// now: Finnhub's general-news endpoint has no TW equivalent until PR3's
-// FinMind router lands, so a TW call gets an explicit nil here rather than
-// attaching US-market news to a TW report (see
-// docs/phase-6-tw-market.md §2's "之前走 nil-degrade").
+// Candidate sourcing is asymmetric by market (Phase 6 PR2 §5.1, extended by
+// the 2026-07-28 TW data-gap PR): US gets market-movers ∪ today's US-market
+// scan hits, exactly as before PR2 existed. TW gets TWSE OpenAPI movers
+// (b.twMovers, live-verified free/keyless — see internal/data/twse_movers.go)
+// ∪ today's TW-market scan hits — exploreCandidates is still US-only (its
+// own doc comment explains why), but movers itself is no longer a US-only
+// gap. marketNews now also has a TW source (b.twMarketNews, cnyes) instead
+// of nil-degrading for TW.
 func (b *Bot) gatherRecommendationInputs(m market.MarketID) (recommendationInputs, error) {
 	tickers, err := b.db.GetWatchlistByMarket(m)
 	if err != nil {
@@ -65,6 +63,11 @@ func (b *Bot) gatherRecommendationInputs(m market.MarketID) (recommendationInput
 		if err != nil {
 			log.Printf("market movers: %v", err)
 		}
+	} else if b.twMovers != nil {
+		candidateTickers, err = b.twMovers.GetMarketMovers()
+		if err != nil {
+			log.Printf("tw market movers: %v", err)
+		}
 	}
 	scanHits := b.loadScanHits(m)
 	dedupedCandidates := mergeCandidates(candidateTickers, scanHits, tickers)
@@ -72,10 +75,7 @@ func (b *Bot) gatherRecommendationInputs(m market.MarketID) (recommendationInput
 
 	positions := b.loadPositions()
 	earnings := b.loadEarnings(allTickers)
-	var marketNews []data.NewsItem
-	if m == market.US {
-		marketNews = b.loadMarketNews()
-	}
+	marketNews := b.loadMarketNews(m)
 	prevRecs := b.loadPrevRecs(allTickers)
 	marketContext := b.computeMarketRegime(m)
 	pastLessons := b.loadPastLessons(allTickers)
@@ -379,7 +379,7 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 			stock.Position = &llm.Position{Shares: p.Shares, AvgCost: p.AvgCost}
 		}
 		if e, ok := earnings[t]; ok {
-			stock.Earnings = &llm.Earnings{Date: e.Date, DaysUntil: daysUntil(e.Date)}
+			stock.Earnings = &llm.Earnings{Date: e.Date, DaysUntil: daysUntil(e.Date), Estimated: e.Estimated}
 		}
 		if r, ok := scanReasons[t]; ok {
 			stock.ScanReason = &r
@@ -583,17 +583,20 @@ func (b *Bot) accountValue(m market.MarketID) (float64, bool) {
 // computeMarketRegime builds Phase 3.7 追加項's broad-market context block
 // (see docs/phase-3.7-market-regime.md and llm.MarketContext): benchmarkFor
 // (m)'s own trend (SPY for US, 0050 for TW as of Phase 6 PR2 — last close
-// from a single GetHistory call, no separate GetQuote) and, US only,
-// ^VIX's latest level (via the ordinary Multi quote chain — Finnhub returns
-// an error-shaped-but-200 body for CFD indices it doesn't support, which
-// decodes as an all-zero quote and falls through to Yahoo exactly like any
-// other "no data" quote, confirmed by live testing, see the design doc). VIX
-// is skipped entirely for TW — there's no equivalent volatility-index ticker
-// wired up for the TWSE/TPEx market, and the design doc doesn't call for one
-// (see docs/phase-6-tw-market.md §5.1). Either half failing just logs and
-// leaves that half's fields at 0 (skipped by writeMarketContext's per-field
-// rendering); both failing returns nil so the caller sees "no regime data"
-// rather than an all-zero struct.
+// from a single GetHistory call, no separate GetQuote) and a volatility
+// reading — US gets ^VIX's latest level (via the ordinary Multi quote
+// chain — Finnhub returns an error-shaped-but-200 body for CFD indices it
+// doesn't support, which decodes as an all-zero quote and falls through to
+// Yahoo exactly like any other "no data" quote, confirmed by live testing,
+// see the design doc). TW gets VolProxyPct instead (2026-07-28 TW data-gap
+// PR): no TW volatility-index dataset exists at all, free or paid (FinMind's
+// TaiwanOptionVix live-tested behind a paid-tier wall), so this computes
+// ATR14/close as a percentage off the same 0050 candles already fetched for
+// the benchmark line above — zero extra network call, a rougher proxy than
+// an options-implied index, but the best available without one. Either half
+// failing just logs and leaves that half's fields at 0 (skipped by
+// writeMarketContext's per-field rendering); both failing returns nil so the
+// caller sees "no regime data" rather than an all-zero struct.
 func (b *Bot) computeMarketRegime(m market.MarketID) *llm.MarketContext {
 	var mc llm.MarketContext
 
@@ -606,6 +609,12 @@ func (b *Bot) computeMarketRegime(m market.MarketID) *llm.MarketContext {
 		mc.SPYPrice = closes[len(closes)-1]
 		mc.SPYMA50 = signals.MA(closes, 50)
 		mc.SPYMA200 = signals.MA(closes, 200)
+
+		if m == market.TW {
+			if atr := signals.ATR(data.Highs(candles), data.Lows(candles), closes, 14); atr > 0 && mc.SPYPrice > 0 {
+				mc.VolProxyPct = atr / mc.SPYPrice * 100
+			}
+		}
 	}
 
 	if m == market.US {
@@ -718,19 +727,33 @@ func (b *Bot) loadRecentLessons() []llm.PastLesson {
 }
 
 // loadEarnings returns each ticker's next scheduled earnings date within
-// earningsPromptWindowDays, keyed by ticker. Degrades to nil (not an error)
-// when Finnhub isn't configured or the request fails — same optional-data
-// pattern as fundamentals.
+// earningsPromptWindowDays, keyed by ticker: Finnhub's real per-company date
+// for a US ticker, and (2026-07-28 TW data-gap PR) data.GetTWUpcomingEarnings'
+// statutory-deadline proxy for a TW one — the latter needs no API/nil-check,
+// it's a pure calendar function, and a TW ticker simply never matches
+// Finnhub's US-only calendar so both sources can be queried unconditionally
+// without any market branching here. Finnhub's half still degrades to
+// nothing (not an error) when it isn't configured or the request fails —
+// same optional-data pattern as fundamentals.
 func (b *Bot) loadEarnings(tickers []string) map[string]data.EarningsEvent {
-	if b.earnings == nil || len(tickers) == 0 {
+	if len(tickers) == 0 {
 		return nil
 	}
-	events, err := b.earnings.GetUpcomingEarnings(tickers, earningsPromptWindowDays)
-	if err != nil {
-		log.Printf("earnings calendar: %v", err)
-		return nil
+	out := data.GetTWUpcomingEarnings(tickers, earningsPromptWindowDays, b.now())
+
+	if b.earnings != nil {
+		events, err := b.earnings.GetUpcomingEarnings(tickers, earningsPromptWindowDays)
+		if err != nil {
+			log.Printf("earnings calendar: %v", err)
+		} else if out == nil {
+			out = events
+		} else {
+			for t, e := range events {
+				out[t] = e
+			}
+		}
 	}
-	return events
+	return out
 }
 
 // loadTheses returns each ticker's recorded holding thesis (see /thesis,
@@ -828,15 +851,21 @@ func (b *Bot) loadVsSPY(stocks []llm.StockData, positions map[string]db.Position
 }
 
 // loadMarketNews returns up to marketNewsLimit general market/macro news
-// items for the recommendation prompt's market-news summary section.
-// Degrades to nil (not an error) when Finnhub isn't configured or the
+// items for market m's recommendation prompt news-summary section — Finnhub
+// (b.marketNews) for US, cnyes (b.twMarketNews) for TW (2026-07-28 TW
+// data-gap PR; TW previously nil-degraded here unconditionally). Degrades to
+// nil (not an error) when the relevant provider isn't configured/nil or the
 // request fails — same optional-data pattern as fundamentals/earnings; a nil
 // result means GenerateRecommendations simply omits the summary.
-func (b *Bot) loadMarketNews() []data.NewsItem {
-	if b.marketNews == nil {
+func (b *Bot) loadMarketNews(m market.MarketID) []data.NewsItem {
+	provider := b.marketNews
+	if m == market.TW {
+		provider = b.twMarketNews
+	}
+	if provider == nil {
 		return nil
 	}
-	items, err := b.marketNews.GetMarketNews(marketNewsLimit)
+	items, err := provider.GetMarketNews(marketNewsLimit)
 	if err != nil {
 		log.Printf("market news: %v", err)
 		return nil
@@ -994,6 +1023,7 @@ func renderEarningsPreview(lang i18n.Lang, earnings map[string]data.EarningsEven
 		ticker    string
 		date      string
 		daysUntil int
+		estimated bool
 	}
 	var entries []entry
 	for t, e := range earnings {
@@ -1001,7 +1031,7 @@ func renderEarningsPreview(lang i18n.Lang, earnings map[string]data.EarningsEven
 		if d < 0 || d > days {
 			continue
 		}
-		entries = append(entries, entry{ticker: t, date: e.Date, daysUntil: d})
+		entries = append(entries, entry{ticker: t, date: e.Date, daysUntil: d, estimated: e.Estimated})
 	}
 	if len(entries) == 0 {
 		return ""
@@ -1011,7 +1041,11 @@ func renderEarningsPreview(lang i18n.Lang, earnings map[string]data.EarningsEven
 	var sb strings.Builder
 	sb.WriteString(i18n.T(lang, i18n.KeyWeeklyEarningsPreviewTitle))
 	for _, e := range entries {
-		sb.WriteString(i18n.T(lang, i18n.KeyWeeklyEarningsPreviewLine, e.ticker, e.date, e.daysUntil))
+		key := i18n.KeyWeeklyEarningsPreviewLine
+		if e.estimated {
+			key = i18n.KeyWeeklyEarningsPreviewLineEstimated
+		}
+		sb.WriteString(i18n.T(lang, key, e.ticker, e.date, e.daysUntil))
 	}
 	return sb.String()
 }

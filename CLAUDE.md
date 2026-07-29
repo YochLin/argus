@@ -161,9 +161,8 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   with a token — a paid FinMind sponsor tier, not something a free/registered token unlocks. The fallback
   of aggregating per-ticker news across the TW watchlist was also rejected: it would just duplicate the
   per-ticker news each stock's own prompt section already renders via Yahoo's `GetNews`, not real
-  market/macro news. `gatherRecommendationInputs`'s pre-existing `if m == market.US` nil-degrade for
-  `marketNews` (see `internal/bot` below) is therefore unchanged — the 15:00 TW daily report has no market
-  news summary block, a known/accepted gap (see docs/phase-6-tw-market.md §7), not an oversight.
+  market/macro news. **This gap was later closed** by the 2026-07-28/29 TW data-gap PR's `cnyes.go` (see
+  further down this section) — `gatherRecommendationInputs` no longer nil-degrades `marketNews` for TW.
   `data.FundamentalsRouter` (`fundamentals.go`) is the per-market dispatch this PR needed: it implements
   `FundamentalsProvider` by routing on `market.Of(ticker)` to its `US`/`TW` fields, each independently
   nilable exactly like `Finnhub`/`FinMind` construction is independently gated on
@@ -173,6 +172,31 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   nil returns a Go error, which every caller already handles via its existing "no fundamentals data"
   degrade path. `main.go` builds one `FundamentalsRouter` and passes it to both `bot.Config.Fundamentals`
   and `mcptools.Run`'s fundamentals parameter — same router, not two separately-constructed ones.
+  The 2026-07-28/29 TW data-gap PR (investigated in the project memory `project_tw_gap_feasibility.md`,
+  all four sources live-tested via curl before writing any code) closed the three remaining TW gaps
+  Phase 6 left open: `twse_movers.go`'s `TWSE`/`TWMarketMoversProvider` hits TWSE's free, keyless OpenAPI
+  (`/v1/exchangeReport/MI_INDEX20`, today's top-20-by-volume) — its own interface, not folded into
+  `Provider`/`Multi`, same reasoning as `MarketNewsProvider`/`EarningsProvider` staying separate. Its
+  `NewTWSE()` constructs an `http.Client` with an empty, non-nil `TLSNextProto` to force HTTP/1.1 — live
+  testing found the endpoint resets the connection during an HTTP/2 handshake specifically (the same
+  client reaches Yahoo/cnyes fine over HTTP/2), and net/http's documented way to disable HTTP/2 is exactly
+  that empty map. `GetMarketMovers` filters out leveraged/inverse ETFs via `isTWLeveragedOrInverse`, a
+  ticker-suffix heuristic (`L`/`R`, e.g. `00685L`/`00632R`) rather than parsing the Chinese name text —
+  live testing found 3 of the top 5 rows on 2026-07-27 were exactly this ETF class. `cnyes.go`'s `Cnyes`
+  implements the existing `MarketNewsProvider` interface (no new interface needed) against 鉅亨網's free,
+  keyless `api.cnyes.com/media/api/v1/newslist/category/tw_stock` — an unofficial API with the same
+  could-disappear-without-notice risk this file already documents for Yahoo's chart API. `Summary` is
+  null on some items and a real teaser on others (live-verified), left as `""` for the null case exactly
+  like `Yahoo.GetNews` already does; `NewsItem.URL` is built from the response's `newsId` via cnyes's
+  canonical article path (`news.cnyes.com/news/id/<id>`) since the list endpoint carries no direct link
+  field of its own (live-verified to resolve). `tw_earnings.go`'s `GetTWUpcomingEarnings` is a pure,
+  zero-API function — FinMind has no earnings-calendar dataset at all, and a real per-company date would
+  require scraping MOPS (out of scope) — that instead returns the next Taiwan statutory
+  financial-disclosure deadline (quarterly 5/15·8/14·11/14, annual report 3/31, monthly revenue every
+  month's 10th) within a `[now, now+days]` window, same for every TW ticker asked about since it's a
+  filing-law date rather than a per-company announcement. `EarningsEvent.Estimated` (new field, `false`
+  for every existing Finnhub-sourced event) marks these so callers render honest wording instead of
+  implying a confirmed per-company earnings date — see `internal/llm`/`internal/bot` below.
 - `internal/db` — thin wrapper around `database/sql` + `modernc.org/sqlite` (pure-Go, no cgo). Owns nine
   tables: `watchlist`, `daily_snapshots`, `recommendations` (with `action` BUY/SELL/HOLD, `price` at
   recommendation time, and `source` — `"watchlist"`/`"movers"`/`"scan"`, migration 5, `""` for rows saved
@@ -377,7 +401,13 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   prompts wherever a position exists. `StockData.Earnings` (`{Date, DaysUntil}`, `DaysUntil` precomputed
   by the caller so this package doesn't do date math against "now") is the same pattern for an upcoming
   earnings report — `writeStockSection` renders `KeyEarningsLine` as a warning so the model doesn't call
-  BUY on something reporting earnings tomorrow. `StockData.ScanReason` (`*string`) is the same
+  BUY on something reporting earnings tomorrow. `Earnings.Estimated` (2026-07-28/29 TW data-gap PR)
+  mirrors `data.EarningsEvent.Estimated` (see `internal/data` above) — when true (the TW
+  statutory-deadline proxy, never a real Finnhub event), `writeStockSection` renders
+  `KeyEarningsLineEstimated` instead, worded as a filing deadline rather than a confirmed per-company
+  report date, so the model doesn't overweight it as certainty a specific company reports exactly then.
+  `bot.checkEarningsAlerts`/`renderEarningsPreview` branch the same way on their own
+  `KeyEarningsAlertLineEstimated`/`KeyWeeklyEarningsPreviewLineEstimated` counterparts. `StockData.ScanReason` (`*string`) is the same
   attach-and-render pattern again for Phase 2.6's universe scan: set only for a candidate that was
   surfaced by a signal hit rather than the market-movers list, rendered via `KeyScanHitLine`.
   `StockData.Technicals` (`{RSI14, MACDTrend, MA20, MA50, MA200}`, Phase 3.7) is the same pattern once
@@ -445,6 +475,14 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `bot.weightedAvgPrice`'s shape but operates on `[]TradeLeg`, not `[]db.Transaction`, so this package
   still doesn't import `internal/db`) — skipped entirely when `StopPrice <= 0` or the stop sits at/above
   the entry price (division-by-zero/negative guard), not just when the field is unset.
+  `MarketContext.VolProxyPct` (2026-07-28/29 TW data-gap PR) is TW's substitute for the US-only `VIX`
+  field (docs/phase-3.7-market-regime.md): no TW volatility-index dataset exists at all, free or paid
+  (FinMind's `TaiwanOptionVix` live-tested behind the same paid-sponsor-tier wall as `TaiwanStockNews` —
+  see `internal/data` above), so `bot.computeMarketRegime` computes ATR14/close as a percentage off the
+  same 0050 candles it already fetched for the benchmark-trend line, zero extra request. `writeMarketContext`
+  renders it via its own `KeyMarketRegimeVolProxyLine`, never `KeyMarketRegimeVIXLine` — an ATR-derived
+  proxy isn't an options-implied index value, and the two fields are mutually exclusive in practice
+  (`computeMarketRegime` only ever sets one, depending on market).
 - `internal/signals` — pure functions/struct for rule-based technical signals (price % threshold, RSI,
   MACD, Stochastic KD, Bollinger Bandwidth, MA Alignment, Volume-Price, New High, Relative Strength RS63,
   Lowest Close over N bars (`LowestClose`, Phase 3.11 PR1's stop-loss structural-reference input — 0 is
@@ -892,6 +930,21 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   Telegram-specific inbound type. `MessageRef` is deliberately still Telegram-shaped internally (a
   chat ID + message ID pair) rather than a more abstract shape — there's no second `Channel`
   implementation yet to design that abstraction against, so guessing now would just be premature.
+  The 2026-07-28/29 TW data-gap PR wires `internal/data`'s three new TW sources (see that section above)
+  into the pipeline: `gatherRecommendationInputs`'s TW branch now calls the new `b.twMovers.
+  GetMarketMovers()` (`Bot.twMovers`, always non-nil — TWSE's OpenAPI needs no key, unlike
+  `fundamentals`/`earnings`) instead of leaving `candidateTickers` sourced only from scan hits; `/recommend
+  tw` and `RunTWDailyReport` finally get real candidate tickers beyond the day's scan hits.
+  `loadMarketNews` gained a `market.MarketID` parameter and now routes to `b.twMarketNews` (cnyes) for TW
+  instead of the previous unconditional `if m == market.US` nil-degrade. `loadEarnings` no longer nil-checks
+  `b.earnings` before doing anything — it always merges in `data.GetTWUpcomingEarnings`'s pure,
+  no-API-needed statutory-deadline proxy for whichever tickers are TW, then additionally merges in
+  Finnhub's real per-company dates when `b.earnings != nil`, since a TW ticker never matches Finnhub's
+  US-only calendar anyway (same "no guard needed" reasoning `internal/data`'s entry above already
+  documents for `GetUpcomingEarnings` itself). It reads `b.now()` rather than `time.Now()` directly for
+  the same reason `RunDailyReport`'s `market.IsTradingDay` guard already does — a fixed 14-day lookback
+  window would otherwise make a date-dependent unit test flaky depending on which real calendar date it
+  ran on.
 - `internal/mcptools` — Phase 3.5's read-only MCP (Model Context Protocol) tool surface for chat, using
   the official `github.com/modelcontextprotocol/go-sdk`. `NewServer(lang, provider, history, fundamentals,
   earnings)` builds an `*mcp.Server` and registers seven tools (`tools.go`'s `registerTools`): `get_quote`/

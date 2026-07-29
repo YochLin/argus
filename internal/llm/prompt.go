@@ -170,10 +170,15 @@ type Position struct {
 
 // Earnings is the subset of a data.EarningsEvent an LLM prompt needs, with
 // DaysUntil precomputed by the caller (bot.loadEarnings) so this package
-// doesn't need to do date math against "now" itself.
+// doesn't need to do date math against "now" itself. Estimated mirrors
+// data.EarningsEvent.Estimated (true for the TW statutory-deadline proxy,
+// see data.GetTWUpcomingEarnings) — writeStockSection renders a distinct,
+// honest line for it rather than implying a confirmed per-company earnings
+// date.
 type Earnings struct {
 	Date      string
 	DaysUntil int
+	Estimated bool
 }
 
 // PrevRecommendation is the subset of a db.Recommendation an LLM prompt
@@ -257,10 +262,15 @@ type ClosedTrade struct {
 // attach-and-render convention as Position/Earnings/Technicals. 0 on any
 // field means "couldn't be fetched" — writeMarketContext skips that field's
 // line rather than rendering a misleading 0, same sentinel convention as
-// Technicals' MA fields.
+// Technicals' MA fields. VolProxyPct is TW's VIX substitute (docs/... TW
+// data-gap investigation, 2026-07-28: no TW volatility-index ticker/dataset
+// exists, free or paid) — an ATR14/close percentage on the TW benchmark's
+// own candles rather than an options-implied figure, so it's rendered with
+// its own line and wording, never conflated with VIX.
 type MarketContext struct {
 	SPYPrice, SPYMA50, SPYMA200 float64
 	VIX                         float64
+	VolProxyPct                 float64
 }
 
 // vixCalmThreshold/vixPanicThreshold are fixed, not env-configurable — 15/25
@@ -295,17 +305,21 @@ func vixLabel(vix float64) i18n.Key {
 }
 
 // writeMarketContext renders the market-regime block (nil market, or a
-// market with both SPYPrice/SPYMA200 and VIX unavailable, renders nothing —
-// see MarketContext's 0-sentinel convention). Each of the SPY line and VIX
-// line is independently skipped when its own inputs aren't available, same
-// per-field degradation as writeStockSection's MA lines.
+// market with SPYPrice/SPYMA200, VIX, and VolProxyPct all unavailable,
+// renders nothing — see MarketContext's 0-sentinel convention). Each line
+// is independently skipped when its own inputs aren't available, same
+// per-field degradation as writeStockSection's MA lines. VIX and
+// VolProxyPct are mutually exclusive in practice (computeMarketRegime only
+// ever sets one, depending on market) but aren't guarded against both being
+// set here — rendering both would just be redundant, not wrong.
 func writeMarketContext(sb *strings.Builder, lang i18n.Lang, m *MarketContext) {
 	if m == nil {
 		return
 	}
 	haveSPY := m.SPYPrice > 0 && m.SPYMA200 > 0
 	haveVIX := m.VIX > 0
-	if !haveSPY && !haveVIX {
+	haveVolProxy := m.VolProxyPct > 0
+	if !haveSPY && !haveVIX && !haveVolProxy {
 		return
 	}
 
@@ -315,6 +329,9 @@ func writeMarketContext(sb *strings.Builder, lang i18n.Lang, m *MarketContext) {
 	}
 	if haveVIX {
 		fmt.Fprint(sb, i18n.T(lang, i18n.KeyMarketRegimeVIXLine, m.VIX, i18n.T(lang, vixLabel(m.VIX))))
+	}
+	if haveVolProxy {
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyMarketRegimeVolProxyLine, m.VolProxyPct))
 	}
 	sb.WriteString("\n")
 }
@@ -542,7 +559,11 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 	}
 
 	if e := s.Earnings; e != nil {
-		fmt.Fprint(sb, i18n.T(lang, i18n.KeyEarningsLine, e.Date, e.DaysUntil))
+		key := i18n.KeyEarningsLine
+		if e.Estimated {
+			key = i18n.KeyEarningsLineEstimated
+		}
+		fmt.Fprint(sb, i18n.T(lang, key, e.Date, e.DaysUntil))
 	}
 
 	if r := s.ScanReason; r != nil {
