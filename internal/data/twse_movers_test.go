@@ -7,20 +7,25 @@ import (
 	"testing"
 )
 
-func TestIsTWLeveragedOrInverse(t *testing.T) {
+func TestIsTWETF(t *testing.T) {
 	cases := []struct {
 		ticker string
 		want   bool
 	}{
 		{"2330", false},
-		{"0050", false},
-		{"00685L", true},
-		{"00632R", true},
-		{"00679B", false}, // bond ETF, out of scope for this filter
+		{"3481", false},
+		{"0050", true},
+		{"0056", true},
+		{"00919", true},
+		{"009816", true},
+		{"00403A", true}, // plain (non-leveraged) ETF, live-verified 2026-07-29 to dominate movers too
+		{"00685L", true}, // leveraged
+		{"00632R", true}, // inverse
+		{"00679B", true}, // bond ETF
 	}
 	for _, c := range cases {
-		if got := isTWLeveragedOrInverse(c.ticker); got != c.want {
-			t.Errorf("isTWLeveragedOrInverse(%q) = %v, want %v", c.ticker, got, c.want)
+		if got := isTWETF(c.ticker); got != c.want {
+			t.Errorf("isTWETF(%q) = %v, want %v", c.ticker, got, c.want)
 		}
 	}
 }
@@ -30,6 +35,7 @@ func TestTWSEGetMarketMovers(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `[
 			{"Code":"3481","Name":"群創"},
+			{"Code":"0050","Name":"元大台灣50"},
 			{"Code":"00685L","Name":"群益臺灣加權正2"},
 			{"Code":"00632R","Name":"元大台灣50反1"},
 			{"Code":"2330","Name":"台積電"}
