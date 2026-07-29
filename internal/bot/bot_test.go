@@ -131,6 +131,56 @@ func (f fakeCompanyNames) GetCompanyName(ticker string) (string, error) {
 	return "", fmt.Errorf("no name for %s", ticker)
 }
 
+// fakeEarnings is a minimal data.EarningsProvider stub for TestLoadEarnings.
+type fakeEarnings struct {
+	events map[string]data.EarningsEvent
+	err    error
+}
+
+func (f fakeEarnings) GetUpcomingEarnings(tickers []string, days int) (map[string]data.EarningsEvent, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	out := make(map[string]data.EarningsEvent)
+	for _, t := range tickers {
+		if e, ok := f.events[t]; ok {
+			out[t] = e
+		}
+	}
+	return out, nil
+}
+
+func TestLoadEarningsMergesUSAndTWSources(t *testing.T) {
+	b := &Bot{
+		earnings: fakeEarnings{events: map[string]data.EarningsEvent{
+			"AAPL": {Ticker: "AAPL", Date: "2026-08-01"},
+		}},
+		now: func() time.Time { return time.Date(2026, time.August, 1, 12, 0, 0, 0, cst) },
+	}
+
+	got := b.loadEarnings([]string{"AAPL", "2330"})
+
+	aapl, ok := got["AAPL"]
+	if !ok || aapl.Estimated {
+		t.Errorf("loadEarnings()[AAPL] = %+v, want Finnhub's real (non-estimated) event", aapl)
+	}
+	tw, ok := got["2330"]
+	if !ok || !tw.Estimated {
+		t.Errorf("loadEarnings()[2330] = %+v, want the TW statutory-deadline proxy (Estimated=true)", tw)
+	}
+}
+
+func TestLoadEarningsWorksWithoutFinnhubConfigured(t *testing.T) {
+	// b.earnings is nil, same as no FINNHUB_API_KEY.
+	b := &Bot{now: func() time.Time { return time.Date(2026, time.August, 1, 12, 0, 0, 0, cst) }}
+
+	got := b.loadEarnings([]string{"2330"})
+
+	if _, ok := got["2330"]; !ok {
+		t.Error("loadEarnings() with nil b.earnings should still return the TW proxy entry")
+	}
+}
+
 func TestBotTickerLabel(t *testing.T) {
 	b := &Bot{companyNames: fakeCompanyNames{names: map[string]string{"2330": "台積電"}}}
 
@@ -912,6 +962,17 @@ func TestRenderEarningsPreviewFiltersByWindowAndSorts(t *testing.T) {
 func TestRenderEarningsPreviewEmptyWhenNothingInWindow(t *testing.T) {
 	if got := renderEarningsPreview(i18n.EN, nil, 7); got != "" {
 		t.Errorf("renderEarningsPreview() with no earnings = %q, want \"\"", got)
+	}
+}
+
+func TestRenderEarningsPreviewEstimatedWording(t *testing.T) {
+	in3Days := time.Now().In(cst).AddDate(0, 0, 3).Format("2006-01-02")
+	earnings := map[string]data.EarningsEvent{
+		"2330": {Ticker: "2330", Date: in3Days, Estimated: true},
+	}
+	got := renderEarningsPreview(i18n.EN, earnings, 7)
+	if !strings.Contains(got, "statutory filing deadline") {
+		t.Errorf("renderEarningsPreview() missing estimated wording for a TW proxy entry, got:\n%s", got)
 	}
 }
 

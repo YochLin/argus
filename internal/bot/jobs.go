@@ -648,7 +648,11 @@ func (b *Bot) checkEarningsAlerts(tickers []string, earnings map[string]data.Ear
 			continue
 		}
 
-		lines = append(lines, i18n.T(b.lang, i18n.KeyEarningsAlertLine, t, e.Date, days))
+		key := i18n.KeyEarningsAlertLine
+		if e.Estimated {
+			key = i18n.KeyEarningsAlertLineEstimated
+		}
+		lines = append(lines, i18n.T(b.lang, key, t, e.Date, days))
 		if err := b.db.SetSignalState(t, earningsSignalFamily, e.Date); err != nil {
 			log.Printf("earnings alert state %s: %v", t, err)
 		}

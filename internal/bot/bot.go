@@ -46,11 +46,13 @@ type Bot struct {
 	channel       Channel
 	db            *db.DB
 	provider      data.Provider
-	fundamentals  data.FundamentalsProvider  // nil if FINNHUB_API_KEY isn't set
-	analystRating data.AnalystRatingProvider // nil if FINNHUB_API_KEY isn't set
-	earnings      data.EarningsProvider      // nil if FINNHUB_API_KEY isn't set
-	marketNews    data.MarketNewsProvider    // nil if FINNHUB_API_KEY isn't set
-	companyNames  data.CompanyNameProvider   // nil if FINMIND_TOKEN isn't set
+	fundamentals  data.FundamentalsProvider   // nil if FINNHUB_API_KEY isn't set
+	analystRating data.AnalystRatingProvider  // nil if FINNHUB_API_KEY isn't set
+	earnings      data.EarningsProvider       // nil if FINNHUB_API_KEY isn't set
+	marketNews    data.MarketNewsProvider     // nil if FINNHUB_API_KEY isn't set
+	twMarketNews  data.MarketNewsProvider     // TW's marketNews counterpart (cnyes), always non-nil — no API key required
+	twMovers      data.TWMarketMoversProvider // TW's GetMarketMovers counterpart (TWSE OpenAPI), always non-nil — no API key required
+	companyNames  data.CompanyNameProvider    // nil if FINMIND_TOKEN isn't set
 	history       data.HistoryProvider
 	llm           *llm.Client
 	detector      *signals.Detector
@@ -93,8 +95,12 @@ type Bot struct {
 	// of depending on whatever real date it happens to run on — otherwise
 	// an E2E test exercising RunDailyReport's full path would intermittently
 	// take the "market closed" short-circuit whenever CI ran on an actual
-	// weekend. New sets this to time.Now; nil is only safe here because no
-	// other command/job in this package calls it.
+	// weekend. loadEarnings' TW statutory-deadline proxy (2026-07-28 TW
+	// data-gap PR) reads through it for the same reason — a fixed 14-day
+	// lookback window would otherwise make TestLoadEarnings* flaky
+	// depending on which real-world date the test happened to run on. New
+	// sets this to time.Now; nil is only safe in a test that never calls
+	// either of those two.
 	now func() time.Time
 }
 
@@ -109,11 +115,13 @@ type Config struct {
 	ChatID              int64
 	DB                  *db.DB
 	Provider            data.Provider
-	Fundamentals        data.FundamentalsProvider  // nil if FINNHUB_API_KEY isn't set
-	AnalystRating       data.AnalystRatingProvider // nil if FINNHUB_API_KEY isn't set
-	Earnings            data.EarningsProvider      // nil if FINNHUB_API_KEY isn't set
-	MarketNews          data.MarketNewsProvider    // nil if FINNHUB_API_KEY isn't set
-	CompanyNames        data.CompanyNameProvider   // nil if FINMIND_TOKEN isn't set
+	Fundamentals        data.FundamentalsProvider   // nil if FINNHUB_API_KEY isn't set
+	AnalystRating       data.AnalystRatingProvider  // nil if FINNHUB_API_KEY isn't set
+	Earnings            data.EarningsProvider       // nil if FINNHUB_API_KEY isn't set
+	MarketNews          data.MarketNewsProvider     // nil if FINNHUB_API_KEY isn't set
+	TWMarketNews        data.MarketNewsProvider     // TW's MarketNews counterpart (cnyes) — always non-nil, no API key required
+	TWMovers            data.TWMarketMoversProvider // TW's GetMarketMovers counterpart (TWSE OpenAPI) — always non-nil, no API key required
+	CompanyNames        data.CompanyNameProvider    // nil if FINMIND_TOKEN isn't set
 	History             data.HistoryProvider
 	LLM                 *llm.Client
 	Lang                i18n.Lang
@@ -153,6 +161,8 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		analystRating:       cfg.AnalystRating,
 		earnings:            cfg.Earnings,
 		marketNews:          cfg.MarketNews,
+		twMarketNews:        cfg.TWMarketNews,
+		twMovers:            cfg.TWMovers,
 		companyNames:        cfg.CompanyNames,
 		history:             cfg.History,
 		llm:                 cfg.LLM,
