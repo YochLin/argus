@@ -50,10 +50,17 @@ type twseMoverRow struct {
 
 // GetMarketMovers returns today's TWSE top-20-by-volume tickers
 // (MI_INDEX20, no query params — always the current session's top 20),
-// filtered via isTWLeveragedOrInverse: the raw feed's top ranks are
-// dominated by leveraged/inverse ETFs (live-verified 2026-07-28: 3 of the
-// top 5 rows) that aren't useful BUY/SELL candidates for the
-// recommendation pipeline. TPEx-listed movers aren't covered — TWSE's
+// filtered via isTWETF: live-verified 2026-07-29 against the real endpoint
+// (not just the raw curl check from the original 2026-07-28 investigation),
+// the top ranks are dominated by ETFs of every kind — leveraged/inverse
+// ("L"/"R" suffix, e.g. "00685L"/"00632R") but just as often a plain
+// (non-leveraged) ETF like "0050"/"0056"/"00919"/"00403A" — only 7 of 17
+// tickers that day were actual equities. An L/R-suffix-only filter (this
+// function's original, narrower scope) missed all of those. Excluding by
+// TWSE's own "00"-prefix ETF-code convention instead of by suffix catches
+// every ETF regardless of share class/leverage, which is what the
+// recommendation pipeline actually wants — a BUY/SELL candidate list is a
+// list of stocks, not funds. TPEx-listed movers aren't covered — TWSE's
 // OpenAPI only reports its own exchange, and there's no equivalent
 // investigation done yet for a TPEx source.
 func (t *TWSE) GetMarketMovers() ([]string, error) {
@@ -77,7 +84,7 @@ func (t *TWSE) GetMarketMovers() ([]string, error) {
 
 	var tickers []string
 	for _, r := range rows {
-		if r.Code == "" || isTWLeveragedOrInverse(r.Code) {
+		if r.Code == "" || isTWETF(r.Code) {
 			continue
 		}
 		tickers = append(tickers, r.Code)
@@ -85,12 +92,11 @@ func (t *TWSE) GetMarketMovers() ([]string, error) {
 	return tickers, nil
 }
 
-// isTWLeveragedOrInverse reports whether ticker is a leveraged ("L"
-// suffix, e.g. "00685L" = 元大台灣50正2-style) or inverse ("R" suffix,
-// e.g. "00632R") ETF, per Taiwan's own ticker-naming convention — the same
-// symbol-shape-not-name-text heuristic IsUSEquitySymbol already uses for
-// Yahoo's trending feed. Plain equity tickers are all-digit and never
-// trigger this.
-func isTWLeveragedOrInverse(ticker string) bool {
-	return strings.HasSuffix(ticker, "L") || strings.HasSuffix(ticker, "R")
+// isTWETF reports whether ticker is a TW ETF, by Taiwan's own ticker-coding
+// convention: every ETF (including a leveraged "L"-suffix or inverse
+// "R"-suffix one, e.g. "00685L"/"00632R") is assigned a code starting "00",
+// while a plain equity's code never does — the same symbol-shape-not-name-
+// text heuristic IsUSEquitySymbol already uses for Yahoo's trending feed.
+func isTWETF(ticker string) bool {
+	return strings.HasPrefix(ticker, "00")
 }

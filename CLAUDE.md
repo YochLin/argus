@@ -180,9 +180,14 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `NewTWSE()` constructs an `http.Client` with an empty, non-nil `TLSNextProto` to force HTTP/1.1 — live
   testing found the endpoint resets the connection during an HTTP/2 handshake specifically (the same
   client reaches Yahoo/cnyes fine over HTTP/2), and net/http's documented way to disable HTTP/2 is exactly
-  that empty map. `GetMarketMovers` filters out leveraged/inverse ETFs via `isTWLeveragedOrInverse`, a
-  ticker-suffix heuristic (`L`/`R`, e.g. `00685L`/`00632R`) rather than parsing the Chinese name text —
-  live testing found 3 of the top 5 rows on 2026-07-27 were exactly this ETF class. `cnyes.go`'s `Cnyes`
+  that empty map. `GetMarketMovers` filters out ETFs via `isTWETF`, a ticker-prefix heuristic (`00`, TWSE's
+  own ETF-code convention) rather than parsing the Chinese name text — the function originally only
+  excluded leveraged/inverse ETFs by `L`/`R` suffix (3 of the top 5 rows on 2026-07-27 were exactly that
+  class), but running the real Go client live against the endpoint on 2026-07-29 (not just the curl
+  investigation) found the top-volume list is dominated by ETFs of every kind, not just leveraged/inverse
+  ones — only 7 of 17 tickers that day were actual equities, and a plain ETF like `0050`/`00919`/`00403A`
+  has no `L`/`R` suffix to catch it. Every TW ETF code starts `00` regardless of share class, so that's
+  the filter now — a BUY/SELL candidate list should be stocks, not funds. `cnyes.go`'s `Cnyes`
   implements the existing `MarketNewsProvider` interface (no new interface needed) against 鉅亨網's free,
   keyless `api.cnyes.com/media/api/v1/newslist/category/tw_stock` — an unofficial API with the same
   could-disappear-without-notice risk this file already documents for Yahoo's chart API. `Summary` is
