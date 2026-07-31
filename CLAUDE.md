@@ -46,7 +46,9 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `AnalystRatingProvider`) cover data Finnhub-only or Yahoo-only supports, each nil-checked by callers
   rather than folded into `Provider`. TW market support (`market.Of`-gated) spans `yahoo.go` (`.TW`/
   `.TWO` suffix resolution), `finmind.go` (TW fundamentals), `twse_movers.go` (TW market movers),
-  `cnyes.go` (TW market news), and `tw_earnings.go` (a statutory-deadline earnings proxy, no real API).
+  `cnyes.go` (TW market news), `googlenews.go` (TW per-ticker Chinese news — a keyless Google News RSS
+  search wired into the `Multi` chain between Finnhub and Yahoo, TW-only so the US path is unchanged),
+  and `tw_earnings.go` (a statutory-deadline earnings proxy, no real API).
   Full rationale, live-endpoint gotchas, and TW-specific design notes: **[docs/architecture/data.md](docs/architecture/data.md)**.
 
 - `internal/db` — thin wrapper around `database/sql` + `modernc.org/sqlite` (pure-Go, no cgo). Nine

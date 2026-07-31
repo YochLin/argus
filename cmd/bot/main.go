@@ -177,6 +177,16 @@ func main() {
 	if fundamentalsRouter.US != nil || fundamentalsRouter.TW != nil {
 		fundamentalsProvider = fundamentalsRouter
 	}
+	// Google News sits between Finnhub and Yahoo so TW tickers get
+	// Chinese-language per-ticker news: Finnhub's /company-news is US-only,
+	// and Yahoo's search API answers a .TW symbol with mostly English wire
+	// coverage. It answers TW tickers only (errGoogleNewsNotTW otherwise), so
+	// the US path stays Finnhub-then-Yahoo exactly as before at the cost of
+	// one no-network method call per US news lookup. Constructed after the
+	// FinMind block because it takes companyNameProvider — with a token it
+	// searches "台積電", without one the bare "2330" (see GoogleNews.GetNews
+	// for why that's materially worse but still worth having).
+	providers = append(providers, data.NewGoogleNews(companyNameProvider))
 	yahoo := data.NewYahoo()
 	providers = append(providers, yahoo)
 	provider := data.NewMulti(providers...)
@@ -334,13 +344,20 @@ func runMCPServer() {
 		fundamentalsRouter.US = finnhub
 		earningsProvider = finnhub
 	}
+	var companyNameProvider data.CompanyNameProvider
 	if finmindToken != "" {
-		fundamentalsRouter.TW = data.NewFinMind(finmindToken)
+		finmind := data.NewFinMind(finmindToken)
+		fundamentalsRouter.TW = finmind
+		companyNameProvider = finmind
 	}
 	var fundamentalsProvider data.FundamentalsProvider
 	if fundamentalsRouter.US != nil || fundamentalsRouter.TW != nil {
 		fundamentalsProvider = fundamentalsRouter
 	}
+	// Same Google-News-before-Yahoo ordering as main(), for the same reason:
+	// get_news on a TW ticker should reach Chinese coverage rather than
+	// Yahoo's English wire stories.
+	providers = append(providers, data.NewGoogleNews(companyNameProvider))
 	yahoo := data.NewYahoo()
 	providers = append(providers, yahoo)
 	provider := data.NewMulti(providers...)
