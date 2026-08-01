@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchCompanyNames, fetchConfig, fetchStatus, type Market, type Status } from "./api";
+import { fetchCompanyNames, fetchConfig, fetchStatus, marketOf, type Market, type Status } from "./api";
 import { getDictionary, normalizeLang, type Lang } from "./i18n";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
@@ -7,7 +7,6 @@ import { TopBar } from "./components/TopBar";
 import { DashboardView } from "./components/DashboardView";
 import { CalendarView } from "./components/CalendarView";
 import { RoundsListView } from "./components/RoundsListView";
-import { RoundDetailView } from "./components/RoundDetailView";
 import { ChartListView } from "./components/ChartListView";
 import { ChartView } from "./components/ChartView";
 import { ReportsView } from "./components/ReportsView";
@@ -75,6 +74,16 @@ export default function App() {
   // (not per-view state) since it's shell-level chrome shared by every page,
   // same reasoning as Sidebar/StatusBar living above the routed body.
   const [market, setMarket] = useState<Market>("us");
+  // Remembers each market's last-viewed /chart route (ticker + round), so
+  // toggling US/TW away from a ticker detail page and back restores it
+  // instead of leaving a US ticker on screen while the toggle reads TW (or
+  // vice versa). Keyed by the ticker's own market (marketOf), not the
+  // toggle's position at save time, since those two only agree when we
+  // actually navigate away below.
+  const [chartRouteByMarket, setChartRouteByMarket] = useState<Record<Market, string>>({
+    us: "/chart",
+    tw: "/chart",
+  });
   const [isDark, setIsDark] = useState<boolean>(() => localStorage.getItem(themeStorageKey) !== "light");
   // Phase 10 write-input state (docs/phase-10-web-trade-input.md §4.3): one
   // shared TradeModal instance for every entry point (PositionsTable's row
@@ -145,6 +154,19 @@ export default function App() {
   const [path, search] = route.split("?");
   const params = new URLSearchParams(search ?? "");
 
+  const handleMarketChange = (next: Market) => {
+    if (next === market) return;
+    const currentTicker = path === "/chart" ? params.get("ticker") : null;
+    if (currentTicker) {
+      // Save where we're leaving so switching back restores it.
+      setChartRouteByMarket((byMarket) => ({ ...byMarket, [marketOf(currentTicker)]: route }));
+      if (marketOf(currentTicker) !== next) {
+        navigate(chartRouteByMarket[next]);
+      }
+    }
+    setMarket(next);
+  };
+
   let body;
   if (path === "/calendar") {
     body = <CalendarView dict={dict} market={market} names={names} />;
@@ -155,18 +177,8 @@ export default function App() {
         market={market}
         names={names}
         onOpenRound={(ticker, start) =>
-          navigate(`/round?ticker=${encodeURIComponent(ticker)}&start=${encodeURIComponent(start)}`)
+          navigate(`/chart?ticker=${encodeURIComponent(ticker)}&round=${encodeURIComponent(start)}`)
         }
-      />
-    );
-  } else if (path === "/round") {
-    body = (
-      <RoundDetailView
-        dict={dict}
-        ticker={params.get("ticker") ?? ""}
-        start={params.get("start") ?? ""}
-        names={names}
-        onBack={() => navigate("/rounds")}
       />
     );
   } else if (path === "/reports") {
@@ -184,8 +196,17 @@ export default function App() {
     );
   } else if (path === "/chart") {
     const ticker = params.get("ticker");
+    const roundStart = params.get("round") ?? undefined;
     body = ticker ? (
-      <ChartView dict={dict} ticker={ticker} names={names} onBack={() => navigate("/chart")} />
+      <ChartView
+        dict={dict}
+        ticker={ticker}
+        initialRoundStart={roundStart}
+        names={names}
+        writable={status?.writable ?? false}
+        onTrade={status?.writable ? openTrade : undefined}
+        onBack={() => navigate("/chart")}
+      />
     ) : (
       <ChartListView
         dict={dict}
@@ -216,7 +237,7 @@ export default function App() {
       <div className="app-main">
         <TopBar
           market={market}
-          onMarketChange={setMarket}
+          onMarketChange={handleMarketChange}
           isDark={isDark}
           onToggleTheme={toggleTheme}
           lang={lang}

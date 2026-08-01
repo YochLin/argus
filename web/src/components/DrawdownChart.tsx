@@ -1,18 +1,20 @@
 import { useEffect, useRef } from "react";
 import { createChart, type IChartApi, type ISeriesApi, type LineData } from "lightweight-charts";
 import type { DateValue } from "../api";
+import type { Dictionary } from "../i18n";
 
 interface Props {
   drawdown: DateValue[];
+  dict?: Dictionary;
 }
 
 // The underwater chart (Phase 8 PR2, docs/phase-8-trader-analytics.md §4.1)
-// — a short area chart directly below the main P&L curve, sharing its time
-// axis visually (not literally synced — lightweight-charts has no built-in
+// — sits beside the main P&L curve (dash-charts-grid), sharing its time axis
+// visually (not literally synced — lightweight-charts has no built-in
 // cross-chart axis lock, and drawdown's own values are a pure derivation of
 // the same curve so the two always agree at a glance). Its lowest point is
 // always exactly the dashboard's Max Drawdown KPI card figure.
-export function DrawdownChart({ drawdown }: Props) {
+export function DrawdownChart({ drawdown, dict }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const seriesRef = useRef<ISeriesApi<"Area"> | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -57,5 +59,12 @@ const chart = createChart(containerRef.current, {
     chartRef.current?.timeScale().fitContent();
   }, [drawdown]);
 
-  return <div className="card chart-card chart-card-sm" ref={containerRef} />;
+  return (
+    <div className="card chart-panel">
+      <div className="chart-panel-header">
+        <div className="eyebrow">{dict?.drawdownChart}</div>
+      </div>
+      <div className="chart-mount" ref={containerRef} />
+    </div>
+  );
 }

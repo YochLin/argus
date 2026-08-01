@@ -81,20 +81,23 @@ const chart = createChart(containerRef.current, {
   const showLegend = dict && benchmark && benchmark.length > 0;
 
   return (
-    <>
-      <div className="card chart-card" ref={containerRef} />
-      {showLegend && (
-        <div className="chart-legend">
-          <span className="chart-legend-item">
-            <span className="chart-legend-dot" style={{ background: "#F59E0B" }} />
-            {dict.myPortfolio}
-          </span>
-          <span className="chart-legend-item">
-            <span className="chart-legend-dot chart-legend-dot-dashed" />
-            {dict.benchmarkReplay}
-          </span>
-        </div>
-      )}
-    </>
+    <div className="card card--glow chart-panel">
+      <div className="chart-panel-header">
+        <div className="eyebrow">{dict?.cumPnl}</div>
+        {showLegend && (
+          <div className="chart-legend">
+            <span className="chart-legend-item">
+              <span className="chart-legend-dot" style={{ background: "#F59E0B" }} />
+              {dict.myPortfolio}
+            </span>
+            <span className="chart-legend-item">
+              <span className="chart-legend-dot chart-legend-dot-dashed" />
+              {dict.benchmarkReplay}
+            </span>
+          </div>
+        )}
+      </div>
+      <div className="chart-mount" ref={containerRef} />
+    </div>
   );
 }

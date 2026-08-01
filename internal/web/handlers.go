@@ -187,9 +187,11 @@ type candleResponse struct {
 // buildChart). Candles/Levels are "[]" not "null" when empty, same
 // dashboard.go convention.
 type chartResponse struct {
-	Ticker  string           `json:"ticker"`
-	Candles []candleResponse `json:"candles"`
-	Levels  []levelResponse  `json:"levels"`
+	Ticker   string                `json:"ticker"`
+	Candles  []candleResponse      `json:"candles"`
+	Levels   []levelResponse       `json:"levels"`
+	Position *riskPositionResponse `json:"position"`
+	Rounds   []roundSummary        `json:"rounds"`
 }
 
 type levelResponse struct {
@@ -404,7 +406,7 @@ func (s *Server) handleChart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := buildChart(s.history, ticker)
+	resp, err := buildChart(s.db, s.quotes, s.history, ticker)
 	if err != nil {
 		log.Printf("web: build chart for %s: %v", ticker, err)
 		writeError(w, http.StatusInternalServerError, "failed to build chart")
@@ -425,6 +427,23 @@ func (s *Server) handleTickers(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("web: build tickers: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to build tickers")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleWatchlistSummary(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if p := recover(); p != nil {
+			log.Printf("web: panic in handleWatchlistSummary: %v", p)
+			writeError(w, http.StatusInternalServerError, "internal error")
+		}
+	}()
+
+	resp, err := buildWatchlistSummary(s.db, s.quotes, s.history, marketParam(r))
+	if err != nil {
+		log.Printf("web: build watchlist summary: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build watchlist summary")
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)

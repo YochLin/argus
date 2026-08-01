@@ -4,17 +4,16 @@ import (
 	"sort"
 
 	"argus/internal/data"
+	"argus/internal/db"
 	"argus/internal/market"
 	"argus/internal/signals"
 )
 
 // buildChart assembles /api/chart: ticker's ~1y of daily candles plus the
 // support/resistance levels computed from that same slice (docs/phase-7-
-// support-resistance.md §4.1) - deliberately the same window the chart draws,
-// so there's no lookahead and no level drawn outside the visible K-line
-// range. Candles/levels are never nil (JSON "[]", not "null" - same
-// dashboard.go convention).
-func buildChart(history data.HistoryProvider, ticker string) (chartResponse, error) {
+// support-resistance.md §4.1), open position risk info if held, and historical
+// rounds for this ticker.
+func buildChart(database dbReader, quotes quoteGetter, history data.HistoryProvider, ticker string) (chartResponse, error) {
 	candles, err := history.GetHistory(ticker, "1y")
 	if err != nil {
 		return chartResponse{}, err
@@ -26,6 +25,7 @@ func buildChart(history data.HistoryProvider, ticker string) (chartResponse, err
 		Ticker:  ticker,
 		Candles: make([]candleResponse, 0, len(candles)),
 		Levels:  make([]levelResponse, 0, len(levels)),
+		Rounds:  []roundSummary{},
 	}
 	for _, c := range candles {
 		resp.Candles = append(resp.Candles, candleResponse{
@@ -45,6 +45,66 @@ func buildChart(history data.HistoryProvider, ticker string) (chartResponse, err
 			LastDate:  l.LastDate.Format("2006-01-02"),
 		})
 	}
+
+	if database != nil {
+		allPositions, err := database.GetPositions()
+		if err == nil {
+			var pos *db.Position
+			for _, p := range allPositions {
+				if p.Ticker == ticker && p.Shares > 0 {
+					pCopy := p
+					pos = &pCopy
+					break
+				}
+			}
+			if pos != nil {
+				m := market.Of(ticker)
+				mPositions := filterPositionsByMarket(allPositions, m)
+				cash, _ := loadCash(database, m)
+				var totalVal float64
+				for _, p := range mPositions {
+					if quotes != nil {
+						if q, qErr := quotes.GetQuote(p.Ticker); qErr == nil && q != nil {
+							totalVal += q.Price * p.Shares
+						}
+					}
+				}
+				accountValue := totalVal + cash
+				var q *data.Quote
+				if quotes != nil {
+					q, _ = quotes.GetQuote(ticker)
+				}
+				rp := computeSinglePositionRisk(*pos, q, accountValue)
+				resp.Position = &rp
+			}
+		}
+
+		allTxs, err := database.GetAllTransactions()
+		if err == nil {
+			var tickerTxs []db.Transaction
+			for _, tx := range allTxs {
+				if tx.Ticker == ticker {
+					tickerTxs = append(tickerTxs, tx)
+				}
+			}
+			segmented := segmentRounds(tickerTxs)
+			resp.Rounds = make([]roundSummary, 0, len(segmented))
+			for _, r := range segmented {
+				resp.Rounds = append(resp.Rounds, roundSummary{
+					Ticker:      ticker,
+					Start:       r.StartDate,
+					End:         r.EndDate,
+					Open:        r.EndDate == "",
+					Shares:      roundBuyShares(r.Legs),
+					RealizedPnL: roundRealizedPnL(r.Legs),
+				})
+			}
+			sort.Slice(resp.Rounds, func(i, j int) bool {
+				return resp.Rounds[i].Start > resp.Rounds[j].Start
+			})
+		}
+	}
+
 	return resp, nil
 }
 

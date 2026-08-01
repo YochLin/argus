@@ -96,6 +96,7 @@ export interface Dictionary {
   benchmarkAlpha: string;
   myPortfolio: string;
   benchmarkReplay: string;
+  cumPnl: string;
   drawdownChart: string;
   monthlyPnl: string;
   yearTotal: string;
@@ -149,6 +150,32 @@ export interface Dictionary {
   addTickerPlaceholder: string;
   add: string;
   remove: string;
+  searchPlaceholder: string;
+  watchlistCount: string;
+  noMatch: string;
+  nearestSup: string;
+  nearestRes: string;
+  ma20: string;
+  ma60: string;
+  atr14: string;
+  ret20: string;
+  fromHigh: string;
+  vsAvg20: string;
+  volume: string;
+  above: string;
+  below: string;
+  rangeHigh: string;
+  rangeLow: string;
+  rangeNote: string;
+  thisPosition: string;
+  noPositionHere: string;
+  riskIfStopped: string;
+  pctOfAccount: string;
+  tickerRounds: string;
+  noRoundsHere: string;
+  roundPicker: string;
+  tradesInRound: string;
+  allTrades: string;
 }
 
 const en: Dictionary = {
@@ -237,6 +264,7 @@ const en: Dictionary = {
   benchmarkAlpha: "ALPHA VS BENCHMARK",
   myPortfolio: "My portfolio",
   benchmarkReplay: "Same cash flow into SPY/0050",
+  cumPnl: "Cumulative P&L",
   drawdownChart: "DRAWDOWN",
   monthlyPnl: "MONTHLY P&L",
   yearTotal: "Total",
@@ -282,6 +310,32 @@ const en: Dictionary = {
   addTickerPlaceholder: "Add ticker…",
   add: "Add",
   remove: "Remove",
+  searchPlaceholder: "Search ticker or name…",
+  watchlistCount: "Watchlist",
+  noMatch: "No matching tickers found.",
+  nearestSup: "Nearest Support",
+  nearestRes: "Nearest Resistance",
+  ma20: "MA20",
+  ma60: "MA60",
+  atr14: "ATR(14)",
+  ret20: "20D Return",
+  fromHigh: "From High",
+  vsAvg20: "vs 20D Avg Vol",
+  volume: "Volume",
+  above: "Above",
+  below: "Below",
+  rangeHigh: "120D High",
+  rangeLow: "120D Low",
+  rangeNote: "120D Range Position",
+  thisPosition: "Current Position",
+  noPositionHere: "No active position in this ticker.",
+  riskIfStopped: "Risk if Stopped",
+  pctOfAccount: "Account %",
+  tickerRounds: "Historical Rounds",
+  noRoundsHere: "No closed rounds for this ticker.",
+  roundPicker: "Select Round",
+  tradesInRound: "Trades in Round",
+  allTrades: "All Trades",
 };
 
 const zh: Dictionary = {
@@ -370,6 +424,7 @@ const zh: Dictionary = {
   benchmarkAlpha: "超額報酬 vs 大盤",
   myPortfolio: "我的組合",
   benchmarkReplay: "同金流買 SPY／0050",
+  cumPnl: "累積損益",
   drawdownChart: "水下曲線",
   monthlyPnl: "月度損益",
   yearTotal: "年度合計",
@@ -415,6 +470,32 @@ const zh: Dictionary = {
   addTickerPlaceholder: "新增標的…",
   add: "新增",
   remove: "移除",
+  searchPlaceholder: "搜尋標的或名稱…",
+  watchlistCount: "追蹤清單",
+  noMatch: "找不到符合的標的。",
+  nearestSup: "最近支撐",
+  nearestRes: "最近壓力",
+  ma20: "MA20",
+  ma60: "MA60",
+  atr14: "ATR(14)",
+  ret20: "20日報酬",
+  fromHigh: "距高點",
+  vsAvg20: "較20日均量",
+  volume: "成交量",
+  above: "高於",
+  below: "低於",
+  rangeHigh: "120日高點",
+  rangeLow: "120日低點",
+  rangeNote: "120日區間位置",
+  thisPosition: "目前持倉",
+  noPositionHere: "目前無此標的持倉。",
+  riskIfStopped: "觸及停損風險",
+  pctOfAccount: "帳戶占比",
+  tickerRounds: "歷史交易回合",
+  noRoundsHere: "此標的尚無已平倉回合。",
+  roundPicker: "選擇回合",
+  tradesInRound: "回合內交易記錄",
+  allTrades: "所有交易",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

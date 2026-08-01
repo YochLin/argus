@@ -32,7 +32,7 @@ const links: Array<{ path: string; label: (dict: Dictionary) => string; icon: Re
 ];
 
 function isActive(linkPath: string, path: string): boolean {
-  return linkPath === path || (linkPath === "/rounds" && path === "/round");
+  return linkPath === path;
 }
 
 export function Sidebar({ path, onNavigate, dict, market, status }: Props) {
