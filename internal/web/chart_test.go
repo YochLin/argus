@@ -43,7 +43,7 @@ func TestBuildChart(t *testing.T) {
 
 	hist := &fakeHistory{candles: map[string][]data.Candle{"AAPL": candles}}
 
-	got, err := buildChart(hist, "AAPL")
+	got, err := buildChart(nil, nil, hist, "AAPL")
 	if err != nil {
 		t.Fatalf("buildChart() error = %v", err)
 	}
@@ -72,7 +72,7 @@ func TestBuildChart(t *testing.T) {
 func TestBuildChart_NoLevels(t *testing.T) {
 	hist := &fakeHistory{candles: map[string][]data.Candle{"AAPL": levelBaseCandlesForTest(40)}}
 
-	got, err := buildChart(hist, "AAPL")
+	got, err := buildChart(nil, nil, hist, "AAPL")
 	if err != nil {
 		t.Fatalf("buildChart() error = %v", err)
 	}
@@ -83,8 +83,46 @@ func TestBuildChart_NoLevels(t *testing.T) {
 
 func TestBuildChart_HistoryErrorPropagates(t *testing.T) {
 	hist := &fakeHistory{err: errors.New("yahoo down")}
-	if _, err := buildChart(hist, "AAPL"); err == nil {
+	if _, err := buildChart(nil, nil, hist, "AAPL"); err == nil {
 		t.Fatal("buildChart() error = nil, want the history provider's error to propagate")
+	}
+}
+
+func TestBuildChart_WithPositionAndRounds(t *testing.T) {
+	fdb := &fakeDB{
+		positions: []db.Position{
+			{Ticker: "AAPL", Shares: 10, AvgCost: 150, StopPrice: 140},
+		},
+		txs: []db.Transaction{
+			{ID: 1, Date: "2026-01-01", Ticker: "AAPL", Side: "BUY", Shares: 10, Price: 150},
+			{ID: 2, Date: "2026-02-01", Ticker: "AAPL", Side: "SELL", Shares: 10, Price: 160, RealizedPnL: 100},
+			{ID: 3, Date: "2026-03-01", Ticker: "AAPL", Side: "BUY", Shares: 10, Price: 150},
+		},
+	}
+	quotes := &fakeQuotes{
+		quotes: map[string]*data.Quote{
+			"AAPL": {Ticker: "AAPL", Price: 175},
+		},
+	}
+	hist := &fakeHistory{candles: map[string][]data.Candle{"AAPL": levelBaseCandlesForTest(40)}}
+
+	got, err := buildChart(fdb, quotes, hist, "AAPL")
+	if err != nil {
+		t.Fatalf("buildChart() error = %v", err)
+	}
+
+	if got.Position == nil {
+		t.Fatalf("Position = nil, want non-nil position")
+	}
+	if got.Position.Ticker != "AAPL" || got.Position.Shares != 10 || got.Position.Price != 175 {
+		t.Errorf("Position mismatch = %+v", got.Position)
+	}
+
+	if len(got.Rounds) != 2 {
+		t.Fatalf("Rounds len = %d, want 2", len(got.Rounds))
+	}
+	if got.Rounds[0].Start != "2026-03-01" || !got.Rounds[0].Open {
+		t.Errorf("First round mismatch = %+v", got.Rounds[0])
 	}
 }
 

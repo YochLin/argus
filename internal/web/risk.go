@@ -5,6 +5,8 @@ import (
 	"math"
 	"strconv"
 
+	"argus/internal/data"
+	"argus/internal/db"
 	"argus/internal/market"
 )
 
@@ -105,36 +107,60 @@ func buildRisk(database dbReader, quotes quoteGetter, m market.MarketID, heatThr
 
 	var heatSum float64
 	for _, pr := range priceds {
-		rp := riskPositionResponse{
+		var q *data.Quote
+		if pr.ok {
+			q = &data.Quote{Price: pr.pos.Price}
+		}
+		p := db.Position{
 			Ticker:    pr.pos.Ticker,
 			Shares:    pr.pos.Shares,
 			AvgCost:   pr.pos.AvgCost,
-			Price:     pr.pos.Price,
-			Value:     pr.value,
 			StopPrice: pr.pos.StopPrice,
 		}
-		if accountValue != 0 {
-			rp.WeightPct = pr.value / accountValue * 100
-		}
-		if pr.ok && pr.pos.AvgCost != 0 {
-			rp.UnrealizedPnLPct = (pr.pos.Price - pr.pos.AvgCost) / pr.pos.AvgCost * 100
-		}
-		if pr.ok && pr.pos.StopPrice > 0 {
-			openRisk := math.Max(0, (pr.pos.Price-pr.pos.StopPrice)*pr.pos.Shares)
-			var openRiskPct float64
-			if accountValue != 0 {
-				openRiskPct = openRisk / accountValue * 100
-			}
-			rp.OpenRisk = &openRisk
-			rp.OpenRiskPct = &openRiskPct
-			heatSum += openRisk
-		}
+		rp := computeSinglePositionRisk(p, q, accountValue)
 		resp.Positions = append(resp.Positions, rp)
+		if rp.OpenRisk != nil {
+			heatSum += *rp.OpenRisk
+		}
 	}
 	if accountValue != 0 {
 		resp.HeatPct = heatSum / accountValue * 100
 	}
 	return resp, nil
+}
+
+func computeSinglePositionRisk(pos db.Position, q *data.Quote, accountValue float64) riskPositionResponse {
+	price := 0.0
+	ok := false
+	if q != nil {
+		price = q.Price
+		ok = true
+	}
+	val := price * pos.Shares
+	rp := riskPositionResponse{
+		Ticker:    pos.Ticker,
+		Shares:    pos.Shares,
+		AvgCost:   pos.AvgCost,
+		Price:     price,
+		Value:     val,
+		StopPrice: pos.StopPrice,
+	}
+	if accountValue != 0 {
+		rp.WeightPct = val / accountValue * 100
+	}
+	if ok && pos.AvgCost != 0 {
+		rp.UnrealizedPnLPct = (price - pos.AvgCost) / pos.AvgCost * 100
+	}
+	if ok && pos.StopPrice > 0 {
+		openRisk := math.Max(0, (price-pos.StopPrice)*pos.Shares)
+		var openRiskPct float64
+		if accountValue != 0 {
+			openRiskPct = openRisk / accountValue * 100
+		}
+		rp.OpenRisk = &openRisk
+		rp.OpenRiskPct = &openRiskPct
+	}
+	return rp
 }
 
 // pricedPosition is buildRisk's internal working value — a db.Position plus
