@@ -336,6 +336,72 @@ func writeMarketContext(sb *strings.Builder, lang i18n.Lang, m *MarketContext) {
 	sb.WriteString("\n")
 }
 
+// IndexQuote is a plain label/price/change tuple for the morning briefing's
+// broad-index summary (S&P 500/Nasdaq/Dow/Russell 2000 via their SPY/QQQ/
+// DIA/IWM ETF proxies) — package-local like MarketContext, but deliberately
+// not folded into it since MarketContext is SPY-only and used by the
+// existing recommendation/check prompts. Label is a proper noun ("S&P 500"),
+// not localized.
+type IndexQuote struct {
+	Label         string
+	Price         float64
+	ChangePercent float64
+}
+
+// buildMorningBriefingPrompt is the 07:00 CST morning briefing's prompt (see
+// bot.RunUSMorningBriefing): a narrative recap of the US session that just
+// closed, distinct from buildRecommendationPrompt's BUY/SELL/HOLD framing.
+// Reuses writeStockSection for the watchlist/movers sections the same way
+// buildRecommendationPrompt does — StockData's per-field degradation means
+// passing quote+news-only values (no Technicals/Fundamentals, see
+// bot.loadQuoteHighlights) renders safely with no changes needed there.
+func buildMorningBriefingPrompt(lang i18n.Lang, date string, indices []IndexQuote, vix float64, marketNews []data.NewsItem, watchlist []StockData, movers []StockData) string {
+	var sb strings.Builder
+
+	sb.WriteString(i18n.T(lang, i18n.KeyMorningBriefingPromptIntro))
+
+	sb.WriteString(i18n.T(lang, i18n.KeyMorningBriefingIndicesHeader))
+	for _, idx := range indices {
+		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyMorningBriefingIndexLine, idx.Label, idx.Price, idx.ChangePercent))
+	}
+	if vix > 0 {
+		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyMorningBriefingVIXLine, vix))
+	}
+	sb.WriteString("\n")
+
+	if len(marketNews) > 0 {
+		sb.WriteString(i18n.T(lang, i18n.KeyMorningBriefingNewsHeader))
+		for i, n := range marketNews {
+			fmt.Fprint(&sb, i18n.T(lang, i18n.KeyNewsItem, i+1, n.Source, n.Headline))
+			if n.Summary != "" {
+				fmt.Fprint(&sb, i18n.T(lang, i18n.KeyNewsSummaryLine, n.Summary))
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString(i18n.T(lang, i18n.KeyMorningBriefingWatchlistHeader))
+	if len(watchlist) == 0 {
+		sb.WriteString(i18n.T(lang, i18n.KeyRecNoWatchlist))
+	} else {
+		for _, s := range watchlist {
+			writeStockSection(&sb, lang, s)
+		}
+	}
+
+	sb.WriteString(i18n.T(lang, i18n.KeyMorningBriefingMoversHeader))
+	if len(movers) == 0 {
+		sb.WriteString(i18n.T(lang, i18n.KeyRecNoCandidates))
+	} else {
+		for _, s := range movers {
+			writeStockSection(&sb, lang, s)
+		}
+	}
+
+	sb.WriteString(i18n.T(lang, i18n.KeyMorningBriefingTaskBlock, date))
+	return sb.String()
+}
+
 func buildRecommendationPrompt(lang i18n.Lang, watchlist []StockData, candidates []StockData, marketNews []data.NewsItem, market *MarketContext, recentLessons []PastLesson, isTW bool) string {
 	var sb strings.Builder
 

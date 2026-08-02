@@ -176,6 +176,18 @@ func (c *Client) WeeklyReview(ctx context.Context, positions []StockData, cashUS
 	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
 }
 
+// MorningBriefing performs the 07:00 CST narrative recap of the US session
+// that just closed (see bot.RunUSMorningBriefing) — indices, macro news,
+// watchlist/mover highlights — distinct from GenerateRecommendations' own
+// BUY/SELL/HOLD framing and from InsightPortfolio's holdings-only scope.
+// Returns the model's reply verbatim; no marker parsing, unlike
+// GenerateRecommendations/ReviewTrade. Reuses checkModel, same reasoning as
+// InsightPortfolio/WeeklyReview.
+func (c *Client) MorningBriefing(ctx context.Context, date string, indices []IndexQuote, vix float64, marketNews []data.NewsItem, watchlist []StockData, movers []StockData) (string, error) {
+	prompt := buildMorningBriefingPrompt(c.lang, date, indices, vix, marketNews, watchlist, movers)
+	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+}
+
 // ReviewTrade performs Phase 3.8 追加項's sell-review: a one-shot look back
 // at a single fully closed round trip (see ClosedTrade and
 // docs/phase-3.8-sell-review.md) — entry/exit timing against the period's
