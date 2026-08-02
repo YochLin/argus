@@ -1,4 +1,5 @@
 import { useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
 import { ApiError, executeBuy, executeSell, setStopPrice } from "../api";
 import type { Dictionary } from "../i18n";
 
@@ -84,106 +85,118 @@ export function TradeModal({
   const canSubmit = ticker.trim() !== "" && Number(price) > 0 && (mode === "stop" || Number(shares) > 0);
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <div className="eyebrow">{dict[titleKey[mode]]}</div>
-          <button className="modal-close" onClick={onClose} aria-label="close">
-            ×
-          </button>
-        </div>
-        {successMsg ? (
-          <div className="modal-body">
-            <div className="success-message">{successMsg}</div>
-            <div className="modal-actions">
-              <button className="btn-primary" onClick={onClose}>
-                {dict.close}
-              </button>
+    <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="modal-backdrop">
+          {/* Content nested inside Overlay so .modal-backdrop's flex centering
+              keeps working unchanged; onOpenAutoFocus is prevented so the
+              autoFocus props below still decide the landing field (Radix would
+              otherwise pull focus to the first tabbable element, the × button). */}
+          <Dialog.Content
+            className="modal"
+            aria-describedby={undefined}
+            onOpenAutoFocus={(e) => e.preventDefault()}
+          >
+            <div className="modal-header">
+              <Dialog.Title className="eyebrow">{dict[titleKey[mode]]}</Dialog.Title>
+              <Dialog.Close className="modal-close" aria-label="close">
+                ×
+              </Dialog.Close>
             </div>
-          </div>
-        ) : (
-          <div className="modal-body">
-            <label className="form-field">
-              <span>{dict.ticker}</span>
-              <input
-                className="mono"
-                value={ticker}
-                readOnly={!editableTicker}
-                onChange={(e) => setTicker(e.target.value)}
-                autoFocus={editableTicker}
-              />
-            </label>
-            {mode !== "stop" && (
-              <label className="form-field">
-                <span>{dict.shares}</span>
-                <input
-                  className="mono"
-                  type="number"
-                  value={shares}
-                  onChange={(e) => setShares(e.target.value)}
-                />
-              </label>
-            )}
-            <label className="form-field">
-              <span>{mode === "stop" ? dict.stopPriceCol : dict.price}</span>
-              <input
-                className="mono"
-                type="number"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                autoFocus={!editableTicker}
-              />
-            </label>
-            {mode !== "stop" && (
-              <>
-                <button
-                  type="button"
-                  className="advanced-toggle"
-                  onClick={() => setShowAdvanced((v) => !v)}
-                >
-                  {showAdvanced ? "▾" : "▸"} {dict.advancedOptions}
-                </button>
-                {showAdvanced && (
+            {successMsg ? (
+              <div className="modal-body">
+                <div className="success-message">{successMsg}</div>
+                <div className="modal-actions">
+                  <button className="btn-primary" onClick={onClose}>
+                    {dict.close}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="modal-body">
+                <label className="form-field">
+                  <span>{dict.ticker}</span>
+                  <input
+                    className="mono"
+                    value={ticker}
+                    readOnly={!editableTicker}
+                    onChange={(e) => setTicker(e.target.value)}
+                    autoFocus={editableTicker}
+                  />
+                </label>
+                {mode !== "stop" && (
+                  <label className="form-field">
+                    <span>{dict.shares}</span>
+                    <input
+                      className="mono"
+                      type="number"
+                      value={shares}
+                      onChange={(e) => setShares(e.target.value)}
+                    />
+                  </label>
+                )}
+                <label className="form-field">
+                  <span>{mode === "stop" ? dict.stopPriceCol : dict.price}</span>
+                  <input
+                    className="mono"
+                    type="number"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    autoFocus={!editableTicker}
+                  />
+                </label>
+                {mode !== "stop" && (
                   <>
-                    <label className="form-field">
-                      <span>{dict.fee}</span>
-                      <input
-                        className="mono"
-                        type="number"
-                        value={fee}
-                        onChange={(e) => setFee(e.target.value)}
-                      />
-                    </label>
-                    <label className="form-field">
-                      <span>{dict.tradeDate}</span>
-                      <input
-                        className="mono"
-                        type="date"
-                        value={date}
-                        onChange={(e) => setDate(e.target.value)}
-                      />
-                    </label>
+                    <button
+                      type="button"
+                      className="advanced-toggle"
+                      onClick={() => setShowAdvanced((v) => !v)}
+                    >
+                      {showAdvanced ? "▾" : "▸"} {dict.advancedOptions}
+                    </button>
+                    {showAdvanced && (
+                      <>
+                        <label className="form-field">
+                          <span>{dict.fee}</span>
+                          <input
+                            className="mono"
+                            type="number"
+                            value={fee}
+                            onChange={(e) => setFee(e.target.value)}
+                          />
+                        </label>
+                        <label className="form-field">
+                          <span>{dict.tradeDate}</span>
+                          <input
+                            className="mono"
+                            type="date"
+                            value={date}
+                            onChange={(e) => setDate(e.target.value)}
+                          />
+                        </label>
+                      </>
+                    )}
                   </>
                 )}
-              </>
+                {error && <div className="error-message">{error}</div>}
+                <div className="modal-actions">
+                  <button type="button" onClick={onClose}>
+                    {dict.cancel}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={!canSubmit || submitting}
+                    onClick={submit}
+                  >
+                    {dict.submit}
+                  </button>
+                </div>
+              </div>
             )}
-            {error && <div className="error-message">{error}</div>}
-            <div className="modal-actions">
-              <button type="button" onClick={onClose}>
-                {dict.cancel}
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={!canSubmit || submitting}
-                onClick={submit}
-              >
-                {dict.submit}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+          </Dialog.Content>
+        </Dialog.Overlay>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
