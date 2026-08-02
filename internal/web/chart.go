@@ -61,20 +61,21 @@ func buildChart(database dbReader, quotes quoteGetter, history data.HistoryProvi
 				m := market.Of(ticker)
 				mPositions := filterPositionsByMarket(allPositions, m)
 				cash, _ := loadCash(database, m)
+
+				mTickers := make([]string, len(mPositions))
+				for i, p := range mPositions {
+					mTickers[i] = p.Ticker
+				}
+				quoteMap := fetchQuotes(quotes, mTickers, "chart")
+
 				var totalVal float64
 				for _, p := range mPositions {
-					if quotes != nil {
-						if q, qErr := quotes.GetQuote(p.Ticker); qErr == nil && q != nil {
-							totalVal += q.Price * p.Shares
-						}
+					if q, ok := quoteMap[p.Ticker]; ok {
+						totalVal += q.Price * p.Shares
 					}
 				}
 				accountValue := totalVal + cash
-				var q *data.Quote
-				if quotes != nil {
-					q, _ = quotes.GetQuote(ticker)
-				}
-				rp := computeSinglePositionRisk(*pos, q, accountValue)
+				rp := computeSinglePositionRisk(*pos, quoteMap[ticker], accountValue)
 				resp.Position = &rp
 			}
 		}

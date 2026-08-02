@@ -1,6 +1,7 @@
 package web
 
 import (
+	"log"
 	"sync"
 	"time"
 
@@ -60,4 +61,39 @@ func (c *quoteCache) GetQuote(ticker string) (*data.Quote, error) {
 	c.cache[ticker] = cachedQuote{quote: q, expiresAt: time.Now().Add(quoteCacheTTL)}
 	c.mu.Unlock()
 	return q, nil
+}
+
+// fetchQuotes resolves tickers' quotes concurrently instead of one round
+// trip at a time — a page with N held positions used to take N sequential
+// GetQuote calls (each a real Finnhub/Yahoo HTTP round trip) to render;
+// fetching them in parallel collapses that to ~1 round trip regardless of N.
+// A ticker whose fetch fails is simply absent from the result (logged under
+// label, e.g. "dashboard"/"risk", matching each call site's prior log
+// prefix) — same "attach what's available" degrade every caller already
+// used for a single failed quote. nil quotes (test doubles that don't wire
+// one up) or an empty tickers list short-circuits to an empty map.
+func fetchQuotes(quotes quoteGetter, tickers []string, label string) map[string]*data.Quote {
+	result := make(map[string]*data.Quote, len(tickers))
+	if quotes == nil || len(tickers) == 0 {
+		return result
+	}
+
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, t := range tickers {
+		wg.Add(1)
+		go func(ticker string) {
+			defer wg.Done()
+			q, err := quotes.GetQuote(ticker)
+			if err != nil {
+				log.Printf("web: %s: get quote for %s: %v", label, ticker, err)
+				return
+			}
+			mu.Lock()
+			result[ticker] = q
+			mu.Unlock()
+		}(t)
+	}
+	wg.Wait()
+	return result
 }

@@ -160,14 +160,18 @@ func buildStatus(database dbReader, quotes quoteGetter, m market.MarketID) statu
 	if positions, err := database.GetPositions(); err != nil {
 		log.Printf("web: status: get positions: %v", err)
 	} else {
+		filtered := filterPositionsByMarket(positions, m)
+		tickers := make([]string, len(filtered))
+		for i, p := range filtered {
+			tickers[i] = p.Ticker
+		}
+		quoteMap := fetchQuotes(quotes, tickers, "status")
+
 		var totalValue float64
-		for _, p := range filterPositionsByMarket(positions, m) {
-			q, err := quotes.GetQuote(p.Ticker)
-			if err != nil {
-				log.Printf("web: status: get quote for %s: %v", p.Ticker, err)
-				continue
+		for _, p := range filtered {
+			if q, ok := quoteMap[p.Ticker]; ok {
+				totalValue += q.Price * p.Shares
 			}
-			totalValue += q.Price * p.Shares
 		}
 		cash, err := loadCash(database, m)
 		if err != nil {
@@ -307,12 +311,17 @@ func buildDashboard(database dbReader, quotes quoteGetter, m market.MarketID) (d
 		}
 	}
 
+	posTickers := make([]string, len(positions))
+	for i, p := range positions {
+		posTickers[i] = p.Ticker
+	}
+	quoteMap := fetchQuotes(quotes, posTickers, "dashboard")
+
 	resp.Positions = make([]positionResponse, 0, len(positions))
 	for _, p := range positions {
 		pr := positionResponse{Ticker: p.Ticker, Shares: p.Shares, AvgCost: p.AvgCost, StopPrice: p.StopPrice}
-		q, err := quotes.GetQuote(p.Ticker)
-		if err != nil {
-			log.Printf("web: dashboard: get quote for %s: %v", p.Ticker, err)
+		q, ok := quoteMap[p.Ticker]
+		if !ok {
 			resp.Positions = append(resp.Positions, pr)
 			continue
 		}

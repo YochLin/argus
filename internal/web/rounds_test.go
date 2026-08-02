@@ -2,6 +2,7 @@ package web
 
 import (
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,18 +11,27 @@ import (
 	"argus/internal/market"
 )
 
-// fakeHistory implements data.HistoryProvider for tests.
+// fakeHistory implements data.HistoryProvider for tests. mu guards
+// lastTicker/lastRange since buildWatchlistSummary now fans out concurrent
+// GetHistory calls (see fetchHistories in watchlist_summary.go) — callers
+// asserting on lastTicker/lastRange still only do so from single-ticker call
+// sites, so the mutex is purely to keep the race detector (and real
+// correctness) happy under concurrent use, not to make those assertions
+// meaningful under concurrency.
 type fakeHistory struct {
 	candles map[string][]data.Candle // ticker -> candles, same set regardless of rangeParam
 	err     error
 
+	mu         sync.Mutex
 	lastTicker string
 	lastRange  string
 }
 
 func (f *fakeHistory) GetHistory(ticker, rangeParam string) ([]data.Candle, error) {
+	f.mu.Lock()
 	f.lastTicker = ticker
 	f.lastRange = rangeParam
+	f.mu.Unlock()
 	if f.err != nil {
 		return nil, f.err
 	}

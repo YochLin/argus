@@ -78,12 +78,17 @@ func buildRisk(database dbReader, quotes quoteGetter, m market.MarketID, heatThr
 		value float64
 		ok    bool
 	}
+	tickers := make([]string, len(positions))
+	for i, p := range positions {
+		tickers[i] = p.Ticker
+	}
+	quoteMap := fetchQuotes(quotes, tickers, "risk")
+
 	priceds := make([]priced, 0, len(positions))
 	var totalValue float64
 	for _, p := range positions {
-		q, err := quotes.GetQuote(p.Ticker)
-		if err != nil {
-			log.Printf("web: risk: get quote for %s: %v", p.Ticker, err)
+		q, ok := quoteMap[p.Ticker]
+		if !ok {
 			priceds = append(priceds, priced{pos: pricedPosition{Ticker: p.Ticker, Shares: p.Shares, AvgCost: p.AvgCost, StopPrice: p.StopPrice}})
 			continue
 		}
