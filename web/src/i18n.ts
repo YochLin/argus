@@ -98,6 +98,7 @@ export interface Dictionary {
   cashLevel: string;
   weight: string;
   stopPriceCol: string;
+  buyAlertPriceCol: string;
   openRisk: string;
   noStopSet: string;
   belowStop: string;
@@ -181,6 +182,7 @@ export interface Dictionary {
   tradeBuyTitle: string;
   tradeSellTitle: string;
   tradeStopTitle: string;
+  tradeBuyAlertTitle: string;
   advancedOptions: string;
   tradeDate: string;
   submit: string;
@@ -192,6 +194,7 @@ export interface Dictionary {
   addTickerPlaceholder: string;
   add: string;
   remove: string;
+  addBuyAlert: string;
   searchPlaceholder: string;
   watchlistCount: string;
   noMatch: string;
@@ -323,6 +326,7 @@ const en: Dictionary = {
   cashLevel: "CASH LEVEL",
   weight: "Weight",
   stopPriceCol: "Stop",
+  buyAlertPriceCol: "Buy Level",
   openRisk: "Open Risk",
   noStopSet: "no stop",
   belowStop: "below stop",
@@ -393,6 +397,7 @@ const en: Dictionary = {
   tradeBuyTitle: "Buy",
   tradeSellTitle: "Sell",
   tradeStopTitle: "Set Stop",
+  tradeBuyAlertTitle: "Set Buy Level",
   advancedOptions: "Advanced",
   tradeDate: "Date",
   submit: "Submit",
@@ -404,6 +409,7 @@ const en: Dictionary = {
   addTickerPlaceholder: "Add ticker…",
   add: "Add",
   remove: "Remove",
+  addBuyAlert: "Buy Level",
   searchPlaceholder: "Search ticker or name…",
   watchlistCount: "Watchlist",
   noMatch: "No matching tickers found.",
@@ -471,8 +477,8 @@ const zh: Dictionary = {
   monthTotal: "當月合計",
   noData: "無資料",
   side: "動作",
-  buy: "BUY",
-  sell: "SELL",
+  buy: "購買",
+  sell: "賣出",
   fee: "手續費",
   realizedPnL: "已實現損益",
   noTransactions: "當天沒有交易紀錄。",
@@ -532,6 +538,7 @@ const zh: Dictionary = {
   cashLevel: "現金水位",
   weight: "占比",
   stopPriceCol: "停損價",
+  buyAlertPriceCol: "購買點位",
   openRisk: "Open Risk",
   noStopSet: "未設停損",
   belowStop: "已跌破停損",
@@ -600,6 +607,7 @@ const zh: Dictionary = {
   tradeBuyTitle: "買入",
   tradeSellTitle: "賣出",
   tradeStopTitle: "設定停損",
+  tradeBuyAlertTitle: "設定購買點位",
   advancedOptions: "進階選項",
   tradeDate: "日期",
   submit: "送出",
@@ -611,6 +619,7 @@ const zh: Dictionary = {
   addTickerPlaceholder: "新增標的…",
   add: "新增",
   remove: "移除",
+  addBuyAlert: "購買點位",
   searchPlaceholder: "搜尋標的或名稱…",
   watchlistCount: "追蹤清單",
   noMatch: "找不到符合的標的。",

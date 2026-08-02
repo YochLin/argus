@@ -276,6 +276,8 @@ func (b *Bot) handleMessage(ctx context.Context, cmd, args string) {
 		b.handleSell(ctx, args)
 	case "stop":
 		b.handleStop(args)
+	case "buyalert":
+		b.handleBuyAlert(args)
 	case "portfolio":
 		b.handlePortfolio()
 	case "insight":

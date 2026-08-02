@@ -79,6 +79,17 @@ var enMessages = map[Key]string{
 	KeyBuyStopSuggestion:    "\n💡 Stop-loss reference:\n",
 	KeyBuyStopAddOnNote:     "*%s*'s current stop is $%.2f — use /stop to reset it after adding to the position.\n",
 
+	KeyBuyAlertUsage:       "Usage: /buyalert <ticker> [price | remove <price>] (omit price to list current alerts), e.g. /buyalert AAPL 190",
+	KeyBuyAlertQueryFailed: "Query failed: %v",
+	KeyBuyAlertSet:         "✅ Set a buy alert for *%s* at $%.2f — will notify when price %s.",
+	KeyBuyAlertListHeader:  "Buy alerts for *%s*:\n",
+	KeyBuyAlertLine:        "  • $%.2f — notify when price %s\n",
+	KeyBuyAlertEmpty:       "No buy alerts set for *%s*.",
+	KeyBuyAlertRemoved:     "Removed *%s* buy alert at $%.2f.",
+	KeyBuyAlertNotFound:    "No *%s* buy alert set at $%.2f.",
+	KeyBuyAlertDirBelow:    "drops to or below the target",
+	KeyBuyAlertDirAbove:    "rises to or above the target",
+
 	KeyPortfolioTitle:      "💼 *Portfolio Overview*\n\n",
 	KeyPortfolioEmpty:      "No positions yet. Use /buy <ticker> <shares> <price> to record a purchase.",
 	KeyPortfolioLine:       "*%s*  %g shares @ avg $%.2f\nPrice $%.2f  Value $%.2f  Unrealized %+.2f (%+.2f%%)\n\n",
@@ -128,6 +139,9 @@ var enMessages = map[Key]string{
 
 	KeyTargetReached: "🎯 *%s* hit its %.1fR profit target! Target $%.2f, price $%.2f — consider taking half off and defending the rest with the 5MA.\n",
 	KeyMA5Break:      "📉 *%s* broke below its 5-day MA $%.2f (price $%.2f) — the strong-trend line just failed, consider closing out the rest.\n",
+
+	KeyBuyAlertTitle:   "📈 *Buy Alert*\n\n",
+	KeyBuyAlertHitLine: "• *%s* target $%.2f, price $%.2f — buy alert triggered (price %s)\n",
 
 	KeyChatContextHeader:       "[Background info, not real-time, for reference only]\n",
 	KeyChatContextTickerNoData: "- %s: no closing data yet\n",

@@ -113,6 +113,16 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context, m market.MarketID) {
 
 	b.snapshotBenchmark(date, m)
 	b.recordNetWorthSnapshot(date, m, prices)
+
+	// Buy alerts get checked here too, not just from runDailyReport — see
+	// checkBuyAlerts' doc comment for why a ticker the user doesn't hold
+	// yet warrants both of a market's daily checkpoints rather than riding
+	// along with the position-only exit-discipline sweep.
+	if buyAlerts, err := b.db.GetBuyAlertsByMarket(m); err != nil {
+		log.Printf("closing snapshot: buy alerts: %v", err)
+	} else {
+		b.checkBuyAlerts(buyAlerts, prices)
+	}
 }
 
 // snapshotBenchmark records benchmarkFor(m)'s (SPY/0050) closing price into
@@ -311,6 +321,16 @@ func (b *Bot) runDailyReport(ctx context.Context, m market.MarketID) {
 	b.checkTrailingStopAlerts(positionList, prices, atrs)
 	b.checkTargetAlerts(positionList, prices)
 	b.checkMA5BreakAlerts(positionList, prices, ma5s)
+
+	// Buy alerts (unlike the exit-discipline checks above) watch tickers the
+	// user may not hold yet, so they're checked here too, not folded into
+	// positionList — see checkBuyAlerts' own doc comment for why this runs
+	// at both this checkpoint and RunClosingSnapshot's.
+	if buyAlerts, err := b.db.GetBuyAlertsByMarket(m); err != nil {
+		log.Printf("buy alerts: %v", err)
+	} else {
+		b.checkBuyAlerts(buyAlerts, prices)
+	}
 
 	// Two-stage LLM exploration (Phase 2.6 解凍) is US-only: it validates
 	// nominations via data.IsUSEquitySymbol, which would reject every TW
@@ -1099,6 +1119,53 @@ func (b *Bot) checkMA5BreakAlerts(positions []db.Position, prices map[string]flo
 		return
 	}
 	var sb strings.Builder
+	for _, l := range lines {
+		sb.WriteString(l)
+	}
+	b.Send(sb.String())
+}
+
+// buyAlertTriggered reports whether price has crossed alert's target in the
+// watched direction (see db.BuyAlertBelow/BuyAlertAbove). Unlike the
+// stop-loss family above, a buy alert is one-shot — checkBuyAlerts deletes it
+// on trigger instead of writing back to signal_states, so there's no reset/
+// re-alert state to track here.
+func buyAlertTriggered(price float64, alert db.BuyAlert) bool {
+	if alert.Direction == db.BuyAlertAbove {
+		return price >= alert.Price
+	}
+	return price <= alert.Price
+}
+
+// checkBuyAlerts is the buy-alert counterpart of checkStopLossAlerts etc.,
+// called from both runDailyReport and RunClosingSnapshot (see their own call
+// sites) rather than just one — a buy alert is about a ticker the user
+// doesn't necessarily hold yet, so it gets checked at both of a market's
+// daily checkpoints instead of riding along with the position-only
+// exit-discipline sweep. alerts is expected already scoped to one market
+// (see db.GetBuyAlertsByMarket); prices is the caller's prefetch map (see
+// priceFor). A triggered alert is deleted immediately — no dedup state
+// needed since it can only ever fire once.
+func (b *Bot) checkBuyAlerts(alerts []db.BuyAlert, prices map[string]float64) {
+	var lines []string
+	for _, a := range alerts {
+		price, ok := b.priceFor(a.Ticker, prices)
+		if !ok {
+			continue
+		}
+		if !buyAlertTriggered(price, a) {
+			continue
+		}
+		if err := b.db.RemoveBuyAlert(a.ID); err != nil {
+			log.Printf("buy alert remove %s (id=%d): %v", a.Ticker, a.ID, err)
+		}
+		lines = append(lines, i18n.T(b.lang, i18n.KeyBuyAlertHitLine, b.tickerLabel(a.Ticker), a.Price, price, b.buyAlertDirPhrase(a.Direction)))
+	}
+	if len(lines) == 0 {
+		return
+	}
+	var sb strings.Builder
+	sb.WriteString(i18n.T(b.lang, i18n.KeyBuyAlertTitle))
 	for _, l := range lines {
 		sb.WriteString(l)
 	}

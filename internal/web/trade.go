@@ -21,6 +21,10 @@ type TradeExecutor interface {
 	ExecuteBuy(ticker string, shares, price, fee float64, date string) (string, error)
 	ExecuteSell(ctx context.Context, ticker string, shares, price, fee float64, date string) (string, error)
 	ExecuteSetStop(ticker string, price float64) (string, error)
+	// ExecuteAddBuyAlert backs POST /api/buy-alerts/add — a quote fetch (to
+	// infer the alert's direction, see bot.buyAlertDirection) is bot-layer
+	// behavior beyond the raw DB write, same rationale as ExecuteSetStop.
+	ExecuteAddBuyAlert(ticker string, price float64) (string, error)
 }
 
 // watchlistWriter is web's narrow view of *db.DB for watchlist add/remove —
@@ -30,6 +34,13 @@ type TradeExecutor interface {
 type watchlistWriter interface {
 	AddTicker(ticker string) error
 	RemoveTicker(ticker string) error
+}
+
+// buyAlertWriter is watchlistWriter's counterpart for buy-alert removal —
+// deleting a row by id has no bot-layer behavior beyond the DB write, unlike
+// adding one (which needs a quote fetch, hence ExecuteAddBuyAlert above).
+type buyAlertWriter interface {
+	RemoveBuyAlert(id int64) error
 }
 
 type tradeRequest struct {
@@ -47,6 +58,15 @@ type stopRequest struct {
 
 type tickerRequest struct {
 	Ticker string `json:"ticker"`
+}
+
+type buyAlertRequest struct {
+	Ticker string  `json:"ticker"`
+	Price  float64 `json:"price"`
+}
+
+type buyAlertRemoveRequest struct {
+	ID int64 `json:"id"`
 }
 
 // tradeResponse's Message is the exact same i18n-rendered confirmation (or
@@ -126,6 +146,31 @@ func (s *Server) handleSetStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, tradeResponse{Message: msg})
+}
+
+func (s *Server) handleBuyAlertAdd(w http.ResponseWriter, r *http.Request) {
+	var req buyAlertRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	msg, err := s.trade.ExecuteAddBuyAlert(req.Ticker, req.Price)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, tradeResponse{Message: msg})
+}
+
+func (s *Server) handleBuyAlertRemove(w http.ResponseWriter, r *http.Request) {
+	var req buyAlertRemoveRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if err := s.buyAlertDB.RemoveBuyAlert(req.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to remove buy alert")
+		return
+	}
+	writeJSON(w, http.StatusOK, tradeResponse{Message: "removed"})
 }
 
 func (s *Server) handleWatchlistAdd(w http.ResponseWriter, r *http.Request) {

@@ -15,10 +15,11 @@ import (
 
 // fakeTrade is a TradeExecutor stub recording its last call's arguments.
 type fakeTrade struct {
-	buyMsg, sellMsg, stopMsg string
-	buyErr, sellErr, stopErr error
-	lastBuy, lastSell        tradeRequest
-	lastStop                 stopRequest
+	buyMsg, sellMsg, stopMsg, buyAlertMsg string
+	buyErr, sellErr, stopErr, buyAlertErr error
+	lastBuy, lastSell                     tradeRequest
+	lastStop                              stopRequest
+	lastBuyAlert                          buyAlertRequest
 }
 
 func (f *fakeTrade) ExecuteBuy(ticker string, shares, price, fee float64, date string) (string, error) {
@@ -34,6 +35,11 @@ func (f *fakeTrade) ExecuteSell(_ context.Context, ticker string, shares, price,
 func (f *fakeTrade) ExecuteSetStop(ticker string, price float64) (string, error) {
 	f.lastStop = stopRequest{Ticker: ticker, Price: price}
 	return f.stopMsg, f.stopErr
+}
+
+func (f *fakeTrade) ExecuteAddBuyAlert(ticker string, price float64) (string, error) {
+	f.lastBuyAlert = buyAlertRequest{Ticker: ticker, Price: price}
+	return f.buyAlertMsg, f.buyAlertErr
 }
 
 // fakeWatchlistDB is a watchlistWriter stub.
@@ -52,6 +58,17 @@ func (f *fakeWatchlistDB) RemoveTicker(ticker string) error {
 	return f.err
 }
 
+// fakeBuyAlertDB is a buyAlertWriter stub.
+type fakeBuyAlertDB struct {
+	removed []int64
+	err     error
+}
+
+func (f *fakeBuyAlertDB) RemoveBuyAlert(id int64) error {
+	f.removed = append(f.removed, id)
+	return f.err
+}
+
 // newTradeTestServer builds a Server with the write routes registered
 // (mirroring New's own registration for password != "") over fakes, so
 // tests don't need a real *db.DB — see testServer's own reasoning above.
@@ -59,6 +76,7 @@ func newTradeTestServer(password string, trade TradeExecutor, wl watchlistWriter
 	s := &Server{
 		db:          &fakeDB{},
 		watchlistDB: wl,
+		buyAlertDB:  &fakeBuyAlertDB{},
 		quotes:      &fakeQuotes{},
 		history:     &fakeHistory{},
 		lang:        i18n.EN,
@@ -72,6 +90,8 @@ func newTradeTestServer(password string, trade TradeExecutor, wl watchlistWriter
 	s.mux.HandleFunc("POST /api/stop", s.requireWritable(s.requireAuth(s.handleSetStop)))
 	s.mux.HandleFunc("POST /api/watchlist/add", s.requireWritable(s.requireAuth(s.handleWatchlistAdd)))
 	s.mux.HandleFunc("POST /api/watchlist/remove", s.requireWritable(s.requireAuth(s.handleWatchlistRemove)))
+	s.mux.HandleFunc("POST /api/buy-alerts/add", s.requireWritable(s.requireAuth(s.handleBuyAlertAdd)))
+	s.mux.HandleFunc("POST /api/buy-alerts/remove", s.requireWritable(s.requireAuth(s.handleBuyAlertRemove)))
 	return s
 }
 
