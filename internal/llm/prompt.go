@@ -32,6 +32,19 @@ type StockData struct {
 	// includeFundamentals gate) since it's the same Finnhub per-ticker-call
 	// rate-limit trade-off.
 	AnalystRating *data.AnalystRating
+	// InsiderTx is optional (nil when Finnhub isn't configured, same gate as
+	// Fundamentals/AnalystRating): the ticker's most recent SEC Form 4
+	// filings, US-only (see data.InsiderTransactionProvider). writeStockSection
+	// summarizes it into net open-market buy/sell counts rather than listing
+	// every row, same "raw data in, opinionated summary out" split as
+	// Fundamentals.
+	InsiderTx []data.InsiderTransaction
+	// InstitutionalFlow is optional, TW-only (see
+	// data.InstitutionalFlowProvider): the ticker's most recent day of
+	// three-major-institutional-investor (三大法人) net buy/sell, from TWSE's
+	// own T86 report. Nil for a US ticker or when the lookup found no session
+	// with data in range.
+	InstitutionalFlow *data.InstitutionalFlow
 	// Position is set when the user holds shares of this ticker, so a
 	// SELL/HOLD call has actual cost basis to reason against instead of just
 	// price action. Nil for tickers with no open position.
@@ -610,6 +623,39 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 			sellChange := (ar.StrongSell + ar.Sell) - (ar.PrevStrongSell + ar.PrevSell)
 			fmt.Fprint(sb, i18n.T(lang, i18n.KeyAnalystRatingTrendLine, buyChange, sellChange))
 		}
+	}
+
+	// Only "P" (open-market buy) and "S" (open-market sale) reflect an
+	// insider actually spending/collecting real money — codes like "M"
+	// (option exercise), "A" (grant), "G" (gift), "F" (tax withholding) are
+	// mechanical and would just dilute the signal if summed in.
+	if txs := s.InsiderTx; len(txs) > 0 {
+		var buyCount, sellCount int
+		var buyShares, sellShares int64
+		var latestDate string
+		for _, tx := range txs {
+			if tx.TransactionCode != "P" && tx.TransactionCode != "S" {
+				continue
+			}
+			if tx.Change > 0 {
+				buyCount++
+				buyShares += tx.Change
+			} else if tx.Change < 0 {
+				sellCount++
+				sellShares += -tx.Change
+			}
+			if tx.TransactionDate > latestDate {
+				latestDate = tx.TransactionDate
+			}
+		}
+		if buyCount > 0 || sellCount > 0 {
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyInsiderTxLine, latestDate, buyCount, buyShares, sellCount, sellShares))
+		}
+	}
+
+	if fl := s.InstitutionalFlow; fl != nil {
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyInstitutionalFlowLine, fl.Date,
+			fl.ForeignNet+fl.ForeignDealerNet, fl.TrustNet, fl.DealerNet, fl.TotalNet))
 	}
 
 	if st := s.Statement; st != nil {

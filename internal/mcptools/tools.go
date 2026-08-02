@@ -26,6 +26,8 @@ const (
 	defaultNewsLimit = 5
 	// defaultEarningsWindowDays mirrors bot.go's earningsPromptWindowDays.
 	defaultEarningsWindowDays = 14
+	// defaultInsiderTxLimit mirrors pipeline.go's fetchStockData call.
+	defaultInsiderTxLimit = 10
 
 	// quoteCacheTTL is short — a quote is the one thing a chat model might
 	// legitimately re-check within the same conversation and expect fresh
@@ -47,15 +49,17 @@ const (
 // nil cache/limiter as "disabled") so unit tests can construct a bare
 // toolset{...} without wiring either up — see tools_test.go.
 type toolset struct {
-	lang         i18n.Lang
-	provider     data.Provider
-	history      data.HistoryProvider
-	fundamentals data.FundamentalsProvider
-	earnings     data.EarningsProvider
-	db           *db.DB
-	writeDB      *db.DB
-	cache        *ttlCache
-	limiter      *tokenBucket
+	lang          i18n.Lang
+	provider      data.Provider
+	history       data.HistoryProvider
+	fundamentals  data.FundamentalsProvider
+	earnings      data.EarningsProvider
+	insiderTx     data.InsiderTransactionProvider
+	institutional data.InstitutionalFlowProvider
+	db            *db.DB
+	writeDB       *db.DB
+	cache         *ttlCache
+	limiter       *tokenBucket
 }
 
 // withCache is the single choke point every provider-hitting tool handler
@@ -138,6 +142,20 @@ func registerTools(s *mcp.Server, ts *toolset) {
 		}, ts.getUpcomingEarnings)
 	}
 
+	if ts.insiderTx != nil {
+		mcp.AddTool(s, &mcp.Tool{
+			Name:        "get_insider_transactions",
+			Description: "Get recent SEC Form 4 insider transactions for a US stock ticker: filer name, resulting share count, signed change, transaction date/code/price. Not available for Taiwan tickers.",
+		}, ts.getInsiderTransactions)
+	}
+
+	if ts.institutional != nil {
+		mcp.AddTool(s, &mcp.Tool{
+			Name:        "get_institutional_flow",
+			Description: "Get the most recent trading day's net buy/sell (三大法人買賣超) from Taiwan's three major institutional investor categories — foreign, investment trust, and dealer — for a Taiwan stock ticker. Not available for US tickers.",
+		}, ts.getInstitutionalFlow)
+	}
+
 	registerDBTools(s, ts)
 	registerWriteTools(s, ts)
 	registerTradeWriteTools(s, ts)
@@ -160,6 +178,11 @@ type financialStatementInput struct {
 type earningsInput struct {
 	Tickers []string `json:"tickers" jsonschema:"US stock ticker symbols to check for upcoming earnings"`
 	Days    int      `json:"days,omitempty" jsonschema:"look-ahead window in days (default 14)"`
+}
+
+type insiderTxInput struct {
+	Ticker string `json:"ticker" jsonschema:"US stock ticker symbol, e.g. AAPL"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"max number of transactions to return (default 10)"`
 }
 
 type emptyInput struct{}
@@ -309,6 +332,43 @@ func (ts *toolset) getUpcomingEarnings(ctx context.Context, _ *mcp.CallToolReque
 			sb.WriteString(i18n.T(ts.lang, i18n.KeyMCPEarningsItem, e.Ticker, e.Date, e.Hour))
 		}
 		return textResult(sb.String()), nil
+	})
+	return result, nil, err
+}
+
+func (ts *toolset) getInsiderTransactions(ctx context.Context, _ *mcp.CallToolRequest, in insiderTxInput) (*mcp.CallToolResult, any, error) {
+	ticker := normalizeTicker(in.Ticker)
+	limit := in.Limit
+	if limit <= 0 {
+		limit = defaultInsiderTxLimit
+	}
+	key := fmt.Sprintf("get_insider_transactions:%s:%d", ticker, limit)
+	result, err := ts.withCache(ctx, key, longCacheTTL, func() (*mcp.CallToolResult, error) {
+		txs, err := ts.insiderTx.GetInsiderTransactions(ticker, limit)
+		if err != nil || len(txs) == 0 {
+			return nil, ts.mcpErr(i18n.KeyMCPNoInsiderTx, ticker)
+		}
+
+		var sb strings.Builder
+		sb.WriteString(i18n.T(ts.lang, i18n.KeyMCPTickerHeader, ticker))
+		for _, tx := range txs {
+			sb.WriteString(i18n.T(ts.lang, i18n.KeyMCPInsiderTxItem, tx.Name, tx.TransactionDate, tx.Change, tx.TransactionCode, tx.TransactionPrice))
+		}
+		return textResult(sb.String()), nil
+	})
+	return result, nil, err
+}
+
+func (ts *toolset) getInstitutionalFlow(ctx context.Context, _ *mcp.CallToolRequest, in tickerInput) (*mcp.CallToolResult, any, error) {
+	ticker := normalizeTicker(in.Ticker)
+	result, err := ts.withCache(ctx, "get_institutional_flow:"+ticker, longCacheTTL, func() (*mcp.CallToolResult, error) {
+		fl, err := ts.institutional.GetInstitutionalFlow(ticker)
+		if err != nil {
+			return nil, ts.mcpErr(i18n.KeyMCPNoInstitutionalFlow, ticker)
+		}
+		text := i18n.T(ts.lang, i18n.KeyMCPInstitutionalFlowResult, ticker, fl.Date,
+			fl.ForeignNet+fl.ForeignDealerNet, fl.TrustNet, fl.DealerNet, fl.TotalNet)
+		return textResult(text), nil
 	})
 	return result, nil, err
 }

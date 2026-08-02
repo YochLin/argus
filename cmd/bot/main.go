@@ -146,6 +146,7 @@ func main() {
 	// /stock/candle entirely, so history is Yahoo-only.
 	var providers []data.Provider
 	var analystRatingProvider data.AnalystRatingProvider
+	var insiderTxProvider data.InsiderTransactionProvider
 	var earningsProvider data.EarningsProvider
 	var marketNewsProvider data.MarketNewsProvider
 	var companyNameProvider data.CompanyNameProvider
@@ -155,6 +156,7 @@ func main() {
 		providers = append(providers, finnhub)
 		fundamentalsRouter.US = finnhub
 		analystRatingProvider = finnhub
+		insiderTxProvider = finnhub
 		earningsProvider = finnhub
 		marketNewsProvider = finnhub
 	}
@@ -218,6 +220,8 @@ func main() {
 		Provider:            provider,
 		Fundamentals:        fundamentalsProvider,
 		AnalystRating:       analystRatingProvider,
+		InsiderTx:           insiderTxProvider,
+		Institutional:       twMovers,
 		Earnings:            earningsProvider,
 		MarketNews:          marketNewsProvider,
 		TWMarketNews:        twMarketNews,
@@ -341,12 +345,14 @@ func runMCPServer() {
 	// keys are absent, not just Finnhub's.
 	var providers []data.Provider
 	var earningsProvider data.EarningsProvider
+	var insiderTxProvider data.InsiderTransactionProvider
 	fundamentalsRouter := &data.FundamentalsRouter{}
 	if finnhubKey != "" {
 		finnhub := data.NewFinnhub(finnhubKey)
 		providers = append(providers, finnhub)
 		fundamentalsRouter.US = finnhub
 		earningsProvider = finnhub
+		insiderTxProvider = finnhub
 	}
 	var companyNameProvider data.CompanyNameProvider
 	if finmindToken != "" {
@@ -365,6 +371,8 @@ func runMCPServer() {
 	yahoo := data.NewYahoo()
 	providers = append(providers, yahoo)
 	provider := data.NewMulti(providers...)
+	// twInstitutional (TWSE T86), like main()'s twMovers, needs no API key.
+	twInstitutional := data.NewTWSE()
 
 	// Read-only DB connection for get_watchlist/get_portfolio/
 	// get_recommendation_stats/get_universe_summary (Phase 3.5 "追加項" —
@@ -400,7 +408,7 @@ func runMCPServer() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	if err := mcptools.Run(ctx, lang, provider, yahoo, fundamentalsProvider, earningsProvider, database, writeDatabase); err != nil {
+	if err := mcptools.Run(ctx, lang, provider, yahoo, fundamentalsProvider, earningsProvider, insiderTxProvider, twInstitutional, database, writeDatabase); err != nil {
 		log.Fatalf("mcp server: %v", err)
 	}
 }

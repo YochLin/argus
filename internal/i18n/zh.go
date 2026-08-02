@@ -472,6 +472,8 @@ var zhMessages = map[Key]string{
 	KeyMonthRevenueYoYLine:     "- 月營收年增率：%+.1f%%\n",
 	KeyAnalystRatingLine:       "- 分析師評等（%s）：強力買進 %d｜買進 %d｜持有 %d｜賣出 %d｜強力賣出 %d\n",
 	KeyAnalystRatingTrendLine:  "  較上月：買進方 %+d｜賣出方 %+d\n",
+	KeyInsiderTxLine:           "- 內部人交易（近期公開市場申報，最近一筆 %s）：買進 %d 筆共 %d 股｜賣出 %d 筆共 %d 股\n",
+	KeyInstitutionalFlowLine:   "- 三大法人買賣超（%s）：外資 %+d｜投信 %+d｜自營商 %+d｜合計 %+d 股\n",
 	KeyStatementSummaryLine:    "- 最新財報（%s，會計年度 %d，截至 %s）：營收 $%.0fM｜毛利 $%.0fM｜營業利益 $%.0fM｜淨利 $%.0fM｜總資產 $%.0fM｜總負債 $%.0fM｜股東權益 $%.0fM｜營運現金流 $%.0fM｜自由現金流 $%.0fM\n",
 	KeyPositionLine:            "- 持倉: %g 股　平均成本 $%.2f　未實現損益 %+.2f%%\n",
 	KeyPrevRecLine:             "- 上次建議: %s @ $%.2f（%d 天前）\n",
@@ -508,6 +510,12 @@ var zhMessages = map[Key]string{
 
 	KeyMCPNoEarnings:   "查詢的標的在未來 %d 天內沒有排定財報。",
 	KeyMCPEarningsItem: "- %s：%s（%s）\n",
+
+	KeyMCPNoInsiderTx:   "查不到 %s 的內部人交易資料。",
+	KeyMCPInsiderTxItem: "- %s（%s）：%+d 股，代碼 %s，價格 %.2f\n",
+
+	KeyMCPNoInstitutionalFlow:     "查不到 %s 的三大法人買賣超資料。",
+	KeyMCPInstitutionalFlowResult: "%s 三大法人買賣超（%s）：外資 %+d｜投信 %+d｜自營商 %+d｜合計 %+d 股",
 
 	KeyMCPNoMovers:     "目前沒有市場熱門標的資料。",
 	KeyMCPMoversResult: "目前市場熱門標的：%s\n",

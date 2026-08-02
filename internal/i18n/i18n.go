@@ -474,6 +474,8 @@ const (
 	KeyMonthRevenueYoYLine     Key = "month_revenue_yoy_line"
 	KeyAnalystRatingLine       Key = "analyst_rating_line"
 	KeyAnalystRatingTrendLine  Key = "analyst_rating_trend_line"
+	KeyInsiderTxLine           Key = "insider_tx_line"
+	KeyInstitutionalFlowLine   Key = "institutional_flow_line"
 	KeyStatementSummaryLine    Key = "statement_summary_line"
 	KeyPositionLine            Key = "position_line"
 	KeyPrevRecLine             Key = "prev_rec_line"
@@ -527,6 +529,12 @@ const (
 
 	KeyMCPNoEarnings   Key = "mcp_no_earnings"
 	KeyMCPEarningsItem Key = "mcp_earnings_item"
+
+	KeyMCPNoInsiderTx   Key = "mcp_no_insider_tx"
+	KeyMCPInsiderTxItem Key = "mcp_insider_tx_item"
+
+	KeyMCPNoInstitutionalFlow     Key = "mcp_no_institutional_flow"
+	KeyMCPInstitutionalFlowResult Key = "mcp_institutional_flow_result"
 
 	KeyMCPNoMovers     Key = "mcp_no_movers"
 	KeyMCPMoversResult Key = "mcp_movers_result"
