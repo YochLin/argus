@@ -284,6 +284,8 @@ func (b *Bot) handleMessage(ctx context.Context, cmd, args string) {
 		b.handleCash(args)
 	case "dailyreport":
 		b.RunDailyReport(ctx)
+	case "morningreport":
+		b.RunUSMorningBriefing(ctx)
 	case "monthlyreport":
 		b.RunMonthlyReport(ctx)
 	case "fundamentals":

@@ -6,56 +6,58 @@ package i18n
 // sites pass positional args once and reuse them for whichever table T
 // picks.
 var zhMessages = map[Key]string{
-	KeyUnknownCommand:            "未知指令。可用指令：\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [天數]\n/buy <ticker> <股數> <價格> [手續費]\n/sell <ticker> <股數> <價格> [手續費]\n/stop <ticker> [價格]\n/portfolio\n/insight\n/cash [金額]\n/thesis <ticker> [論點文字]\n/review <ticker>\n/dailyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n\n直接傳一般訊息（不加 / 開頭）則會跟我自由對話。",
-	KeyAddUsage:                  "用法：/add <ticker>，例如 /add AAPL",
-	KeyAddFailed:                 "新增失敗：%v",
-	KeyAddSuccess:                "已將 *%s* 加入自選股。",
-	KeyRemoveUsage:               "用法：/remove <ticker>，例如 /remove AAPL",
-	KeyRemoveFailed:              "移除失敗：%v",
-	KeyRemoveSuccess:             "已將 *%s* 從自選股移除。",
-	KeyQueryFailed:               "查詢失敗：%v",
-	KeyWatchlistEmptyHint:        "自選股清單是空的，使用 /add <ticker> 新增。",
-	KeyWatchlistTitle:            "📋 *自選股清單*\n",
-	KeyWatchlistEmpty:            "自選股清單是空的。",
-	KeyMarketStatusTitle:         "📊 *市場即時狀態*\n\n",
-	KeyQuoteUnavailable:          "*%s*：無法取得報價\n",
-	KeyQuoteFailed:               "無法取得 %s 報價：%v",
-	KeyAnalyzing:                 "分析中，請稍候...",
-	KeyWatchlistQueryFailed:      "查詢自選股失敗：%v",
-	KeyLLMFailed:                 "LLM 分析失敗：%v",
-	KeyNoRecommendations:         "LLM 未回傳推薦標的，請稍後再試。",
-	KeyRecParseFailed:            "無法解析 LLM 回覆的推薦內容（格式與預期不符），原始回覆已寫入 log：%v",
-	KeyRecommendationsTitle:      "🤖 *今日推薦標的*\n\n",
-	KeyRecommendUsage:            "用法：/recommend [tw|us]（不帶參數＝依序跑美股與台股兩份報告）",
-	KeyRecWatchlistSectionTitle:  "📋 *自選股與持倉*\n",
-	KeyRecCandidatesSectionTitle: "🆕 *新標的推薦*\n",
-	KeySizingLine:                "💰 風險倉位建議：可承受虧損 $%.2f，停損參考 $%.2f（現價−2×ATR），建議股數 %d\n",
-	KeyMarketNewsSummaryTitle:    "📰 *市場新聞摘要*\n\n",
-	KeyCheckUsage:                "用法：/check <ticker>，例如 /check TSLA",
-	KeyAnalyzingTicker:           "分析中，請稍候... (%s)",
-	KeyCheckResultTitle:          "📈 *%s 即時分析*\n\n%s",
-	KeyFundamentalsUsage:         "用法：/fundamentals <ticker>，例如 /fundamentals AAPL",
-	KeyFundamentalsNoKey:         "尚未設定 FINNHUB_API_KEY，無法查詢基本面資料。",
-	KeyFundamentalsFailed:        "無法取得 %s 基本面資料：%v",
-	KeyFundamentalsTitle:         "📊 *%s 基本面*\n\n",
-	KeyThinking:                  "思考中，請稍候...",
-	KeyChatFailed:                "對話失敗：%v",
-	KeyResetDone:                 "已重置對話記憶。",
-	KeySignalAlertTitle:          "🚨 *市場訊號提醒*\n\n",
-	KeyDailyReportStart:          "📅 *每日報告開始生成...*",
-	KeyNoRecommendationsToday:    "今日無特別推薦標的。",
-	KeyTrackUsage:                "用法：/track [天數]，例如 /track 14（預設 7 天，最多 90 天）",
-	KeyTrackTitle:                "📊 *推薦成效回顧（過去 %d 天）*\n\n",
-	KeyTrackEmpty:                "過去 %d 天內沒有推薦記錄。",
-	KeyTrackLine:                 "• %s *%s* %s  $%.2f → $%.2f (%+.2f%%) %s\n",
-	KeyTrackLineVsSPY:            "• %s *%s* %s  $%.2f → $%.2f (%+.2f%% vs %s %+.2f%%) %s\n",
-	KeyTrackLineNoPrice:          "• %s *%s* %s — 無推薦時價格可比對\n",
-	KeyTrackSummary:              "\n命中率：%d/%d (%.0f%%)\n（有同期基準指數（SPY/0050）資料時，BUY 需跑贏基準、SELL 需跑輸基準才算命中；缺基準資料則以絕對漲跌計算；HOLD 與無價格資料者不計入）",
-	KeyTrackAvgReturnLine:        "平均報酬：BUY %+.2f%%（%d 筆）｜SELL %+.2f%%（%d 筆）\n",
-	KeyTrackBySourceHeader:       "\n按來源分組：\n",
-	KeyTrackBySourceLine:         "- %s：%d/%d (%.0f%%)\n",
-	KeyTrackByMarketHeader:       "\n按市場分組：\n",
-	KeyTrackByMarketLine:         "- %s：%d/%d (%.0f%%)\n",
+	KeyUnknownCommand:              "未知指令。可用指令：\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [天數]\n/buy <ticker> <股數> <價格> [手續費]\n/sell <ticker> <股數> <價格> [手續費]\n/stop <ticker> [價格]\n/portfolio\n/insight\n/cash [金額]\n/thesis <ticker> [論點文字]\n/review <ticker>\n/dailyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n\n直接傳一般訊息（不加 / 開頭）則會跟我自由對話。",
+	KeyAddUsage:                    "用法：/add <ticker>，例如 /add AAPL",
+	KeyAddFailed:                   "新增失敗：%v",
+	KeyAddSuccess:                  "已將 *%s* 加入自選股。",
+	KeyRemoveUsage:                 "用法：/remove <ticker>，例如 /remove AAPL",
+	KeyRemoveFailed:                "移除失敗：%v",
+	KeyRemoveSuccess:               "已將 *%s* 從自選股移除。",
+	KeyQueryFailed:                 "查詢失敗：%v",
+	KeyWatchlistEmptyHint:          "自選股清單是空的，使用 /add <ticker> 新增。",
+	KeyWatchlistTitle:              "📋 *自選股清單*\n",
+	KeyWatchlistEmpty:              "自選股清單是空的。",
+	KeyMarketStatusTitle:           "📊 *市場即時狀態*\n\n",
+	KeyQuoteUnavailable:            "*%s*：無法取得報價\n",
+	KeyQuoteFailed:                 "無法取得 %s 報價：%v",
+	KeyAnalyzing:                   "分析中，請稍候...",
+	KeyWatchlistQueryFailed:        "查詢自選股失敗：%v",
+	KeyLLMFailed:                   "LLM 分析失敗：%v",
+	KeyNoRecommendations:           "LLM 未回傳推薦標的，請稍後再試。",
+	KeyRecParseFailed:              "無法解析 LLM 回覆的推薦內容（格式與預期不符），原始回覆已寫入 log：%v",
+	KeyRecommendationsTitle:        "🤖 *今日推薦標的*\n\n",
+	KeyRecommendUsage:              "用法：/recommend [tw|us]（不帶參數＝依序跑美股與台股兩份報告）",
+	KeyRecWatchlistSectionTitle:    "📋 *自選股與持倉*\n",
+	KeyRecCandidatesSectionTitle:   "🆕 *新標的推薦*\n",
+	KeySizingLine:                  "💰 風險倉位建議：可承受虧損 $%.2f，停損參考 $%.2f（現價−2×ATR），建議股數 %d\n",
+	KeyMarketNewsSummaryTitle:      "📰 *市場新聞摘要*\n\n",
+	KeyCheckUsage:                  "用法：/check <ticker>，例如 /check TSLA",
+	KeyAnalyzingTicker:             "分析中，請稍候... (%s)",
+	KeyCheckResultTitle:            "📈 *%s 即時分析*\n\n%s",
+	KeyFundamentalsUsage:           "用法：/fundamentals <ticker>，例如 /fundamentals AAPL",
+	KeyFundamentalsNoKey:           "尚未設定 FINNHUB_API_KEY，無法查詢基本面資料。",
+	KeyFundamentalsFailed:          "無法取得 %s 基本面資料：%v",
+	KeyFundamentalsTitle:           "📊 *%s 基本面*\n\n",
+	KeyThinking:                    "思考中，請稍候...",
+	KeyChatFailed:                  "對話失敗：%v",
+	KeyResetDone:                   "已重置對話記憶。",
+	KeySignalAlertTitle:            "🚨 *市場訊號提醒*\n\n",
+	KeyDailyReportStart:            "📅 *每日報告開始生成...*",
+	KeyMorningBriefingStart:        "📅 *美股日報生成中...*",
+	KeyMorningBriefingMarketClosed: "📅 昨日美股休市，暫停產出美股日報。",
+	KeyNoRecommendationsToday:      "今日無特別推薦標的。",
+	KeyTrackUsage:                  "用法：/track [天數]，例如 /track 14（預設 7 天，最多 90 天）",
+	KeyTrackTitle:                  "📊 *推薦成效回顧（過去 %d 天）*\n\n",
+	KeyTrackEmpty:                  "過去 %d 天內沒有推薦記錄。",
+	KeyTrackLine:                   "• %s *%s* %s  $%.2f → $%.2f (%+.2f%%) %s\n",
+	KeyTrackLineVsSPY:              "• %s *%s* %s  $%.2f → $%.2f (%+.2f%% vs %s %+.2f%%) %s\n",
+	KeyTrackLineNoPrice:            "• %s *%s* %s — 無推薦時價格可比對\n",
+	KeyTrackSummary:                "\n命中率：%d/%d (%.0f%%)\n（有同期基準指數（SPY/0050）資料時，BUY 需跑贏基準、SELL 需跑輸基準才算命中；缺基準資料則以絕對漲跌計算；HOLD 與無價格資料者不計入）",
+	KeyTrackAvgReturnLine:          "平均報酬：BUY %+.2f%%（%d 筆）｜SELL %+.2f%%（%d 筆）\n",
+	KeyTrackBySourceHeader:         "\n按來源分組：\n",
+	KeyTrackBySourceLine:           "- %s：%d/%d (%.0f%%)\n",
+	KeyTrackByMarketHeader:         "\n按市場分組：\n",
+	KeyTrackByMarketLine:           "- %s：%d/%d (%.0f%%)\n",
 
 	KeyBuyUsage:               "用法：/buy <ticker> <股數> <價格> [手續費] [日期]，例如 /buy AAPL 10 205.5 或 /buy AAPL 10 205.5 1.5 2026-01-15（回填歷史交易日期）",
 	KeyBuyFailed:              "記錄買入失敗：%v",
@@ -402,6 +404,42 @@ var zhMessages = map[Key]string{
 回覆請簡潔，總字數控制在 300 字以內。
 `,
 	KeyLessonMarker: "教訓:",
+
+	KeyMorningBriefingPromptIntro:     "你是一位美股分析師，請根據以下資料撰寫一篇風格類似晨間簡報的美股日報，以自然流暢的敘事語氣呈現，而非條列式的操作建議。\n\n",
+	KeyMorningBriefingIndicesHeader:   "## 大盤收盤\n\n",
+	KeyMorningBriefingIndexLine:       "%s：%.2f（%+.2f%%）\n",
+	KeyMorningBriefingVIXLine:         "VIX：%.2f\n",
+	KeyMorningBriefingNewsHeader:      "\n## 宏觀與市場新聞\n\n",
+	KeyMorningBriefingWatchlistHeader: "\n## 觀察名單\n\n",
+	KeyMorningBriefingMoversHeader:    "\n## 大盤熱門標的\n\n",
+	KeyMorningBriefingTaskBlock: `
+## 任務
+
+請撰寫 %s 的美股日報，格式與語氣請參考以下範本：
+
+📅 美股日報｜[日期，中文年月日＋星期]
+
+[一句話點出當天最大主線，例如財報、總經事件、或市場情緒轉折]
+
+📊 大盤收盤
+[依上方指數資料，每個指數一行，🟢 代表上漲、🔴 代表下跌]
+
+🌐 宏觀背景
+[根據上方新聞，用一段文字說明總經、Fed、經濟數據等背景；沒有相關新聞就精簡帶過或省略]
+
+👀 觀察名單
+[根據上方自選股資料，每檔一行：漲跌 emoji、漲跌幅、$TICKER 現價，附上簡短原因或新聞]
+
+🔥 科技焦點／💥 跨板塊熱點
+[根據上方大盤熱門標的與新聞，挑出當天真正值得一提的個股或類股動態；沒有明顯亮點可省略此段]
+
+🚀 未上市觀察
+[僅在上方新聞明確提到未上市公司／IPO 相關消息時才寫這段；沒有依據就整段省略，不要虛構]
+
+有任何問題隨時可以討論或是問我
+
+請只根據上方實際提供的資料撰寫，沒有資料支持的段落請整段省略，不要編造內容。
+`,
 
 	KeyPastLessonsHeader:   "- 過去這檔的交易教訓：\n",
 	KeyPastLessonLine:      "  · %s：%s\n",

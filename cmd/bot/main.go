@@ -272,6 +272,9 @@ func main() {
 	sched.AddDailyReport(ctx, func(ctx context.Context) {
 		telegramBot.RunDailyReport(ctx)
 	})
+	sched.AddMorningBriefing(ctx, func(ctx context.Context) {
+		telegramBot.RunUSMorningBriefing(ctx)
+	})
 	sched.AddTWDailyReport(ctx, func(ctx context.Context) {
 		telegramBot.RunTWDailyReport(ctx)
 	})

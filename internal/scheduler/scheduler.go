@@ -180,6 +180,27 @@ func (s *Scheduler) AddMonthlyReport(ctx context.Context, fn JobFunc) {
 	log.Println("scheduler: monthly report registered at 09:30 CST (1st of month)")
 }
 
+// AddMorningBriefing schedules the US-market morning briefing at 07:00 CST,
+// Tuesday–Saturday — a read-only narrative recap of the US session that just
+// closed (indices, macro backdrop, watchlist/mover highlights), distinct
+// from AddDailyReport's own 23:30 CST run later the same evening, which
+// makes an actual BUY/SELL/HOLD call informed by the *next*, still-open
+// session. Same Tue–Sat weekday coverage as AddClosingSnapshot/
+// AddUniverseScan (Tue recaps Mon's session, ..., Sat recaps Fri's; no
+// Sun/Mon firing since there's no fresh weekend session to recap), scheduled
+// after both of those (05:30/05:45) so the day's post-close data is already
+// on disk by 07:00.
+func (s *Scheduler) AddMorningBriefing(ctx context.Context, fn JobFunc) {
+	_, err := s.c.AddFunc("0 0 7 * * 2-6", func() {
+		log.Println("scheduler: running morning briefing")
+		fn(ctx)
+	})
+	if err != nil {
+		log.Fatalf("scheduler: add morning briefing: %v", err)
+	}
+	log.Println("scheduler: morning briefing registered at 07:00 CST (Tue–Sat)")
+}
+
 // AddLogRotation schedules fn (typically a rotating log writer's Rotate
 // method) at midnight CST daily. lumberjack.Logger only rotates on size by
 // itself, so this is what turns that into an actual daily rotation; MaxAge/

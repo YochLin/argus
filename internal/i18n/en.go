@@ -3,56 +3,58 @@ package i18n
 // enMessages is the English message table. Every format verb here must
 // appear in the same order as its zh.go counterpart — see the note there.
 var enMessages = map[Key]string{
-	KeyUnknownCommand:            "Unknown command. Available commands:\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [days]\n/buy <ticker> <shares> <price> [fee]\n/sell <ticker> <shares> <price> [fee]\n/stop <ticker> [price]\n/portfolio\n/insight\n/cash [amount]\n/thesis <ticker> [text]\n/review <ticker>\n/dailyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n\nSend a plain message (no leading /) to chat freely.",
-	KeyAddUsage:                  "Usage: /add <ticker>, e.g. /add AAPL",
-	KeyAddFailed:                 "Failed to add: %v",
-	KeyAddSuccess:                "Added *%s* to your watchlist.",
-	KeyRemoveUsage:               "Usage: /remove <ticker>, e.g. /remove AAPL",
-	KeyRemoveFailed:              "Failed to remove: %v",
-	KeyRemoveSuccess:             "Removed *%s* from your watchlist.",
-	KeyQueryFailed:               "Query failed: %v",
-	KeyWatchlistEmptyHint:        "Your watchlist is empty. Use /add <ticker> to add one.",
-	KeyWatchlistTitle:            "📋 *Watchlist*\n",
-	KeyWatchlistEmpty:            "Your watchlist is empty.",
-	KeyMarketStatusTitle:         "📊 *Market Status*\n\n",
-	KeyQuoteUnavailable:          "*%s*: quote unavailable\n",
-	KeyQuoteFailed:               "Failed to get %s quote: %v",
-	KeyAnalyzing:                 "Analyzing, please wait...",
-	KeyWatchlistQueryFailed:      "Failed to query watchlist: %v",
-	KeyLLMFailed:                 "LLM analysis failed: %v",
-	KeyNoRecommendations:         "The LLM returned no recommendations — try again later.",
-	KeyRecParseFailed:            "Could not parse the LLM's recommendation reply (unexpected format); raw reply has been logged: %v",
-	KeyRecommendationsTitle:      "🤖 *Today's Recommendations*\n\n",
-	KeyRecommendUsage:            "Usage: /recommend [tw|us] (no argument = run both US and TW reports in sequence)",
-	KeyRecWatchlistSectionTitle:  "📋 *Watchlist & Holdings*\n",
-	KeyRecCandidatesSectionTitle: "🆕 *New Candidates*\n",
-	KeySizingLine:                "💰 Suggested sizing: risk budget $%.2f, stop ref $%.2f (price−2×ATR), ~%d shares\n",
-	KeyMarketNewsSummaryTitle:    "📰 *Market News Summary*\n\n",
-	KeyCheckUsage:                "Usage: /check <ticker>, e.g. /check TSLA",
-	KeyAnalyzingTicker:           "Analyzing, please wait... (%s)",
-	KeyCheckResultTitle:          "📈 *%s Instant Analysis*\n\n%s",
-	KeyFundamentalsUsage:         "Usage: /fundamentals <ticker>, e.g. /fundamentals AAPL",
-	KeyFundamentalsNoKey:         "FINNHUB_API_KEY isn't configured, so fundamentals data is unavailable.",
-	KeyFundamentalsFailed:        "Failed to get %s fundamentals: %v",
-	KeyFundamentalsTitle:         "📊 *%s Fundamentals*\n\n",
-	KeyThinking:                  "Thinking, please wait...",
-	KeyChatFailed:                "Chat failed: %v",
-	KeyResetDone:                 "Conversation memory has been reset.",
-	KeySignalAlertTitle:          "🚨 *Market Signal Alert*\n\n",
-	KeyDailyReportStart:          "📅 *Generating daily report...*",
-	KeyNoRecommendationsToday:    "No notable recommendations today.",
-	KeyTrackUsage:                "Usage: /track [days], e.g. /track 14 (default 7 days, max 90)",
-	KeyTrackTitle:                "📊 *Recommendation Review (past %d days)*\n\n",
-	KeyTrackEmpty:                "No recommendations recorded in the past %d days.",
-	KeyTrackLine:                 "• %s *%s* %s  $%.2f → $%.2f (%+.2f%%) %s\n",
-	KeyTrackLineVsSPY:            "• %s *%s* %s  $%.2f → $%.2f (%+.2f%% vs %s %+.2f%%) %s\n",
-	KeyTrackLineNoPrice:          "• %s *%s* %s — no price recorded to compare against\n",
-	KeyTrackSummary:              "\nHit rate: %d/%d (%.0f%%)\n(When same-period benchmark (SPY/0050) data is available, BUY must beat the benchmark and SELL must underperform it to count as a hit; without benchmark data it falls back to absolute direction; HOLD and rows without price data are excluded)",
-	KeyTrackAvgReturnLine:        "Avg return: BUY %+.2f%% (%d calls) | SELL %+.2f%% (%d calls)\n",
-	KeyTrackBySourceHeader:       "\nBy source:\n",
-	KeyTrackBySourceLine:         "- %s: %d/%d (%.0f%%)\n",
-	KeyTrackByMarketHeader:       "\nBy market:\n",
-	KeyTrackByMarketLine:         "- %s: %d/%d (%.0f%%)\n",
+	KeyUnknownCommand:              "Unknown command. Available commands:\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [days]\n/buy <ticker> <shares> <price> [fee]\n/sell <ticker> <shares> <price> [fee]\n/stop <ticker> [price]\n/portfolio\n/insight\n/cash [amount]\n/thesis <ticker> [text]\n/review <ticker>\n/dailyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n\nSend a plain message (no leading /) to chat freely.",
+	KeyAddUsage:                    "Usage: /add <ticker>, e.g. /add AAPL",
+	KeyAddFailed:                   "Failed to add: %v",
+	KeyAddSuccess:                  "Added *%s* to your watchlist.",
+	KeyRemoveUsage:                 "Usage: /remove <ticker>, e.g. /remove AAPL",
+	KeyRemoveFailed:                "Failed to remove: %v",
+	KeyRemoveSuccess:               "Removed *%s* from your watchlist.",
+	KeyQueryFailed:                 "Query failed: %v",
+	KeyWatchlistEmptyHint:          "Your watchlist is empty. Use /add <ticker> to add one.",
+	KeyWatchlistTitle:              "📋 *Watchlist*\n",
+	KeyWatchlistEmpty:              "Your watchlist is empty.",
+	KeyMarketStatusTitle:           "📊 *Market Status*\n\n",
+	KeyQuoteUnavailable:            "*%s*: quote unavailable\n",
+	KeyQuoteFailed:                 "Failed to get %s quote: %v",
+	KeyAnalyzing:                   "Analyzing, please wait...",
+	KeyWatchlistQueryFailed:        "Failed to query watchlist: %v",
+	KeyLLMFailed:                   "LLM analysis failed: %v",
+	KeyNoRecommendations:           "The LLM returned no recommendations — try again later.",
+	KeyRecParseFailed:              "Could not parse the LLM's recommendation reply (unexpected format); raw reply has been logged: %v",
+	KeyRecommendationsTitle:        "🤖 *Today's Recommendations*\n\n",
+	KeyRecommendUsage:              "Usage: /recommend [tw|us] (no argument = run both US and TW reports in sequence)",
+	KeyRecWatchlistSectionTitle:    "📋 *Watchlist & Holdings*\n",
+	KeyRecCandidatesSectionTitle:   "🆕 *New Candidates*\n",
+	KeySizingLine:                  "💰 Suggested sizing: risk budget $%.2f, stop ref $%.2f (price−2×ATR), ~%d shares\n",
+	KeyMarketNewsSummaryTitle:      "📰 *Market News Summary*\n\n",
+	KeyCheckUsage:                  "Usage: /check <ticker>, e.g. /check TSLA",
+	KeyAnalyzingTicker:             "Analyzing, please wait... (%s)",
+	KeyCheckResultTitle:            "📈 *%s Instant Analysis*\n\n%s",
+	KeyFundamentalsUsage:           "Usage: /fundamentals <ticker>, e.g. /fundamentals AAPL",
+	KeyFundamentalsNoKey:           "FINNHUB_API_KEY isn't configured, so fundamentals data is unavailable.",
+	KeyFundamentalsFailed:          "Failed to get %s fundamentals: %v",
+	KeyFundamentalsTitle:           "📊 *%s Fundamentals*\n\n",
+	KeyThinking:                    "Thinking, please wait...",
+	KeyChatFailed:                  "Chat failed: %v",
+	KeyResetDone:                   "Conversation memory has been reset.",
+	KeySignalAlertTitle:            "🚨 *Market Signal Alert*\n\n",
+	KeyDailyReportStart:            "📅 *Generating daily report...*",
+	KeyMorningBriefingStart:        "📅 *Generating US market morning briefing...*",
+	KeyMorningBriefingMarketClosed: "📅 US markets were closed yesterday — skipping the morning briefing.",
+	KeyNoRecommendationsToday:      "No notable recommendations today.",
+	KeyTrackUsage:                  "Usage: /track [days], e.g. /track 14 (default 7 days, max 90)",
+	KeyTrackTitle:                  "📊 *Recommendation Review (past %d days)*\n\n",
+	KeyTrackEmpty:                  "No recommendations recorded in the past %d days.",
+	KeyTrackLine:                   "• %s *%s* %s  $%.2f → $%.2f (%+.2f%%) %s\n",
+	KeyTrackLineVsSPY:              "• %s *%s* %s  $%.2f → $%.2f (%+.2f%% vs %s %+.2f%%) %s\n",
+	KeyTrackLineNoPrice:            "• %s *%s* %s — no price recorded to compare against\n",
+	KeyTrackSummary:                "\nHit rate: %d/%d (%.0f%%)\n(When same-period benchmark (SPY/0050) data is available, BUY must beat the benchmark and SELL must underperform it to count as a hit; without benchmark data it falls back to absolute direction; HOLD and rows without price data are excluded)",
+	KeyTrackAvgReturnLine:          "Avg return: BUY %+.2f%% (%d calls) | SELL %+.2f%% (%d calls)\n",
+	KeyTrackBySourceHeader:         "\nBy source:\n",
+	KeyTrackBySourceLine:           "- %s: %d/%d (%.0f%%)\n",
+	KeyTrackByMarketHeader:         "\nBy market:\n",
+	KeyTrackByMarketLine:           "- %s: %d/%d (%.0f%%)\n",
 
 	KeyBuyUsage:               "Usage: /buy <ticker> <shares> <price> [fee] [date], e.g. /buy AAPL 10 205.5 or /buy AAPL 10 205.5 1.5 2026-01-15 (backdate a historical trade)",
 	KeyBuyFailed:              "Failed to record buy: %v",
@@ -413,6 +415,42 @@ End your reply with one final line starting with exactly:
 Keep the reply concise — under 300 words total.
 `,
 	KeyLessonMarker: "Lesson:",
+
+	KeyMorningBriefingPromptIntro:     "You are a US equities analyst. Based on the data below, write a US market morning briefing in the style of a narrative digest — natural, flowing prose, not a bulleted list of trade calls.\n\n",
+	KeyMorningBriefingIndicesHeader:   "## Index Close\n\n",
+	KeyMorningBriefingIndexLine:       "%s: %.2f (%+.2f%%)\n",
+	KeyMorningBriefingVIXLine:         "VIX: %.2f\n",
+	KeyMorningBriefingNewsHeader:      "\n## Macro & Market News\n\n",
+	KeyMorningBriefingWatchlistHeader: "\n## Watchlist\n\n",
+	KeyMorningBriefingMoversHeader:    "\n## Broad Market Movers\n\n",
+	KeyMorningBriefingTaskBlock: `
+## Task
+
+Write the US market morning briefing for %s, following this template for structure and tone:
+
+📅 US Market Briefing | [date]
+
+[One sentence naming the day's biggest storyline — an earnings surprise, a macro event, or a shift in market sentiment]
+
+📊 Index Close
+[One line per index from the data above, 🟢 for up, 🔴 for down]
+
+🌐 Macro Backdrop
+[A short paragraph on macro/Fed/economic-data context based on the news above; keep it brief or omit if there's no relevant news]
+
+👀 Watchlist
+[One line per watchlist ticker from the data above: an up/down emoji, the percent change, $TICKER price, with a short reason or news note]
+
+🔥 Tech Spotlight / 💥 Cross-Sector Highlights
+[Based on the movers/news above, call out any stock or sector move that's genuinely worth mentioning today; omit if nothing stands out]
+
+🚀 Private Markets Watch
+[Only include this section if the news above explicitly mentions a private company or IPO-related item; omit the whole section if there's no grounding for it — never invent content]
+
+Feel free to reach out anytime with questions
+
+Write only from the data actually provided above — omit any section you have no supporting data for rather than fabricating content.
+`,
 
 	KeyPastLessonsHeader:   "- Past lessons from this ticker:\n",
 	KeyPastLessonLine:      "  · %s: %s\n",
