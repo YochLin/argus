@@ -71,6 +71,7 @@ type Config struct {
 type Server struct {
 	db               dbReader
 	watchlistDB      watchlistWriter
+	buyAlertDB       buyAlertWriter
 	quotes           quoteGetter
 	history          data.HistoryProvider
 	earnings         data.EarningsProvider
@@ -87,6 +88,7 @@ func New(cfg Config) *Server {
 	s := &Server{
 		db:               cfg.DB,
 		watchlistDB:      cfg.DB,
+		buyAlertDB:       cfg.DB,
 		quotes:           newQuoteCache(cfg.Provider),
 		history:          cfg.History,
 		earnings:         cfg.Earnings,
@@ -125,6 +127,8 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("POST /api/stop", s.requireWritable(s.requireAuth(s.handleSetStop)))
 	s.mux.HandleFunc("POST /api/watchlist/add", s.requireWritable(s.requireAuth(s.handleWatchlistAdd)))
 	s.mux.HandleFunc("POST /api/watchlist/remove", s.requireWritable(s.requireAuth(s.handleWatchlistRemove)))
+	s.mux.HandleFunc("POST /api/buy-alerts/add", s.requireWritable(s.requireAuth(s.handleBuyAlertAdd)))
+	s.mux.HandleFunc("POST /api/buy-alerts/remove", s.requireWritable(s.requireAuth(s.handleBuyAlertRemove)))
 	s.mux.Handle("/", spaHandler())
 	return s
 }

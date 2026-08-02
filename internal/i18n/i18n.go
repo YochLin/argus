@@ -145,6 +145,26 @@ const (
 	KeyBuyStopSuggestion    Key = "buy_stop_suggestion"
 	KeyBuyStopAddOnNote     Key = "buy_stop_add_on_note"
 
+	// /buyalert TICKER [PRICE | remove PRICE] — the mirror-image of /stop:
+	// multiple price points per ticker, no open position required. Direction
+	// (below/above) is inferred from the live quote at set time, not passed
+	// by the user.
+	KeyBuyAlertUsage       Key = "buy_alert_usage"
+	KeyBuyAlertQueryFailed Key = "buy_alert_query_failed"
+	KeyBuyAlertSet         Key = "buy_alert_set"
+	KeyBuyAlertListHeader  Key = "buy_alert_list_header"
+	KeyBuyAlertLine        Key = "buy_alert_line"
+	KeyBuyAlertEmpty       Key = "buy_alert_empty"
+	KeyBuyAlertRemoved     Key = "buy_alert_removed"
+	KeyBuyAlertNotFound    Key = "buy_alert_not_found"
+	// KeyBuyAlertDirBelow/KeyBuyAlertDirAbove are the short direction
+	// phrases substituted into KeyBuyAlertSet/KeyBuyAlertLine/
+	// KeyBuyAlertHitLine's %s slot — kept as separate keys rather than two
+	// full message variants so the surrounding sentence only needs to exist
+	// once per key.
+	KeyBuyAlertDirBelow Key = "buy_alert_dir_below"
+	KeyBuyAlertDirAbove Key = "buy_alert_dir_above"
+
 	KeyPortfolioTitle      Key = "portfolio_title"
 	KeyPortfolioEmpty      Key = "portfolio_empty"
 	KeyPortfolioLine       Key = "portfolio_line"
@@ -217,6 +237,12 @@ const (
 	// single-occurrence events rather than a per-position sweep.
 	KeyTargetReached Key = "target_reached"
 	KeyMA5Break      Key = "ma5_break"
+
+	// checkBuyAlerts (jobs.go) — a buy alert is one-shot (deleted on fire),
+	// so unlike the stop-loss/trailing-stop pairs above there's no reset/
+	// re-alert state, just a title + one line per triggered alert.
+	KeyBuyAlertTitle   Key = "buy_alert_title"
+	KeyBuyAlertHitLine Key = "buy_alert_hit_line"
 
 	KeyChatContextHeader       Key = "chat_context_header"
 	KeyChatContextTickerNoData Key = "chat_context_ticker_no_data"

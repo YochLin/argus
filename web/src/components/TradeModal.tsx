@@ -1,9 +1,9 @@
 import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { ApiError, executeBuy, executeSell, setStopPrice } from "../api";
+import { addBuyAlert, ApiError, executeBuy, executeSell, setStopPrice } from "../api";
 import type { Dictionary } from "../i18n";
 
-export type TradeMode = "buy" | "sell" | "stop";
+export type TradeMode = "buy" | "sell" | "stop" | "buyalert";
 
 interface Props {
   dict: Dictionary;
@@ -32,7 +32,15 @@ const titleKey: Record<TradeMode, keyof Dictionary> = {
   buy: "tradeBuyTitle",
   sell: "tradeSellTitle",
   stop: "tradeStopTitle",
+  buyalert: "tradeBuyAlertTitle",
 };
+
+// singlePriceMode covers the two modes that only ever collect a ticker and a
+// price — "stop" (positions.stop_price) and "buyalert" (a new buy_alerts
+// row) — as opposed to "buy"/"sell" which also need shares/fee/date.
+function isSinglePriceMode(mode: TradeMode): boolean {
+  return mode === "stop" || mode === "buyalert";
+}
 
 export function TradeModal({
   dict,
@@ -62,13 +70,15 @@ export function TradeModal({
       const res =
         mode === "stop"
           ? await setStopPrice({ ticker: cleanTicker, price: Number(price) })
-          : await (mode === "buy" ? executeBuy : executeSell)({
-              ticker: cleanTicker,
-              shares: Number(shares),
-              price: Number(price),
-              fee: fee ? Number(fee) : 0,
-              date: date || undefined,
-            });
+          : mode === "buyalert"
+            ? await addBuyAlert({ ticker: cleanTicker, price: Number(price) })
+            : await (mode === "buy" ? executeBuy : executeSell)({
+                ticker: cleanTicker,
+                shares: Number(shares),
+                price: Number(price),
+                fee: fee ? Number(fee) : 0,
+                date: date || undefined,
+              });
       setSuccessMsg(res.message);
       onSuccess();
     } catch (e) {
@@ -82,7 +92,7 @@ export function TradeModal({
     }
   }
 
-  const canSubmit = ticker.trim() !== "" && Number(price) > 0 && (mode === "stop" || Number(shares) > 0);
+  const canSubmit = ticker.trim() !== "" && Number(price) > 0 && (isSinglePriceMode(mode) || Number(shares) > 0);
 
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
@@ -124,7 +134,7 @@ export function TradeModal({
                     autoFocus={editableTicker}
                   />
                 </label>
-                {mode !== "stop" && (
+                {!isSinglePriceMode(mode) && (
                   <label className="form-field">
                     <span>{dict.shares}</span>
                     <input
@@ -136,7 +146,7 @@ export function TradeModal({
                   </label>
                 )}
                 <label className="form-field">
-                  <span>{mode === "stop" ? dict.stopPriceCol : dict.price}</span>
+                  <span>{mode === "stop" ? dict.stopPriceCol : mode === "buyalert" ? dict.buyAlertPriceCol : dict.price}</span>
                   <input
                     className="mono"
                     type="number"
@@ -145,7 +155,7 @@ export function TradeModal({
                     autoFocus={!editableTicker}
                   />
                 </label>
-                {mode !== "stop" && (
+                {!isSinglePriceMode(mode) && (
                   <>
                     <button
                       type="button"

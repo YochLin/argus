@@ -430,6 +430,9 @@ export function ChartView({
             >
               {dict.stopPriceCol}
             </button>
+            <button className="btn-sm" onClick={() => onTrade("buyalert", chart.ticker, latestPrice)}>
+              {dict.addBuyAlert}
+            </button>
           </div>
         )}
       </div>

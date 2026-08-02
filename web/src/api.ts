@@ -967,3 +967,16 @@ export function addWatchlistTicker(ticker: string): Promise<TradeResponse> {
 export function removeWatchlistTicker(ticker: string): Promise<TradeResponse> {
   return postJSON("/api/watchlist/remove", { ticker });
 }
+
+export interface BuyAlertRequest {
+  ticker: string;
+  price: number;
+}
+
+export function addBuyAlert(req: BuyAlertRequest): Promise<TradeResponse> {
+  return postJSON("/api/buy-alerts/add", req);
+}
+
+export function removeBuyAlert(id: number): Promise<TradeResponse> {
+  return postJSON("/api/buy-alerts/remove", { id });
+}

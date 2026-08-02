@@ -82,6 +82,17 @@ var zhMessages = map[Key]string{
 	KeyBuyStopSuggestion:    "\n💡 停損參考：\n",
 	KeyBuyStopAddOnNote:     "*%s* 目前停損 $%.2f，加碼後可用 /stop 重新設定。\n",
 
+	KeyBuyAlertUsage:       "用法：/buyalert <ticker> [價格 | remove <價格>]（不帶價格則列出目前設定的購買點提醒），例如 /buyalert AAPL 190",
+	KeyBuyAlertQueryFailed: "查詢失敗：%v",
+	KeyBuyAlertSet:         "✅ 已為 *%s* 設定購買點提醒 $%.2f，將於股價%s時通知。",
+	KeyBuyAlertListHeader:  "*%s* 的購買點提醒：\n",
+	KeyBuyAlertLine:        "  • $%.2f — 股價%s時通知\n",
+	KeyBuyAlertEmpty:       "*%s* 尚未設定購買點提醒。",
+	KeyBuyAlertRemoved:     "已移除 *%s* $%.2f 的購買點提醒。",
+	KeyBuyAlertNotFound:    "找不到 *%s* $%.2f 的購買點提醒。",
+	KeyBuyAlertDirBelow:    "跌到或低於目標價",
+	KeyBuyAlertDirAbove:    "漲到或高於目標價",
+
 	KeyPortfolioTitle:      "💼 *資產總覽*\n\n",
 	KeyPortfolioEmpty:      "目前沒有持倉。使用 /buy <ticker> <股數> <價格> 記錄買入。",
 	KeyPortfolioLine:       "*%s*  %g 股 @ 均價 $%.2f\n現價 $%.2f　市值 $%.2f　未實現損益 %+.2f (%+.2f%%)\n\n",
@@ -131,6 +142,9 @@ var zhMessages = map[Key]string{
 
 	KeyTargetReached: "🎯 *%s* 已達 %.1fR 獲利目標！目標價 $%.2f，現價 $%.2f——考慮獲利了結一半，剩餘部位改用 5MA 防守。\n",
 	KeyMA5Break:      "📉 *%s* 跌破 5 日均線 $%.2f（現價 $%.2f），強勢段防線失守，考慮了結剩餘部位。\n",
+
+	KeyBuyAlertTitle:   "📈 *購買點提醒*\n\n",
+	KeyBuyAlertHitLine: "• *%s* 目標價 $%.2f，現價 $%.2f — 已觸發購買點提醒（股價%s）\n",
 
 	KeyChatContextHeader:       "[背景資料，非即時報價，僅供參考]\n",
 	KeyChatContextTickerNoData: "- %s：尚無收盤資料\n",

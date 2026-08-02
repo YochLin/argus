@@ -422,6 +422,25 @@ var migrations = []string{
 	// closed round from here on — Phase 3.11's stop-loss data finally has
 	// a place to persist past a position closing out.
 	`ALTER TABLE transactions ADD COLUMN stop_price REAL NOT NULL DEFAULT 0;`,
+	// 14: buy_alerts backs the "notify me when a ticker reaches a price I'd
+	// buy at" feature — the mirror image of positions.stop_price, but many
+	// rows per ticker (no PK on ticker) since a user wants several price
+	// points watched at once, and a ticker doesn't need an open position
+	// (unlike stop_price, which lives on the positions row itself). Modeled
+	// on trade_lessons/scan_hits' "many rows, no uniqueness constraint"
+	// shape rather than positions/watchlist's one-row-per-ticker shape. See
+	// internal/db/buy_alerts.go.
+	`
+	CREATE TABLE IF NOT EXISTS buy_alerts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		ticker TEXT NOT NULL,
+		market TEXT NOT NULL,
+		price REAL NOT NULL,
+		direction TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE INDEX IF NOT EXISTS idx_buy_alerts_ticker ON buy_alerts(ticker);
+	`,
 }
 
 func (d *DB) migrate() error {
