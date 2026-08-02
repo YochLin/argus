@@ -295,12 +295,21 @@ func capScanHitTickers(scanReasons map[string]string, max int) map[string]bool {
 	return out
 }
 
-// fetchStockData fetches quote+news for each ticker. Fundamentals and
-// AnalystRating (Phase 3.7) are only attached when includeFundamentals is set
-// (watchlist tickers, not the broad market-mover candidate list) to stay well
-// under Finnhub's free-tier 60-requests/minute limit when a candidate list
-// has a dozen-plus tickers — /stock/recommendation is a per-ticker call just
-// like /stock/metric, so it shares the same gate rather than getting its own.
+// fetchStockData fetches quote+news for each ticker. Fundamentals,
+// AnalystRating (Phase 3.7), InsiderTx, and InstitutionalFlow are only
+// attached when includeFundamentals is set (watchlist tickers, not the broad
+// market-mover candidate list) to stay well under Finnhub's free-tier
+// 60-requests/minute limit when a candidate list has a dozen-plus tickers —
+// /stock/recommendation and /stock/insider-transactions are per-ticker calls
+// just like /stock/metric, so they share the same gate rather than getting
+// their own. InstitutionalFlow (TWSE, free/keyless) has no such rate-limit
+// concern, but shares the gate anyway since a TWSE T86 lookup fetches the
+// whole market's report per call — fine for a bounded watchlist, wasteful
+// repeated per ticker across a broad candidate list. b.insiderTx/
+// b.institutional each internally reject the other market's tickers
+// (errTWNotSupported/errUSNotSupported) before making any request, so calling
+// both unconditionally per ticker here (like b.analystRating already does)
+// costs nothing extra for the market that doesn't apply.
 // The one exception (Phase 3.7 追加項, docs/phase-3.7-scanhit-fundamentals.md):
 // up to maxScanHitFundamentals scan-hit candidates also get fundamentals/
 // analyst rating even when includeFundamentals is false, since those are the
@@ -372,6 +381,20 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 				log.Printf("analyst rating %s: %v", t, err)
 			} else {
 				stock.AnalystRating = ar
+			}
+		}
+		if fetchFundamentals && b.insiderTx != nil {
+			if tx, err := b.insiderTx.GetInsiderTransactions(t, 10); err != nil {
+				log.Printf("insider transactions %s: %v", t, err)
+			} else {
+				stock.InsiderTx = tx
+			}
+		}
+		if fetchFundamentals && b.institutional != nil {
+			if fl, err := b.institutional.GetInstitutionalFlow(t); err != nil {
+				log.Printf("institutional flow %s: %v", t, err)
+			} else {
+				stock.InstitutionalFlow = fl
 			}
 		}
 		stock.Technicals, stock.Candles, stock.StrategyHits = b.computeTechnicals(t, loadBenchCloses(market.Of(t)))

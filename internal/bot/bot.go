@@ -46,13 +46,15 @@ type Bot struct {
 	channel       Channel
 	db            *db.DB
 	provider      data.Provider
-	fundamentals  data.FundamentalsProvider   // nil if FINNHUB_API_KEY isn't set
-	analystRating data.AnalystRatingProvider  // nil if FINNHUB_API_KEY isn't set
-	earnings      data.EarningsProvider       // nil if FINNHUB_API_KEY isn't set
-	marketNews    data.MarketNewsProvider     // nil if FINNHUB_API_KEY isn't set
-	twMarketNews  data.MarketNewsProvider     // TW's marketNews counterpart (cnyes), always non-nil — no API key required
-	twMovers      data.TWMarketMoversProvider // TW's GetMarketMovers counterpart (TWSE OpenAPI), always non-nil — no API key required
-	companyNames  data.CompanyNameProvider    // nil if FINMIND_TOKEN isn't set
+	fundamentals  data.FundamentalsProvider        // nil if FINNHUB_API_KEY isn't set
+	analystRating data.AnalystRatingProvider       // nil if FINNHUB_API_KEY isn't set
+	insiderTx     data.InsiderTransactionProvider  // nil if FINNHUB_API_KEY isn't set
+	institutional data.InstitutionalFlowProvider   // TW's 三大法人 counterpart (TWSE T86), always non-nil — no API key required
+	earnings      data.EarningsProvider            // nil if FINNHUB_API_KEY isn't set
+	marketNews    data.MarketNewsProvider          // nil if FINNHUB_API_KEY isn't set
+	twMarketNews  data.MarketNewsProvider          // TW's marketNews counterpart (cnyes), always non-nil — no API key required
+	twMovers      data.TWMarketMoversProvider      // TW's GetMarketMovers counterpart (TWSE OpenAPI), always non-nil — no API key required
+	companyNames  data.CompanyNameProvider         // nil if FINMIND_TOKEN isn't set
 	history       data.HistoryProvider
 	llm           *llm.Client
 	detector      *signals.Detector
@@ -115,13 +117,15 @@ type Config struct {
 	ChatID              int64
 	DB                  *db.DB
 	Provider            data.Provider
-	Fundamentals        data.FundamentalsProvider   // nil if FINNHUB_API_KEY isn't set
-	AnalystRating       data.AnalystRatingProvider  // nil if FINNHUB_API_KEY isn't set
-	Earnings            data.EarningsProvider       // nil if FINNHUB_API_KEY isn't set
-	MarketNews          data.MarketNewsProvider     // nil if FINNHUB_API_KEY isn't set
-	TWMarketNews        data.MarketNewsProvider     // TW's MarketNews counterpart (cnyes) — always non-nil, no API key required
-	TWMovers            data.TWMarketMoversProvider // TW's GetMarketMovers counterpart (TWSE OpenAPI) — always non-nil, no API key required
-	CompanyNames        data.CompanyNameProvider    // nil if FINMIND_TOKEN isn't set
+	Fundamentals        data.FundamentalsProvider       // nil if FINNHUB_API_KEY isn't set
+	AnalystRating       data.AnalystRatingProvider      // nil if FINNHUB_API_KEY isn't set
+	InsiderTx           data.InsiderTransactionProvider // nil if FINNHUB_API_KEY isn't set
+	Institutional       data.InstitutionalFlowProvider  // TW's 三大法人 counterpart (TWSE T86) — always non-nil, no API key required
+	Earnings            data.EarningsProvider           // nil if FINNHUB_API_KEY isn't set
+	MarketNews          data.MarketNewsProvider         // nil if FINNHUB_API_KEY isn't set
+	TWMarketNews        data.MarketNewsProvider         // TW's MarketNews counterpart (cnyes) — always non-nil, no API key required
+	TWMovers            data.TWMarketMoversProvider     // TW's GetMarketMovers counterpart (TWSE OpenAPI) — always non-nil, no API key required
+	CompanyNames        data.CompanyNameProvider        // nil if FINMIND_TOKEN isn't set
 	History             data.HistoryProvider
 	LLM                 *llm.Client
 	Lang                i18n.Lang
@@ -159,6 +163,8 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		provider:            cfg.Provider,
 		fundamentals:        cfg.Fundamentals,
 		analystRating:       cfg.AnalystRating,
+		insiderTx:           cfg.InsiderTx,
+		institutional:       cfg.Institutional,
 		earnings:            cfg.Earnings,
 		marketNews:          cfg.MarketNews,
 		twMarketNews:        cfg.TWMarketNews,

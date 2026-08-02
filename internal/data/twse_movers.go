@@ -26,6 +26,12 @@ type TWMarketMoversProvider interface {
 type TWSE struct {
 	client  *http.Client
 	baseURL string
+	// rwdBaseURL is a second, separate host (www.twse.com.tw, not
+	// openapi.twse.com.tw) for GetInstitutionalFlow's T86 report —
+	// institutional_tw.go's own doc comment has the endpoint rationale.
+	// Kept overridable the same way baseURL is, for the same test-against-
+	// httptest reason.
+	rwdBaseURL string
 }
 
 func NewTWSE() *TWSE {
@@ -40,7 +46,8 @@ func NewTWSE() *TWSE {
 			Timeout:   10 * time.Second,
 			Transport: &http.Transport{TLSNextProto: map[string]func(string, *tls.Conn) http.RoundTripper{}},
 		},
-		baseURL: "https://openapi.twse.com.tw",
+		baseURL:    "https://openapi.twse.com.tw",
+		rwdBaseURL: "https://www.twse.com.tw",
 	}
 }
 

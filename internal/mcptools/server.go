@@ -72,21 +72,23 @@ const (
 // callers to behave. The two write tools bypass withCache entirely (see
 // watchlist_write_tools.go) — caching a mutation's result makes no sense,
 // and local SQLite writes need no Finnhub-rate-limit protection.
-func NewServer(lang i18n.Lang, provider data.Provider, history data.HistoryProvider, fundamentals data.FundamentalsProvider, earnings data.EarningsProvider, database *db.DB, writeDatabase *db.DB) *mcp.Server {
+func NewServer(lang i18n.Lang, provider data.Provider, history data.HistoryProvider, fundamentals data.FundamentalsProvider, earnings data.EarningsProvider, insiderTx data.InsiderTransactionProvider, institutional data.InstitutionalFlowProvider, database *db.DB, writeDatabase *db.DB) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "argus",
 		Version: Version,
 	}, nil)
 	registerTools(server, &toolset{
-		lang:         lang,
-		provider:     provider,
-		history:      history,
-		fundamentals: fundamentals,
-		earnings:     earnings,
-		db:           database,
-		writeDB:      writeDatabase,
-		cache:        newTTLCache(),
-		limiter:      newTokenBucket(rateLimiterCapacity, rateLimiterRefillPerSecond),
+		lang:          lang,
+		provider:      provider,
+		history:       history,
+		fundamentals:  fundamentals,
+		earnings:      earnings,
+		insiderTx:     insiderTx,
+		institutional: institutional,
+		db:            database,
+		writeDB:       writeDatabase,
+		cache:         newTTLCache(),
+		limiter:       newTokenBucket(rateLimiterCapacity, rateLimiterRefillPerSecond),
 	})
 	return server
 }
@@ -96,7 +98,7 @@ func NewServer(lang i18n.Lang, provider data.Provider, history data.HistoryProvi
 // invokes — an ACP chat session launches the same binary as a subprocess
 // (os.Executable()) rather than a separately deployed server, so the tool
 // surface can never drift out of version sync with the running bot.
-func Run(ctx context.Context, lang i18n.Lang, provider data.Provider, history data.HistoryProvider, fundamentals data.FundamentalsProvider, earnings data.EarningsProvider, database *db.DB, writeDatabase *db.DB) error {
-	server := NewServer(lang, provider, history, fundamentals, earnings, database, writeDatabase)
+func Run(ctx context.Context, lang i18n.Lang, provider data.Provider, history data.HistoryProvider, fundamentals data.FundamentalsProvider, earnings data.EarningsProvider, insiderTx data.InsiderTransactionProvider, institutional data.InstitutionalFlowProvider, database *db.DB, writeDatabase *db.DB) error {
+	server := NewServer(lang, provider, history, fundamentals, earnings, insiderTx, institutional, database, writeDatabase)
 	return server.Run(ctx, &mcp.StdioTransport{})
 }

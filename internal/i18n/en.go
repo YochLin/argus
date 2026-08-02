@@ -483,6 +483,8 @@ Write only from the data actually provided above — omit any section you have n
 	KeyMonthRevenueYoYLine:     "- Month Revenue YoY: %+.1f%%\n",
 	KeyAnalystRatingLine:       "- Analyst Ratings (%s): Strong Buy %d | Buy %d | Hold %d | Sell %d | Strong Sell %d\n",
 	KeyAnalystRatingTrendLine:  "  vs. last month: Buy-side %+d | Sell-side %+d\n",
+	KeyInsiderTxLine:           "- Insider Transactions (open-market filings, latest %s): Buys %d (%d sh) | Sells %d (%d sh)\n",
+	KeyInstitutionalFlowLine:   "- Institutional Flow (%s): Foreign %+d | Trust %+d | Dealer %+d | Total %+d sh\n",
 	KeyStatementSummaryLine:    "- Latest Filing (%s, FY%d, as of %s): Revenue $%.0fM | Gross Profit $%.0fM | Operating Income $%.0fM | Net Income $%.0fM | Total Assets $%.0fM | Total Liabilities $%.0fM | Total Equity $%.0fM | Operating Cash Flow $%.0fM | Free Cash Flow $%.0fM\n",
 	KeyPositionLine:            "- Position: %g shares, avg cost $%.2f (unrealized %+.2f%%)\n",
 	KeyPrevRecLine:             "- Previous call: %s @ $%.2f (%d days ago)\n",
@@ -519,6 +521,12 @@ Write only from the data actually provided above — omit any section you have n
 
 	KeyMCPNoEarnings:   "None of the requested tickers have earnings scheduled within %d days.",
 	KeyMCPEarningsItem: "- %s: %s (%s)\n",
+
+	KeyMCPNoInsiderTx:   "No insider transaction data available for %s.",
+	KeyMCPInsiderTxItem: "- %s (%s): %+d sh, code %s, price %.2f\n",
+
+	KeyMCPNoInstitutionalFlow:     "No institutional flow data available for %s.",
+	KeyMCPInstitutionalFlowResult: "%s Institutional Flow (%s): Foreign %+d | Trust %+d | Dealer %+d | Total %+d sh",
 
 	KeyMCPNoMovers:     "No market movers data available right now.",
 	KeyMCPMoversResult: "Current market movers: %s\n",
