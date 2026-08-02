@@ -108,10 +108,25 @@ export interface Transaction {
   realizedPnL: number;
 }
 
+// CalendarEvent is a single earnings-date marker (Calendar's scope is
+// earnings-only, see internal/web/handlers.go's calendarEvent). Note text is
+// deliberately not sent — the frontend builds display copy from
+// kind/hour/estimated via i18n.ts, same "backend never sends display
+// strings" rule every other endpoint here follows.
+export interface CalendarEvent {
+  date: string;
+  ticker: string;
+  kind: string; // only "earnings" today, kept generic for future event types
+  hour: string; // "bmo" | "amc" | "dmh" | "" — Finnhub-only, always "" for TW's estimated proxy
+  estimated: boolean; // true for TW's statutory-deadline proxy
+  held: boolean; // ticker is a currently open position
+}
+
 export interface Calendar {
   month: string; // YYYY-MM
   days: DateValue[];
   transactions: Transaction[];
+  events: CalendarEvent[];
 }
 
 export interface RoundSummary {
@@ -278,6 +293,9 @@ export interface MAEMFESummary {
 }
 
 export interface Reports {
+  winRate: number;
+  profitFactor: number;
+  expectancy: number;
   byTicker: ReportGroup[];
   byHoldingDays: ReportGroup[];
   byEntryMonth: ReportGroup[];
@@ -322,6 +340,7 @@ export interface RecPerfExtreme {
   ticker: string;
   date: string;
   action: string;
+  source: string;
   entryPrice: number;
   excessReturnPct: number;
 }
@@ -331,6 +350,20 @@ export interface RecPerfCounts {
   hold: number;
   scorable: number;
   unscorable: number;
+}
+
+// RecPerfActiveSignal mirrors internal/web/recperf.go's recPerfActiveSignal
+// — one still-open (unmatured shortest-horizon window) BUY/SELL rec, with
+// excessReturnPct recomputed entry-to-today rather than entry-to-a-fixed
+// horizon.
+export interface RecPerfActiveSignal {
+  ticker: string;
+  action: string;
+  source: string;
+  entryDate: string;
+  entryPrice: number;
+  daysHeld: number;
+  excessReturnPct: number;
 }
 
 // RecPerformance mirrors internal/web/recperf.go's recPerformanceResponse —
@@ -343,6 +376,10 @@ export interface RecPerformance {
   byAction: RecPerfGroup[];
   best: RecPerfExtreme[];
   worst: RecPerfExtreme[];
+  overall: RecPerfStatsCell[];
+  bestHorizon: number;
+  actedVsSkipped: RecPerfGroup[];
+  activeSignals: RecPerfActiveSignal[];
 }
 // RMultipleSample/HoldingReturnSample/MAEReturnSample/Distributions mirror
 // internal/web/distributions.go's response types (Phase 8 PR4) — three
@@ -659,6 +696,9 @@ function getMockData(url: string): any {
   if (path === "/api/reports") {
     const mult = market === "tw" ? 30 : 1;
     return {
+      winRate: market === "tw" ? 0.72 : 0.68,
+      profitFactor: market === "tw" ? 2.6 : 2.35,
+      expectancy: 1850 * mult,
       byTicker: [
         { key: market === "tw" ? "2330" : "NVDA", n: 5, winRate: 0.8, profitFactor: 3.2, avgReturnPct: 8.5, totalRealizedPnL: 4820 * mult, avgHoldingDays: 22, lowSample: false },
         { key: market === "tw" ? "2454" : "AAPL", n: 4, winRate: 0.75, profitFactor: 2.5, avgReturnPct: 5.2, totalRealizedPnL: 2450 * mult, avgHoldingDays: 15, lowSample: false },
@@ -698,14 +738,85 @@ function getMockData(url: string): any {
     };
   }
   if (path === "/api/rec-performance") {
+    const tickers = market === "tw" ? ["2330", "2454", "2317", "2412", "3008"] : ["NVDA", "AAPL", "MSFT", "AMD", "TSLA"];
+    const mkSignal = (t: string, action: string, src: string, entryDate: string, entryPrice: number, daysHeld: number, excess: number) => ({
+      ticker: t, action, source: src, entryDate, entryPrice, daysHeld, excessReturnPct: excess,
+    });
+    const cell = (horizon: number, n: number, hitRatePct: number, avgExcessPct: number) => ({ horizon, n, hitRatePct, avgExcessPct });
+    const cells = (n: number, hitRatePct: number, avgExcessPct: number) => [
+      cell(1, n, hitRatePct - 8, avgExcessPct * 0.15),
+      cell(5, n, hitRatePct, avgExcessPct * 0.4),
+      cell(10, n, hitRatePct - 3, avgExcessPct * 0.7),
+      cell(20, n, hitRatePct - 6, avgExcessPct),
+    ];
     return {
       counts: { total: 312, scorable: 248, unscorable: 31, hold: 33 },
-      horizons: [5, 10, 20],
-      bySource: [],
-      byAction: [],
-      best: [],
-      worst: [],
+      horizons: [1, 5, 10, 20],
+      byAction: [
+        { key: "BUY", cells: cells(142, 61.5, 3.2) },
+        { key: "SELL", cells: cells(58, 55.2, -1.6) },
+      ],
+      bySource: [
+        { key: "watchlist", cells: cells(96, 64.1, 3.9) },
+        { key: "movers", cells: cells(74, 58.8, 2.1) },
+        { key: "scan", cells: cells(30, 50.0, 0.8) },
+      ],
+      best: tickers.map((ticker, i) => ({
+        ticker,
+        date: `2026-0${(i % 6) + 1}-${10 + i * 3}`,
+        source: ["watchlist", "movers", "scan", "watchlist", "movers"][i % 5],
+        action: "BUY",
+        entryPrice: 120 + i * 45,
+        excessReturnPct: 18.4 - i * 2.6,
+      })),
+      worst: tickers.map((ticker, i) => ({
+        ticker,
+        date: `2026-0${(i % 6) + 1}-${8 + i * 3}`,
+        source: ["scan", "watchlist", "movers", "scan", "watchlist"][i % 5],
+        action: i % 2 === 0 ? "SELL" : "BUY",
+        entryPrice: 95 + i * 38,
+        excessReturnPct: -6.2 - i * 2.1,
+      })),
+      overall: [cell(1, 248, 54.2, 0.3), cell(5, 248, 58.1, 1.2), cell(10, 240, 61.4, 2.1), cell(20, 210, 57.8, 2.6)],
+      bestHorizon: 10,
+      actedVsSkipped: [
+        { key: "acted", cells: [cell(1, 210, 55.0, 0.4), cell(5, 210, 59.5, 1.4), cell(10, 205, 62.8, 2.3), cell(20, 180, 58.9, 2.9)] },
+        { key: "skipped", cells: [cell(1, 33, 49.1, -0.2), cell(5, 33, 47.6, -0.6), cell(10, 32, 50.0, -0.1), cell(20, 28, 46.4, -0.5)] },
+      ],
+      activeSignals: market === "tw"
+        ? [mkSignal("2330", "BUY", "watchlist", "2026-07-20", 1010, 8, 1.8), mkSignal("2317", "BUY", "scan", "2026-07-25", 198, 3, 0.6)]
+        : [mkSignal("NVDA", "BUY", "watchlist", "2026-07-20", 138.5, 8, 2.1), mkSignal("AMD", "SELL", "scan", "2026-07-25", 156.2, 3, -0.4)],
     };
+  }
+  if (path === "/api/calendar") {
+    const month = parsed.searchParams.get("month") || "2026-07";
+    const [y, m] = month.split("-").map(Number);
+    const days = new Date(y, m, 0).getDate();
+    const mult = market === "tw" ? 30 : 1;
+    const dayValues: { date: string; value: number }[] = [];
+    for (let d = 1; d <= days; d++) {
+      const w = new Date(y, m - 1, d).getDay();
+      if (w === 0 || w === 6) continue;
+      if (Math.random() < 0.55) continue;
+      dayValues.push({ date: `${month}-${String(d).padStart(2, "0")}`, value: Math.round((Math.random() - 0.4) * 800 * mult) });
+    }
+    const tickers = market === "tw" ? ["2330", "2454", "0050"] : ["NVDA", "AAPL", "MSFT"];
+    const held = market === "tw" ? ["2330"] : ["NVDA"];
+    const transactions = dayValues.slice(0, 3).map((dv, i) => ({
+      date: dv.date, ticker: tickers[i % tickers.length], side: i % 2 === 0 ? "SELL" : "BUY",
+      shares: 10 * mult, price: 100 * mult, fee: 1 * mult, realizedPnL: dv.value,
+    }));
+    const events = [7, 15, 22]
+      .filter((d) => d <= days)
+      .map((d, i) => {
+        const t = tickers[i % tickers.length];
+        return {
+          date: `${month}-${String(d).padStart(2, "0")}`, ticker: t, kind: "earnings",
+          hour: market === "tw" ? "" : (i % 2 === 0 ? "amc" : "bmo"), estimated: market === "tw",
+          held: held.includes(t),
+        };
+      });
+    return { month, days: dayValues, transactions, events };
   }
   if (path === "/api/login") {
     return { ok: true };

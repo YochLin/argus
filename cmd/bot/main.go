@@ -254,6 +254,7 @@ func main() {
 			DB:           database,
 			Provider:     provider,
 			History:      yahoo,
+			Earnings:     earningsProvider,
 			Lang:         lang,
 			CompanyNames: companyNameProvider,
 			RiskHeatPct:  riskHeatPct,

@@ -1,8 +1,11 @@
 package web
 
 import (
+	"log"
 	"time"
 
+	"argus/internal/data"
+	"argus/internal/db"
 	"argus/internal/market"
 )
 
@@ -22,12 +25,13 @@ func monthBounds(month string) (start, end string, ok bool) {
 
 // buildCalendar assembles the /api/calendar response for one month: the
 // subset of the DailyPnL replay engine's output (pnl.go — same engine PR1's
-// dashboard curve uses) falling within that month, plus the month's raw
-// transactions for the click-a-day detail panel. Week/month summary rows
-// (design doc's A3) are deliberately not computed here — they're just a sum
-// over Days, cheap enough to leave to the frontend rather than opening a
-// second endpoint for it.
-func buildCalendar(database dbReader, month string, m market.MarketID) (calendarResponse, error) {
+// dashboard curve uses) falling within that month, the month's raw
+// transactions for the click-a-day detail panel, and the month's earnings
+// events for every ticker either transacted this market or on this market's
+// watchlist. Week/month summary rows (design doc's A3) are deliberately not
+// computed here — they're just a sum over Days, cheap enough to leave to the
+// frontend rather than opening a second endpoint for it.
+func buildCalendar(database dbReader, earnings data.EarningsProvider, month string, m market.MarketID) (calendarResponse, error) {
 	monthStart, monthEnd, ok := monthBounds(month)
 	if !ok {
 		monthStart, monthEnd, _ = monthBounds(time.Now().Format("2006-01"))
@@ -40,6 +44,7 @@ func buildCalendar(database dbReader, month string, m market.MarketID) (calendar
 		Month:        month,
 		Days:         []DateValue{},
 		Transactions: []transactionResponse{},
+		Events:       []calendarEvent{},
 	}
 
 	allTxs, err := database.GetAllTransactions()
@@ -47,9 +52,6 @@ func buildCalendar(database dbReader, month string, m market.MarketID) (calendar
 		return calendarResponse{}, err
 	}
 	txs := filterTransactionsByMarket(allTxs, m)
-	if len(txs) == 0 {
-		return resp, nil
-	}
 
 	for _, t := range txs {
 		if t.Date >= monthStart && t.Date <= monthEnd {
@@ -63,6 +65,14 @@ func buildCalendar(database dbReader, month string, m market.MarketID) (calendar
 				RealizedPnL: t.RealizedPnL,
 			})
 		}
+	}
+
+	if err := attachCalendarEvents(&resp, database, earnings, monthStart, monthEnd, m, txs); err != nil {
+		return calendarResponse{}, err
+	}
+
+	if len(txs) == 0 {
+		return resp, nil
 	}
 
 	// DailyPnL needs the full history from the first-ever transaction (for
@@ -79,7 +89,7 @@ func buildCalendar(database dbReader, month string, m market.MarketID) (calendar
 	if from > to {
 		// Requested month is entirely before the first trade (or entirely
 		// in the future) — nothing to compute, but the month's own
-		// transactions (if any) above already stand.
+		// transactions/events (if any) above already stand.
 		return resp, nil
 	}
 
@@ -104,4 +114,74 @@ func buildCalendar(database dbReader, month string, m market.MarketID) (calendar
 	}
 
 	return resp, nil
+}
+
+// attachCalendarEvents fills resp.Events with this month's earnings dates
+// for every ticker either transacted this market this month or on this
+// market's watchlist — a ticker with no trades yet still gets its earnings
+// dot. TW uses the keyless statutory-deadline proxy (data.GetTWEarningsInRange,
+// always available); US goes through the injected Finnhub-backed provider,
+// which is nil when FINNHUB_API_KEY isn't set — same degrade-quietly
+// convention as CompanyNames, so a request-level error here logs and leaves
+// Events empty rather than failing the whole response.
+func attachCalendarEvents(resp *calendarResponse, database dbReader, earnings data.EarningsProvider, monthStart, monthEnd string, m market.MarketID, txs []db.Transaction) error {
+	tickerSet := make(map[string]bool)
+	for _, t := range txs {
+		tickerSet[t.Ticker] = true
+	}
+	watch, err := database.GetWatchlistByMarket(m)
+	if err != nil {
+		return err
+	}
+	for _, t := range watch {
+		tickerSet[t] = true
+	}
+	if len(tickerSet) == 0 {
+		return nil
+	}
+	tickers := make([]string, 0, len(tickerSet))
+	for t := range tickerSet {
+		tickers = append(tickers, t)
+	}
+
+	positions, err := database.GetPositions()
+	if err != nil {
+		return err
+	}
+	held := make(map[string]bool, len(positions))
+	for _, p := range filterPositionsByMarket(positions, m) {
+		held[p.Ticker] = true
+	}
+
+	from, err := time.Parse("2006-01-02", monthStart)
+	if err != nil {
+		return nil
+	}
+	to, err := time.Parse("2006-01-02", monthEnd)
+	if err != nil {
+		return nil
+	}
+
+	var events []data.EarningsEvent
+	if m == market.TW {
+		events = data.GetTWEarningsInRange(tickers, from, to)
+	} else if earnings != nil {
+		events, err = earnings.GetEarningsInRange(tickers, from, to)
+		if err != nil {
+			log.Printf("web: calendar earnings: %v", err)
+			events = nil
+		}
+	}
+
+	for _, e := range events {
+		resp.Events = append(resp.Events, calendarEvent{
+			Date:      e.Date,
+			Ticker:    e.Ticker,
+			Kind:      "earnings",
+			Hour:      e.Hour,
+			Estimated: e.Estimated,
+			Held:      held[e.Ticker],
+		})
+	}
+	return nil
 }

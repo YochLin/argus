@@ -111,6 +111,26 @@ type calendarResponse struct {
 	Month        string                `json:"month"`
 	Days         []DateValue           `json:"days"`
 	Transactions []transactionResponse `json:"transactions"`
+	// Events is the month's earnings-date markers (Calendar's scope is
+	// earnings-only, see docs/architecture — IPO/dividend/split/lock-up have
+	// no data source in internal/data today) for every ticker either
+	// transacted this market or on this market's watchlist.
+	Events []calendarEvent `json:"events"`
+}
+
+// calendarEvent is a single earnings-date marker. Note text is deliberately
+// not included — the frontend builds display copy from Kind/Hour/Estimated
+// via its own i18n dictionary (web/src/i18n.ts), same "backend never sends
+// display strings" rule every other endpoint in this package follows. Kind
+// is carried as a string (not hardcoded to "earnings" in the frontend) so a
+// future event type can slot in without a response-shape change.
+type calendarEvent struct {
+	Date      string `json:"date"`
+	Ticker    string `json:"ticker"`
+	Kind      string `json:"kind"`
+	Hour      string `json:"hour"`      // "bmo"/"amc"/"dmh"/"" — Finnhub-only, always "" for TW's estimated proxy
+	Estimated bool   `json:"estimated"` // true for TW's statutory-deadline proxy, see data.GetTWEarningsInRange
+	Held      bool   `json:"held"`      // ticker is a currently open position
 }
 
 type transactionResponse struct {
@@ -287,7 +307,7 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	resp, err := buildCalendar(s.db, r.URL.Query().Get("month"), marketParam(r))
+	resp, err := buildCalendar(s.db, s.earnings, r.URL.Query().Get("month"), marketParam(r))
 	if err != nil {
 		log.Printf("web: build calendar: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to build calendar")

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { currencySymbol, fetchDashboard, type Dashboard, type Market } from "../api";
 import type { Dictionary } from "../i18n";
 import { DrawdownChart } from "./DrawdownChart";
-import { formatValue, KpiCard } from "./KpiCard";
+import { formatValue, type KpiColorMode, type KpiFormat } from "./KpiCard";
 import { PnlChart } from "./PnlChart";
 import { PositionsTable } from "./PositionsTable";
 import type { TradeMode } from "./TradeModal";
@@ -14,6 +14,33 @@ interface Props {
   names?: Record<string, string>;
   onTrade?: (mode: TradeMode, ticker: string, prefillPrice?: number) => void;
   refreshSignal?: number;
+}
+
+interface StripItemProps {
+  label: string;
+  value: number | null;
+  format: KpiFormat;
+  colorMode?: KpiColorMode;
+  currency?: string;
+}
+
+function DashKpiStripItem({ label, value, format, colorMode = "neutral", currency = "$" }: StripItemProps) {
+  let colorClass = "";
+  if (value !== null) {
+    if (colorMode === "loss") {
+      colorClass = "loss";
+    } else if (colorMode === "pnl") {
+      colorClass = value > 0 ? "profit" : value < 0 ? "loss" : "";
+    }
+  }
+  return (
+    <div className="dash-kpi-strip-item">
+      <div className="dash-kpi-strip-label">{label}</div>
+      <div className={`dash-kpi-strip-value ${colorClass}`}>
+        {value === null ? "—" : formatValue(value, format, currency)}
+      </div>
+    </div>
+  );
 }
 
 export function DashboardView({ dict, market, onTickerClick, names, onTrade, refreshSignal }: Props) {
@@ -40,55 +67,28 @@ export function DashboardView({ dict, market, onTickerClick, names, onTrade, ref
 
   return (
     <>
-      <div className="kpi-grid">
-        <div className="card kpi-hero">
-          <div>
-            <div className="eyebrow">{dict.netPnL}</div>
-            <div
-              className={`kpi-hero-value ${
-                kpis.netPnL > 0 ? "profit" : kpis.netPnL < 0 ? "loss" : ""
-              }`}
-            >
-              {formatValue(kpis.netPnL, "currency", currency)}
-            </div>
-          </div>
-          <div className="kpi-hero-sub">
-            <div>
-              <span className="eyebrow" style={{ display: "inline", marginRight: 6 }}>
-                {dict.winRate}:
-              </span>
-              <span className="mono" style={{ color: "var(--ink)", fontWeight: 600 }}>
-                {formatValue(kpis.winRate, "percent", currency)}
-              </span>
-            </div>
-            <div>
-              <span className="eyebrow" style={{ display: "inline", marginRight: 6 }}>
-                {dict.profitFactor}:
-              </span>
-              <span className="mono" style={{ color: "var(--ink)", fontWeight: 600 }}>
-                {formatValue(kpis.profitFactor, "ratio", currency)}
-              </span>
-            </div>
-          </div>
-        </div>
-        <KpiCard
+      <div className="dash-kpi-strip">
+        <DashKpiStripItem label={dict.netPnL} value={kpis.netPnL} format="currency" colorMode="pnl" currency={currency} />
+        <DashKpiStripItem label={dict.winRate} value={kpis.winRate} format="percent" />
+        <DashKpiStripItem label={dict.profitFactor} value={kpis.profitFactor} format="ratio" />
+        <DashKpiStripItem
           label={dict.expectancy}
           value={kpis.expectancy}
           format="currency"
           colorMode="pnl"
           currency={currency}
         />
-        <KpiCard
+        <DashKpiStripItem
           label={dict.maxDrawdown}
           value={-Math.abs(kpis.maxDrawdown)}
           format="currency"
           colorMode="loss"
           currency={currency}
         />
-        <KpiCard label={dict.ytdReturn} value={kpis.ytdReturnPct} format="percentValue" colorMode="pnl" />
-        <KpiCard label={dict.qtdReturn} value={kpis.qtdReturnPct} format="percentValue" colorMode="pnl" />
-        <KpiCard label={dict.htdReturn} value={kpis.htdReturnPct} format="percentValue" colorMode="pnl" />
-        <KpiCard
+        <DashKpiStripItem label={dict.ytdReturn} value={kpis.ytdReturnPct} format="percentValue" colorMode="pnl" />
+        <DashKpiStripItem label={dict.qtdReturn} value={kpis.qtdReturnPct} format="percentValue" colorMode="pnl" />
+        <DashKpiStripItem label={dict.htdReturn} value={kpis.htdReturnPct} format="percentValue" colorMode="pnl" />
+        <DashKpiStripItem
           label={dict.benchmarkAlpha}
           value={kpis.benchmarkAlpha}
           format="currency"

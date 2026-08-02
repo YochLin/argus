@@ -1,7 +1,31 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { currencySymbol, fetchCalendar, type Calendar, type Market, type Transaction } from "../api";
+import { currencySymbol, fetchCalendar, tickerLabel, type Calendar, type CalendarEvent, type Market, type Transaction } from "../api";
 import type { Dictionary } from "../i18n";
 import { TradesTable } from "./TradesTable";
+
+// EVENT_COLOR is the only event kind Calendar supports today (earnings) —
+// kept as a lookup (not a literal) so a future kind slots in without
+// reworking the dot/legend rendering.
+const EVENT_COLOR: Record<string, string> = { earnings: "#f59e0b" };
+
+function eventKindLabel(dict: Dictionary, kind: string): string {
+  return kind === "earnings" ? dict.eventKindEarnings : kind;
+}
+
+function eventHourLabel(dict: Dictionary, hour: string): string {
+  if (hour === "bmo") return dict.eventHourBmo;
+  if (hour === "amc") return dict.eventHourAmc;
+  if (hour === "dmh") return dict.eventHourDmh;
+  return dict.eventHourUnknown;
+}
+
+// eventNote builds the day-detail table's "Detail" cell client-side from
+// kind/hour/estimated — the backend never sends display strings (see
+// api.ts's CalendarEvent doc comment).
+function eventNote(dict: Dictionary, e: CalendarEvent): string {
+  const base = `${eventKindLabel(dict, e.kind)} · ${eventHourLabel(dict, e.hour)}`;
+  return e.estimated ? `${base} (${dict.eventEstimated})` : base;
+}
 
 interface Props {
   dict: Dictionary;
@@ -102,6 +126,16 @@ export function CalendarView({ dict, market, names }: Props) {
     return m;
   }, [calendar]);
 
+  const eventsByDate = useMemo(() => {
+    const m = new Map<string, CalendarEvent[]>();
+    for (const e of calendar?.events ?? []) {
+      const list = m.get(e.date) ?? [];
+      list.push(e);
+      m.set(e.date, list);
+    }
+    return m;
+  }, [calendar]);
+
   const weeks = useMemo(() => buildWeeks(month, valuesByDate), [month, valuesByDate]);
   const monthTotal = useMemo(
     () => (calendar?.days ?? []).reduce((sum, d) => sum + d.value, 0),
@@ -129,6 +163,16 @@ export function CalendarView({ dict, market, names }: Props) {
 
       {calendar && (
         <>
+          <div className="calendar-legend">
+            {Object.entries(EVENT_COLOR).map(([kind, color]) => (
+              <span className="calendar-legend-item" key={kind}>
+                <span className="calendar-legend-dot" style={{ background: color }} />
+                {eventKindLabel(dict, kind)}
+              </span>
+            ))}
+            <span className="calendar-legend-held">{dict.heldLegend}</span>
+          </div>
+
           <div className="calendar-grid">
             {dict.weekdays.map((wd) => (
               <div className="calendar-weekday" key={wd}>
@@ -143,22 +187,42 @@ export function CalendarView({ dict, market, names }: Props) {
               // the 8-column template — CSS grid doesn't care that they're
               // grouped for React's key purposes.
               <Fragment key={wi}>
-                {week.map((cell, ci) =>
-                  cell.date === null ? (
-                    <div className="cal-cell empty" key={`${wi}-${ci}`} />
-                  ) : (
+                {week.map((cell, ci) => {
+                  if (cell.date === null) return <div className="cal-cell empty" key={`${wi}-${ci}`} />;
+                  const dayEvents = eventsByDate.get(cell.date) ?? [];
+                  return (
                     <button
                       key={cell.date}
                       className={`cal-cell clickable${cell.value !== null ? (cell.value >= 0 ? " profit-bg" : " loss-bg") : ""}${selectedDate === cell.date ? " selected" : ""}`}
                       onClick={() => setSelectedDate(cell.date)}
                     >
-                      <span className="cal-day-num">{Number(cell.date.slice(-2))}</span>
+                      <span className="cal-day-head">
+                        <span className="cal-day-num">{Number(cell.date.slice(-2))}</span>
+                        {dayEvents.length > 0 && (
+                          <span className="cal-event-dots">
+                            {dayEvents.map((e, ei) => {
+                              const color = EVENT_COLOR[e.kind] ?? "#94a3b8";
+                              return (
+                                <span
+                                  key={ei}
+                                  className="cal-event-dot"
+                                  style={{
+                                    background: color,
+                                    boxShadow: e.held ? `0 0 0 1.5px var(--surface), 0 0 0 2.5px ${color}` : undefined,
+                                  }}
+                                  title={`${eventKindLabel(dict, e.kind)}${e.ticker ? " · " + e.ticker : ""} — ${eventNote(dict, e)}`}
+                                />
+                              );
+                            })}
+                          </span>
+                        )}
+                      </span>
                       <span className="cal-day-value mono">
                         {cell.value !== null ? fmtSigned(cell.value, currency) : ""}
                       </span>
                     </button>
-                  ),
-                )}
+                  );
+                })}
                 <div className="calendar-week-total mono">{fmtSigned(weekTotal(week), currency)}</div>
               </Fragment>
             ))}
@@ -173,6 +237,41 @@ export function CalendarView({ dict, market, names }: Props) {
                 currency={currency}
                 names={names}
               />
+              <div className="eyebrow day-events-title">{dict.eventsTitle}</div>
+              {(() => {
+                const dayEvents = eventsByDate.get(selectedDate) ?? [];
+                if (dayEvents.length === 0) return <div className="empty-message">{dict.noEventsToday}</div>;
+                return (
+                  <table className="mono">
+                    <thead>
+                      <tr>
+                        <th>{dict.eventType}</th>
+                        <th>{dict.ticker}</th>
+                        <th style={{ textAlign: "left" }}>{dict.eventNote}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dayEvents.map((e, ei) => (
+                        <tr key={ei}>
+                          <td>
+                            <span
+                              className="cal-event-badge"
+                              style={{ color: EVENT_COLOR[e.kind] ?? "#94a3b8", borderColor: EVENT_COLOR[e.kind] ?? "#94a3b8" }}
+                            >
+                              {eventKindLabel(dict, e.kind)}
+                            </span>
+                          </td>
+                          <td>
+                            {tickerLabel(e.ticker, names ?? {})}
+                            {e.held && <span className="cal-held-tag">{dict.eventHeld}</span>}
+                          </td>
+                          <td style={{ textAlign: "left" }}>{eventNote(dict, e)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                );
+              })()}
             </div>
           )}
         </>

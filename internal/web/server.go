@@ -37,6 +37,10 @@ type Config struct {
 	DB       *db.DB
 	Provider data.Provider
 	History  data.HistoryProvider
+	// Earnings backs the Calendar page's earnings-event indicators
+	// (/api/calendar). nil when FINNHUB_API_KEY isn't set — Calendar then
+	// simply shows no earnings dots, same optionality as CompanyNames.
+	Earnings data.EarningsProvider
 	Lang     i18n.Lang
 	// CompanyNames resolves TW tickers' Chinese short names for display
 	// (/api/company-names). nil when FINMIND_TOKEN isn't configured — the
@@ -69,6 +73,7 @@ type Server struct {
 	watchlistDB      watchlistWriter
 	quotes           quoteGetter
 	history          data.HistoryProvider
+	earnings         data.EarningsProvider
 	lang             i18n.Lang
 	companyNames     data.CompanyNameProvider
 	heatThresholdPct float64
@@ -84,6 +89,7 @@ func New(cfg Config) *Server {
 		watchlistDB:      cfg.DB,
 		quotes:           newQuoteCache(cfg.Provider),
 		history:          cfg.History,
+		earnings:         cfg.Earnings,
 		lang:             cfg.Lang,
 		companyNames:     cfg.CompanyNames,
 		heatThresholdPct: cfg.RiskHeatPct,

@@ -70,6 +70,10 @@ type dbReader interface {
 	GetAllTransactions() ([]db.Transaction, error)
 	GetDailySnapshotsForTickers(tickers []string, from, to string) ([]db.DailySnapshot, error)
 	GetWatchlist() ([]string, error)
+	// GetWatchlistByMarket backs calendar.go's earnings-event ticker set — a
+	// market-scoped watchlist, so a TW earnings dot doesn't get attributed to
+	// the US calendar view and vice versa.
+	GetWatchlistByMarket(m market.MarketID) ([]string, error)
 	GetLatestSnapshot(ticker string) (db.DailySnapshot, bool, error)
 	GetNetWorthOnOrBefore(date string, m market.MarketID) (float64, bool, error)
 	GetNetWorthRange(from, to string, m market.MarketID) ([]db.NetWorthPoint, error)

@@ -150,6 +150,17 @@ func (f fakeEarnings) GetUpcomingEarnings(tickers []string, days int) (map[strin
 	return out, nil
 }
 
+func (f fakeEarnings) GetEarningsInRange([]string, time.Time, time.Time) ([]data.EarningsEvent, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	events := make([]data.EarningsEvent, 0, len(f.events))
+	for _, e := range f.events {
+		events = append(events, e)
+	}
+	return events, nil
+}
+
 func TestLoadEarningsMergesUSAndTWSources(t *testing.T) {
 	b := &Bot{
 		earnings: fakeEarnings{events: map[string]data.EarningsEvent{

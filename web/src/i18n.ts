@@ -83,6 +83,14 @@ export interface Dictionary {
   longestWinStreak: string;
   longestLossStreak: string;
   noReportData: string;
+  reportsEdgeTitle: string;
+  reportsEdgeSubtitle: string;
+  reportsEdgeBothGood: string;
+  reportsEdgeWinRateOnly: string;
+  reportsEdgePayoffOnly: string;
+  reportsEdgeBothWeak: string;
+  payoffRatio: string;
+  groupBreakdown: string;
   months: [string, string, string, string, string, string, string, string, string, string, string, string];
   navRisk: string;
   portfolioHeat: string;
@@ -114,6 +122,40 @@ export interface Dictionary {
   hitRate: string;
   avgExcessReturn: string;
   noRecData: string;
+  // Recs hero (Task #6): signal-checkup narrative card (built from fragments
+  // since embedded numbers can't go through a plain dict lookup, same
+  // convention as CalendarView's eventNote), followed-vs-skipped comparison
+  // bars, excess-by-horizon chart, new stat labels, and source-value labels
+  // for the four real recPerfExtreme/recPerfActiveSignal source strings
+  // (watchlist/movers/scan/explore — there is no "news" source in the real
+  // system despite the mockup showing one).
+  recSignalCheckup: string;
+  recFollowedVsSkipped: string;
+  recFollowed: string;
+  recSkipped: string;
+  recExcessByHorizon: string;
+  recSignalHitRate: string;
+  recRandomBaseline: string;
+  recBestHoldingWindow: string;
+  recExcessReturnNote: string;
+  recInsufficientData: string;
+  recActiveSignals: string;
+  recIssuedTime: string;
+  recSource: string;
+  recSourceWatchlist: string;
+  recSourceMovers: string;
+  recSourceScan: string;
+  recSourceExplore: string;
+  recEntryPrice: string;
+  recDaysAgo: string;
+  recSinceSignal: string;
+  recNarrativePeakPrefix: string;
+  recNarrativePeakMid: string;
+  recNarrativePeakSuffix: string;
+  recNarrativeSkipBetterPrefix: string;
+  recNarrativeSkipBetterSuffix: string;
+  recNarrativeFollowBetterPrefix: string;
+  recNarrativeFollowBetterSuffix: string;
   thesisLabel: string;
   currentThesisNote: string;
   lessonsLabel: string;
@@ -176,6 +218,21 @@ export interface Dictionary {
   roundPicker: string;
   tradesInRound: string;
   allTrades: string;
+  // Calendar's earnings-event dots/legend/day-detail table (Task #9) — note
+  // text is built client-side from kind/hour/estimated (see api.ts's
+  // CalendarEvent), same "backend never sends display strings" rule.
+  eventsTitle: string;
+  eventType: string;
+  eventNote: string;
+  noEventsToday: string;
+  heldLegend: string;
+  eventKindEarnings: string;
+  eventHeld: string;
+  eventHourBmo: string;
+  eventHourAmc: string;
+  eventHourDmh: string;
+  eventHourUnknown: string;
+  eventEstimated: string;
 }
 
 const en: Dictionary = {
@@ -251,6 +308,14 @@ const en: Dictionary = {
   longestWinStreak: "Longest Win Streak",
   longestLossStreak: "Longest Loss Streak",
   noReportData: "No closed trades yet.",
+  reportsEdgeTitle: "Performance Checkup",
+  reportsEdgeSubtitle: "Avg Win vs Avg Loss",
+  reportsEdgeBothGood: "Win rate and payoff both favor you — you win more often, and each win is bigger than each loss.",
+  reportsEdgeWinRateOnly: "Win rate favors you, but losses are eating the gains — cut losses earlier.",
+  reportsEdgePayoffOnly: "Most trades lose, but wins are much bigger than losses — a handful of big winners is carrying the results.",
+  reportsEdgeBothWeak: "Neither win rate nor payoff favors you right now — exit discipline is the biggest gap.",
+  payoffRatio: "PAYOFF RATIO (WIN/LOSS)",
+  groupBreakdown: "Group Breakdown",
   months: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
   navRisk: "Risk",
   portfolioHeat: "PORTFOLIO HEAT",
@@ -282,6 +347,35 @@ const en: Dictionary = {
   hitRate: "Hit Rate",
   avgExcessReturn: "Avg Excess Return",
   noRecData: "No scorable recommendations yet.",
+  recSignalCheckup: "Signal Checkup",
+  recFollowedVsSkipped: "Followed vs Skipped",
+  recFollowed: "Followed",
+  recSkipped: "Skipped",
+  recExcessByHorizon: "Excess Return by Holding Days",
+  recSignalHitRate: "Signal Hit Rate",
+  recRandomBaseline: "Random baseline",
+  recBestHoldingWindow: "Best Holding Window",
+  recExcessReturnNote: "excess return",
+  recInsufficientData: "Insufficient data to score",
+  recActiveSignals: "Active Signals",
+  recIssuedTime: "Issued",
+  recSource: "Source",
+  recSourceWatchlist: "Watchlist",
+  recSourceMovers: "Movers",
+  recSourceScan: "Scan",
+  recSourceExplore: "LLM nomination",
+  recEntryPrice: "Entry Price",
+  recDaysAgo: "days ago",
+  recSinceSignal: "Since Signal",
+  recNarrativePeakPrefix: "Signal peaks on trading day ",
+  recNarrativePeakMid: " (beats market by ",
+  recNarrativePeakSuffix: ").",
+  recNarrativeSkipBetterPrefix: "Signals you skipped earned ",
+  recNarrativeSkipBetterSuffix:
+    " more than the ones you followed — your extra filtering is costing you.",
+  recNarrativeFollowBetterPrefix: "Signals you followed earned ",
+  recNarrativeFollowBetterSuffix:
+    " more than the ones you skipped — your filtering is working.",
   thesisLabel: "THESIS",
   currentThesisNote: "current thesis on record — may have changed since this round closed",
   lessonsLabel: "TRADE LESSONS",
@@ -336,6 +430,18 @@ const en: Dictionary = {
   roundPicker: "Select Round",
   tradesInRound: "Trades in Round",
   allTrades: "All Trades",
+  eventsTitle: "EVENTS",
+  eventType: "Type",
+  eventNote: "Detail",
+  noEventsToday: "No events this day.",
+  heldLegend: "ring = position held",
+  eventKindEarnings: "Earnings",
+  eventHeld: "HELD",
+  eventHourBmo: "before open",
+  eventHourAmc: "after close",
+  eventHourDmh: "during hours",
+  eventHourUnknown: "time TBD",
+  eventEstimated: "estimated",
 };
 
 const zh: Dictionary = {
@@ -411,6 +517,14 @@ const zh: Dictionary = {
   longestWinStreak: "最長連勝",
   longestLossStreak: "最長連敗",
   noReportData: "尚無已平倉交易。",
+  reportsEdgeTitle: "績效體檢",
+  reportsEdgeSubtitle: "平均獲利 VS 平均虧損",
+  reportsEdgeBothGood: "勝率與賠率同時站在你這邊——獲利筆數多、單筆也賺得比虧得多。",
+  reportsEdgeWinRateOnly: "勝率站在你這邊，但單筆虧損吃掉了獲利——出場停損應該再更早一點。",
+  reportsEdgePayoffOnly: "多數交易是虧損的，但獲利單筆遠大於虧損單筆——目前績效靠少數大賺撐住。",
+  reportsEdgeBothWeak: "勝率與賠率目前都不利——出場紀律是最大的漏洞。",
+  payoffRatio: "賠率（獲利/虧損）",
+  groupBreakdown: "分組拆解",
   months: ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"],
   navRisk: "風險",
   portfolioHeat: "PORTFOLIO HEAT",
@@ -442,6 +556,33 @@ const zh: Dictionary = {
   hitRate: "命中率",
   avgExcessReturn: "平均超額報酬",
   noRecData: "尚無可評分的推薦紀錄。",
+  recSignalCheckup: "訊號體檢",
+  recFollowedVsSkipped: "跟進 VS 略過",
+  recFollowed: "有跟進",
+  recSkipped: "略過",
+  recExcessByHorizon: "超額報酬隨持有天數變化",
+  recSignalHitRate: "訊號命中率",
+  recRandomBaseline: "隨機基準",
+  recBestHoldingWindow: "最佳持有視窗",
+  recExcessReturnNote: "超額報酬",
+  recInsufficientData: "資料不足無法評分",
+  recActiveSignals: "目前有效訊號",
+  recIssuedTime: "發出時間",
+  recSource: "來源",
+  recSourceWatchlist: "追蹤清單",
+  recSourceMovers: "漲跌幅榜",
+  recSourceScan: "選股條件",
+  recSourceExplore: "LLM 提名",
+  recEntryPrice: "進場價",
+  recDaysAgo: "天前",
+  recSinceSignal: "訊號後至今",
+  recNarrativePeakPrefix: "訊號在第 ",
+  recNarrativePeakMid: " 個交易日達到最佳（超越大盤 ",
+  recNarrativePeakSuffix: "）。",
+  recNarrativeSkipBetterPrefix: "你略過的訊號比你實際跟進的多賺 ",
+  recNarrativeSkipBetterSuffix: " ——你額外加的篩選反而在扣分。",
+  recNarrativeFollowBetterPrefix: "你跟進的訊號比你略過的多賺 ",
+  recNarrativeFollowBetterSuffix: " ——你的篩選確實有效。",
   thesisLabel: "持有論點",
   currentThesisNote: "目前記錄的論點——回合平倉後論點可能已改寫",
   lessonsLabel: "交易教訓",
@@ -496,6 +637,18 @@ const zh: Dictionary = {
   roundPicker: "選擇回合",
   tradesInRound: "回合內交易記錄",
   allTrades: "所有交易",
+  eventsTitle: "重大事件",
+  eventType: "類型",
+  eventNote: "說明",
+  noEventsToday: "當天沒有重大事件。",
+  heldLegend: "外圈＝持倉標的",
+  eventKindEarnings: "財報",
+  eventHeld: "持倉中",
+  eventHourBmo: "盤前公布",
+  eventHourAmc: "盤後公布",
+  eventHourDmh: "盤中公布",
+  eventHourUnknown: "時間未定",
+  eventEstimated: "推估",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

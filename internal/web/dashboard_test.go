@@ -51,6 +51,9 @@ func (f *fakeDB) GetDailySnapshotsForTickers(tickers []string, from, to string) 
 	return f.snapshots, f.snapshotsErr
 }
 func (f *fakeDB) GetWatchlist() ([]string, error) { return f.watchlist, nil }
+func (f *fakeDB) GetWatchlistByMarket(m market.MarketID) ([]string, error) {
+	return filterByMarket(f.watchlist, m), nil
+}
 func (f *fakeDB) GetLatestSnapshot(ticker string) (db.DailySnapshot, bool, error) {
 	switch ticker {
 	case spyTicker:

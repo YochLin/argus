@@ -448,46 +448,63 @@ a {
   margin-top: 8px;
 }
 
-.kpi-hero {
-  grid-column: 1;
-  grid-row: span 3;
-  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
-  box-shadow: var(--card-glow-shadow);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
-.kpi-hero-value {
+.dash-kpi-strip {
+  display: flex;
+  flex-wrap: wrap;
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
+  border-radius: 12px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.dash-kpi-strip-item {
+  flex: 1 1 130px;
+  padding: 10px 14px;
+  border-right: 1px solid var(--border);
+  min-width: 0;
+}
+
+.dash-kpi-strip-label {
   font-family: var(--font-mono);
-  font-size: 52px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-  margin: 12px 0 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.kpi-hero-sub {
-  display: flex;
-  gap: 20px;
-  align-items: center;
-  color: var(--ink-2);
-  font-size: 13px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
-  margin-top: auto;
+.dash-kpi-strip-value {
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  margin-top: 3px;
+}
+
+.distributions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.distributions-grid .span-2 {
+  grid-column: 1 / -1;
 }
 
 @media (max-width: 640px) {
   .kpi-grid {
     grid-template-columns: 1fr;
   }
-  .kpi-hero {
-    grid-column: 1;
-    grid-row: span 1;
-  }
-  .kpi-hero-value {
-    font-size: 36px;
+  .distributions-grid {
+    grid-template-columns: 1fr;
   }
   .detail-grid-2col {
     grid-template-columns: 1fr;
@@ -1034,6 +1051,82 @@ th {
   margin-bottom: 16px;
 }
 
+.day-events-title {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.calendar-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.calendar-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+
+.calendar-legend-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.calendar-legend-held {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.cal-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  width: 100%;
+}
+
+.cal-event-dots {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.cal-event-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.cal-event-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid;
+  border-radius: 3px;
+  padding: 1px 6px;
+}
+
+.cal-held-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  border: 1px solid var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-left: 6px;
+}
+
 .round-row {
   cursor: pointer;
 }
@@ -1089,6 +1182,154 @@ th {
 /* Phase 5 PR4's report page (docs/phase-5-web-dashboard.md §A1/A2/A5). */
 .report-section {
   margin-bottom: 16px;
+}
+
+/* Reports page hero row: a narrative "edge checkup" card (win/loss
+   magnitude bars) beside a compact win-rate/payoff/profit-factor/
+   expectancy/best-worst stat grid — mirrors the design mockup's Reports
+   hero, replacing the old plain stat-grid of the same numbers. */
+.reports-hero {
+  margin-bottom: 16px;
+}
+
+.edge-narrative {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+.edge-bars {
+  margin-top: 20px;
+}
+
+.edge-bars-title {
+  margin-bottom: 10px;
+}
+
+.edge-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.edge-bar-label {
+  flex: 0 0 64px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.edge-bar-track {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.edge-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+}
+
+.edge-bar-fill.profit {
+  background: var(--profit);
+}
+
+.edge-bar-fill.loss {
+  background: var(--loss);
+}
+
+.edge-bar-value {
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  text-align: right;
+}
+
+.quality-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px 16px;
+}
+
+.group-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.group-tab-btn {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 14px;
+  cursor: pointer;
+}
+
+.group-tab-btn.active {
+  color: var(--ink);
+  background: var(--surface-2);
+  border-color: var(--accent);
+}
+
+.winrate-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.winrate-bar-track {
+  width: 60px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.winrate-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.pnl-bar-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.pnl-bar-track {
+  width: 80px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.pnl-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+.pnl-bar-fill.profit {
+  background: var(--profit);
+}
+
+.pnl-bar-fill.loss {
+  background: var(--loss);
+}
+
+@media (max-width: 640px) {
+  .quality-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .low-sample-row {
@@ -1453,4 +1694,75 @@ th {
   .dash-charts-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Recs hero (Task #6): followed/skipped comparison bars, excess-by-horizon
+   vertical chart, heatmap matrix cells, active-signals table. */
+.edge-bar-fill.followed {
+  background: var(--accent);
+}
+
+.edge-bar-fill.skipped {
+  background: var(--ink-3);
+}
+
+.horizon-chart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  height: 140px;
+  margin-top: 20px;
+}
+
+.horizon-bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1;
+  height: 100%;
+}
+
+.horizon-bar-value {
+  font-size: 12.5px;
+  margin-bottom: 6px;
+}
+
+.horizon-bar {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  min-height: 4px;
+}
+
+.horizon-bar-label {
+  font-size: 11.5px;
+  color: var(--ink-2);
+  margin-top: 8px;
+}
+
+.horizon-bar-n {
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.heat-cell {
+  border-radius: 8px;
+  padding: 10px 8px;
+  text-align: center;
+}
+
+.heat-cell-value {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.heat-cell-n {
+  font-size: 11px;
+  color: var(--ink-2);
+  margin-top: 2px;
+}
+
+.rec-source-cell {
+  color: var(--ink-2);
 }

@@ -273,6 +273,9 @@ function getMockData(urlStr: string): any {
   if (path === "/api/reports") {
     const mult = market === "tw" ? 30 : 1;
     return {
+      winRate: market === "tw" ? 0.72 : 0.68,
+      profitFactor: market === "tw" ? 2.6 : 2.35,
+      expectancy: 1850 * mult,
       byTicker: [
         { key: market === "tw" ? "2330" : "NVDA", n: 5, winRate: 0.8, profitFactor: 3.2, avgReturnPct: 8.5, totalRealizedPnL: 4820 * mult, avgHoldingDays: 22, lowSample: false },
         { key: market === "tw" ? "2454" : "AAPL", n: 4, winRate: 0.75, profitFactor: 2.5, avgReturnPct: 5.2, totalRealizedPnL: 2450 * mult, avgHoldingDays: 15, lowSample: false },
@@ -313,14 +316,106 @@ function getMockData(urlStr: string): any {
     };
   }
   if (path === "/api/rec-performance") {
+    const tickers = market === "tw" ? ["2330", "2454", "2317", "2412", "3008"] : ["NVDA", "AAPL", "MSFT", "AMD", "TSLA"];
+    const cells = (n: number, hitRatePct: number, avgReturnPct: number, avgExcessPct: number, lowSample = false) => [
+      { horizon: 1, n, hitRatePct: hitRatePct - 8, avgReturnPct: avgReturnPct * 0.15, avgExcessPct: avgExcessPct * 0.15, lowSample },
+      { horizon: 5, n, hitRatePct, avgReturnPct: avgReturnPct * 0.4, avgExcessPct: avgExcessPct * 0.4, lowSample },
+      { horizon: 10, n, hitRatePct: hitRatePct - 3, avgReturnPct: avgReturnPct * 0.7, avgExcessPct: avgExcessPct * 0.7, lowSample },
+      { horizon: 20, n, hitRatePct: hitRatePct - 6, avgReturnPct, avgExcessPct, lowSample },
+    ];
+    const mkSignal = (t: string, action: string, src: string, entryDate: string, entryPrice: number, daysHeld: number, excess: number) => ({
+      ticker: t, action, source: src, entryDate, entryPrice, daysHeld, excessReturnPct: excess,
+    });
     return {
       counts: { total: 312, scorable: 248, unscorable: 31, hold: 33 },
-      horizons: [5, 10, 20],
-      bySource: [],
-      byAction: [],
-      best: [],
-      worst: [],
+      horizons: [1, 5, 10, 20],
+      byAction: [
+        { key: "BUY", cells: cells(142, 61.5, 6.8, 3.2) },
+        { key: "SELL", cells: cells(58, 55.2, -4.1, -1.6) },
+      ],
+      bySource: [
+        { key: "watchlist", cells: cells(96, 64.1, 7.5, 3.9) },
+        { key: "movers", cells: cells(74, 58.8, 5.2, 2.1) },
+        { key: "scan", cells: cells(30, 50.0, 3.4, 0.8, true) },
+      ],
+      best: tickers.map((ticker, i) => ({
+        ticker,
+        date: `2026-0${(i % 6) + 1}-${10 + i * 3}`,
+        source: ["watchlist", "movers", "scan", "watchlist", "movers"][i % 5],
+        action: "BUY",
+        entryPrice: 120 + i * 45,
+        excessReturnPct: 18.4 - i * 2.6,
+      })),
+      worst: tickers.map((ticker, i) => ({
+        ticker,
+        date: `2026-0${(i % 6) + 1}-${8 + i * 3}`,
+        source: ["scan", "watchlist", "movers", "scan", "watchlist"][i % 5],
+        action: i % 2 === 0 ? "SELL" : "BUY",
+        entryPrice: 95 + i * 38,
+        excessReturnPct: -6.2 - i * 2.1,
+      })),
+      overall: [
+        { horizon: 1, n: 248, hitRatePct: 54.2, avgReturnPct: 0.2, avgExcessPct: 0.3, lowSample: false },
+        { horizon: 5, n: 248, hitRatePct: 58.1, avgReturnPct: 1.0, avgExcessPct: 1.2, lowSample: false },
+        { horizon: 10, n: 240, hitRatePct: 61.4, avgReturnPct: 1.8, avgExcessPct: 2.1, lowSample: false },
+        { horizon: 20, n: 210, hitRatePct: 57.8, avgReturnPct: 2.2, avgExcessPct: 2.6, lowSample: false },
+      ],
+      bestHorizon: 10,
+      actedVsSkipped: [
+        {
+          key: "acted",
+          cells: [
+            { horizon: 1, n: 210, hitRatePct: 55.0, avgReturnPct: 0.3, avgExcessPct: 0.4, lowSample: false },
+            { horizon: 5, n: 210, hitRatePct: 59.5, avgReturnPct: 1.1, avgExcessPct: 1.4, lowSample: false },
+            { horizon: 10, n: 205, hitRatePct: 62.8, avgReturnPct: 2.0, avgExcessPct: 2.3, lowSample: false },
+            { horizon: 20, n: 180, hitRatePct: 58.9, avgReturnPct: 2.5, avgExcessPct: 2.9, lowSample: false },
+          ],
+        },
+        {
+          key: "skipped",
+          cells: [
+            { horizon: 1, n: 33, hitRatePct: 49.1, avgReturnPct: -0.1, avgExcessPct: -0.2, lowSample: true },
+            { horizon: 5, n: 33, hitRatePct: 47.6, avgReturnPct: -0.4, avgExcessPct: -0.6, lowSample: true },
+            { horizon: 10, n: 32, hitRatePct: 50.0, avgReturnPct: -0.05, avgExcessPct: -0.1, lowSample: true },
+            { horizon: 20, n: 28, hitRatePct: 46.4, avgReturnPct: -0.3, avgExcessPct: -0.5, lowSample: true },
+          ],
+        },
+      ],
+      activeSignals:
+        market === "tw"
+          ? [mkSignal("2330", "BUY", "watchlist", "2026-07-20", 1010, 8, 1.8), mkSignal("2317", "BUY", "scan", "2026-07-25", 198, 3, 0.6)]
+          : [mkSignal("NVDA", "BUY", "watchlist", "2026-07-20", 138.5, 8, 2.1), mkSignal("AMD", "SELL", "scan", "2026-07-25", 156.2, 3, -0.4)],
     };
+  }
+  if (path === "/api/calendar") {
+    const month = parsed.searchParams.get("month") || "2026-07";
+    const [y, m] = month.split("-").map(Number);
+    const days = new Date(y, m, 0).getDate();
+    const mult = market === "tw" ? 30 : 1;
+    const dayValues: { date: string; value: number }[] = [];
+    for (let d = 1; d <= days; d++) {
+      const w = new Date(y, m - 1, d).getDay();
+      if (w === 0 || w === 6) continue;
+      if (Math.random() < 0.55) continue;
+      dayValues.push({ date: `${month}-${String(d).padStart(2, "0")}`, value: Math.round((Math.random() - 0.4) * 800 * mult) });
+    }
+    const tickers = market === "tw" ? ["2330", "2454", "0050"] : ["NVDA", "AAPL", "MSFT"];
+    const held = market === "tw" ? ["2330"] : ["NVDA"];
+    const transactions = dayValues.slice(0, 3).map((dv, i) => ({
+      date: dv.date, ticker: tickers[i % tickers.length], side: i % 2 === 0 ? "SELL" : "BUY",
+      shares: 10 * mult, price: 100 * mult, fee: 1 * mult, realizedPnL: dv.value,
+    }));
+    const events = [7, 15, 22]
+      .filter((d) => d <= days)
+      .map((d, i) => {
+        const t = tickers[i % tickers.length];
+        return {
+          date: `${month}-${String(d).padStart(2, "0")}`, ticker: t, kind: "earnings",
+          hour: market === "tw" ? "" : (i % 2 === 0 ? "amc" : "bmo"), estimated: market === "tw",
+          held: held.includes(t),
+        };
+      });
+    return { month, days: dayValues, transactions, events };
   }
   if (path === "/api/login") {
     return { ok: true };

@@ -51,9 +51,9 @@ func TestBuildRecPerformance(t *testing.T) {
 	if len(us.ByAction) != 1 || us.ByAction[0].Key != "BUY" {
 		t.Fatalf("ByAction = %+v, want one BUY group", us.ByAction)
 	}
-	cell5 := us.ByAction[0].Cells[0]
-	if cell5.Horizon != 5 || cell5.N != 1 || cell5.HitRatePct != 100 {
-		t.Errorf("ByAction[BUY].Cells[0] = %+v, want horizon 5 / n 1 / hitRate 100 (AAPL outpaced SPY)", cell5)
+	cell1 := us.ByAction[0].Cells[0]
+	if cell1.Horizon != 1 || cell1.N != 1 || cell1.HitRatePct != 100 {
+		t.Errorf("ByAction[BUY].Cells[0] = %+v, want horizon 1 / n 1 / hitRate 100 (AAPL outpaced SPY)", cell1)
 	}
 	if len(us.Best) != 1 || us.Best[0].Ticker != "AAPL" {
 		t.Errorf("Best = %+v, want one AAPL entry", us.Best)

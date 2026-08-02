@@ -84,6 +84,14 @@ func (f *fakeEarnings) GetUpcomingEarnings([]string, int) (map[string]data.Earni
 	return f.events, f.err
 }
 
+func (f *fakeEarnings) GetEarningsInRange([]string, time.Time, time.Time) ([]data.EarningsEvent, error) {
+	events := make([]data.EarningsEvent, 0, len(f.events))
+	for _, e := range f.events {
+		events = append(events, e)
+	}
+	return events, f.err
+}
+
 // connectTool builds a server with the given toolset and connects an
 // in-memory client to it, mirroring the SDK's own example test pattern
 // (mcp.NewInMemoryTransports) rather than going through stdio.

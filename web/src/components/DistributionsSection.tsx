@@ -35,7 +35,7 @@ export function DistributionsSection({ dict, market }: Props) {
   }
 
   return (
-    <>
+    <div className="distributions-grid">
       {(dist.rMultiples.length > 0 || dist.noStopCount > 0) && (
         <div className="card report-section">
           <div className="eyebrow">{dict.rMultipleHistogram}</div>
@@ -65,7 +65,7 @@ export function DistributionsSection({ dict, market }: Props) {
       )}
 
       {(dist.maeReturns.length > 0 || dist.skippedMaeCount > 0) && (
-        <div className="card report-section">
+        <div className="card report-section span-2">
           <div className="eyebrow">{dict.maeReturnScatter}</div>
           {dist.maeReturns.length > 0 && (
             <ScatterChart
@@ -82,6 +82,6 @@ export function DistributionsSection({ dict, market }: Props) {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

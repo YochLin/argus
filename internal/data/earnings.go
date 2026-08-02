@@ -23,6 +23,10 @@ type EarningsProvider interface {
 	// by ticker. A ticker with nothing scheduled in that window is simply
 	// absent from the result rather than an error.
 	GetUpcomingEarnings(tickers []string, days int) (map[string]EarningsEvent, error)
+	// GetEarningsInRange is GetUpcomingEarnings generalized to an arbitrary
+	// [from, to] range — backs the web dashboard's Calendar view (see its own
+	// doc comment below).
+	GetEarningsInRange(tickers []string, from, to time.Time) ([]EarningsEvent, error)
 }
 
 type finnhubEarningsEvent struct {
@@ -40,18 +44,50 @@ func (f *Finnhub) GetUpcomingEarnings(tickers []string, days int) (map[string]Ea
 	if len(tickers) == 0 {
 		return nil, nil
 	}
+	from := time.Now()
+	to := from.AddDate(0, 0, days)
+	events, err := f.GetEarningsInRange(tickers, from, to)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]EarningsEvent, len(events))
+	for _, e := range events {
+		if existing, ok := out[e.Ticker]; ok && existing.Date <= e.Date {
+			continue
+		}
+		out[e.Ticker] = e
+	}
+	return out, nil
+}
 
-	from := time.Now().Format("2006-01-02")
-	to := time.Now().AddDate(0, 0, days).Format("2006-01-02")
+// GetEarningsInRange is GetUpcomingEarnings generalized to an arbitrary
+// [from, to] range (Finnhub's underlying endpoint already accepts one) and
+// returning every matching event rather than deduping to one-per-ticker —
+// the web dashboard's Calendar view needs this for browsing a past or future
+// month directly, not just "the next N days from now".
+func (f *Finnhub) GetEarningsInRange(tickers []string, from, to time.Time) ([]EarningsEvent, error) {
+	if len(tickers) == 0 {
+		return nil, nil
+	}
+	want := make(map[string]bool, len(tickers))
+	for _, t := range tickers {
+		want[t] = true
+	}
 
 	var result struct {
 		EarningsCalendar []finnhubEarningsEvent `json:"earningsCalendar"`
 	}
-	path := fmt.Sprintf("/calendar/earnings?from=%s&to=%s", from, to)
+	path := fmt.Sprintf("/calendar/earnings?from=%s&to=%s", from.Format("2006-01-02"), to.Format("2006-01-02"))
 	if err := f.get(path, &result); err != nil {
 		return nil, err
 	}
-	return filterEarningsCalendar(tickers, result.EarningsCalendar), nil
+	var out []EarningsEvent
+	for _, e := range result.EarningsCalendar {
+		if want[e.Symbol] {
+			out = append(out, EarningsEvent{Ticker: e.Symbol, Date: e.Date, Hour: e.Hour})
+		}
+	}
+	return out, nil
 }
 
 // filterEarningsCalendar narrows Finnhub's whole-market earnings calendar

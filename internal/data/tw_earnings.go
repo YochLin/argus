@@ -1,6 +1,7 @@
 package data
 
 import (
+	"sort"
 	"time"
 
 	"argus/internal/market"
@@ -56,42 +57,78 @@ func GetTWUpcomingEarnings(tickers []string, days int, now time.Time) map[string
 	return out
 }
 
-// nextTWDisclosureDeadline finds the soonest of the fixed quarterly/annual
-// deadlines and the recurring monthly-revenue deadline (10th of every
-// month) that falls within [now, now+days]. Scans this year and next so a
-// deadline early in the following January is still found from a December
-// now, and 15 months of monthly-revenue dates so an unusually large days
-// window still finds one. now is truncated to its own date at midnight
-// first — same date-only comparison bot.daysUntil already uses — so a
-// deadline falling on today itself isn't excluded just because "now"
-// carries a later time-of-day.
-func nextTWDisclosureDeadline(now time.Time, days int) (time.Time, bool) {
-	now = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	from := now
-	to := now.AddDate(0, 0, days)
-
-	var candidates []time.Time
-	for _, y := range []int{now.Year(), now.Year() + 1} {
-		for _, d := range twQuarterlyDeadlines {
-			candidates = append(candidates, time.Date(y, time.Month(d.month), d.day, 0, 0, 0, 0, now.Location()))
+// GetTWEarningsInRange is GetTWUpcomingEarnings generalized to an arbitrary
+// [from, to] range, returning every statutory deadline in range rather than
+// just the soonest one — the web dashboard's Calendar view needs this to
+// browse a past or future month directly, and a single month can contain
+// more than one deadline (e.g. the 8/14 Q2 deadline and the 8/10
+// monthly-revenue deadline both fall in August).
+func GetTWEarningsInRange(tickers []string, from, to time.Time) []EarningsEvent {
+	var twTickers []string
+	for _, t := range tickers {
+		if market.Of(t) == market.TW {
+			twTickers = append(twTickers, t)
 		}
 	}
-	cur := time.Date(now.Year(), now.Month(), 10, 0, 0, 0, 0, now.Location())
+	if len(twTickers) == 0 {
+		return nil
+	}
+
+	deadlines := twDisclosureDeadlinesInRange(from, to)
+	if len(deadlines) == 0 {
+		return nil
+	}
+
+	out := make([]EarningsEvent, 0, len(twTickers)*len(deadlines))
+	for _, d := range deadlines {
+		dateStr := d.Format("2006-01-02")
+		for _, t := range twTickers {
+			out = append(out, EarningsEvent{Ticker: t, Date: dateStr, Estimated: true})
+		}
+	}
+	return out
+}
+
+// nextTWDisclosureDeadline finds the soonest of the fixed quarterly/annual
+// deadlines and the recurring monthly-revenue deadline (10th of every
+// month) that falls within [now, now+days]. now is truncated to its own
+// date at midnight first — same date-only comparison bot.daysUntil already
+// uses — so a deadline falling on today itself isn't excluded just because
+// "now" carries a later time-of-day.
+func nextTWDisclosureDeadline(now time.Time, days int) (time.Time, bool) {
+	now = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	deadlines := twDisclosureDeadlinesInRange(now, now.AddDate(0, 0, days))
+	if len(deadlines) == 0 {
+		return time.Time{}, false
+	}
+	return deadlines[0], true
+}
+
+// twDisclosureDeadlinesInRange returns every statutory deadline (quarterly/
+// annual report plus monthly revenue) falling within [from, to], sorted
+// ascending. Scans this year and next so a deadline early in the following
+// January is still found from a December `from`, and 15 months of
+// monthly-revenue dates so an unusually wide range still finds every one.
+func twDisclosureDeadlinesInRange(from, to time.Time) []time.Time {
+	var candidates []time.Time
+	for _, y := range []int{from.Year(), from.Year() + 1} {
+		for _, d := range twQuarterlyDeadlines {
+			candidates = append(candidates, time.Date(y, time.Month(d.month), d.day, 0, 0, 0, 0, from.Location()))
+		}
+	}
+	cur := time.Date(from.Year(), from.Month(), 10, 0, 0, 0, 0, from.Location())
 	for i := 0; i < 15; i++ {
 		candidates = append(candidates, cur)
 		cur = cur.AddDate(0, 1, 0)
 	}
 
-	var best time.Time
-	found := false
+	var out []time.Time
 	for _, c := range candidates {
 		if c.Before(from) || c.After(to) {
 			continue
 		}
-		if !found || c.Before(best) {
-			best = c
-			found = true
-		}
+		out = append(out, c)
 	}
-	return best, found
+	sort.Slice(out, func(i, j int) bool { return out[i].Before(out[j]) })
+	return out
 }

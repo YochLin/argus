@@ -11,11 +11,13 @@ import (
 	"argus/internal/receval"
 )
 
-// recPerfHorizons mirrors argus eval's own default -horizons ("5,20,60") so
-// the /recs page's numbers are directly comparable to a CLI report run
-// against the same database (docs/phase-8-trader-analytics.md §5.2 — same
-// receval functions, same windows, not a second scoring implementation).
-var recPerfHorizons = []int{5, 20, 60}
+// recPerfHorizons widens argus eval's own default -horizons ("5,20,60") to
+// also include a 1-day window, matching the web dashboard's day-by-day
+// excess-return bar chart (docs/phase-8-trader-analytics.md §5.2 — same
+// receval functions, same windows, not a second scoring implementation). The
+// 1-day horizon also doubles as the "still open" test for the active-signals
+// list below: a rec's shortest window is the first to mature.
+var recPerfHorizons = []int{1, 5, 10, 20}
 
 // recPerfExtremeCount mirrors argus eval's own hardcoded best/worst-5.
 const recPerfExtremeCount = 5
@@ -97,6 +99,7 @@ type recPerfExtreme struct {
 	Ticker          string  `json:"ticker"`
 	Date            string  `json:"date"`
 	Action          string  `json:"action"`
+	Source          string  `json:"source"`
 	EntryPrice      float64 `json:"entryPrice"`
 	ExcessReturnPct float64 `json:"excessReturnPct"`
 }
@@ -112,6 +115,21 @@ type recPerfCounts struct {
 	Unscorable int `json:"unscorable"`
 }
 
+// recPerfActiveSignal is one still-open (unmatured shortest-horizon window)
+// BUY/SELL recommendation, with its excess return recomputed entry-to-today
+// rather than entry-to-a-fixed-horizon — the only field that needs fresh
+// math here, since EntryDate/EntryPrice/Action already come straight off the
+// ScoredRec receval.Score already produced.
+type recPerfActiveSignal struct {
+	Ticker          string  `json:"ticker"`
+	Action          string  `json:"action"`
+	Source          string  `json:"source"`
+	EntryDate       string  `json:"entryDate"`
+	EntryPrice      float64 `json:"entryPrice"`
+	DaysHeld        int     `json:"daysHeld"`
+	ExcessReturnPct float64 `json:"excessReturnPct"`
+}
+
 type recPerformanceResponse struct {
 	Counts   recPerfCounts    `json:"counts"`
 	Horizons []int            `json:"horizons"`
@@ -119,6 +137,21 @@ type recPerformanceResponse struct {
 	ByAction []recPerfGroup   `json:"byAction"`
 	Best     []recPerfExtreme `json:"best"`
 	Worst    []recPerfExtreme `json:"worst"`
+
+	// Overall is the ungrouped hit-rate/return breakdown across every scored
+	// BUY/SELL rec, one cell per horizon — the hero row's top-line stat.
+	Overall []recPerfStatsCell `json:"overall"`
+	// BestHorizon is the horizon (from recPerfHorizons) with the highest
+	// HitRatePct in Overall — ties resolve to the shortest horizon, since
+	// recPerfHorizons is scanned in ascending order.
+	BestHorizon int `json:"bestHorizon"`
+
+	// ActedVsSkipped compares acted-on recs (BUY+SELL, key "acted") against
+	// HOLD calls (key "skipped") — did following the recommendation actually
+	// do better than sitting on it?
+	ActedVsSkipped []recPerfGroup `json:"actedVsSkipped"`
+
+	ActiveSignals []recPerfActiveSignal `json:"activeSignals"`
 }
 
 // buildRecPerformance assembles /api/rec-performance: the recommendations
@@ -138,7 +171,7 @@ func buildRecPerformance(database dbReader, history data.HistoryProvider, m mark
 	}
 
 	var total, holdCount int
-	var scorable []receval.Recommendation
+	var scorable, holds []receval.Recommendation
 	for _, r := range all {
 		if market.Of(r.Ticker) != m {
 			continue
@@ -146,6 +179,12 @@ func buildRecPerformance(database dbReader, history data.HistoryProvider, m mark
 		total++
 		if r.Action != "BUY" && r.Action != "SELL" {
 			holdCount++
+			if r.Action == "HOLD" {
+				holds = append(holds, receval.Recommendation{
+					Date: r.Date, Ticker: r.Ticker, Action: r.Action,
+					Price: r.Price, Source: r.Source, Market: r.Market,
+				})
+			}
 			continue
 		}
 		scorable = append(scorable, receval.Recommendation{
@@ -155,12 +194,15 @@ func buildRecPerformance(database dbReader, history data.HistoryProvider, m mark
 	}
 
 	resp := recPerformanceResponse{
-		Horizons: recPerfHorizons,
-		Counts:   recPerfCounts{Total: total, Hold: holdCount, Scorable: len(scorable)},
-		BySource: []recPerfGroup{},
-		ByAction: []recPerfGroup{},
-		Best:     []recPerfExtreme{},
-		Worst:    []recPerfExtreme{},
+		Horizons:       recPerfHorizons,
+		Counts:         recPerfCounts{Total: total, Hold: holdCount, Scorable: len(scorable)},
+		BySource:       []recPerfGroup{},
+		ByAction:       []recPerfGroup{},
+		Best:           []recPerfExtreme{},
+		Worst:          []recPerfExtreme{},
+		Overall:        []recPerfStatsCell{},
+		ActedVsSkipped: []recPerfGroup{},
+		ActiveSignals:  []recPerfActiveSignal{},
 	}
 	if len(scorable) == 0 {
 		return resp, nil
@@ -169,6 +211,9 @@ func buildRecPerformance(database dbReader, history data.HistoryProvider, m mark
 	benchTicker := benchmarkFor(m)
 	fetchSet := map[string]bool{benchTicker: true}
 	for _, r := range scorable {
+		fetchSet[r.Ticker] = true
+	}
+	for _, r := range holds {
 		fetchSet[r.Ticker] = true
 	}
 	candles := make(map[string][]data.Candle, len(fetchSet))
@@ -201,7 +246,91 @@ func buildRecPerformance(database dbReader, history data.HistoryProvider, m mark
 	resp.Best = recPerfExtremes(best, maxHorizon)
 	resp.Worst = recPerfExtremes(worst, maxHorizon)
 
+	overallGroups := recPerfGroups(receval.Aggregate(scored, func(receval.Recommendation) string { return "all" }))
+	if len(overallGroups) == 1 {
+		resp.Overall = overallGroups[0].Cells
+		resp.BestHorizon = bestHorizon(resp.Overall)
+	}
+
+	holdScored := make([]receval.ScoredRec, 0, len(holds))
+	for _, r := range holds {
+		holdScored = append(holdScored, receval.Score(r, candles[r.Ticker], candles[benchTicker], recPerfHorizons))
+	}
+	actedVsSkipped := receval.Aggregate(scored, func(receval.Recommendation) string { return "acted" })
+	for k, v := range receval.Aggregate(holdScored, func(receval.Recommendation) string { return "skipped" }) {
+		actedVsSkipped[k] = v
+	}
+	resp.ActedVsSkipped = recPerfGroups(actedVsSkipped)
+
+	resp.ActiveSignals = recPerfActiveSignals(scored, candles, benchTicker)
+
 	return resp, nil
+}
+
+// bestHorizon scans an Overall breakdown for the horizon with the highest
+// hit rate, preferring the shortest horizon on a tie (cells is already
+// ordered by ascending recPerfHorizons).
+func bestHorizon(cells []recPerfStatsCell) int {
+	var best recPerfStatsCell
+	for _, c := range cells {
+		if c.N > 0 && c.HitRatePct > best.HitRatePct {
+			best = c
+		}
+	}
+	return best.Horizon
+}
+
+// recPerfActiveSignals lists still-open BUY/SELL recs — those whose
+// shortest-horizon window (recPerfHorizons[0]) hasn't matured yet — with an
+// excess return recomputed entry-to-today instead of entry-to-horizon, using
+// only the candles already fetched for scoring (no extra data call).
+func recPerfActiveSignals(scored []receval.ScoredRec, candles map[string][]data.Candle, benchTicker string) []recPerfActiveSignal {
+	out := []recPerfActiveSignal{}
+	bench := candles[benchTicker]
+	for _, sr := range scored {
+		if sr.Unscorable || len(sr.Windows) == 0 || sr.Windows[0].Matured {
+			continue
+		}
+		ticker := candles[sr.Rec.Ticker]
+		entryIdx := candleIndexForDate(ticker, sr.EntryDate)
+		if entryIdx < 0 {
+			continue
+		}
+		lastIdx := len(ticker) - 1
+		tickerReturn := pctChangeLocal(sr.EntryPrice, ticker[lastIdx].Close)
+		excess := tickerReturn
+		if benchEntryIdx := candleIndexForDate(bench, sr.EntryDate); benchEntryIdx >= 0 {
+			if benchEntry := bench[benchEntryIdx].Close; benchEntry > 0 {
+				excess = tickerReturn - pctChangeLocal(benchEntry, bench[len(bench)-1].Close)
+			}
+		}
+		out = append(out, recPerfActiveSignal{
+			Ticker: sr.Rec.Ticker, Action: sr.Rec.Action, Source: receval.DisplaySource(sr.Rec.Source),
+			EntryDate: sr.EntryDate, EntryPrice: sr.EntryPrice,
+			DaysHeld:        lastIdx - entryIdx,
+			ExcessReturnPct: excess,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].EntryDate < out[j].EntryDate })
+	return out
+}
+
+// candleIndexForDate finds the candle matching date (YYYY-MM-DD) in an
+// oldest-first series, or -1 if absent.
+func candleIndexForDate(candles []data.Candle, date string) int {
+	for i, c := range candles {
+		if c.Date.Format("2006-01-02") == date {
+			return i
+		}
+	}
+	return -1
+}
+
+func pctChangeLocal(from, to float64) float64 {
+	if from == 0 {
+		return 0
+	}
+	return (to - from) / from * 100
 }
 
 // recPerfGroups converts receval.Aggregate's map[string]map[int]Stats into a
@@ -245,6 +374,7 @@ func recPerfExtremes(recs []receval.ScoredRec, horizon int) []recPerfExtreme {
 		}
 		out = append(out, recPerfExtreme{
 			Ticker: sr.Rec.Ticker, Date: sr.Rec.Date, Action: sr.Rec.Action,
+			Source:     receval.DisplaySource(sr.Rec.Source),
 			EntryPrice: sr.EntryPrice, ExcessReturnPct: excess,
 		})
 	}

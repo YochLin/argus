@@ -97,7 +97,7 @@ func sellReturnPct(t db.Transaction) (pct float64, ok bool) {
 type ReportGroup struct {
 	Key              string  `json:"key"`
 	N                int     `json:"n"`
-	WinRate          float64 `json:"winRate"`      // fraction 0-1, same convention as kpisResponse.WinRate
+	WinRate          float64 `json:"winRate"` // fraction 0-1, same convention as kpisResponse.WinRate
 	ProfitFactor     float64 `json:"profitFactor"`
 	AvgReturnPct     float64 `json:"avgReturnPct"` // already-scaled percent (12.3 means 12.3%)
 	TotalRealizedPnL float64 `json:"totalRealizedPnL"`
@@ -312,6 +312,9 @@ func buildStreakStats(sells []db.Transaction) StreakStats {
 // reportsResponse is /api/reports' body — see handlers.go for the JSON
 // contract this mirrors on the frontend.
 type reportsResponse struct {
+	WinRate        float64       `json:"winRate"` // fraction 0-1, same convention as ReportGroup.WinRate/kpisResponse.WinRate
+	ProfitFactor   float64       `json:"profitFactor"`
+	Expectancy     float64       `json:"expectancy"`
 	ByTicker       []ReportGroup `json:"byTicker"`
 	ByHoldingDays  []ReportGroup `json:"byHoldingDays"`
 	ByEntryMonth   []ReportGroup `json:"byEntryMonth"`
@@ -341,13 +344,17 @@ func buildReports(database dbReader, history data.HistoryProvider, m market.Mark
 		return reportsResponse{}, err
 	}
 
+	sells := FilterSells(txs)
 	resp := reportsResponse{
+		WinRate:        WinRate(sells),
+		ProfitFactor:   ProfitFactor(sells),
+		Expectancy:     Expectancy(sells),
 		ByTicker:       groupReport(records, func(r sellRecord) string { return r.Ticker }, nil),
 		ByHoldingDays:  groupReport(records, func(r sellRecord) string { return holdingDaysBucket(r.HoldingDays) }, holdingDaysBucketOrder),
 		ByEntryMonth:   groupReport(records, func(r sellRecord) string { return fmt.Sprintf("%02d", int(r.EntryMonth)) }, monthOrder),
 		ByEntryWeekday: groupReport(records, func(r sellRecord) string { return r.EntryWeekday.String() }, weekdayOrder),
 		Fees:           buildFeeSummary(txs),
-		Streaks:        buildStreakStats(FilterSells(txs)),
+		Streaks:        buildStreakStats(sells),
 	}
 	// byTicker is sorted by total realized P&L, most profitable first —
 	// unlike the other three dimensions there's no natural fixed order for
