@@ -202,8 +202,10 @@ func (b *Bot) RunDailyReport(ctx context.Context) {
 }
 
 // RunTWDailyReport is Phase 6 PR2's TW-market daily report entry point
-// (15:00 CST Mon-Fri, see docs/phase-6-tw-market.md §3.3/§5.1) — the TW
-// counterpart of RunDailyReport above.
+// (11:30 CST Mon-Fri, moved from an original 15:00 post-close slot — see
+// docs/tw-daily-report-schedule.md — to mirror RunDailyReport's intraday
+// analysis timing instead of a post-close recap) — the TW counterpart of
+// RunDailyReport above.
 func (b *Bot) RunTWDailyReport(ctx context.Context) {
 	b.runDailyReport(ctx, market.TW)
 }
@@ -225,7 +227,10 @@ const twMarketClosedStaleness = 12 * time.Hour
 // twMarketClosedStaleness. A quote-fetch failure is treated the same as
 // "closed" (fail safe: skip the report rather than risk running a full LLM
 // analysis with no way to tell whether today's data is fresh), logged for
-// visibility.
+// visibility. It compares the quote timestamp against now, not a fixed
+// anchor time, so it stays correct regardless of what hour RunTWDailyReport
+// fires at (11:30, moved from the original 15:00 — see
+// docs/tw-daily-report-schedule.md).
 func (b *Bot) isTWMarketClosed() bool {
 	q, err := b.provider.GetQuote(benchmarkFor(market.TW))
 	if err != nil {
@@ -238,7 +243,7 @@ func (b *Bot) isTWMarketClosed() bool {
 // runDailyReport fetches data, detects signals, generates LLM
 // recommendations, and sends the daily report for market m. Called by the
 // scheduler via RunDailyReport (US, 23:30 CST daily) and RunTWDailyReport
-// (TW, 15:00 CST Mon-Fri) — see docs/phase-6-tw-market.md §5.1 for the
+// (TW, 11:30 CST Mon-Fri) — see docs/phase-6-tw-market.md §5.1 for the
 // TW-specific behavior called out below.
 //
 // The US cron fires every day with no weekday/holiday restriction (unlike

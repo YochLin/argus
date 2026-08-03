@@ -100,32 +100,34 @@ func (s *Scheduler) AddUniverseScan(ctx context.Context, fn JobFunc) {
 	log.Println("scheduler: universe scan registered at 05:45 CST (Tue–Sat)")
 }
 
-// AddTWDailyReport schedules the TW-market daily report job at 15:00 CST,
-// Monday-Friday (Phase 6 PR2, see docs/phase-6-tw-market.md §3.3/§5.1) —
-// after AddTWClosingSnapshot (14:30) and AddTWUniverseScan (14:40), so a
-// same-day scan hit is available as a candidate before this runs, mirroring
-// the US snapshot->scan->report ordering. No DST/cross-zone arithmetic
-// needed the way AddDailyReport's US-session offset requires: Taipei and
-// Taiwan share the same fixed UTC+8 CST offset used throughout this
-// scheduler, and the TWSE/TPEx session closes at 13:30 Taipei time, so 15:00
-// leaves a comfortable margin past the close.
+// AddTWDailyReport schedules the TW-market daily report job at 11:30 CST,
+// Monday-Friday — moved from the original 15:00 post-close slot (Phase 6
+// PR2, see docs/phase-6-tw-market.md §3.3/§5.1) to mirror AddDailyReport's
+// US-session philosophy: an intraday snapshot of signals/LLM recommendations
+// taken while the market is open, not a post-close recap. 11:30 is ~2.5h
+// into the 9:00 TWSE/TPEx open, before the 13:30 close. Since this now runs
+// before that day's AddTWClosingSnapshot (14:30) and AddTWUniverseScan
+// (14:40), it picks up the previous trading day's scan_hits instead of a
+// same-day one — the same pipeline shape AddDailyReport already uses against
+// the prior evening's US universe scan, so no job reordering is needed.
 func (s *Scheduler) AddTWDailyReport(ctx context.Context, fn JobFunc) {
-	_, err := s.c.AddFunc("0 0 15 * * 1-5", func() {
+	_, err := s.c.AddFunc("0 30 11 * * 1-5", func() {
 		log.Println("scheduler: running TW daily report")
 		fn(ctx)
 	})
 	if err != nil {
 		log.Fatalf("scheduler: add TW daily report: %v", err)
 	}
-	log.Println("scheduler: TW daily report registered at 15:00 CST (Mon-Fri)")
+	log.Println("scheduler: TW daily report registered at 11:30 CST (Mon-Fri)")
 }
 
 // AddTWUniverseScan schedules Phase 6 PR2's TW-market universe scan at 14:40
 // CST, Monday-Friday — after AddTWClosingSnapshot (14:30) has updated
-// daily_snapshots for the day, and before AddTWDailyReport (15:00) so a
-// fresh scan_hits row is available for that same day's TW report to pick up,
-// mirroring AddUniverseScan's US-side ordering relative to AddClosingSnapshot
-// and AddDailyReport.
+// daily_snapshots for the day. Its scan_hits row is picked up by the next
+// trading day's 11:30 AddTWDailyReport rather than the same day's (that
+// report now runs before this scan, not after — see AddTWDailyReport),
+// mirroring how AddUniverseScan's overnight US scan feeds the next US
+// session's AddDailyReport.
 func (s *Scheduler) AddTWUniverseScan(ctx context.Context, fn JobFunc) {
 	_, err := s.c.AddFunc("0 40 14 * * 1-5", func() {
 		log.Println("scheduler: running TW universe scan")
