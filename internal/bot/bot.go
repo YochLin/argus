@@ -46,19 +46,26 @@ type Bot struct {
 	channel       Channel
 	db            *db.DB
 	provider      data.Provider
-	fundamentals  data.FundamentalsProvider        // nil if FINNHUB_API_KEY isn't set
-	analystRating data.AnalystRatingProvider       // nil if FINNHUB_API_KEY isn't set
-	insiderTx     data.InsiderTransactionProvider  // nil if FINNHUB_API_KEY isn't set
-	institutional data.InstitutionalFlowProvider   // TW's 三大法人 counterpart (TWSE T86), always non-nil — no API key required
-	earnings      data.EarningsProvider            // nil if FINNHUB_API_KEY isn't set
-	marketNews    data.MarketNewsProvider          // nil if FINNHUB_API_KEY isn't set
-	twMarketNews  data.MarketNewsProvider          // TW's marketNews counterpart (cnyes), always non-nil — no API key required
-	twMovers      data.TWMarketMoversProvider      // TW's GetMarketMovers counterpart (TWSE OpenAPI), always non-nil — no API key required
-	companyNames  data.CompanyNameProvider         // nil if FINMIND_TOKEN isn't set
+	fundamentals  data.FundamentalsProvider       // nil if FINNHUB_API_KEY isn't set
+	analystRating data.AnalystRatingProvider      // nil if FINNHUB_API_KEY isn't set
+	insiderTx     data.InsiderTransactionProvider // nil if FINNHUB_API_KEY isn't set
+	institutional data.InstitutionalFlowProvider  // TW's 三大法人 counterpart (TWSE T86), always non-nil — no API key required
+	earnings      data.EarningsProvider           // nil if FINNHUB_API_KEY isn't set
+	marketNews    data.MarketNewsProvider         // nil if FINNHUB_API_KEY isn't set
+	twMarketNews  data.MarketNewsProvider         // TW's marketNews counterpart (cnyes), always non-nil — no API key required
+	twMovers      data.TWMarketMoversProvider     // TW's GetMarketMovers counterpart (TWSE OpenAPI), always non-nil — no API key required
+	companyNames  data.CompanyNameProvider        // nil if FINMIND_TOKEN isn't set
 	history       data.HistoryProvider
 	llm           *llm.Client
 	detector      *signals.Detector
 	lang          i18n.Lang
+
+	// dataCache holds fundamentals/analyst-rating/insider-tx results, keyed
+	// by ticker (see slowDataCacheTTL in pipeline.go) — these change slowly
+	// enough that refetching them from Finnhub every single daily report
+	// wastes free-tier quota as the watchlist grows. Quote/news stay
+	// uncached since those need to be fresh every report.
+	dataCache *ttlCache
 
 	// stopLossPct/trailingStopPct (STOP_LOSS_PCT/TRAILING_STOP_PCT env,
 	// Phase 3.8) are positive percentage thresholds for RunDailyReport's
@@ -179,6 +186,7 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		trailingStopATRMult: cfg.TrailingStopATRMult,
 		riskPctPerTrade:     cfg.RiskPctPerTrade,
 		chatQueue:           make(chan string, 32),
+		dataCache:           newTTLCache(),
 		now:                 time.Now,
 	}
 }

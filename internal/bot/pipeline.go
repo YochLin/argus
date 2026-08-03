@@ -335,6 +335,21 @@ func capScanHitTickers(scanReasons map[string]string, max int) map[string]bool {
 // bring all of them" half; the cross-ticker "recent N, general" half is a
 // separate, prompt-wide GenerateRecommendations parameter, not attached
 // here. Pass nil for any of the five if there's nothing to attach.
+// slowDataCacheTTL bounds how often fundamentals/analyst-rating/insider-tx
+// are refetched per ticker (via b.dataCache) — these move over days, not
+// within a single day, so a report doesn't need a fresh Finnhub call for
+// them every run. Entries just expire and refetch on whatever day they age
+// out, no per-ticker staleness bookkeeping needed.
+// finnhubRequestDelay paces every real Finnhub-bound call this function
+// makes (quote/news always for a US ticker, fundamentals/analyst/insider on
+// a cache miss) so a large watchlist can't burst past Finnhub's free-tier
+// 60-requests/minute ceiling in the first few seconds of a report run — see
+// the "watchlist rate limit" discussion this addresses.
+const (
+	slowDataCacheTTL    = 4 * 24 * time.Hour
+	finnhubRequestDelay = 1100 * time.Millisecond
+)
+
 func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positions map[string]db.Position, earnings map[string]data.EarningsEvent, scanReasons map[string]string, prevRecs map[string]db.Recommendation, pastLessons map[string][]db.Lesson) []llm.StockData {
 	extraFundamentals := capScanHitTickers(scanReasons, maxScanHitFundamentals)
 
@@ -361,30 +376,36 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 
 	var result []llm.StockData
 	for _, t := range tickers {
+		if market.Of(t) == market.US {
+			time.Sleep(finnhubRequestDelay)
+		}
 		q, err := b.provider.GetQuote(t)
 		if err != nil {
 			log.Printf("quote %s: %v", t, err)
 			continue
 		}
+		if market.Of(t) == market.US {
+			time.Sleep(finnhubRequestDelay)
+		}
 		news, _ := b.provider.GetNews(t, 5)
 		stock := llm.StockData{Quote: q, News: news, CompanyName: b.companyName(t)}
 		fetchFundamentals := includeFundamentals || extraFundamentals[t]
 		if fetchFundamentals && b.fundamentals != nil {
-			if fd, err := b.fundamentals.GetFundamentals(t); err != nil {
+			if fd, err := b.cachedFundamentals(t); err != nil {
 				log.Printf("fundamentals %s: %v", t, err)
 			} else {
 				stock.Fundamentals = fd
 			}
 		}
 		if fetchFundamentals && b.analystRating != nil {
-			if ar, err := b.analystRating.GetAnalystRating(t); err != nil {
+			if ar, err := b.cachedAnalystRating(t); err != nil {
 				log.Printf("analyst rating %s: %v", t, err)
 			} else {
 				stock.AnalystRating = ar
 			}
 		}
 		if fetchFundamentals && b.insiderTx != nil {
-			if tx, err := b.insiderTx.GetInsiderTransactions(t, 10); err != nil {
+			if tx, err := b.cachedInsiderTx(t); err != nil {
 				log.Printf("insider transactions %s: %v", t, err)
 			} else {
 				stock.InsiderTx = tx
@@ -419,6 +440,52 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 		result = append(result, stock)
 	}
 	return result
+}
+
+// cachedFundamentals/cachedAnalystRating/cachedInsiderTx each check
+// b.dataCache before hitting Finnhub, and pace the actual call with
+// finnhubRequestDelay on a miss — see slowDataCacheTTL's comment for why
+// these three (and only these three) are cached across reports.
+func (b *Bot) cachedFundamentals(ticker string) (*data.Fundamentals, error) {
+	key := "fundamentals:" + ticker
+	if v, ok := b.dataCache.get(key); ok {
+		return v.(*data.Fundamentals), nil
+	}
+	time.Sleep(finnhubRequestDelay)
+	fd, err := b.fundamentals.GetFundamentals(ticker)
+	if err != nil {
+		return nil, err
+	}
+	b.dataCache.set(key, fd, slowDataCacheTTL)
+	return fd, nil
+}
+
+func (b *Bot) cachedAnalystRating(ticker string) (*data.AnalystRating, error) {
+	key := "analystRating:" + ticker
+	if v, ok := b.dataCache.get(key); ok {
+		return v.(*data.AnalystRating), nil
+	}
+	time.Sleep(finnhubRequestDelay)
+	ar, err := b.analystRating.GetAnalystRating(ticker)
+	if err != nil {
+		return nil, err
+	}
+	b.dataCache.set(key, ar, slowDataCacheTTL)
+	return ar, nil
+}
+
+func (b *Bot) cachedInsiderTx(ticker string) ([]data.InsiderTransaction, error) {
+	key := "insiderTx:" + ticker
+	if v, ok := b.dataCache.get(key); ok {
+		return v.([]data.InsiderTransaction), nil
+	}
+	time.Sleep(finnhubRequestDelay)
+	tx, err := b.insiderTx.GetInsiderTransactions(ticker, 10)
+	if err != nil {
+		return nil, err
+	}
+	b.dataCache.set(key, tx, slowDataCacheTTL)
+	return tx, nil
 }
 
 // computeTechnicals fetches ticker's daily-candle history and reduces it to
