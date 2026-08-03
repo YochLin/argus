@@ -841,6 +841,7 @@ async function postJSON<T>(url: string, body: unknown): Promise<T> {
     if (e instanceof ApiError) throw e;
     console.warn(`[API] POST ${url} failed, mock success`, e);
     if (url === "/api/login") return { ok: true } as unknown as T;
+    if (url === "/api/import") return { rows: [], applied: 0, dryRun: (body as { dryRun?: boolean }).dryRun ?? true } as unknown as T;
     return { message: "Mock operation completed successfully." } as unknown as T;
   }
 }
@@ -979,4 +980,29 @@ export function addBuyAlert(req: BuyAlertRequest): Promise<TradeResponse> {
 
 export function removeBuyAlert(id: number): Promise<TradeResponse> {
   return postJSON("/api/buy-alerts/remove", { id });
+}
+
+// --- Phase 5 §B CSV import (optional, docs/phase-5-web-dashboard.md) ---
+// Mirrors internal/web/csvimport.go's importRow/importResponse.
+
+export interface ImportRow {
+  line: number;
+  date: string;
+  ticker: string;
+  action: string;
+  shares: number;
+  price: number;
+  fee: number;
+  status: "ok" | "warning" | "duplicate" | "error" | "applied";
+  message: string;
+}
+
+export interface ImportResult {
+  rows: ImportRow[];
+  applied: number;
+  dryRun: boolean;
+}
+
+export function importCSV(csv: string, dryRun: boolean): Promise<ImportResult> {
+  return postJSON("/api/import", { csv, dryRun });
 }

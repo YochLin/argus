@@ -12,6 +12,10 @@ interface Props {
   // — null while /api/status hasn't resolved yet, same "render nothing"
   // degrade App.tsx's own StatusBar placeholder already uses.
   status: Status | null;
+  // writable (Phase 5 §B) gates the /import nav link — same "hidden
+  // entirely, not just disabled" convention as every other write-only
+  // entry point (TopBar's "+ Trade", ChartListView's remove button).
+  writable: boolean;
 }
 
 // /round (the detail page reached by clicking a row in /rounds) has no nav
@@ -31,18 +35,20 @@ const links: Array<{ path: string; label: (dict: Dictionary) => string; icon: Re
   { path: "/recs", label: (d) => d.navRecs, icon: <RecsIcon /> },
 ];
 
+const importLink = { path: "/import", label: (d: Dictionary) => d.navImport, icon: <ImportIcon /> };
+
 function isActive(linkPath: string, path: string): boolean {
   return linkPath === path;
 }
 
-export function Sidebar({ path, onNavigate, dict, market, status }: Props) {
+export function Sidebar({ path, onNavigate, dict, market, status, writable }: Props) {
   return (
     <div className="sidebar">
       <div className="sidebar-wordmark">
         ARGUS <span className="cursor">▮</span>
       </div>
       <nav className="sidebar-nav">
-        {links.map((link) => (
+        {(writable ? [...links, importLink] : links).map((link) => (
           <a
             key={link.path}
             href={link.path}
@@ -155,6 +161,16 @@ function RecsIcon() {
     <svg {...iconProps} aria-hidden="true">
       <circle cx="8" cy="8" r="6" />
       <path d="M8 5 V8 L10.5 9.5" />
+    </svg>
+  );
+}
+
+function ImportIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <path d="M8 1.5 V10" />
+      <path d="M5 7 L8 10 L11 7" />
+      <path d="M2.5 12 V13.5 H13.5 V12" />
     </svg>
   );
 }

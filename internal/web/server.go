@@ -81,6 +81,7 @@ type Server struct {
 	recPerf          *recPerfStore
 	password         string
 	trade            TradeExecutor
+	csvDB            csvWriter
 	mux              *http.ServeMux
 }
 
@@ -97,6 +98,7 @@ func New(cfg Config) *Server {
 		heatThresholdPct: cfg.RiskHeatPct,
 		password:         cfg.Password,
 		trade:            cfg.Trade,
+		csvDB:            cfg.DB,
 	}
 	s.recPerf = newRecPerfStore(s.db, s.history)
 	s.mux = http.NewServeMux()
@@ -129,6 +131,10 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("POST /api/watchlist/remove", s.requireWritable(s.requireAuth(s.handleWatchlistRemove)))
 	s.mux.HandleFunc("POST /api/buy-alerts/add", s.requireWritable(s.requireAuth(s.handleBuyAlertAdd)))
 	s.mux.HandleFunc("POST /api/buy-alerts/remove", s.requireWritable(s.requireAuth(s.handleBuyAlertRemove)))
+	// /api/import (Phase 5 §B, optional CSV backfill) reuses the same
+	// requireWritable/requireAuth gate as every other write route — a bulk
+	// transaction write is no less a write than a single /buy.
+	s.mux.HandleFunc("POST /api/import", s.requireWritable(s.requireAuth(s.handleImport)))
 	s.mux.Handle("/", spaHandler())
 	return s
 }

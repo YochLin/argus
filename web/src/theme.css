@@ -1672,6 +1672,24 @@ th {
   margin-bottom: 16px;
 }
 
+.import-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.import-textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  color: var(--ink);
+  font-size: 12px;
+  resize: vertical;
+  margin: 8px 0;
+}
+
 .btn-sm {
   font-family: var(--font-sans);
   font-size: 12px;
