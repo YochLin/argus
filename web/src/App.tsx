@@ -14,6 +14,7 @@ import { RiskView } from "./components/RiskView";
 import { RecsView } from "./components/RecsView";
 import { TradeModal, type TradeMode } from "./components/TradeModal";
 import { LoginModal } from "./components/LoginModal";
+import { ImportView } from "./components/ImportView";
 
 // Four client-side routes (dashboard, calendar, round list, round detail)
 // don't justify pulling in a routing library — a hand-rolled route
@@ -185,6 +186,14 @@ export default function App() {
     body = <ReportsView dict={dict} market={market} names={names} />;
   } else if (path === "/recs") {
     body = <RecsView dict={dict} market={market} />;
+  } else if (path === "/import") {
+    body = status?.writable ? (
+      <ImportView
+        dict={dict}
+        onUnauthorized={(retry) => setAuthRetry(() => retry)}
+        onSuccess={() => setRefreshSignal((n) => n + 1)}
+      />
+    ) : null;
   } else if (path === "/risk") {
     body = (
       <RiskView
@@ -233,7 +242,14 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <Sidebar path={path} onNavigate={navigate} dict={dict} market={market} status={status} />
+      <Sidebar
+        path={path}
+        onNavigate={navigate}
+        dict={dict}
+        market={market}
+        status={status}
+        writable={status?.writable ?? false}
+      />
       <div className="app-main">
         <TopBar
           market={market}

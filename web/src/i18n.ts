@@ -236,6 +236,27 @@ export interface Dictionary {
   eventHourDmh: string;
   eventHourUnknown: string;
   eventEstimated: string;
+  // Phase 5 §B (optional): CSV transaction import page (nav link gated on
+  // status.writable, same convention as every other write-only entry point).
+  navImport: string;
+  importTitle: string;
+  importInstructions: string;
+  importTemplateHint: string;
+  importTextareaPlaceholder: string;
+  importPreview: string;
+  importConfirm: string;
+  importLine: string;
+  importDate: string;
+  importStatus: string;
+  importMessage: string;
+  importStatusOk: string;
+  importStatusWarning: string;
+  importStatusDuplicate: string;
+  importStatusError: string;
+  importStatusApplied: string;
+  importNoRows: string;
+  importAppliedPrefix: string;
+  importAppliedSuffix: string;
 }
 
 const en: Dictionary = {
@@ -448,6 +469,25 @@ const en: Dictionary = {
   eventHourDmh: "during hours",
   eventHourUnknown: "time TBD",
   eventEstimated: "estimated",
+  navImport: "Import",
+  importTitle: "Import Transactions",
+  importInstructions: "Paste or upload CSV transactions to backfill your trade history.",
+  importTemplateHint: "Columns: date,ticker,action,shares,price,fee (fee optional, header row required)",
+  importTextareaPlaceholder: "date,ticker,action,shares,price,fee\n2026-01-05,AAPL,BUY,10,150,1.5",
+  importPreview: "Preview",
+  importConfirm: "Confirm Import",
+  importLine: "Line",
+  importDate: "Date",
+  importStatus: "Status",
+  importMessage: "Message",
+  importStatusOk: "OK",
+  importStatusWarning: "Warning",
+  importStatusDuplicate: "Duplicate",
+  importStatusError: "Error",
+  importStatusApplied: "Applied",
+  importNoRows: "No rows to show yet — paste CSV and preview.",
+  importAppliedPrefix: "Applied ",
+  importAppliedSuffix: " row(s).",
 };
 
 const zh: Dictionary = {
@@ -658,6 +698,25 @@ const zh: Dictionary = {
   eventHourDmh: "盤中公布",
   eventHourUnknown: "時間未定",
   eventEstimated: "推估",
+  navImport: "匯入",
+  importTitle: "匯入交易紀錄",
+  importInstructions: "貼上或上傳 CSV 交易紀錄以補建歷史交易。",
+  importTemplateHint: "欄位：date,ticker,action,shares,price,fee（fee 可省略，需保留標題列）",
+  importTextareaPlaceholder: "date,ticker,action,shares,price,fee\n2026-01-05,AAPL,BUY,10,150,1.5",
+  importPreview: "預覽",
+  importConfirm: "確認匯入",
+  importLine: "行號",
+  importDate: "日期",
+  importStatus: "狀態",
+  importMessage: "訊息",
+  importStatusOk: "正常",
+  importStatusWarning: "警告",
+  importStatusDuplicate: "重複",
+  importStatusError: "錯誤",
+  importStatusApplied: "已匯入",
+  importNoRows: "尚無資料 — 請貼上 CSV 並預覽。",
+  importAppliedPrefix: "已匯入 ",
+  importAppliedSuffix: " 筆。",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };
