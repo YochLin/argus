@@ -176,8 +176,12 @@ func (b *Bot) handleCheck(ctx context.Context, ticker string) {
 		return
 	}
 
+	// Send the placeholder on the bare ticker before any lookup — tickerLabel
+	// makes a live FinMind network call for a TW ticker (US tickers skip it,
+	// see companyName), so computing the label first could delay this
+	// "still working" reply the same way the slow LLM call itself would.
+	b.Send(i18n.T(b.lang, i18n.KeyAnalyzingTicker, ticker))
 	label := b.tickerLabel(ticker)
-	b.Send(i18n.T(b.lang, i18n.KeyAnalyzingTicker, label))
 
 	q, err := b.provider.GetQuote(ticker)
 	if err != nil {
