@@ -542,59 +542,9 @@ func TestTargetReachedDecision(t *testing.T) {
 	}
 }
 
-func TestSuggestShares(t *testing.T) {
-	tests := []struct {
-		name                               string
-		accountValue, riskPct, price, stop float64
-		want                               int
-	}{
-		{"normal case: $10000 * 1% = $100 risk / $5 per-share risk = 20 shares", 10000, 1, 50, 45, 20},
-		{"disabled: riskPct <= 0", 10000, 0, 50, 45, 0},
-		{"disabled: non-positive account value", 0, 1, 50, 45, 0},
-		{"invalid: stop at price (zero per-share risk)", 10000, 1, 50, 50, 0},
-		{"invalid: stop above price", 10000, 1, 50, 55, 0},
-		{"invalid: non-positive stop", 10000, 1, 50, 0, 0},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := suggestShares(tt.accountValue, tt.riskPct, tt.price, tt.stop); got != tt.want {
-				t.Errorf("suggestShares(%v, %v, %v, %v) = %d, want %d", tt.accountValue, tt.riskPct, tt.price, tt.stop, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestTrailingStopThreshold(t *testing.T) {
-	tests := []struct {
-		name              string
-		fixedPct, atrMult float64
-		atr, peak         float64
-		wantThresholdPct  float64
-		wantATRBased      bool
-		wantOK            bool
-	}{
-		{"fixed only, mult disabled (default)", 15, 0, 2, 100, 15, false, true},
-		{"fixed only, mult set but ATR unavailable", 15, 3, 0, 100, 15, false, true},
-		{"fixed only, mult set but no peak", 15, 3, 2, 0, 15, false, true},
-		{"low volatility: ATR tightens below fixed", 15, 3, 2, 100, 6, true, true},       // 3*2/100*100=6 < 15
-		{"high volatility: fixed caps the ATR distance", 15, 3, 8, 100, 15, false, true}, // 3*8/100*100=24 > 15
-		{"pure ATR, fixed disabled", 0, 3, 2, 100, 6, true, true},
-		{"fixed disabled, ATR unavailable: no usable threshold", 0, 3, 0, 100, 0, false, false},
-		{"both disabled: check off entirely", 0, 0, 2, 100, 0, false, false},
-		{"negative fixed treated as disabled", -5, 3, 2, 100, 6, true, true},
-		{"negative mult treated as disabled", 15, -3, 2, 100, 15, false, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotThreshold, gotATRBased, gotOK := trailingStopThreshold(tt.fixedPct, tt.atrMult, tt.atr, tt.peak)
-			if gotOK != tt.wantOK || gotATRBased != tt.wantATRBased || (gotOK && gotThreshold != tt.wantThresholdPct) {
-				t.Errorf("trailingStopThreshold(%v, %v, %v, %v) = %v, %v, %v; want %v, %v, %v",
-					tt.fixedPct, tt.atrMult, tt.atr, tt.peak,
-					gotThreshold, gotATRBased, gotOK, tt.wantThresholdPct, tt.wantATRBased, tt.wantOK)
-			}
-		})
-	}
-}
+// suggestShares/trailingStopThreshold moved to internal/paper (Phase 11
+// PR1, see paper.SuggestShares/paper.TrailingStopThreshold) — their tests
+// moved with them to internal/paper/paper_test.go.
 
 func TestComputeVsSPY(t *testing.T) {
 	tests := []struct {

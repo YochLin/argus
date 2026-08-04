@@ -13,6 +13,7 @@ import (
 	"argus/internal/i18n"
 	"argus/internal/llm"
 	"argus/internal/market"
+	"argus/internal/paper"
 	"argus/internal/signals"
 )
 
@@ -853,45 +854,9 @@ func (b *Bot) checkStopLossAlerts(positions []db.Position, prices map[string]flo
 	b.Send(sb.String())
 }
 
-// trailingStopThreshold combines the fixed-percentage and ATR-based trailing-
-// stop distances into a single threshold percentage (Phase 3.8 追加項, see
-// docs/phase-3.8-atr-trailing-stop.md). atrMult <= 0 means the ATR-based check
-// is disabled (the default), so the fixed percentage always wins in that case
-// — this is what makes TRAILING_STOP_ATR_MULT=0 leave existing behavior
-// byte-for-byte unchanged. When both are enabled and atr is available, the
-// two are combined via min: the fixed percentage becomes a risk-budget
-// ceiling ("no matter how volatile, tolerate at most this much drawdown") and
-// the ATR-based distance tightens within it for lower-volatility tickers —
-// see the design doc for why min (not a straight replacement, and not max).
-// ok is false when neither distance is usable (fixed disabled and ATR either
-// disabled or unavailable) — the caller should skip the check entirely rather
-// than alert off a threshold of 0. atrBased tells the caller which i18n line
-// to render.
-func trailingStopThreshold(fixedPct, atrMult, atr, peak float64) (thresholdPct float64, atrBased, ok bool) {
-	atrPct := 0.0
-	atrOK := atrMult > 0 && atr > 0 && peak > 0
-	if atrOK {
-		atrPct = atrMult * atr / peak * 100
-	}
-
-	switch {
-	case fixedPct > 0 && atrOK:
-		if atrPct < fixedPct {
-			return atrPct, true, true
-		}
-		return fixedPct, false, true
-	case fixedPct > 0:
-		return fixedPct, false, true
-	case atrOK:
-		return atrPct, true, true
-	default:
-		return 0, false, false
-	}
-}
-
 // checkTrailingStopAlerts warns about any open position whose close-price
 // drawdown from its post-first-buy peak has just breached the trailing-stop
-// threshold (see trailingStopThreshold — either b.trailingStopPct alone, or
+// threshold (see paper.TrailingStopThreshold — either b.trailingStopPct alone, or
 // combined with an ATR(14)-based distance when TRAILING_STOP_ATR_MULT > 0).
 // The peak is computed on demand from daily_snapshots closes on or after the
 // ticker's earliest recorded BUY date (db.GetEarliestBuyDate/GetPeakClose)
@@ -903,7 +868,7 @@ func trailingStopThreshold(fixedPct, atrMult, atr, peak float64) (thresholdPct f
 // its watchlist StockData (same prefetch-with-fallback shape as prices — see
 // priceFor); a ticker missing from atrs falls back to a direct
 // b.computeTechnicals call, and if that also fails to yield an ATR, the
-// ATR-based distance is simply unavailable for it (trailingStopThreshold's
+// ATR-based distance is simply unavailable for it (paper.TrailingStopThreshold's
 // fixed-percentage-only branch, or a skip if that's disabled too). Same dedup
 // shape as checkStopLossAlerts (see breachAlertDecision), under its own
 // signal_states family so the two checks don't share state.
@@ -941,7 +906,7 @@ func (b *Bot) checkTrailingStopAlerts(positions []db.Position, prices map[string
 				atr = t.ATR14
 			}
 		}
-		thresholdPct, atrBased, ok := trailingStopThreshold(b.trailingStopPct, b.trailingStopATRMult, atr, peak)
+		thresholdPct, atrBased, ok := paper.TrailingStopThreshold(b.trailingStopPct, b.trailingStopATRMult, atr, peak)
 		if !ok {
 			log.Printf("trailing stop: no usable threshold for %s (fixed=%.2f atrMult=%.2f atr=%.2f)", p.Ticker, b.trailingStopPct, b.trailingStopATRMult, atr)
 			continue
