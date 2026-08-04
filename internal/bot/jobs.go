@@ -114,6 +114,7 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context, m market.MarketID) {
 
 	b.snapshotBenchmark(date, m)
 	b.recordNetWorthSnapshot(date, m, prices)
+	b.runPaperClose(m, date, prices)
 
 	// Buy alerts get checked here too, not just from runDailyReport — see
 	// checkBuyAlerts' doc comment for why a ticker the user doesn't hold
@@ -130,10 +131,22 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context, m market.MarketID) {
 // daily_snapshots under the same date as the watchlist snapshot, so /track's
 // relative-to-market hit rate (Phase 3.8) has same-day benchmark data to
 // compare against without ever needing to replay history through a live API
-// call. Same stale-quote guard as the per-ticker loop above. Silent on
-// failure, same as the rest of this job — a missing benchmark row just makes
-// /track fall back to its absolute-direction hit rule for that date.
+// call. Thin wrapper around snapshotBenchmarkTo targeting b.db — see that
+// function for the actual logic.
 func (b *Bot) snapshotBenchmark(date string, m market.MarketID) {
+	b.snapshotBenchmarkTo(b.db, date, m)
+}
+
+// snapshotBenchmarkTo is snapshotBenchmark's logic parameterized over which
+// *db.DB to write into — Phase 11 PR3's runPaperClose calls this with
+// b.paperDB so the live paper account's benchmark-overlay data (BenchmarkReplay,
+// PR4) comes from the exact same fetch/stale-quote-guard code path as the
+// real dashboard's, instead of a second implementation that could drift.
+// Same stale-quote guard as RunClosingSnapshot's per-ticker loop. Silent on
+// failure, same as the rest of this job — a missing benchmark row just makes
+// /track (or, for paper.db, the trailing stop / equity curve) fall back to
+// whatever that caller already does without same-day benchmark data.
+func (b *Bot) snapshotBenchmarkTo(target *db.DB, date string, m market.MarketID) {
 	ticker := benchmarkFor(m)
 	q, err := b.provider.GetQuote(ticker)
 	if err != nil {
@@ -154,7 +167,7 @@ func (b *Bot) snapshotBenchmark(date string, m market.MarketID) {
 		Volume:        q.Volume,
 		ChangePercent: q.ChangePercent,
 	}
-	if err := b.db.SaveSnapshot(snap); err != nil {
+	if err := target.SaveSnapshot(snap); err != nil {
 		log.Printf("closing snapshot: save benchmark %s: %v", ticker, err)
 	}
 }
