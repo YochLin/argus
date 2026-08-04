@@ -569,4 +569,17 @@ Write only from the data actually provided above — omit any section you have n
 	KeyEvalCountImmature:         "  Window not yet matured (%dd): %d\n",
 	KeyEvalCSVSaved:              "\nDetail CSV written to: %s\n",
 	KeyEvalNoData:                "No scorable recommendations found.\n",
+
+	KeyBacktestTitle:           "=== Paper Account Backtest (%s) ===\n",
+	KeyBacktestOverviewTitle:   "\n[Overview]\n",
+	KeyBacktestOverviewLine:    "Initial cash $%.2f, final equity $%.2f, total return %+.2f%%, CAGR %+.2f%%, max drawdown %.2f%%\n%d trades, win rate %.1f%%, profit factor %.2f, expectancy $%.2f\n",
+	KeyBacktestBenchmarkLine:   "Buy-and-hold %s over the same period: %+.2f%% (excess %+.2f%%)\n",
+	KeyBacktestExitReasonTitle: "\n[Exit reason breakdown]\n",
+	KeyBacktestExitReasonLine:  "  %s: %d, win rate %.1f%%, avg return %+.2f%%\n",
+	KeyBacktestSourceTitle:     "\n[By source]\n",
+	KeyBacktestSourceLine:      "  %s: %d\n",
+	KeyBacktestCountsTitle:     "\n[Honest counts]\n",
+	KeyBacktestCountHold:       "  Not actioned (HOLD/no action): %d\n",
+	KeyBacktestCountNoHistory:  "  Skipped, no fetchable history: %d tickers\n",
+	KeyBacktestCountSkippedBuy: "  BUYs skipped for insufficient funds: %d\n",
 }

@@ -46,6 +46,15 @@ func main() {
 		return
 	}
 
+	// "backtest" replays the recommendations table through internal/paper —
+	// the live paper account's forward rule engine — instead of the Telegram
+	// bot (see docs/phase-11-paper-account.md §5, cmd/bot/backtest.go). Same
+	// never-needs-Telegram-env branch shape as "eval" above.
+	if len(os.Args) > 1 && os.Args[1] == "backtest" {
+		runBacktest()
+		return
+	}
+
 	if err := godotenv.Load(); err != nil {
 		log.Println("no .env file found, reading env from environment")
 	}
