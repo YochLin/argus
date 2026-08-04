@@ -582,4 +582,16 @@ Write only from the data actually provided above — omit any section you have n
 	KeyBacktestCountHold:       "  Not actioned (HOLD/no action): %d\n",
 	KeyBacktestCountNoHistory:  "  Skipped, no fetchable history: %d tickers\n",
 	KeyBacktestCountSkippedBuy: "  BUYs skipped for insufficient funds: %d\n",
+
+	KeyPaperDisabled:   "Paper account is disabled (PAPER_DB_PATH not set).",
+	KeyPaperTitle:      "🧪 *Paper Account*\n\n",
+	KeyPaperSectionUS:  "*US Stocks (USD)*\n",
+	KeyPaperSectionTW:  "*TW Stocks (TWD)*\n",
+	KeyPaperLine:       "*%s* %g sh @ avg $%.2f\nprice $%.2f stop $%.2f (%.1f%% away) unrealized %+.2f (%+.2f%%)\n\n",
+	KeyPaperSummary:    "—\nCash: $%.2f\nEquity: $%.2f (started $%.2f, return %+.2f%%)\nRealized P&L to date: %+.2f",
+	KeyPaperSummaryTWD: "—\nCash: NT$%.2f\nEquity: NT$%.2f (started NT$%.2f, return %+.2f%%)\nRealized P&L to date: %+.2f",
+	KeyPaperBuyAlert:   "🧪 Paper account | bought %s %g sh @ %.2f (stop %.2f) | cash $%.2f\n",
+	KeyPaperSellAlert:  "🧪 Paper account | sold %s %g sh @ %.2f (%s) realized %+.2f | cash $%.2f\n",
+	KeyPaperResetUsage: "Usage: /paper reset confirm",
+	KeyPaperResetDone:  "🧪 Paper account cleared and re-seeded.",
 }

@@ -101,6 +101,15 @@ func main() {
 	// when unset; <=0 disables the frontend's warning line entirely, same
 	// "<=0 means disabled" convention as STOP_LOSS_PCT/TRAILING_STOP_PCT.
 	riskHeatPct := envOrFloat("RISK_HEAT_PCT", 6.0)
+	// PAPER_DB_PATH (Phase 11 PR3, docs/phase-11-paper-account.md §6.6) gates
+	// the live paper account — empty disables it entirely, same
+	// presence-of-config convention as WEB_ADDR/FINNHUB_API_KEY. The other
+	// three PAPER_* vars are meaningless without it and simply inert if set
+	// alone.
+	paperDBPath := os.Getenv("PAPER_DB_PATH")
+	paperInitialCashUSD := envOrFloat("PAPER_INITIAL_CASH_USD", 100000)
+	paperInitialCashTWD := envOrFloat("PAPER_INITIAL_CASH_TWD", 1000000)
+	paperMaxPositionPct := envOrFloat("PAPER_MAX_POSITION_PCT", 25)
 
 	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
 	if err != nil {
@@ -144,6 +153,20 @@ func main() {
 		log.Fatalf("open database: %v", err)
 	}
 	defer database.Close()
+
+	// paperDatabase is Phase 11 PR3's live paper account — a second,
+	// physically separate SQLite file opened via the same db.New (so it gets
+	// the same migrations), never a second connection to dbPath. nil when
+	// PAPER_DB_PATH is unset, which bot.Config's PaperDB field treats as
+	// "feature off" (see internal/bot/paper.go).
+	var paperDatabase *db.DB
+	if paperDBPath != "" {
+		paperDatabase, err = db.New(paperDBPath)
+		if err != nil {
+			log.Fatalf("open paper database: %v", err)
+		}
+		defer paperDatabase.Close()
+	}
 
 	// Set up multi-provider data layer (Finnhub primary, Yahoo fallback).
 	// Fundamentals/financial statements, the earnings calendar, and general
@@ -243,6 +266,10 @@ func main() {
 		TrailingStopPct:     trailingStopPct,
 		TrailingStopATRMult: trailingStopATRMult,
 		RiskPctPerTrade:     riskPctPerTrade,
+		PaperDB:             paperDatabase,
+		PaperInitialCashUSD: paperInitialCashUSD,
+		PaperInitialCashTWD: paperInitialCashTWD,
+		PaperMaxPositionPct: paperMaxPositionPct,
 	})
 	if err != nil {
 		log.Fatalf("init bot: %v", err)
@@ -317,7 +344,10 @@ func main() {
 	backupDir := envOr("BACKUP_DIR", "data/backups")
 	backupRetentionDays := envOrInt("BACKUP_RETENTION_DAYS", 14)
 	sched.AddBackup(func() {
-		runBackup(database, backupDir, backupRetentionDays)
+		runBackup(database, backupDir, backupRetentionDays, "argus")
+		if paperDatabase != nil {
+			runBackup(paperDatabase, backupDir, backupRetentionDays, "argus-paper")
+		}
 	})
 	sched.Start()
 	defer sched.Stop()
@@ -466,14 +496,18 @@ func envOrInt(key string, fallback int) int {
 // runBackup writes a dated SQLite backup (via db.Backup's VACUUM INTO) into
 // dir and prunes backup files older than retentionDays. transactions/
 // positions are irreplaceable personal financial data with no other backup
-// path on a single VPS, hence a daily on-disk copy — see PLAN.md.
-func runBackup(database *db.DB, dir string, retentionDays int) {
+// path on a single VPS, hence a daily on-disk copy — see PLAN.md. prefix
+// distinguishes the real ("argus") and paper-account ("argus-paper", Phase
+// 11 PR3) backup files sharing one dir — pruneOldBackups doesn't filter by
+// prefix, so calling this for both databases just prunes the shared dir
+// twice, which is harmless at once-a-day cron frequency.
+func runBackup(database *db.DB, dir string, retentionDays int, prefix string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		log.Printf("backup: create dir: %v", err)
 		return
 	}
 
-	dest := filepath.Join(dir, fmt.Sprintf("argus-%s.db", time.Now().In(cst).Format("2006-01-02")))
+	dest := filepath.Join(dir, fmt.Sprintf("%s-%s.db", prefix, time.Now().In(cst).Format("2006-01-02")))
 	if err := database.Backup(dest); err != nil {
 		log.Printf("backup: %v", err)
 		return

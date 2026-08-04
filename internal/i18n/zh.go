@@ -571,4 +571,16 @@ var zhMessages = map[Key]string{
 	KeyBacktestCountHold:       "  未動作（HOLD/無動作）：%d 筆\n",
 	KeyBacktestCountNoHistory:  "  抓不到歷史資料而跳過：%d 檔\n",
 	KeyBacktestCountSkippedBuy: "  資金不足而跳過的 BUY：%d 筆\n",
+
+	KeyPaperDisabled:   "虛擬帳戶功能未啟用（未設定 PAPER_DB_PATH）。",
+	KeyPaperTitle:      "🧪 *虛擬帳戶*\n\n",
+	KeyPaperSectionUS:  "*美股 (USD)*\n",
+	KeyPaperSectionTW:  "*台股 (TWD)*\n",
+	KeyPaperLine:       "*%s* %g 股 @ 均價 $%.2f\n現價 $%.2f 停損 $%.2f（距停損 %.1f%%）未實現損益 %+.2f (%+.2f%%)\n\n",
+	KeyPaperSummary:    "—\n現金：$%.2f\n總權益：$%.2f（起始 $%.2f，報酬 %+.2f%%）\n累計已實現損益：%+.2f",
+	KeyPaperSummaryTWD: "—\n現金：NT$%.2f\n總權益：NT$%.2f（起始 NT$%.2f，報酬 %+.2f%%）\n累計已實現損益：%+.2f",
+	KeyPaperBuyAlert:   "🧪 虛擬帳戶｜買進 %s %g 股 @ %.2f（停損 %.2f）｜現金 $%.2f\n",
+	KeyPaperSellAlert:  "🧪 虛擬帳戶｜賣出 %s %g 股 @ %.2f（%s）已實現損益 %+.2f｜現金 $%.2f\n",
+	KeyPaperResetUsage: "用法：/paper reset confirm",
+	KeyPaperResetDone:  "🧪 虛擬帳戶已清空並重新播種。",
 }

@@ -629,4 +629,19 @@ const (
 	KeyBacktestCountHold       Key = "backtest_count_hold"
 	KeyBacktestCountNoHistory  Key = "backtest_count_no_history"
 	KeyBacktestCountSkippedBuy Key = "backtest_count_skipped_buy"
+
+	// /paper (Phase 11 PR3, docs/phase-11-paper-account.md §6.5) — the live
+	// paper account's Telegram command and trade-fill alerts. internal/paper
+	// (PR1) is the account engine; internal/bot/paper.go is the only caller.
+	KeyPaperDisabled   Key = "paper_disabled"
+	KeyPaperTitle      Key = "paper_title"
+	KeyPaperSectionUS  Key = "paper_section_us"
+	KeyPaperSectionTW  Key = "paper_section_tw"
+	KeyPaperLine       Key = "paper_line"
+	KeyPaperSummary    Key = "paper_summary"
+	KeyPaperSummaryTWD Key = "paper_summary_twd"
+	KeyPaperBuyAlert   Key = "paper_buy_alert"
+	KeyPaperSellAlert  Key = "paper_sell_alert"
+	KeyPaperResetUsage Key = "paper_reset_usage"
+	KeyPaperResetDone  Key = "paper_reset_done"
 )

@@ -153,6 +153,8 @@ func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommen
 	if err := b.db.SaveRecommendations(todayDate(), dbRecs); err != nil {
 		log.Printf("save recommendations: %v", err)
 	}
+
+	b.applyPaperTrades(recs, prices, atrs, m)
 }
 
 // splitRecsBySource divides recs into watchlist/held picks vs. new-candidate
