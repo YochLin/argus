@@ -1,0 +1,192 @@
+package paper
+
+import (
+	"math"
+	"testing"
+
+	"argus/internal/market"
+)
+
+func almostEqual(a, b float64) bool { return math.Abs(a-b) < 1e-6 }
+
+func TestSuggestShares(t *testing.T) {
+	// capped by cash isn't SuggestShares' job (that's the caller's min()),
+	// so this only covers the risk-budget formula itself plus its guards.
+	if got := SuggestShares(100000, 1, 100, 90); got != 100 {
+		t.Errorf("risk budget: got %d, want 100", got)
+	}
+	if got := SuggestShares(100000, 0, 100, 90); got != 0 {
+		t.Errorf("riskPct<=0: got %d, want 0", got)
+	}
+	if got := SuggestShares(100000, 1, 100, 100); got != 0 {
+		t.Errorf("stop>=price: got %d, want 0", got)
+	}
+	if got := SuggestShares(100, 0.001, 100, 99); got != 0 {
+		t.Errorf("sub-1-share risk budget: got %d, want 0", got)
+	}
+}
+
+func baseConfig() Config {
+	return Config{
+		InitialCash:    100000,
+		RiskPct:        1,
+		MaxPositionPct: 25,
+		StopATRMult:    2,
+		StopLossPct:    10,
+		Market:         market.US,
+	}
+}
+
+func TestApplySignal_BuySizing(t *testing.T) {
+	cfg := baseConfig()
+	acct := NewAccount(cfg.InitialCash)
+
+	// notional cap: MaxPositionPct=25% of 100k=25000 at price 10 -> cap 2500
+	// shares, well below the risk-budget shares (1%*100000/(10-8)=500), so
+	// this exercises the risk-budget path, not the cap — flip to a tight ATR
+	// to force the cap branch instead.
+	trade, ok := acct.ApplySignal(Signal{Date: "2024-01-02", Ticker: "AAA", Action: "BUY", Price: 100}, 100, 1, cfg)
+	if !ok {
+		t.Fatalf("expected buy to execute")
+	}
+	if trade.Stop <= 0 {
+		t.Errorf("expected a stop price, got %v", trade.Stop)
+	}
+	wantCash := cfg.InitialCash - trade.Shares*trade.Price - trade.Fee
+	if !almostEqual(acct.Cash, wantCash) {
+		t.Errorf("cash after buy: got %v, want %v", acct.Cash, wantCash)
+	}
+	if h, held := acct.Holdings["AAA"]; !held || h.Stop != trade.Stop {
+		t.Errorf("holding not recorded correctly: %+v", h)
+	}
+}
+
+func TestApplySignal_CashCap(t *testing.T) {
+	cfg := baseConfig()
+	cfg.MaxPositionPct = 0  // isolate the cash-cap branch
+	acct := NewAccount(500) // barely enough for a couple shares at price 100
+
+	trade, ok := acct.ApplySignal(Signal{Date: "2024-01-02", Ticker: "AAA", Action: "BUY", Price: 100}, 100, 1, cfg)
+	if !ok {
+		t.Fatalf("expected buy to execute")
+	}
+	if trade.Shares > 5 {
+		t.Errorf("expected cash cap to bound shares near 5, got %v", trade.Shares)
+	}
+	if acct.Cash < 0 {
+		t.Errorf("cash went negative: %v", acct.Cash)
+	}
+}
+
+func TestApplySignal_AtrFallback(t *testing.T) {
+	cfg := baseConfig()
+	acct := NewAccount(cfg.InitialCash)
+
+	trade, ok := acct.ApplySignal(Signal{Date: "2024-01-02", Ticker: "AAA", Action: "BUY", Price: 100}, 100, 0, cfg)
+	if !ok {
+		t.Fatalf("expected buy to execute via fixed-%% stop fallback")
+	}
+	wantStop := 100 * (1 - cfg.StopLossPct/100)
+	if !almostEqual(trade.Stop, wantStop) {
+		t.Errorf("fallback stop: got %v, want %v", trade.Stop, wantStop)
+	}
+}
+
+func TestApplySignal_BuyAlreadyHeldSkips(t *testing.T) {
+	cfg := baseConfig()
+	acct := NewAccount(cfg.InitialCash)
+
+	if _, ok := acct.ApplySignal(Signal{Date: "2024-01-02", Ticker: "AAA", Action: "BUY", Price: 100}, 100, 1, cfg); !ok {
+		t.Fatalf("first buy should execute")
+	}
+	cashAfterFirst := acct.Cash
+
+	if _, ok := acct.ApplySignal(Signal{Date: "2024-01-03", Ticker: "AAA", Action: "BUY", Price: 105}, 105, 1, cfg); ok {
+		t.Errorf("second buy on an already-held ticker should be a no-op")
+	}
+	if acct.Cash != cashAfterFirst {
+		t.Errorf("cash changed on a skipped buy: %v -> %v", cashAfterFirst, acct.Cash)
+	}
+}
+
+func TestMarkClose_StopLoss(t *testing.T) {
+	cfg := baseConfig()
+	acct := NewAccount(cfg.InitialCash)
+	acct.ApplySignal(Signal{Date: "2024-01-02", Ticker: "AAA", Action: "BUY", Price: 100}, 100, 1, cfg)
+	h := acct.Holdings["AAA"]
+
+	trades := acct.MarkClose("2024-01-03", map[string]float64{"AAA": h.Stop - 1}, nil, cfg)
+	if len(trades) != 1 || trades[0].Reason != "stop" {
+		t.Fatalf("expected one stop-loss exit, got %+v", trades)
+	}
+	wantPnL := (h.Stop - 1 - h.AvgCost) * h.Shares
+	if !almostEqual(trades[0].RealizedPnL, wantPnL) {
+		t.Errorf("realized pnl: got %v, want %v", trades[0].RealizedPnL, wantPnL)
+	}
+	if _, held := acct.Holdings["AAA"]; held {
+		t.Errorf("position should be closed after stop-loss exit")
+	}
+}
+
+func TestMarkClose_TrailingStop(t *testing.T) {
+	cfg := baseConfig()
+	cfg.TrailingPct = 5 // tight enough to trigger well above the fixed stop
+	acct := NewAccount(cfg.InitialCash)
+	acct.ApplySignal(Signal{Date: "2024-01-02", Ticker: "AAA", Action: "BUY", Price: 100}, 100, 1, cfg)
+
+	// rally to a new peak, then pull back past the 5% trailing distance but
+	// still well above the (much lower) fixed stop.
+	acct.MarkClose("2024-01-03", map[string]float64{"AAA": 150}, nil, cfg)
+	trades := acct.MarkClose("2024-01-04", map[string]float64{"AAA": 140}, nil, cfg)
+	if len(trades) != 1 || trades[0].Reason != "trailing" {
+		t.Fatalf("expected one trailing-stop exit, got %+v", trades)
+	}
+}
+
+func TestCashConservation(t *testing.T) {
+	cfg := baseConfig()
+	acct := NewAccount(cfg.InitialCash)
+
+	acct.ApplySignal(Signal{Date: "2024-01-02", Ticker: "AAA", Action: "BUY", Price: 100}, 100, 1, cfg)
+	trade, ok := acct.ApplySignal(Signal{Date: "2024-01-05", Ticker: "AAA", Action: "SELL", Price: 120}, 120, 1, cfg)
+	if !ok {
+		t.Fatalf("expected sell to execute")
+	}
+
+	if !almostEqual(acct.Cash-cfg.InitialCash, trade.RealizedPnL) {
+		t.Errorf("cash conservation: cash delta %v != realized pnl %v", acct.Cash-cfg.InitialCash, trade.RealizedPnL)
+	}
+}
+
+func TestFeeFor_TW(t *testing.T) {
+	notional := 100000.0
+	sellFee := FeeFor(market.TW, "SELL", notional)
+	wantFee := notional * (0.001425 + 0.003)
+	if !almostEqual(sellFee, wantFee) {
+		t.Errorf("TW sell fee: got %v, want %v", sellFee, wantFee)
+	}
+
+	cfg := baseConfig()
+	cfg.Market = market.TW
+	acct := NewAccount(1000000)
+	acct.ApplySignal(Signal{Date: "2024-01-02", Ticker: "2330", Action: "BUY", Price: 500}, 500, 5, cfg)
+	h := acct.Holdings["2330"]
+	cashBeforeSell := acct.Cash
+
+	trade, _ := acct.ApplySignal(Signal{Date: "2024-01-05", Ticker: "2330", Action: "SELL", Price: 550}, 550, 5, cfg)
+	sellNotional := 550 * h.Shares
+	wantProceeds := sellNotional * (1 - 0.001425 - 0.003)
+	gotProceeds := acct.Cash - cashBeforeSell
+	if !almostEqual(gotProceeds, wantProceeds) {
+		t.Errorf("TW sell proceeds: got %v, want %v", gotProceeds, wantProceeds)
+	}
+	if trade.Fee <= 0 {
+		t.Errorf("expected a nonzero TW sell fee")
+	}
+}
+
+func TestFeeFor_US(t *testing.T) {
+	if got := FeeFor(market.US, "BUY", 10000); got != 0 {
+		t.Errorf("US fee should be 0, got %v", got)
+	}
+}

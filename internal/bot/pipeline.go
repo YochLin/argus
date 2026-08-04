@@ -12,6 +12,7 @@ import (
 	"argus/internal/i18n"
 	"argus/internal/llm"
 	"argus/internal/market"
+	"argus/internal/paper"
 	"argus/internal/signals"
 )
 
@@ -214,7 +215,7 @@ func formatRecLine(lang i18n.Lang, r llm.Recommendation, sizing map[string]strin
 
 // buildSizingLines computes Phase 3.11 PR1's KeySizingLine for every BUY
 // recommendation with a usable current price and ATR14 (§3.4): bot-side,
-// deterministic arithmetic (suggestShares), never left to the LLM. Returns
+// deterministic arithmetic (paper.SuggestShares), never left to the LLM. Returns
 // nil outright when the whole feature is disabled (b.riskPctPerTrade <= 0)
 // or there's no account-value figure to size against yet (accountValue);
 // a ticker missing a price or ATR14 (candidates always have Technicals, but
@@ -247,7 +248,7 @@ func (b *Bot) buildSizingLines(recs []llm.Recommendation, prices, atrs map[strin
 			continue
 		}
 		stop := price - stopCandidateATRMult*atr
-		shares := suggestShares(accountVal, b.riskPctPerTrade, price, stop)
+		shares := paper.SuggestShares(accountVal, b.riskPctPerTrade, price, stop)
 		if shares <= 0 {
 			continue
 		}
@@ -623,28 +624,7 @@ func (b *Bot) computeStopSuggestion(ticker string) (stopSuggestion, bool) {
 	return s, true
 }
 
-// suggestShares is Phase 3.11's R-based position-sizing formula (§3.4):
-// floor(riskBudget ÷ perShareRisk), where riskBudget = accountValue ×
-// riskPct/100 and perShareRisk = price − stop. Bot-side deterministic
-// arithmetic on purpose — the LLM is asked to name a stop level in its BUY
-// reasoning (see KeyTechGuidanceBlock) but never trusted to do this
-// division itself. Returns 0 (meaning: don't show a sizing line) for any
-// non-positive/invalid input, including stop >= price, which would make
-// perShareRisk zero or negative.
-func suggestShares(accountValue, riskPct, price, stop float64) int {
-	if accountValue <= 0 || riskPct <= 0 || price <= 0 || stop <= 0 || stop >= price {
-		return 0
-	}
-	riskBudget := accountValue * riskPct / 100
-	perShareRisk := price - stop
-	shares := int(riskBudget / perShareRisk)
-	if shares < 0 {
-		return 0
-	}
-	return shares
-}
-
-// accountValue is Phase 3.11's account-size input for suggestShares: m's
+// accountValue is Phase 3.11's account-size input for paper.SuggestShares: m's
 // latest recorded net worth (position market value as of the last closing
 // snapshot) plus m's declared cash — the same cash source /insight and
 // RunWeeklyReview already use (see loadCash), not a separate live

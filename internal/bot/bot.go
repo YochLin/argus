@@ -73,7 +73,7 @@ type Bot struct {
 	// checkTrailingStopAlerts) — 0 disables the corresponding check entirely.
 	// trailingStopATRMult (TRAILING_STOP_ATR_MULT env, Phase 3.8 追加項) is an
 	// opt-in ATR(14) multiplier that tightens the trailing-stop distance for
-	// lower-volatility tickers — see trailingStopThreshold and
+	// lower-volatility tickers — see paper.TrailingStopThreshold and
 	// docs/phase-3.8-atr-trailing-stop.md; <= 0 (the default) leaves
 	// trailingStopPct as the sole threshold, unchanged from before this field
 	// existed.
