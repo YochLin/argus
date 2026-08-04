@@ -608,4 +608,25 @@ const (
 	KeyEvalCountImmature         Key = "eval_count_immature"
 	KeyEvalCSVSaved              Key = "eval_csv_saved"
 	KeyEvalNoData                Key = "eval_no_data"
+
+	// argus backtest (docs/phase-11-paper-account.md §5) — replays the
+	// recommendations table's full history through internal/paper, the same
+	// engine the live paper account (internal/bot/paper.go) uses, so a
+	// backtest result reflects what the live account would actually have
+	// done. cmd/bot/backtest.go is the only caller. Reuses
+	// KeyEvalFetching/KeyEvalCSVSaved/KeyEvalNoData above rather than
+	// duplicating them — that history-fetch/CSV/no-data wording isn't
+	// eval-specific.
+	KeyBacktestTitle           Key = "backtest_title"
+	KeyBacktestOverviewTitle   Key = "backtest_overview_title"
+	KeyBacktestOverviewLine    Key = "backtest_overview_line"
+	KeyBacktestBenchmarkLine   Key = "backtest_benchmark_line"
+	KeyBacktestExitReasonTitle Key = "backtest_exit_reason_title"
+	KeyBacktestExitReasonLine  Key = "backtest_exit_reason_line"
+	KeyBacktestSourceTitle     Key = "backtest_source_title"
+	KeyBacktestSourceLine      Key = "backtest_source_line"
+	KeyBacktestCountsTitle     Key = "backtest_counts_title"
+	KeyBacktestCountHold       Key = "backtest_count_hold"
+	KeyBacktestCountNoHistory  Key = "backtest_count_no_history"
+	KeyBacktestCountSkippedBuy Key = "backtest_count_skipped_buy"
 )

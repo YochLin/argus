@@ -558,4 +558,17 @@ var zhMessages = map[Key]string{
 	KeyEvalCountImmature:         "  視窗未到期（%d日）：%d 筆\n",
 	KeyEvalCSVSaved:              "\n已輸出明細 CSV：%s\n",
 	KeyEvalNoData:                "沒有可評分的推薦記錄。\n",
+
+	KeyBacktestTitle:           "=== 虛擬帳戶回測報告（%s）===\n",
+	KeyBacktestOverviewTitle:   "\n[總覽]\n",
+	KeyBacktestOverviewLine:    "起始資金 $%.2f，期末權益 $%.2f，總報酬 %+.2f%%，CAGR %+.2f%%，最大回撤 %.2f%%\n交易 %d 筆，勝率 %.1f%%，獲利因子 %.2f，期望值 $%.2f\n",
+	KeyBacktestBenchmarkLine:   "對照大盤 %s 同期買進持有：%+.2f%%（超額 %+.2f%%）\n",
+	KeyBacktestExitReasonTitle: "\n[出場原因分解]\n",
+	KeyBacktestExitReasonLine:  "  %s：%d 筆，勝率 %.1f%%，平均報酬 %+.2f%%\n",
+	KeyBacktestSourceTitle:     "\n[來源分解]\n",
+	KeyBacktestSourceLine:      "  %s：%d 筆\n",
+	KeyBacktestCountsTitle:     "\n[誠實計數]\n",
+	KeyBacktestCountHold:       "  未動作（HOLD/無動作）：%d 筆\n",
+	KeyBacktestCountNoHistory:  "  抓不到歷史資料而跳過：%d 檔\n",
+	KeyBacktestCountSkippedBuy: "  資金不足而跳過的 BUY：%d 筆\n",
 }
