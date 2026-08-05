@@ -165,7 +165,11 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   never gets replayed through the same P&L curve as a USD one. `risk.go`'s `/api/risk` (`m=us` only)
   reports CSP locked cash and, per underlying with an open short call, locked shares vs. what's actually
   held — a naked call (locked > held) is flagged, the one case in Phase 12 where a write can leave the
-  user exposed without their noticing. Details:
+  user exposed without their noticing. `options.go`'s `/api/options` (`m=us` only, always 200 — no
+  feature flag, unlike `/api/paper`) reuses `buildOptionCollateral` for its own collateral summary
+  rather than duplicating it, and has no P&L curve — `daily_snapshots`/`DailyPnL` don't cover option
+  market value (no free historical option price source), so this page only ever shows realized P&L on
+  closed trades, never a portfolio-value line that would silently omit open option exposure. Details:
   **[docs/architecture/web.md](docs/architecture/web.md)**.
 
 ## Key behaviors to preserve

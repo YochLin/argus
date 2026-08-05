@@ -298,6 +298,7 @@ func main() {
 			Earnings:            earningsProvider,
 			Lang:                lang,
 			CompanyNames:        companyNameProvider,
+			OptionChain:         yahoo,
 			RiskHeatPct:         riskHeatPct,
 			Password:            webPassword,
 			Trade:               telegramBot,

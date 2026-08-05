@@ -276,6 +276,30 @@ export interface Dictionary {
   exitReasonLlmSell: string;
   distToStop: string;
   noClosedPositions: string;
+  // Phase 12 PR4: the read-only Options page — always in the sidebar (no
+  // feature flag; the options ledger is always present, just usually
+  // empty), unlike navPaper's paperEnabled gating.
+  navOptions: string;
+  optionContract: string;
+  optionRight: string;
+  optionStrike: string;
+  optionExpiry: string;
+  optionDTE: string;
+  optionContracts: string;
+  optionAvgPremium: string;
+  optionMark: string;
+  optionMarketValue: string;
+  optionDelta: string;
+  optionAction: string;
+  optionCalendar: string;
+  optionCollateral: string;
+  optionLockedCash: string;
+  optionLockedShares: string;
+  optionHeldShares: string;
+  optionNaked: string;
+  noOptionPositions: string;
+  noClosedOptions: string;
+  noOptionCollateral: string;
 }
 
 const en: Dictionary = {
@@ -523,6 +547,27 @@ const en: Dictionary = {
   exitReasonLlmSell: "LLM Sell",
   distToStop: "Dist. to Stop",
   noClosedPositions: "No closed positions yet.",
+  navOptions: "Options",
+  optionContract: "Contract",
+  optionRight: "Right",
+  optionStrike: "Strike",
+  optionExpiry: "Expiry",
+  optionDTE: "DTE",
+  optionContracts: "Contracts",
+  optionAvgPremium: "Avg Premium",
+  optionMark: "Mark",
+  optionMarketValue: "Market Value",
+  optionDelta: "Delta",
+  optionAction: "Action",
+  optionCalendar: "Expiry Calendar",
+  optionCollateral: "Collateral",
+  optionLockedCash: "CSP Locked Cash",
+  optionLockedShares: "Locked Shares",
+  optionHeldShares: "Held Shares",
+  optionNaked: "NAKED",
+  noOptionPositions: "No open option positions.",
+  noClosedOptions: "No closed option trades yet.",
+  noOptionCollateral: "No collateral obligations.",
 };
 
 const zh: Dictionary = {
@@ -768,6 +813,27 @@ const zh: Dictionary = {
   exitReasonLlmSell: "LLM 賣出",
   distToStop: "距停損",
   noClosedPositions: "尚無已平倉紀錄。",
+  navOptions: "期權",
+  optionContract: "契約",
+  optionRight: "權利",
+  optionStrike: "履約價",
+  optionExpiry: "到期日",
+  optionDTE: "剩餘天數",
+  optionContracts: "口數",
+  optionAvgPremium: "平均權利金",
+  optionMark: "現價",
+  optionMarketValue: "市值",
+  optionDelta: "Delta",
+  optionAction: "動作",
+  optionCalendar: "到期日曆",
+  optionCollateral: "擔保品",
+  optionLockedCash: "CSP 鎖定現金",
+  optionLockedShares: "鎖定股數",
+  optionHeldShares: "持有股數",
+  optionNaked: "裸賣",
+  noOptionPositions: "目前沒有期權部位。",
+  noClosedOptions: "尚無已平倉期權交易。",
+  noOptionCollateral: "沒有擔保品義務。",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

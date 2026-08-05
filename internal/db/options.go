@@ -262,6 +262,30 @@ func (d *DB) GetOptionPosition(symbol string) (OptionPosition, bool, error) {
 	return p, true, nil
 }
 
+// GetAllOptionTransactions returns every option order across every
+// underlying, newest first — backs the web dashboard's options page closed-
+// position list (Phase 12 PR4), which needs the full history rather than
+// one underlying at a time.
+func (d *DB) GetAllOptionTransactions() ([]OptionTransaction, error) {
+	rows, err := d.conn.Query(`
+		SELECT id, contract_symbol, underlying, right, strike, expiry, multiplier, action, contracts, premium, fee, date, realized_pnl, created_at
+		FROM option_transactions ORDER BY id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []OptionTransaction
+	for rows.Next() {
+		var t OptionTransaction
+		if err := rows.Scan(&t.ID, &t.ContractSymbol, &t.Underlying, &t.Right, &t.Strike, &t.Expiry, &t.Multiplier, &t.Action, &t.Contracts, &t.Premium, &t.Fee, &t.Date, &t.RealizedPnL, &t.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
 // GetOptionTransactionsByUnderlying returns underlying's full option order
 // history, newest first.
 func (d *DB) GetOptionTransactionsByUnderlying(underlying string) ([]OptionTransaction, error) {
