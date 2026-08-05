@@ -30,6 +30,13 @@ const (
 const (
 	PendingActionRecordBuy  = "record_buy"
 	PendingActionRecordSell = "record_sell"
+
+	// PendingActionOptionExpiry is Phase 12's expiry-scan proposal
+	// (docs/phase-12-options.md §3.4): a contract past its expiry always
+	// goes through a confirm/reject button, never an automatic write —
+	// an ITM expiry is an assignment, not a zero, and getting that wrong
+	// silently misrecords a whole leg's P&L.
+	PendingActionOptionExpiry = "option_expiry"
 )
 
 // PendingAction is one row of the write-gating queue. Payload is a

@@ -56,6 +56,7 @@ type Bot struct {
 	twMarketNews  data.MarketNewsProvider         // TW's marketNews counterpart (cnyes), always non-nil — no API key required
 	twMovers      data.TWMarketMoversProvider     // TW's GetMarketMovers counterpart (TWSE OpenAPI), always non-nil — no API key required
 	companyNames  data.CompanyNameProvider        // nil if FINMIND_TOKEN isn't set
+	optionChain   data.OptionChainProvider        // Phase 12, US-only; always non-nil in real use (Yahoo needs no API key), nil-checked anyway for tests that build a partial Bot
 	history       data.HistoryProvider
 	llm           *llm.Client
 	detector      *signals.Detector
@@ -152,6 +153,7 @@ type Config struct {
 	TWMarketNews        data.MarketNewsProvider         // TW's MarketNews counterpart (cnyes) — always non-nil, no API key required
 	TWMovers            data.TWMarketMoversProvider     // TW's GetMarketMovers counterpart (TWSE OpenAPI) — always non-nil, no API key required
 	CompanyNames        data.CompanyNameProvider        // nil if FINMIND_TOKEN isn't set
+	OptionChain         data.OptionChainProvider        // Phase 12, US-only; always non-nil in real use
 	History             data.HistoryProvider
 	LLM                 *llm.Client
 	Lang                i18n.Lang
@@ -206,6 +208,7 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		twMarketNews:        cfg.TWMarketNews,
 		twMovers:            cfg.TWMovers,
 		companyNames:        cfg.CompanyNames,
+		optionChain:         cfg.OptionChain,
 		history:             cfg.History,
 		llm:                 cfg.LLM,
 		detector:            signals.NewDetector(cfg.Lang),
@@ -327,6 +330,14 @@ func (b *Bot) handleMessage(ctx context.Context, cmd, args string) {
 		b.handleBuyAlert(args)
 	case "portfolio":
 		b.handlePortfolio()
+	case "obuy":
+		b.handleOBuy(args)
+	case "osell":
+		b.handleOSell(args)
+	case "oassign":
+		b.handleOAssign(args)
+	case "oexercise":
+		b.handleOExercise(args)
 	case "insight":
 		b.handleInsight(ctx)
 	case "cash":

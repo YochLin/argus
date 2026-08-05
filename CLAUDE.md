@@ -43,13 +43,26 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
 - `internal/data` — `Provider` interface (`GetQuote`/`GetNews`/`GetMarketMovers`), implemented
   independently by `finnhub.go` (primary) and `yahoo.go` (fallback via `Multi`). Separate optional
   interfaces (`FundamentalsProvider`, `HistoryProvider`, `EarningsProvider`, `MarketNewsProvider`,
-  `AnalystRatingProvider`) cover data Finnhub-only or Yahoo-only supports, each nil-checked by callers
-  rather than folded into `Provider`. TW market support (`market.Of`-gated) spans `yahoo.go` (`.TW`/
-  `.TWO` suffix resolution), `finmind.go` (TW fundamentals), `twse_movers.go` (TW market movers),
-  `cnyes.go` (TW market news), `googlenews.go` (TW per-ticker Chinese news — a keyless Google News RSS
-  search wired into the `Multi` chain between Finnhub and Yahoo, TW-only so the US path is unchanged),
-  and `tw_earnings.go` (a statutory-deadline earnings proxy, no real API).
+  `AnalystRatingProvider`, `OptionChainProvider`) cover data Finnhub-only or Yahoo-only supports, each
+  nil-checked by callers rather than folded into `Provider`. TW market support (`market.Of`-gated) spans
+  `yahoo.go` (`.TW`/`.TWO` suffix resolution), `finmind.go` (TW fundamentals), `twse_movers.go` (TW
+  market movers), `cnyes.go` (TW market news), `googlenews.go` (TW per-ticker Chinese news — a keyless
+  Google News RSS search wired into the `Multi` chain between Finnhub and Yahoo, TW-only so the US path
+  is unchanged), and `tw_earnings.go` (a statutory-deadline earnings proxy, no real API). `options.go`'s
+  `OptionChainProvider` (US-only, Phase 12) is implemented by `yahoo.go`, which authenticates with a
+  cookie + crumb handshake (`ensureCrumb`, cached on the `Yahoo` struct, retried once on a 401) that no
+  other Yahoo endpoint needs — quote/history/news stay on the plain (cookie-less) `client`.
   Full rationale, live-endpoint gotchas, and TW-specific design notes: **[docs/architecture/data.md](docs/architecture/data.md)**.
+
+- `internal/option` — Phase 12's pure functions for US equity options, independent of
+  `internal/db`/`internal/bot` like `internal/signals`. `contract.go`'s `Parse`/`Format`/`IsOCC` handle
+  OCC/OSI symbols (e.g. `AAPL260805C00310000`); `Parse` anchors from the right (date+right+strike is
+  always exactly 15 characters) so it doesn't depend on a fixed-width, space-padded underlying — live
+  data has no such padding, only the textbook OCC spec does. `greeks.go` self-computes Black-Scholes
+  greeks (`math.Erfc` for the normal CDF) since Yahoo's free option chain has none; `mark.go`'s `Mark`
+  (mid-price, falling back to last only when bid/ask is unusable) is the single entry point for "what is
+  this contract worth" everywhere else in the codebase — a thin contract's `lastPrice` can be a
+  days-stale zombie trade. Full design: **[docs/phase-12-options.md](docs/phase-12-options.md)**.
 
 - `internal/db` — thin wrapper around `database/sql` + `modernc.org/sqlite` (pure-Go, no cgo). Nine
   tables (`watchlist`, `daily_snapshots`, `recommendations`, `signal_states`, `positions`,
@@ -57,7 +70,10 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   write-gating) — migrations are versioned via `PRAGMA user_version`, append-only in `db.migrations`,
   never edited/reordered once shipped. `RecordBuy`/`RecordSell` own all `positions`/`transactions`
   writes with weighted-average cost and realized P&L math. TW support added a `market` column to four
-  tables (migration 12) and rebuilt `net_worth_snapshots`'s primary key to `(date, market)`.
+  tables (migration 12) and rebuilt `net_worth_snapshots`'s primary key to `(date, market)`. Phase 12
+  (migration 15) added `option_positions`/`option_transactions` (`options.go`) as two fully independent
+  tables — an OCC symbol never enters `positions.ticker` — with `RecordOption` as their single write
+  path so the signed-`contracts` realized-P&L formula (docs/phase-12-options.md §3.2) only exists once.
   Full table/method rationale: **[docs/architecture/db.md](docs/architecture/db.md)**.
 
 - `internal/i18n` — every user/LLM-facing string, split into `zh.go` (default) and `en.go`, keyed by
@@ -116,8 +132,13 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   channel. `pending_actions.go` is the bot-side half of Phase 4's write-gating flow (confirm/reject
   inline keyboards for MCP-proposed trades). Risk management (`/stop`, stop-loss/trailing-stop/target/
   MA5-break alerts, position sizing) and TW market support (per-market watchlist/portfolio/snapshot/
-  cash handling) are both fully wired through this package. Full command-by-command and job-by-job
-  rationale: **[docs/architecture/bot.md](docs/architecture/bot.md)**.
+  cash handling) are both fully wired through this package. `options.go` (Phase 12) adds `/obuy`/
+  `/osell`/`/oassign`/`/oexercise` — deliberately not folded into `/buy`/`/sell`'s OCC-autodetection,
+  since the argument shapes differ (contracts vs. shares, per-share premium vs. price) — plus
+  `/portfolio`'s options section and the expiry-scan job (hung off `RunClosingSnapshot(US)`, resolved
+  only via a `pending_actions` confirm/reject, never automatically — an ITM expiry is an
+  assignment/exercise, not a zero).
+  Full command-by-command and job-by-job rationale: **[docs/architecture/bot.md](docs/architecture/bot.md)**.
 
 - `internal/mcptools` — Phase 3.5's MCP (Model Context Protocol) tool surface for chat, using the
   official `github.com/modelcontextprotocol/go-sdk`. Registers read tools (`get_quote`, `get_history`,

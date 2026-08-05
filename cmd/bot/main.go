@@ -259,6 +259,7 @@ func main() {
 		TWMarketNews:        twMarketNews,
 		TWMovers:            twMovers,
 		CompanyNames:        companyNameProvider,
+		OptionChain:         yahoo,
 		History:             yahoo,
 		LLM:                 llmClient,
 		Lang:                lang,

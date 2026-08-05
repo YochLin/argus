@@ -22,6 +22,14 @@ var ErrNoPosition = errors.New("no position for ticker")
 // selling more than is held would go negative, which isn't representable.
 var ErrInsufficientShares = errors.New("insufficient shares for sell")
 
+// ErrCrossesZero is returned by RecordOption when an order would flip a
+// position from long to short (or vice versa) in one trade — e.g. selling 3
+// contracts against a 2-long position. Rejected rather than split into
+// "close 2, open short 1" automatically: ponytail: allowing it would double
+// RecordOption's branch count for a mistake nobody makes by accident (see
+// docs/phase-12-options.md §3.3).
+var ErrCrossesZero = errors.New("order crosses zero — close the position before reversing it")
+
 type DB struct {
 	conn *sql.DB
 }
@@ -440,6 +448,60 @@ var migrations = []string{
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	CREATE INDEX IF NOT EXISTS idx_buy_alerts_ticker ON buy_alerts(ticker);
+	`,
+	// 15: Phase 12's options ledger. OCC symbols never enter positions.ticker
+	// (see docs/phase-12-options.md §2.1 — market.Of would silently
+	// misclassify one as a plain US stock, and every downstream consumer of
+	// positions/daily_snapshots/signals would then compute something
+	// confidently wrong) — two independent tables instead.
+	// underlying/right/strike/expiry are always derived by option.Parse at
+	// write time, never caller-supplied — same convention as the market
+	// column. contracts is signed (+long/-short) so RecordOption's realized
+	// P&L formula is the one place that formula is written (see
+	// internal/db/options.go). iv_history is unrelated to the ledger itself
+	// but shares this migration deliberately — it's a daily ATM-IV snapshot
+	// with no consumer for 6-12 months (until there's enough history for an
+	// IV rank/percentile), and Yahoo has no historical IV endpoint to
+	// backfill from, so not starting the clock now means never having it.
+	`
+	CREATE TABLE IF NOT EXISTS option_positions (
+		contract_symbol TEXT PRIMARY KEY,
+		underlying      TEXT NOT NULL,
+		right           TEXT NOT NULL,
+		strike          REAL NOT NULL,
+		expiry          TEXT NOT NULL,
+		multiplier      INTEGER NOT NULL DEFAULT 100,
+		contracts       REAL NOT NULL,
+		avg_premium     REAL NOT NULL,
+		stop_premium    REAL NOT NULL DEFAULT 0,
+		updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS option_transactions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		contract_symbol TEXT NOT NULL,
+		underlying TEXT NOT NULL,
+		right TEXT NOT NULL,
+		strike REAL NOT NULL,
+		expiry TEXT NOT NULL,
+		multiplier INTEGER NOT NULL DEFAULT 100,
+		action TEXT NOT NULL,
+		contracts REAL NOT NULL,
+		premium REAL NOT NULL,
+		fee REAL NOT NULL DEFAULT 0,
+		date TEXT NOT NULL,
+		realized_pnl REAL NOT NULL DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE INDEX IF NOT EXISTS idx_option_tx_underlying ON option_transactions(underlying);
+
+	CREATE TABLE IF NOT EXISTS iv_history (
+		underlying TEXT NOT NULL,
+		date       TEXT NOT NULL,
+		atm_iv     REAL NOT NULL,
+		dte        INTEGER NOT NULL,
+		PRIMARY KEY (underlying, date)
+	);
 	`,
 }
 
