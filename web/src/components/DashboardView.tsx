@@ -43,13 +43,6 @@ function DashKpiStripItem({ label, value, format, colorMode = "neutral", currenc
   );
 }
 
-// fmtMoney renders a plain magnitude (cash, account value) — unlike
-// formatValue("currency", ...), it never adds a +/- sign, since cash isn't
-// a directional P&L number. Mirrors RiskView.tsx's fmtMoney.
-function fmtMoney(v: number, currency: string): string {
-  return `${currency}${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-}
-
 export function DashboardView({ dict, market, onTickerClick, names, onTrade, refreshSignal }: Props) {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [error, setError] = useState(false);
@@ -69,20 +62,12 @@ export function DashboardView({ dict, market, onTickerClick, names, onTrade, ref
     return <div className="loading">{dict.loading}</div>;
   }
 
-  const { kpis, curve, drawdown, benchmark, positions, cash, accountValue } = dashboard;
+  const { kpis, curve, drawdown, benchmark, positions } = dashboard;
   const currency = currencySymbol(market);
 
   return (
     <>
       <div className="dash-kpi-strip">
-        <div className="dash-kpi-strip-item">
-          <div className="dash-kpi-strip-label">{dict.cashLevel}</div>
-          <div className="dash-kpi-strip-value">{fmtMoney(cash, currency)}</div>
-        </div>
-        <div className="dash-kpi-strip-item">
-          <div className="dash-kpi-strip-label">{dict.accountValue}</div>
-          <div className="dash-kpi-strip-value">{fmtMoney(accountValue, currency)}</div>
-        </div>
         <DashKpiStripItem label={dict.netPnL} value={kpis.netPnL} format="currency" colorMode="pnl" currency={currency} />
         <DashKpiStripItem label={dict.winRate} value={kpis.winRate} format="percent" />
         <DashKpiStripItem label={dict.profitFactor} value={kpis.profitFactor} format="ratio" />

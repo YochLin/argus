@@ -92,11 +92,6 @@ export interface Dashboard {
   // later than curve's own (see docs/phase-8-trader-analytics.md §7).
   benchmark: DateValue[];
   positions: Position[];
-  // cash/accountValue mirror Status's fields of the same name and
-  // definition (declared cash balance + live position value) — the
-  // Dashboard page's own cash-level card, not the sidebar's.
-  cash: number;
-  accountValue: number;
 }
 
 export interface Config {
@@ -562,8 +557,6 @@ function getMockData(url: string): any {
       curve,
       drawdown,
       benchmark,
-      cash: market === "tw" ? 750000 : 22600,
-      accountValue: market === "tw" ? 3850000 : 125400,
       positions:
         market === "tw"
           ? [
