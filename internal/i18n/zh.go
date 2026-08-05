@@ -601,4 +601,9 @@ var zhMessages = map[Key]string{
 	KeyPortfolioOptionLine:        "%s\n口數：%g，平均權利金 $%.2f，現價 $%.2f\n市值：$%.2f\n到期日：%s（剩餘 %d 天）",
 	KeyPortfolioOptionUnavailable: "%s 報價暫時無法取得：%v",
 	KeyOptionExpiryConfirm:        "期權 %s 已到期，標的收盤 $%.2f、履約價 $%.2f，建議：%s\n請確認",
+
+	KeyOptionSelectUsage:        "用法：/option <ticker> [call|put|csp|cc]，省略策略時預設 call，例如 /option AAPL 或 /option AAPL csp",
+	KeyOptionSelectFailed:       "選契約失敗：%v",
+	KeyOptionSelectNoCandidates: "%s 目前沒有符合 %s 篩選條件（流動性或 delta/到期天數）的契約",
+	KeyOptionSelectLine:         "%s\n現價 $%.2f  Delta %.3f  IV %.1f%%  未平倉量 %d  價差 %.1f%%  剩餘 %d 天",
 }

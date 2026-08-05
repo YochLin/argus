@@ -91,6 +91,10 @@ type dbReader interface {
 	// GetRealizedPnL backs buildStatus's sidebar account-overview card — the
 	// same all-time-SELL-total definition internal/bot's /portfolio uses.
 	GetRealizedPnL(m market.MarketID) (float64, error)
+	// GetOptionPositions backs risk.go's Phase 12 PR3 collateral summary
+	// (CSP locked cash, covered-call locked shares, naked-call flag) — the
+	// same read internal/bot's /portfolio options section uses.
+	GetOptionPositions() ([]db.OptionPosition, error)
 }
 
 // netWorthBaseline resolves the capital base for a period starting at

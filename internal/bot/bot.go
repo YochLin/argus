@@ -338,6 +338,8 @@ func (b *Bot) handleMessage(ctx context.Context, cmd, args string) {
 		b.handleOAssign(args)
 	case "oexercise":
 		b.handleOExercise(args)
+	case "option":
+		b.handleOption(args)
 	case "insight":
 		b.handleInsight(ctx)
 	case "cash":

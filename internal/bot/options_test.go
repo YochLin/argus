@@ -3,9 +3,26 @@ package bot
 import (
 	"strings"
 	"testing"
+	"time"
+
+	"argus/internal/data"
 )
 
 const testOptionSymbol = "AAPL260918C00320000"
+
+// fakeOptionChain implements data.OptionChainProvider with a fixed chain,
+// for /option select tests — no live Yahoo call.
+type fakeOptionChain struct {
+	expirations []time.Time
+	quotes      map[time.Time][]data.OptionQuote
+}
+
+func (f fakeOptionChain) GetOptionExpirations(string) ([]time.Time, error) {
+	return f.expirations, nil
+}
+func (f fakeOptionChain) GetOptionChain(_ string, expiry time.Time) ([]data.OptionQuote, error) {
+	return f.quotes[expiry], nil
+}
 
 // TestOptionBuySellRoundTrip mirrors docs/phase-12-options.md §9's
 // end-to-end acceptance checklist: /obuy then /osell against the same
@@ -159,5 +176,60 @@ func TestPortfolioIncludesOptionsSection(t *testing.T) {
 	}
 	if !sawSection {
 		t.Errorf("handlePortfolio() sent = %v, want an options section", fc.sent)
+	}
+}
+
+func TestHandleOption_LongCallDefault(t *testing.T) {
+	b, _ := newPendingActionsTestBot(t)
+	b.provider = quoteOnlyProvider{price: 315}
+
+	expiry := time.Now().AddDate(0, 0, 40)
+	b.optionChain = fakeOptionChain{
+		expirations: []time.Time{expiry},
+		quotes: map[time.Time][]data.OptionQuote{
+			expiry: {
+				// ATM call: passes liquidity gate and LongCall's delta band.
+				{ContractSymbol: "AAPL-ATM", Right: "C", Strike: 315, Bid: 4.9, Ask: 5.1, Volume: 100, OpenInterest: 1000, ImpliedVolatility: 0.30, Expiration: expiry},
+				// Illiquid: fails the OI gate.
+				{ContractSymbol: "AAPL-ILLIQUID", Right: "C", Strike: 316, Bid: 4.9, Ask: 5.1, Volume: 1, OpenInterest: 1, ImpliedVolatility: 0.30, Expiration: expiry},
+			},
+		},
+	}
+
+	b.handleOption("AAPL")
+	fc := b.channel.(*fakeChannel)
+	if len(fc.sent) != 1 {
+		t.Fatalf("handleOption sent = %v, want exactly 1 candidate line", fc.sent)
+	}
+	if !strings.Contains(fc.sent[0], "AAPL-ATM") {
+		t.Errorf("handleOption sent = %q, want it to name the ATM contract", fc.sent[0])
+	}
+}
+
+func TestHandleOption_NoCandidates(t *testing.T) {
+	b, _ := newPendingActionsTestBot(t)
+	b.provider = quoteOnlyProvider{price: 315}
+	b.optionChain = fakeOptionChain{} // no expirations at all
+
+	b.handleOption("AAPL")
+	fc := b.channel.(*fakeChannel)
+	if len(fc.sent) != 1 || !strings.Contains(fc.sent[0], "AAPL") {
+		t.Errorf("handleOption(no candidates) sent = %v", fc.sent)
+	}
+}
+
+func TestParseOptionSelectArgs(t *testing.T) {
+	ticker, profile, err := parseOptionSelectArgs("AAPL csp")
+	if err != nil || ticker != "AAPL" || profile.Name != "CSP" {
+		t.Errorf("parseOptionSelectArgs(AAPL csp) = %q %+v %v", ticker, profile, err)
+	}
+
+	ticker, profile, err = parseOptionSelectArgs("AAPL")
+	if err != nil || ticker != "AAPL" || profile.Name != "LongCall" {
+		t.Errorf("parseOptionSelectArgs(AAPL) = %q %+v %v, want default LongCall", ticker, profile, err)
+	}
+
+	if _, _, err := parseOptionSelectArgs("AAPL bogus"); err == nil {
+		t.Error("parseOptionSelectArgs(AAPL bogus) expected error, got nil")
 	}
 }

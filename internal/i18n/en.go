@@ -612,4 +612,9 @@ Write only from the data actually provided above — omit any section you have n
 	KeyPortfolioOptionLine:        "%s\nContracts: %g, avg premium $%.2f, mark $%.2f\nMarket value: $%.2f\nExpiry: %s (%d days left)",
 	KeyPortfolioOptionUnavailable: "%s quote temporarily unavailable: %v",
 	KeyOptionExpiryConfirm:        "%s has expired (underlying closed $%.2f vs strike $%.2f) — proposed resolution: %s\nPlease confirm",
+
+	KeyOptionSelectUsage:        "Usage: /option <ticker> [call|put|csp|cc], defaults to call when omitted, e.g. /option AAPL or /option AAPL csp",
+	KeyOptionSelectFailed:       "Option selection failed: %v",
+	KeyOptionSelectNoCandidates: "No candidates for %s (%s) passed the liquidity/delta/DTE screen",
+	KeyOptionSelectLine:         "%s\nMark $%.2f  Delta %.3f  IV %.1f%%  OI %d  Spread %.1f%%  DTE %d",
 }

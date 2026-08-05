@@ -43,6 +43,10 @@ type fakeDB struct {
 	// realizedPnL backs GetRealizedPnL for the sidebar account-overview
 	// status tests below — nil (zero value) behaves as "no closed trades."
 	realizedPnL map[market.MarketID]float64
+
+	// optionPositions backs GetOptionPositions for risk_test.go's Phase 12
+	// PR3 collateral tests — nil (zero value) behaves as "no open contracts."
+	optionPositions []db.OptionPosition
 }
 
 func (f *fakeDB) GetPositions() ([]db.Position, error)          { return f.positions, nil }
@@ -96,6 +100,7 @@ func (f *fakeDB) GetLessonsForTickers(tickers []string) (map[string][]db.Lesson,
 	return out, nil
 }
 func (f *fakeDB) GetRealizedPnL(m market.MarketID) (float64, error) { return f.realizedPnL[m], nil }
+func (f *fakeDB) GetOptionPositions() ([]db.OptionPosition, error)  { return f.optionPositions, nil }
 
 // fakeQuotes implements quoteGetter for tests.
 type fakeQuotes struct {

@@ -252,6 +252,23 @@ type riskResponse struct {
 	HeatPct          float64                `json:"heatPct"`
 	HeatThresholdPct float64                `json:"heatThresholdPct"`
 	Positions        []riskPositionResponse `json:"positions"`
+	// OptionLockedCash/OptionCollateral are Phase 12 PR3's addition —
+	// US-only (options.go's OptionChainProvider is US-only), always zero/nil
+	// for market=tw. See buildOptionCollateral.
+	OptionLockedCash float64                    `json:"optionLockedCash"`
+	OptionCollateral []optionCollateralResponse `json:"optionCollateral"`
+}
+
+// optionCollateralResponse is one underlying's covered-call collateral
+// status — Naked is true when LockedShares (from open short calls) exceeds
+// HeldShares (the actual stock position), the one case in this whole phase
+// where the user might not know what they've done (docs/phase-12-options.md
+// §3.5).
+type optionCollateralResponse struct {
+	Underlying   string  `json:"underlying"`
+	LockedShares float64 `json:"lockedShares"`
+	HeldShares   float64 `json:"heldShares"`
+	Naked        bool    `json:"naked"`
 }
 
 type riskPositionResponse struct {
