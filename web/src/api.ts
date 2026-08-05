@@ -476,6 +476,65 @@ export interface Paper {
   drawdown: DateValue[];
 }
 
+// Options mirrors internal/web/options.go's optionsResponse (Phase 12 PR4,
+// docs/phase-12-options.md). US-only — a TW-market fetch returns all-empty
+// arrays, same convention as buildOptionCollateral. Mark/greeks are 0 on a
+// position whose live chain fetch failed (degraded row, not dropped).
+export interface OptionPosition {
+  contractSymbol: string;
+  underlying: string;
+  right: string; // "C" | "P"
+  strike: number;
+  expiry: string;
+  dte: number;
+  multiplier: number;
+  contracts: number; // signed: + long, - short
+  avgPremium: number;
+  stopPremium: number;
+  mark: number;
+  marketValue: number;
+  delta: number;
+  gamma: number;
+  theta: number;
+  vega: number;
+}
+
+export interface OptionClosedTrade {
+  contractSymbol: string;
+  underlying: string;
+  right: string;
+  strike: number;
+  expiry: string;
+  action: string; // STC | BTC | EXPIRED | ASSIGNED | EXERCISED
+  contracts: number;
+  premium: number;
+  fee: number;
+  date: string;
+  realizedPnL: number;
+}
+
+export interface OptionCalendarEntry {
+  date: string;
+  symbols: string[];
+}
+
+export interface OptionCollateralPosition {
+  underlying: string;
+  lockedShares: number;
+  heldShares: number;
+  naked: boolean;
+}
+
+export interface Options {
+  positions: OptionPosition[];
+  closed: OptionClosedTrade[];
+  calendar: OptionCalendarEntry[];
+  collateral: {
+    lockedCash: number;
+    positions: OptionCollateralPosition[];
+  };
+}
+
 async function getJSON<T>(url: string): Promise<T> {
   try {
     const res = await fetch(url);
@@ -864,6 +923,44 @@ function getMockData(url: string): any {
       drawdown,
     };
   }
+  if (path === "/api/options") {
+    if (market === "tw") {
+      return { positions: [], closed: [], calendar: [], collateral: { lockedCash: 0, positions: [] } };
+    }
+    const positions: any[] = [
+      {
+        contractSymbol: "AAPL260918C00320000", underlying: "AAPL", right: "C", strike: 320,
+        expiry: "2026-09-18", dte: 44, multiplier: 100, contracts: 2, avgPremium: 5.4, stopPremium: 0,
+        mark: 6.85, marketValue: 1370, delta: 0.42, gamma: 0.015, theta: -0.09, vega: 0.31,
+      },
+      {
+        contractSymbol: "MSFT260918P00400000", underlying: "MSFT", right: "P", strike: 400,
+        expiry: "2026-09-18", dte: 44, multiplier: 100, contracts: -1, avgPremium: 8.0, stopPremium: 0,
+        mark: 6.2, marketValue: -620, delta: -0.22, gamma: 0.012, theta: -0.07, vega: 0.28,
+      },
+      {
+        contractSymbol: "TSLA260918C00300000", underlying: "TSLA", right: "C", strike: 300,
+        expiry: "2026-09-18", dte: 44, multiplier: 100, contracts: -1, avgPremium: 4.5, stopPremium: 0,
+        mark: 5.1, marketValue: -510, delta: 0.28, gamma: 0.01, theta: -0.06, vega: 0.22,
+      },
+    ];
+    const closed: any[] = [
+      { contractSymbol: "NVDA260821C00140000", underlying: "NVDA", right: "C", strike: 140, expiry: "2026-08-21", action: "STC", contracts: 1, premium: 9.2, fee: 1, date: "2026-08-01", realizedPnL: 210 },
+      { contractSymbol: "AMD260821P00150000", underlying: "AMD", right: "P", strike: 150, expiry: "2026-08-21", action: "EXPIRED", contracts: 1, premium: 0, fee: 0, date: "2026-08-21", realizedPnL: -320 },
+    ];
+    return {
+      positions,
+      closed,
+      calendar: [{ date: "2026-09-18", symbols: positions.map((p) => p.contractSymbol) }],
+      collateral: {
+        lockedCash: 40000,
+        positions: [
+          { underlying: "MSFT", lockedShares: 0, heldShares: 0, naked: false },
+          { underlying: "TSLA", lockedShares: 100, heldShares: 0, naked: true },
+        ],
+      },
+    };
+  }
   if (path === "/api/rec-performance") {
     const tickers = market === "tw" ? ["2330", "2454", "2317", "2412", "3008"] : ["NVDA", "AAPL", "MSFT", "AMD", "TSLA"];
     const mkSignal = (t: string, action: string, src: string, entryDate: string, entryPrice: number, daysHeld: number, excess: number) => ({
@@ -1036,6 +1133,10 @@ export function fetchDistributions(market: Market = "us"): Promise<Distributions
 
 export function fetchPaper(market: Market = "us"): Promise<Paper> {
   return getJSON<Paper>(`/api/paper?market=${market}`);
+}
+
+export function fetchOptions(market: Market = "us"): Promise<Options> {
+  return getJSON<Options>(`/api/options?market=${market}`);
 }
 
 // --- Phase 10 write endpoints (docs/phase-10-web-trade-input.md) ---

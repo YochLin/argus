@@ -95,6 +95,9 @@ type dbReader interface {
 	// (CSP locked cash, covered-call locked shares, naked-call flag) — the
 	// same read internal/bot's /portfolio options section uses.
 	GetOptionPositions() ([]db.OptionPosition, error)
+	// GetAllOptionTransactions backs options.go's Phase 12 PR4 closed-
+	// position list (/api/options).
+	GetAllOptionTransactions() ([]db.OptionTransaction, error)
 }
 
 // netWorthBaseline resolves the capital base for a period starting at

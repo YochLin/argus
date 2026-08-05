@@ -31,6 +31,7 @@ interface Props {
 const links: Array<{ path: string; label: (dict: Dictionary) => string; icon: ReactNode }> = [
   { path: "/", label: (d) => d.navDashboard, icon: <DashboardIcon /> },
   { path: "/risk", label: (d) => d.navRisk, icon: <RiskIcon /> },
+  { path: "/options", label: (d) => d.navOptions, icon: <OptionsIcon /> },
   { path: "/calendar", label: (d) => d.navCalendar, icon: <CalendarIcon /> },
   { path: "/rounds", label: (d) => d.navRounds, icon: <RoundsIcon /> },
   { path: "/chart", label: (d) => d.navChart, icon: <ChartIcon /> },
@@ -170,6 +171,16 @@ function RecsIcon() {
     <svg {...iconProps} aria-hidden="true">
       <circle cx="8" cy="8" r="6" />
       <path d="M8 5 V8 L10.5 9.5" />
+    </svg>
+  );
+}
+
+function OptionsIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <circle cx="8" cy="8" r="6.5" />
+      <path d="M6 6.5 C6 5.4 6.9 4.5 8 4.5 S10 5.4 10 6.3 C10 7.6 8 7.8 8 9" />
+      <line x1="8" y1="10.8" x2="8" y2="11.2" />
     </svg>
   );
 }

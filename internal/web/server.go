@@ -47,6 +47,11 @@ type Config struct {
 	// endpoint then returns an empty map and the frontend shows bare
 	// tickers, same optionality as bot.Config.CompanyNames.
 	CompanyNames data.CompanyNameProvider
+	// OptionChain backs Phase 12 PR4's /api/options — the same
+	// data.OptionChainProvider (Yahoo) internal/bot's /option and /portfolio
+	// options section use. nil disables live mark/greeks on that page (the
+	// ledger data itself still renders); no other page reads this field.
+	OptionChain data.OptionChainProvider
 	// RiskHeatPct is the /risk page's portfolio-heat warning threshold (env
 	// RISK_HEAT_PCT, Phase 8 PR1) — <=0 means "don't draw a warning line,"
 	// same convention as internal/bot's STOP_LOSS_PCT. main.go defaults it
@@ -88,6 +93,7 @@ type Server struct {
 	earnings         data.EarningsProvider
 	lang             i18n.Lang
 	companyNames     data.CompanyNameProvider
+	optionChain      data.OptionChainProvider
 	heatThresholdPct float64
 	recPerf          *recPerfStore
 	password         string
@@ -113,6 +119,7 @@ func New(cfg Config) *Server {
 		earnings:            cfg.Earnings,
 		lang:                cfg.Lang,
 		companyNames:        cfg.CompanyNames,
+		optionChain:         cfg.OptionChain,
 		heatThresholdPct:    cfg.RiskHeatPct,
 		password:            cfg.Password,
 		trade:               cfg.Trade,
@@ -139,6 +146,7 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /api/risk", s.handleRisk)
 	s.mux.HandleFunc("GET /api/rec-performance", s.handleRecPerformance)
 	s.mux.HandleFunc("GET /api/paper", s.handlePaper)
+	s.mux.HandleFunc("GET /api/options", s.handleOptions)
 	// Write routes (Phase 10) are always registered, but requireWritable
 	// 404s every one of them when no password is configured (see Config.
 	// Password's doc comment) — registering unconditionally, rather than

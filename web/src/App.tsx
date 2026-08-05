@@ -13,6 +13,7 @@ import { ReportsView } from "./components/ReportsView";
 import { RiskView } from "./components/RiskView";
 import { RecsView } from "./components/RecsView";
 import { PaperView } from "./components/PaperView";
+import { OptionsView } from "./components/OptionsView";
 import { TradeModal, type TradeMode } from "./components/TradeModal";
 import { LoginModal } from "./components/LoginModal";
 import { ImportView } from "./components/ImportView";
@@ -204,6 +205,8 @@ export default function App() {
         onTickerClick={(t) => navigate(`/chart?ticker=${encodeURIComponent(t)}`)}
       />
     ) : null;
+  } else if (path === "/options") {
+    body = <OptionsView dict={dict} market={market} />;
   } else if (path === "/import") {
     body = status?.writable ? (
       <ImportView
