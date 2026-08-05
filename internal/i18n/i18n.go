@@ -172,8 +172,15 @@ const (
 	KeyPortfolioSectionUS  Key = "portfolio_section_us"
 	KeyPortfolioSectionTW  Key = "portfolio_section_tw"
 	KeyPortfolioSummaryTWD Key = "portfolio_summary_twd"
-	KeyPortfolioLotSuffix  Key = "portfolio_lot_suffix"
-	KeyJobPanic            Key = "job_panic"
+	// KeyPortfolioSummaryWithCash/KeyPortfolioSummaryWithCashTWD are
+	// KeyPortfolioSummary/KeyPortfolioSummaryTWD's cash-aware variants,
+	// selected by sendPortfolioSection when /cash has a declared balance for
+	// that market — same "WithCash variant + TWD counterpart" precedent as
+	// KeyWeeklyNetWorthLineWithCash/KeyWeeklyNetWorthLineWithCashTWD.
+	KeyPortfolioSummaryWithCash    Key = "portfolio_summary_with_cash"
+	KeyPortfolioSummaryWithCashTWD Key = "portfolio_summary_with_cash_twd"
+	KeyPortfolioLotSuffix          Key = "portfolio_lot_suffix"
+	KeyJobPanic                    Key = "job_panic"
 
 	KeyInsightResultTitle Key = "insight_result_title"
 
