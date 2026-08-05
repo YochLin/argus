@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/option"
@@ -436,4 +437,110 @@ func (b *Bot) recordDailyATMIV(tickers []string, prices map[string]float64, date
 			log.Printf("record ATM IV %s: %v", ticker, err)
 		}
 	}
+}
+
+// optionSelectMaxResults caps /option's reply — a liquid large-cap chain can
+// pass the liquidity+delta+DTE screen with a dozen strikes across a couple
+// expiries; nobody reads past the first handful in a Telegram message.
+const optionSelectMaxResults = 8
+
+// optionProfileFor maps /option's kind argument to a option.Profile — see
+// parseOptionSelectArgs.
+func optionProfileFor(kind string) (option.Profile, bool) {
+	switch kind {
+	case "", "call":
+		return option.LongCall, true
+	case "put":
+		return option.LongPut, true
+	case "csp":
+		return option.CSP, true
+	case "cc":
+		return option.CoveredCall, true
+	default:
+		return option.Profile{}, false
+	}
+}
+
+// parseOptionSelectArgs parses /option's "<TICKER> [call|put|csp|cc]"
+// arguments — kind defaults to "call" (LongCall) when omitted.
+func parseOptionSelectArgs(args string) (ticker string, profile option.Profile, err error) {
+	fields := strings.Fields(args)
+	if len(fields) < 1 || len(fields) > 2 {
+		return "", option.Profile{}, fmt.Errorf("expected <ticker> [call|put|csp|cc]")
+	}
+	ticker = strings.ToUpper(fields[0])
+	kind := ""
+	if len(fields) == 2 {
+		kind = strings.ToLower(fields[1])
+	}
+	profile, ok := optionProfileFor(kind)
+	if !ok {
+		return "", option.Profile{}, fmt.Errorf("invalid kind %q", fields[1])
+	}
+	return ticker, profile, nil
+}
+
+func (b *Bot) handleOption(args string) {
+	ticker, profile, err := parseOptionSelectArgs(args)
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyOptionSelectUsage))
+		return
+	}
+	if b.optionChain == nil {
+		b.Send(i18n.T(b.lang, i18n.KeyOptionSelectFailed, fmt.Errorf("option chain provider unavailable")))
+		return
+	}
+
+	spotQuote, err := b.provider.GetQuote(ticker)
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyOptionSelectFailed, err))
+		return
+	}
+
+	candidates, err := b.gatherOptionCandidates(ticker, spotQuote.Price, profile)
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyOptionSelectFailed, err))
+		return
+	}
+	if len(candidates) == 0 {
+		b.Send(i18n.T(b.lang, i18n.KeyOptionSelectNoCandidates, ticker, profile.Name))
+		return
+	}
+
+	for i, c := range candidates {
+		if i >= optionSelectMaxResults {
+			break
+		}
+		spreadPct := c.SpreadPct * 100
+		b.Send(i18n.T(b.lang, i18n.KeyOptionSelectLine,
+			c.Quote.ContractSymbol, c.Mark, c.Greeks.Delta, c.Quote.ImpliedVolatility*100,
+			c.Quote.OpenInterest, spreadPct, c.DTE))
+	}
+}
+
+// gatherOptionCandidates fetches every expiry within profile's DTE band
+// (one chain request each — Yahoo's endpoint is per-expiry, see
+// optionMark's doc comment for the same constraint) and runs
+// option.Select over the merged result.
+func (b *Bot) gatherOptionCandidates(ticker string, spot float64, profile option.Profile) ([]option.Candidate, error) {
+	expirations, err := b.optionChain.GetOptionExpirations(ticker)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+
+	var chain []data.OptionQuote
+	for _, expiry := range expirations {
+		dte := int(math.Ceil(time.Until(expiry).Hours() / 24))
+		if dte < profile.DTEMin || dte > profile.DTEMax {
+			continue
+		}
+		quotes, err := b.optionChain.GetOptionChain(ticker, expiry)
+		if err != nil {
+			log.Printf("option select %s @ %s: %v", ticker, expiry.Format("2006-01-02"), err)
+			continue
+		}
+		chain = append(chain, quotes...)
+	}
+	return option.Select(chain, spot, now, profile), nil
 }

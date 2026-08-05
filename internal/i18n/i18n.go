@@ -669,4 +669,10 @@ const (
 	KeyPortfolioOptionLine        Key = "portfolio_option_line"
 	KeyPortfolioOptionUnavailable Key = "portfolio_option_unavailable"
 	KeyOptionExpiryConfirm        Key = "option_expiry_confirm"
+
+	// /option TICKER [call|put|csp|cc] (Phase 12 PR3, contract selection).
+	KeyOptionSelectUsage        Key = "option_select_usage"
+	KeyOptionSelectFailed       Key = "option_select_failed"
+	KeyOptionSelectNoCandidates Key = "option_select_no_candidates"
+	KeyOptionSelectLine         Key = "option_select_line"
 )

@@ -3,6 +3,7 @@ package web
 import (
 	"log"
 	"math"
+	"sort"
 	"strconv"
 
 	"argus/internal/data"
@@ -103,11 +104,18 @@ func buildRisk(database dbReader, quotes quoteGetter, m market.MarketID, heatThr
 
 	accountValue := totalValue + cash
 
+	optionLockedCash, optionCollateral, err := buildOptionCollateral(database, allPositions, m)
+	if err != nil {
+		log.Printf("web: risk: option collateral for %s: %v", m, err)
+	}
+
 	resp := riskResponse{
 		AccountValue:     accountValue,
 		Cash:             cash,
 		HeatThresholdPct: heatThresholdPct,
 		Positions:        make([]riskPositionResponse, 0, len(priceds)),
+		OptionLockedCash: optionLockedCash,
+		OptionCollateral: optionCollateral,
 	}
 
 	var heatSum float64
@@ -132,6 +140,49 @@ func buildRisk(database dbReader, quotes quoteGetter, m market.MarketID, heatThr
 		resp.HeatPct = heatSum / accountValue * 100
 	}
 	return resp, nil
+}
+
+// buildOptionCollateral is Phase 12 PR3's addition to /api/risk: CSP locked
+// cash (Σ strike×|contracts|×multiplier across short puts) and, per
+// underlying with an open short call, locked shares vs. what's actually
+// held — Naked flags the case that matters (docs/phase-12-options.md §3.5).
+// US-only, same as every other options surface (options are US-only) — a
+// nil/empty result for m=tw is correct, not a degrade.
+func buildOptionCollateral(database dbReader, stockPositions []db.Position, m market.MarketID) (lockedCash float64, collateral []optionCollateralResponse, err error) {
+	if m != market.US {
+		return 0, nil, nil
+	}
+	optionPositions, err := database.GetOptionPositions()
+	if err != nil {
+		return 0, nil, err
+	}
+
+	lockedSharesByUnderlying := make(map[string]float64)
+	for _, p := range optionPositions {
+		switch {
+		case p.Right == "P" && p.Contracts < 0:
+			lockedCash += p.Strike * -p.Contracts * float64(p.Multiplier)
+		case p.Right == "C" && p.Contracts < 0:
+			lockedSharesByUnderlying[p.Underlying] += -p.Contracts * float64(p.Multiplier)
+		}
+	}
+	if len(lockedSharesByUnderlying) == 0 {
+		return lockedCash, nil, nil
+	}
+
+	heldByTicker := make(map[string]float64, len(stockPositions))
+	for _, p := range stockPositions {
+		heldByTicker[p.Ticker] = p.Shares
+	}
+	collateral = make([]optionCollateralResponse, 0, len(lockedSharesByUnderlying))
+	for underlying, locked := range lockedSharesByUnderlying {
+		held := heldByTicker[underlying]
+		collateral = append(collateral, optionCollateralResponse{
+			Underlying: underlying, LockedShares: locked, HeldShares: held, Naked: locked > held,
+		})
+	}
+	sort.Slice(collateral, func(i, j int) bool { return collateral[i].Underlying < collateral[j].Underlying })
+	return lockedCash, collateral, nil
 }
 
 func computeSinglePositionRisk(pos db.Position, q *data.Quote, accountValue float64) riskPositionResponse {

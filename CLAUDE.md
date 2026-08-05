@@ -62,7 +62,11 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   greeks (`math.Erfc` for the normal CDF) since Yahoo's free option chain has none; `mark.go`'s `Mark`
   (mid-price, falling back to last only when bid/ask is unusable) is the single entry point for "what is
   this contract worth" everywhere else in the codebase — a thin contract's `lastPrice` can be a
-  days-stale zombie trade. Full design: **[docs/phase-12-options.md](docs/phase-12-options.md)**.
+  days-stale zombie trade. `select.go`'s `Select` screens a chain down to `Candidate`s matching a
+  `Profile` (`LongCall`/`LongPut`/`CSP`/`CoveredCall` — delta/DTE bands and the liquidity gate are all
+  `Profile` fields, not constants, since they're real-world calibration knobs); the liquidity gate
+  (OI/volume/spread%) is checked before delta — a contract with a wide spread loses money even when the
+  direction call is right. Full design: **[docs/phase-12-options.md](docs/phase-12-options.md)**.
 
 - `internal/db` — thin wrapper around `database/sql` + `modernc.org/sqlite` (pure-Go, no cgo). Nine
   tables (`watchlist`, `daily_snapshots`, `recommendations`, `signal_states`, `positions`,
@@ -137,7 +141,8 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   since the argument shapes differ (contracts vs. shares, per-share premium vs. price) — plus
   `/portfolio`'s options section and the expiry-scan job (hung off `RunClosingSnapshot(US)`, resolved
   only via a `pending_actions` confirm/reject, never automatically — an ITM expiry is an
-  assignment/exercise, not a zero).
+  assignment/exercise, not a zero). `/option TICKER [call|put|csp|cc]` (defaults to `call`) runs
+  `internal/option.Select` against a live chain and replies with the passing contracts.
   Full command-by-command and job-by-job rationale: **[docs/architecture/bot.md](docs/architecture/bot.md)**.
 
 - `internal/mcptools` — Phase 3.5's MCP (Model Context Protocol) tool surface for chat, using the
@@ -157,7 +162,10 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   view. The embedded frontend build lives at `internal/web/dist` (React/Vite source at repo-root `web/`);
   only `index.html` is committed as a placeholder, CI builds the real SPA. Every market-scoped API
   endpoint takes a `?market=us|tw` query parameter (TW support added in Phase 6 PR1) so a TWD position
-  never gets replayed through the same P&L curve as a USD one. Details:
+  never gets replayed through the same P&L curve as a USD one. `risk.go`'s `/api/risk` (`m=us` only)
+  reports CSP locked cash and, per underlying with an open short call, locked shares vs. what's actually
+  held — a naked call (locked > held) is flagged, the one case in Phase 12 where a write can leave the
+  user exposed without their noticing. Details:
   **[docs/architecture/web.md](docs/architecture/web.md)**.
 
 ## Key behaviors to preserve

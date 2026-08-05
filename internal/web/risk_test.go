@@ -192,3 +192,63 @@ func TestHandleRisk_DefaultsToUSMarket(t *testing.T) {
 		t.Errorf("Positions = %+v, want empty (2330 is TW, endpoint defaults to US)", got.Positions)
 	}
 }
+
+// TestBuildOptionCollateral_NakedCall confirms a short call with no
+// matching stock position is flagged Naked, and its full multiplier-scaled
+// share count is reported as locked.
+func TestBuildOptionCollateral_NakedCall(t *testing.T) {
+	fdb := &fakeDB{
+		optionPositions: []db.OptionPosition{
+			{ContractSymbol: "AAPL260918C00320000", Underlying: "AAPL", Right: "C", Strike: 320, Multiplier: 100, Contracts: -1, AvgPremium: 5.40},
+		},
+	}
+	lockedCash, collateral, err := buildOptionCollateral(fdb, nil, market.US)
+	if err != nil {
+		t.Fatalf("buildOptionCollateral: %v", err)
+	}
+	if lockedCash != 0 {
+		t.Errorf("lockedCash = %v, want 0 (no short puts)", lockedCash)
+	}
+	if len(collateral) != 1 {
+		t.Fatalf("collateral = %+v, want exactly one underlying", collateral)
+	}
+	c := collateral[0]
+	if c.Underlying != "AAPL" || c.LockedShares != 100 || c.HeldShares != 0 || !c.Naked {
+		t.Errorf("collateral[0] = %+v, want AAPL locked=100 held=0 naked=true", c)
+	}
+}
+
+// TestBuildOptionCollateral_CoveredNotNaked confirms enough held shares
+// clears the naked flag, and a CSP contributes to lockedCash instead.
+func TestBuildOptionCollateral_CoveredNotNaked(t *testing.T) {
+	fdb := &fakeDB{
+		optionPositions: []db.OptionPosition{
+			{ContractSymbol: "AAPL260918C00320000", Underlying: "AAPL", Right: "C", Strike: 320, Multiplier: 100, Contracts: -1, AvgPremium: 5.40},
+			{ContractSymbol: "MSFT260918P00400000", Underlying: "MSFT", Right: "P", Strike: 400, Multiplier: 100, Contracts: -2, AvgPremium: 8.00},
+		},
+	}
+	stockPositions := []db.Position{{Ticker: "AAPL", Shares: 100, AvgCost: 300}}
+
+	lockedCash, collateral, err := buildOptionCollateral(fdb, stockPositions, market.US)
+	if err != nil {
+		t.Fatalf("buildOptionCollateral: %v", err)
+	}
+	if lockedCash != 80000 {
+		t.Errorf("lockedCash = %v, want 80000 (400*2*100 CSP collateral)", lockedCash)
+	}
+	if len(collateral) != 1 || collateral[0].Naked {
+		t.Errorf("collateral = %+v, want AAPL covered (naked=false), MSFT absent (no short call)", collateral)
+	}
+}
+
+// TestBuildOptionCollateral_TWReturnsEmpty confirms the TW market never
+// gets an options collateral summary (options are US-only).
+func TestBuildOptionCollateral_TWReturnsEmpty(t *testing.T) {
+	fdb := &fakeDB{optionPositions: []db.OptionPosition{
+		{ContractSymbol: "AAPL260918C00320000", Underlying: "AAPL", Right: "C", Strike: 320, Multiplier: 100, Contracts: -1},
+	}}
+	lockedCash, collateral, err := buildOptionCollateral(fdb, nil, market.TW)
+	if err != nil || lockedCash != 0 || collateral != nil {
+		t.Errorf("buildOptionCollateral(TW) = %v, %v, %v, want 0, nil, nil", lockedCash, collateral, err)
+	}
+}
