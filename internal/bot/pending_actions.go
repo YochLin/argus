@@ -225,6 +225,12 @@ func (b *Bot) executePendingAction(ctx context.Context, action db.PendingAction)
 			go b.reviewClosedTrade(ctx, p.Ticker, stopPrice)
 		}
 		return msg
+	case db.PendingActionOptionExpiry:
+		p, ok := decodeOptionExpiryPayload(action.Payload)
+		if !ok {
+			return i18n.T(b.lang, i18n.KeyPendingActionExecFailed)
+		}
+		return b.resolveOption(p.Symbol, p.Date, p.ProposedAction)
 	default:
 		return i18n.T(b.lang, i18n.KeyPendingActionExecFailed)
 	}

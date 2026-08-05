@@ -1178,7 +1178,11 @@ func (b *Bot) handlePortfolio() {
 		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
 		return
 	}
-	if len(positions) == 0 {
+	optionPositions, err := b.db.GetOptionPositions()
+	if err != nil {
+		log.Printf("portfolio: option positions: %v", err)
+	}
+	if len(positions) == 0 && len(optionPositions) == 0 {
 		b.Send(i18n.T(b.lang, i18n.KeyPortfolioEmpty))
 		return
 	}
@@ -1186,6 +1190,7 @@ func (b *Bot) handlePortfolio() {
 	b.Send(i18n.T(b.lang, i18n.KeyPortfolioTitle))
 	b.sendPortfolioSection(market.US, positions)
 	b.sendPortfolioSection(market.TW, positions)
+	b.sendPortfolioOptionsSection(optionPositions)
 }
 
 // sendPortfolioSection renders /portfolio's per-market block (Phase 6, see

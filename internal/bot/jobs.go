@@ -125,6 +125,15 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context, m market.MarketID) {
 	} else {
 		b.checkBuyAlerts(buyAlerts, prices)
 	}
+
+	// Phase 12: US-only (options.go's OptionChainProvider is US-only, see
+	// its own doc comment) — both the expiry-scan confirm-flow and the
+	// daily ATM IV snapshot ride the US closing snapshot rather than
+	// getting a cron entry of their own.
+	if m == market.US {
+		b.checkOptionExpiry(prices, date)
+		b.recordDailyATMIV(tickers, prices, date)
+	}
 }
 
 // snapshotBenchmark records benchmarkFor(m)'s (SPY/0050) closing price into

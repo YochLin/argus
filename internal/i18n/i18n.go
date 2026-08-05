@@ -651,4 +651,22 @@ const (
 	KeyPaperSellAlert  Key = "paper_sell_alert"
 	KeyPaperResetUsage Key = "paper_reset_usage"
 	KeyPaperResetDone  Key = "paper_reset_done"
+
+	// Phase 12's options ledger (docs/phase-12-options.md) — /obuy, /osell,
+	// /oassign, /oexercise and /portfolio's options section.
+	KeyOptionUsage                Key = "option_usage"
+	KeyOptionTradeFailed          Key = "option_trade_failed"
+	KeyOptionCrossesZero          Key = "option_crosses_zero"
+	KeyOptionTradeSuccess         Key = "option_trade_success"
+	KeyOptionNakedCallWarning     Key = "option_naked_call_warning"
+	KeyOptionResolutionUsage      Key = "option_resolution_usage"
+	KeyOptionNoPosition           Key = "option_no_position"
+	KeyOptionAssignRequiresShort  Key = "option_assign_requires_short"
+	KeyOptionExerciseRequiresLong Key = "option_exercise_requires_long"
+	KeyOptionResolveFailed        Key = "option_resolve_failed"
+	KeyOptionResolveSuccess       Key = "option_resolve_success"
+	KeyPortfolioOptionsSection    Key = "portfolio_options_section"
+	KeyPortfolioOptionLine        Key = "portfolio_option_line"
+	KeyPortfolioOptionUnavailable Key = "portfolio_option_unavailable"
+	KeyOptionExpiryConfirm        Key = "option_expiry_confirm"
 )
