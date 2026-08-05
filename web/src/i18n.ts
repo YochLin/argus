@@ -257,6 +257,25 @@ export interface Dictionary {
   importNoRows: string;
   importAppliedPrefix: string;
   importAppliedSuffix: string;
+  // Phase 11 PR4 (docs/phase-11-paper-account.md §7.2): the read-only Paper
+  // Account page — sidebar nav link gated on /api/config's paperEnabled,
+  // same "hidden entirely when the feature is off" convention as navImport.
+  navPaper: string;
+  paperEquity: string;
+  paperInitialCash: string;
+  paperTotalReturn: string;
+  paperBenchmarkReturn: string;
+  paperAlpha: string;
+  paperSince: string;
+  closedPositions: string;
+  entryDate: string;
+  exitDate: string;
+  exitPrice: string;
+  exitReason: string;
+  exitReasonStop: string;
+  exitReasonLlmSell: string;
+  distToStop: string;
+  noClosedPositions: string;
 }
 
 const en: Dictionary = {
@@ -488,6 +507,22 @@ const en: Dictionary = {
   importNoRows: "No rows to show yet — paste CSV and preview.",
   importAppliedPrefix: "Applied ",
   importAppliedSuffix: " row(s).",
+  navPaper: "Paper Account",
+  paperEquity: "EQUITY",
+  paperInitialCash: "Initial Cash",
+  paperTotalReturn: "TOTAL RETURN",
+  paperBenchmarkReturn: "BENCHMARK",
+  paperAlpha: "ALPHA",
+  paperSince: "Since",
+  closedPositions: "Closed Positions",
+  entryDate: "Entry",
+  exitDate: "Exit",
+  exitPrice: "Exit Price",
+  exitReason: "Exit Reason",
+  exitReasonStop: "Stop",
+  exitReasonLlmSell: "LLM Sell",
+  distToStop: "Dist. to Stop",
+  noClosedPositions: "No closed positions yet.",
 };
 
 const zh: Dictionary = {
@@ -717,6 +752,22 @@ const zh: Dictionary = {
   importNoRows: "尚無資料 — 請貼上 CSV 並預覽。",
   importAppliedPrefix: "已匯入 ",
   importAppliedSuffix: " 筆。",
+  navPaper: "虛擬帳戶",
+  paperEquity: "權益",
+  paperInitialCash: "起始資金",
+  paperTotalReturn: "總報酬",
+  paperBenchmarkReturn: "大盤同期",
+  paperAlpha: "超額報酬",
+  paperSince: "起始於",
+  closedPositions: "已平倉",
+  entryDate: "進場日",
+  exitDate: "出場日",
+  exitPrice: "出場價",
+  exitReason: "出場原因",
+  exitReasonStop: "停損",
+  exitReasonLlmSell: "LLM 賣出",
+  distToStop: "距停損",
+  noClosedPositions: "尚無已平倉紀錄。",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

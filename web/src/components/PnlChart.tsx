@@ -14,13 +14,18 @@ interface Props {
   // its first one.
   benchmark?: DateValue[];
   dict?: Dictionary;
+  // title overrides the panel's default dict?.cumPnl label — Phase 11 PR4's
+  // Paper Account page feeds this an equity-level curve (not a
+  // cumulative-P&L-from-zero one), so "Equity" reads correctly where
+  // "cumulative P&L" wouldn't.
+  title?: string;
 }
 
 // lightweight-charts (not a second charting library) even for PR1's plain
 // cumulative-P&L line — PR3 reuses it for the candlestick + buy/sell
 // markers view, and the design doc's s1 series color is specced against
 // this library's theming, not a generic chart component's.
-export function PnlChart({ curve, benchmark, dict }: Props) {
+export function PnlChart({ curve, benchmark, dict, title }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const seriesRef = useRef<ISeriesApi<"Area"> | null>(null);
   const benchSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
@@ -83,7 +88,7 @@ const chart = createChart(containerRef.current, {
   return (
     <div className="card card--glow chart-panel">
       <div className="chart-panel-header">
-        <div className="eyebrow">{dict?.cumPnl}</div>
+        <div className="eyebrow">{title ?? dict?.cumPnl}</div>
         {showLegend && (
           <div className="chart-legend">
             <span className="chart-legend-item">

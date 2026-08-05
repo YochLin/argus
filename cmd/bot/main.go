@@ -291,15 +291,18 @@ func main() {
 		// isn't a separate process, and database/sql connections already
 		// support concurrent use from other goroutines.
 		webServer := web.New(web.Config{
-			DB:           database,
-			Provider:     provider,
-			History:      yahoo,
-			Earnings:     earningsProvider,
-			Lang:         lang,
-			CompanyNames: companyNameProvider,
-			RiskHeatPct:  riskHeatPct,
-			Password:     webPassword,
-			Trade:        telegramBot,
+			DB:                  database,
+			Provider:            provider,
+			History:             yahoo,
+			Earnings:            earningsProvider,
+			Lang:                lang,
+			CompanyNames:        companyNameProvider,
+			RiskHeatPct:         riskHeatPct,
+			Password:            webPassword,
+			Trade:               telegramBot,
+			PaperDB:             paperDatabase,
+			PaperInitialCashUSD: paperInitialCashUSD,
+			PaperInitialCashTWD: paperInitialCashTWD,
 		})
 		go func() {
 			if err := webServer.Run(ctx, webAddr); err != nil {

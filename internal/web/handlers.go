@@ -97,6 +97,11 @@ type statusResponse struct {
 
 type configResponse struct {
 	Lang string `json:"lang"`
+	// PaperEnabled (Phase 11 PR4) tells the frontend whether to show the
+	// "Paper Account" sidebar item at all — /api/paper 404s regardless, but
+	// showing a nav link to a page that always errors would be worse than
+	// not showing it, same reasoning as Writable gating the trade UI.
+	PaperEnabled bool `json:"paperEnabled"`
 }
 
 // calendarResponse is /api/calendar's body — same "raw data only" rule as
@@ -266,7 +271,33 @@ type riskPositionResponse struct {
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, configResponse{Lang: string(s.lang)})
+	writeJSON(w, http.StatusOK, configResponse{Lang: string(s.lang), PaperEnabled: s.paperDB != nil})
+}
+
+// handlePaper serves /api/paper?market=us|tw (Phase 11 PR4). 404s outright
+// when the feature is off (s.paperDB nil, PAPER_DB_PATH unset) rather than
+// a 200 with empty data — a disabled feature should read as absent, not as
+// "an account with zero everything," and the frontend uses /api/config's
+// paperEnabled to avoid ever calling this in the first place.
+func (s *Server) handlePaper(w http.ResponseWriter, r *http.Request) {
+	if s.paperDB == nil {
+		writeError(w, http.StatusNotFound, "paper account is disabled")
+		return
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			log.Printf("web: panic in handlePaper: %v", p)
+			writeError(w, http.StatusInternalServerError, "internal error")
+		}
+	}()
+
+	resp, err := buildPaper(s.paperDB, s.quotes, marketParam(r), s.paperInitialCashUSD, s.paperInitialCashTWD)
+	if err != nil {
+		log.Printf("web: build paper: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build paper account")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {

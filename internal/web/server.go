@@ -62,6 +62,17 @@ type Config struct {
 	// whenever Password is empty, since New only wires the write routes up
 	// in that case.
 	Trade TradeExecutor
+	// PaperDB is Phase 11 PR3's live paper account's own database — nil
+	// (PAPER_DB_PATH unset) disables /api/paper entirely (404), same
+	// presence-of-config convention as Password/Trade above. Physically
+	// separate from DB, so nothing on this read-only page can ever touch
+	// real trading data. PaperInitialCashUSD/TWD mirror the same env vars
+	// internal/bot/paper.go seeds the account with (PAPER_INITIAL_CASH_USD/
+	// TWD) — needed here only to render the KPI denominator for "return
+	// since inception."
+	PaperDB             *db.DB
+	PaperInitialCashUSD float64
+	PaperInitialCashTWD float64
 }
 
 // Server is Argus's read-only web dashboard (Phase 5 PR1 — see
@@ -82,23 +93,33 @@ type Server struct {
 	password         string
 	trade            TradeExecutor
 	csvDB            csvWriter
-	mux              *http.ServeMux
+	// paperDB stays *db.DB (not dbReader) so nil-checking it in
+	// handlePaper can't fall into the classic "non-nil interface wrapping
+	// a nil pointer" trap — it's passed into buildPaper's dbReader
+	// parameter at each call site instead.
+	paperDB             *db.DB
+	paperInitialCashUSD float64
+	paperInitialCashTWD float64
+	mux                 *http.ServeMux
 }
 
 func New(cfg Config) *Server {
 	s := &Server{
-		db:               cfg.DB,
-		watchlistDB:      cfg.DB,
-		buyAlertDB:       cfg.DB,
-		quotes:           newQuoteCache(cfg.Provider),
-		history:          cfg.History,
-		earnings:         cfg.Earnings,
-		lang:             cfg.Lang,
-		companyNames:     cfg.CompanyNames,
-		heatThresholdPct: cfg.RiskHeatPct,
-		password:         cfg.Password,
-		trade:            cfg.Trade,
-		csvDB:            cfg.DB,
+		db:                  cfg.DB,
+		watchlistDB:         cfg.DB,
+		buyAlertDB:          cfg.DB,
+		quotes:              newQuoteCache(cfg.Provider),
+		history:             cfg.History,
+		earnings:            cfg.Earnings,
+		lang:                cfg.Lang,
+		companyNames:        cfg.CompanyNames,
+		heatThresholdPct:    cfg.RiskHeatPct,
+		password:            cfg.Password,
+		trade:               cfg.Trade,
+		csvDB:               cfg.DB,
+		paperDB:             cfg.PaperDB,
+		paperInitialCashUSD: cfg.PaperInitialCashUSD,
+		paperInitialCashTWD: cfg.PaperInitialCashTWD,
 	}
 	s.recPerf = newRecPerfStore(s.db, s.history)
 	s.mux = http.NewServeMux()
@@ -117,6 +138,7 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /api/company-names", s.handleCompanyNames)
 	s.mux.HandleFunc("GET /api/risk", s.handleRisk)
 	s.mux.HandleFunc("GET /api/rec-performance", s.handleRecPerformance)
+	s.mux.HandleFunc("GET /api/paper", s.handlePaper)
 	// Write routes (Phase 10) are always registered, but requireWritable
 	// 404s every one of them when no password is configured (see Config.
 	// Password's doc comment) — registering unconditionally, rather than
