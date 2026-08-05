@@ -58,3 +58,107 @@ func TestGenerateRecommendations_ParsesSuccessfully(t *testing.T) {
 		t.Errorf("GenerateRecommendations() recs = %+v, want one AAPL recommendation", recs)
 	}
 }
+
+type fakeChatSession struct {
+	sendFunc func(text string) (string, error)
+}
+
+func (s *fakeChatSession) Send(ctx context.Context, text string) (string, error) {
+	if s.sendFunc != nil {
+		return s.sendFunc(text)
+	}
+	return "default reply", nil
+}
+
+func (s *fakeChatSession) Close() error {
+	return nil
+}
+
+type fakeChatProvider struct {
+	session ChatSession
+	err     error
+}
+
+func (f fakeChatProvider) Prompt(ctx context.Context, systemPrompt, model, text string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (f fakeChatProvider) NewChatSession(ctx context.Context, systemPrompt, model string) (ChatSession, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.session, nil
+}
+
+func TestChat_FallbackWhenSendFailsOnInitialTurn(t *testing.T) {
+	// Primary provider returns a session whose Send fails (like acpProvider hitting rate limit)
+	primary := fakeChatProvider{
+		session: &fakeChatSession{
+			sendFunc: func(text string) (string, error) {
+				return "", errors.New("acp: session limit hit")
+			},
+		},
+	}
+	// Fallback provider returns a working session
+	fallback := fakeChatProvider{
+		session: &fakeChatSession{
+			sendFunc: func(text string) (string, error) {
+				return "fallback agy reply", nil
+			},
+		},
+	}
+
+	c := NewClientWithProvider(primary, "", "", "", i18n.EN)
+	c.AddFallback(fallback, "", "", "")
+
+	reply, err := c.Chat(context.Background(), "hello")
+	if err != nil {
+		t.Fatalf("Chat() unexpected error: %v", err)
+	}
+	if reply != "fallback agy reply" {
+		t.Errorf("Chat() reply = %q, want %q", reply, "fallback agy reply")
+	}
+}
+
+func TestChat_FallbackWhenSendFailsMidConversation(t *testing.T) {
+	turn := 0
+	primarySession := &fakeChatSession{
+		sendFunc: func(text string) (string, error) {
+			turn++
+			if turn == 1 {
+				return "primary reply turn 1", nil
+			}
+			return "", errors.New("acp: session limit hit on turn 2")
+		},
+	}
+	primary := fakeChatProvider{session: primarySession}
+
+	fallbackSession := &fakeChatSession{
+		sendFunc: func(text string) (string, error) {
+			return "fallback reply turn 2", nil
+		},
+	}
+	fallback := fakeChatProvider{session: fallbackSession}
+
+	c := NewClientWithProvider(primary, "", "", "", i18n.EN)
+	c.AddFallback(fallback, "", "", "")
+
+	// Turn 1: Primary succeeds
+	reply1, err := c.Chat(context.Background(), "turn 1")
+	if err != nil {
+		t.Fatalf("Turn 1 Chat() unexpected error: %v", err)
+	}
+	if reply1 != "primary reply turn 1" {
+		t.Errorf("Turn 1 reply = %q, want %q", reply1, "primary reply turn 1")
+	}
+
+	// Turn 2: Primary fails, Chat automatically falls back to fallback provider
+	reply2, err := c.Chat(context.Background(), "turn 2")
+	if err != nil {
+		t.Fatalf("Turn 2 Chat() unexpected error: %v", err)
+	}
+	if reply2 != "fallback reply turn 2" {
+		t.Errorf("Turn 2 reply = %q, want %q", reply2, "fallback reply turn 2")
+	}
+}
+
