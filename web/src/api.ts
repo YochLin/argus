@@ -96,6 +96,11 @@ export interface Dashboard {
 
 export interface Config {
   lang: string;
+  // paperEnabled (Phase 11 PR4) mirrors whether PAPER_DB_PATH is configured
+  // server-side — the sidebar's Paper Account link is hidden entirely (not
+  // just disabled) when this is false, same convention as Status.writable
+  // gating the trade UI.
+  paperEnabled: boolean;
 }
 
 export interface Transaction {
@@ -412,6 +417,65 @@ export interface Distributions {
   skippedMaeCount: number;
 }
 
+// Paper mirrors internal/web/paper.go's paperResponse (Phase 11 PR4,
+// docs/phase-11-paper-account.md §7.1) — the live paper account's own KPIs/
+// positions/closed-rounds/curves. curve/benchmark are equity-level (not
+// cumulative-P&L-from-zero like Dashboard.curve/benchmark) — they start
+// near kpis.initialCash, so they read naturally on their own axis without
+// needing that baseline threaded through separately.
+export interface PaperKPIs {
+  cash: number;
+  positionsValue: number;
+  equity: number;
+  initialCash: number;
+  sinceDate: string; // "" before the account's first trade
+  realizedPnL: number;
+  unrealizedPnL: number;
+  totalReturnPct: number;
+  benchmarkReturnPct: number;
+  alphaPct: number;
+  maxDrawdownPct: number;
+  winRate: number;
+  profitFactor: number;
+  expectancy: number;
+}
+
+export interface PaperPosition {
+  ticker: string;
+  entryDate: string;
+  avgCost: number;
+  shares: number;
+  stopPrice: number;
+  price: number;
+  unrealizedPnL: number;
+  unrealizedPct: number;
+  distToStopPct: number;
+}
+
+// PaperClosedPosition.exitReason is "stop" | "llm_sell" — see
+// internal/web/paper.go's closedPositionFromRound for how it's derived
+// (zero schema changes: the SELL leg's own stop_price snapshot).
+export interface PaperClosedPosition {
+  ticker: string;
+  entryDate: string;
+  exitDate: string;
+  avgCost: number;
+  exitPrice: number;
+  shares: number;
+  realizedPnL: number;
+  realizedPct: number;
+  exitReason: string;
+}
+
+export interface Paper {
+  kpis: PaperKPIs;
+  positions: PaperPosition[];
+  closed: PaperClosedPosition[];
+  curve: DateValue[];
+  benchmark: DateValue[];
+  drawdown: DateValue[];
+}
+
 async function getJSON<T>(url: string): Promise<T> {
   try {
     const res = await fetch(url);
@@ -432,7 +496,7 @@ function getMockData(url: string): any {
   const market = (parsed.searchParams.get("market") as Market) || "us";
 
   if (path === "/api/config") {
-    return { lang: "zh" };
+    return { lang: "zh", paperEnabled: true };
   }
   if (path === "/api/status") {
     return {
@@ -737,6 +801,69 @@ function getMockData(url: string): any {
       skippedMaeCount: 0,
     };
   }
+  if (path === "/api/paper") {
+    const initialCash = market === "tw" ? 1000000 : 100000;
+    const dates = Array.from({ length: 30 }, (_, i) => {
+      const d = new Date(2026, 6, 1 + i);
+      return d.toISOString().slice(0, 10);
+    });
+    let val = initialCash;
+    const curve = dates.map((date) => {
+      val += (Math.random() - 0.42) * initialCash * 0.01;
+      return { date, value: Math.round(val) };
+    });
+    const benchmark = dates.map((date, i) => ({
+      date,
+      value: Math.round(initialCash + i * initialCash * 0.002 + (Math.random() - 0.5) * initialCash * 0.003),
+    }));
+    const drawdown = curve.map((c, i) => {
+      const peak = Math.max(...curve.slice(0, i + 1).map((x) => x.value));
+      return { date: c.date, value: Math.min(0, c.value - peak) };
+    });
+    const finalEquity = curve[curve.length - 1].value;
+    const finalBench = benchmark[benchmark.length - 1].value;
+    const positions =
+      market === "tw"
+        ? [
+            { ticker: "2330", entryDate: "2026-07-10", avgCost: 950, shares: 300, stopPrice: 890, price: 1010, unrealizedPnL: 18000, unrealizedPct: 6.32, distToStopPct: 11.88 },
+          ]
+        : [
+            { ticker: "NVDA", entryDate: "2026-07-08", avgCost: 132.5, shares: 60, stopPrice: 121.0, price: 141.2, unrealizedPnL: 522, unrealizedPct: 6.57, distToStopPct: 14.31 },
+          ];
+    const closed =
+      market === "tw"
+        ? [
+            { ticker: "2454", entryDate: "2026-06-02", exitDate: "2026-06-20", avgCost: 1190, exitPrice: 1120, shares: 200, realizedPnL: -14000, realizedPct: -5.88, exitReason: "stop" },
+            { ticker: "0050", entryDate: "2026-05-14", exitDate: "2026-06-11", avgCost: 182, exitPrice: 198, shares: 1000, realizedPnL: 16000, realizedPct: 8.79, exitReason: "llm_sell" },
+          ]
+        : [
+            { ticker: "AMD", entryDate: "2026-06-02", exitDate: "2026-06-20", avgCost: 168.2, exitPrice: 154.8, shares: 90, realizedPnL: -1206, realizedPct: -7.97, exitReason: "stop" },
+            { ticker: "MSFT", entryDate: "2026-05-14", exitDate: "2026-06-11", avgCost: 402, exitPrice: 431, shares: 40, realizedPnL: 1160, realizedPct: 7.21, exitReason: "llm_sell" },
+          ];
+    return {
+      kpis: {
+        cash: Math.round(initialCash * 0.35),
+        positionsValue: Math.round(finalEquity - initialCash * 0.35),
+        equity: finalEquity,
+        initialCash,
+        sinceDate: "2026-05-01",
+        realizedPnL: closed.reduce((s, c) => s + c.realizedPnL, 0),
+        unrealizedPnL: positions.reduce((s, p) => s + p.unrealizedPnL, 0),
+        totalReturnPct: ((finalEquity - initialCash) / initialCash) * 100,
+        benchmarkReturnPct: ((finalBench - initialCash) / initialCash) * 100,
+        alphaPct: ((finalEquity - finalBench) / initialCash) * 100,
+        maxDrawdownPct: 4.8,
+        winRate: 0.5,
+        profitFactor: 1.4,
+        expectancy: closed.reduce((s, c) => s + c.realizedPnL, 0) / closed.length,
+      },
+      positions,
+      closed,
+      curve,
+      benchmark,
+      drawdown,
+    };
+  }
   if (path === "/api/rec-performance") {
     const tickers = market === "tw" ? ["2330", "2454", "2317", "2412", "3008"] : ["NVDA", "AAPL", "MSFT", "AMD", "TSLA"];
     const mkSignal = (t: string, action: string, src: string, entryDate: string, entryPrice: number, daysHeld: number, excess: number) => ({
@@ -905,6 +1032,10 @@ export function fetchRecPerformance(market: Market = "us"): Promise<RecPerforman
 }
 export function fetchDistributions(market: Market = "us"): Promise<Distributions> {
   return getJSON<Distributions>(`/api/distributions?market=${market}`);
+}
+
+export function fetchPaper(market: Market = "us"): Promise<Paper> {
+  return getJSON<Paper>(`/api/paper?market=${market}`);
 }
 
 // --- Phase 10 write endpoints (docs/phase-10-web-trade-input.md) ---

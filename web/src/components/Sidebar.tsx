@@ -16,6 +16,9 @@ interface Props {
   // entirely, not just disabled" convention as every other write-only
   // entry point (TopBar's "+ Trade", ChartListView's remove button).
   writable: boolean;
+  // paperEnabled (Phase 11 PR4) gates the /paper nav link the same way —
+  // hidden entirely when PAPER_DB_PATH isn't configured server-side.
+  paperEnabled: boolean;
 }
 
 // /round (the detail page reached by clicking a row in /rounds) has no nav
@@ -36,19 +39,25 @@ const links: Array<{ path: string; label: (dict: Dictionary) => string; icon: Re
 ];
 
 const importLink = { path: "/import", label: (d: Dictionary) => d.navImport, icon: <ImportIcon /> };
+const paperLink = { path: "/paper", label: (d: Dictionary) => d.navPaper, icon: <PaperIcon /> };
 
 function isActive(linkPath: string, path: string): boolean {
   return linkPath === path;
 }
 
-export function Sidebar({ path, onNavigate, dict, market, status, writable }: Props) {
+export function Sidebar({ path, onNavigate, dict, market, status, writable, paperEnabled }: Props) {
+  const navLinks = [
+    ...links,
+    ...(paperEnabled ? [paperLink] : []),
+    ...(writable ? [importLink] : []),
+  ];
   return (
     <div className="sidebar">
       <div className="sidebar-wordmark">
         ARGUS <span className="cursor">▮</span>
       </div>
       <nav className="sidebar-nav">
-        {(writable ? [...links, importLink] : links).map((link) => (
+        {navLinks.map((link) => (
           <a
             key={link.path}
             href={link.path}
@@ -161,6 +170,17 @@ function RecsIcon() {
     <svg {...iconProps} aria-hidden="true">
       <circle cx="8" cy="8" r="6" />
       <path d="M8 5 V8 L10.5 9.5" />
+    </svg>
+  );
+}
+
+function PaperIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <rect x="3" y="2" width="10" height="12" rx="1" />
+      <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" />
+      <line x1="5.5" y1="8" x2="10.5" y2="8" />
+      <line x1="5.5" y1="10.5" x2="8.5" y2="10.5" />
     </svg>
   );
 }

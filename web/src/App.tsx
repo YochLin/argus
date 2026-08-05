@@ -12,6 +12,7 @@ import { ChartView } from "./components/ChartView";
 import { ReportsView } from "./components/ReportsView";
 import { RiskView } from "./components/RiskView";
 import { RecsView } from "./components/RecsView";
+import { PaperView } from "./components/PaperView";
 import { TradeModal, type TradeMode } from "./components/TradeModal";
 import { LoginModal } from "./components/LoginModal";
 import { ImportView } from "./components/ImportView";
@@ -57,6 +58,11 @@ export default function App() {
   // toggle's override, persisted in localStorage. The override wins when
   // present — the server value only decides the first-visit default.
   const [serverLang, setServerLang] = useState<Lang>("zh");
+  // paperEnabled (Phase 11 PR4) gates the sidebar's Paper Account link —
+  // mirrors /api/config's paperEnabled (PAPER_DB_PATH configured
+  // server-side). Defaults false so a slow/failed /api/config fetch never
+  // briefly shows a link to a page that would 404.
+  const [paperEnabled, setPaperEnabled] = useState(false);
   const [userLang, setUserLang] = useState<Lang | null>(() => {
     const stored = localStorage.getItem(langStorageKey);
     return stored === null ? null : normalizeLang(stored);
@@ -129,7 +135,10 @@ export default function App() {
     // /api/config's failure isn't fatal — the page still works with the zh
     // default dictionary.
     fetchConfig()
-      .then((cfg) => setServerLang(normalizeLang(cfg.lang)))
+      .then((cfg) => {
+        setServerLang(normalizeLang(cfg.lang));
+        setPaperEnabled(cfg.paperEnabled);
+      })
       .catch(() => {});
   }, []);
 
@@ -186,6 +195,15 @@ export default function App() {
     body = <ReportsView dict={dict} market={market} names={names} />;
   } else if (path === "/recs") {
     body = <RecsView dict={dict} market={market} />;
+  } else if (path === "/paper") {
+    body = paperEnabled ? (
+      <PaperView
+        dict={dict}
+        market={market}
+        names={names}
+        onTickerClick={(t) => navigate(`/chart?ticker=${encodeURIComponent(t)}`)}
+      />
+    ) : null;
   } else if (path === "/import") {
     body = status?.writable ? (
       <ImportView
@@ -249,6 +267,7 @@ export default function App() {
         market={market}
         status={status}
         writable={status?.writable ?? false}
+        paperEnabled={paperEnabled}
       />
       <div className="app-main">
         <TopBar
