@@ -503,6 +503,22 @@ var migrations = []string{
 		PRIMARY KEY (underlying, date)
 	);
 	`,
+	// 16: transactions gains remaining_shares — the unconsumed share count of
+	// a BUY row's purchase lot, always 0 for SELL rows (same sentinel
+	// convention as stop_price, migration 13). This switches cost-basis
+	// tracking from a single blended weighted average (positions.avg_cost,
+	// reblended on every buy and left untouched by a sell) to real FIFO lot
+	// matching, which is what both US and TW brokers actually use: a sell
+	// consumes the *oldest* open lot(s) first. The two methods agree until
+	// the first partial sell after multiple buys at different prices — from
+	// there on the blended average silently diverges from the broker's true
+	// remaining cost basis. RecordBuy/RecordSell below do the FIFO
+	// bookkeeping going forward; this migration's Go-code backfill step
+	// (migrate() special-cases index 16 to call backfillFIFOLots after this
+	// ALTER TABLE) fixes it for history already on record — the first
+	// non-pure-SQL migration in this codebase, since FIFO replay needs
+	// per-ticker running state a single SQL statement can't carry.
+	`ALTER TABLE transactions ADD COLUMN remaining_shares REAL NOT NULL DEFAULT 0;`,
 }
 
 func (d *DB) migrate() error {
@@ -514,12 +530,130 @@ func (d *DB) migrate() error {
 		if _, err := d.conn.Exec(migrations[i]); err != nil {
 			return fmt.Errorf("migration %d: %w", i+1, err)
 		}
+		if i+1 == 16 {
+			if err := backfillFIFOLots(d.conn); err != nil {
+				return fmt.Errorf("migration 16 backfill: %w", err)
+			}
+		}
 		// PRAGMA doesn't support parameter binding.
 		if _, err := d.conn.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, i+1)); err != nil {
 			return fmt.Errorf("set user_version %d: %w", i+1, err)
 		}
 	}
 	return nil
+}
+
+// fifoLot is one BUY transaction's purchase lot state while backfillFIFOLots
+// replays history — remaining starts at shares and is decremented by later
+// SELLs in the same ticker, oldest lot first.
+type fifoLot struct {
+	id             int64
+	remaining      float64
+	price, fee     float64
+	originalShares float64
+}
+
+// backfillFIFOLots is migration 16's one-time Go-code step (see that
+// migration's doc comment): it replays every ticker's transaction history in
+// date order to compute each BUY row's true remaining_shares under FIFO —
+// the same lot-consumption logic RecordSell now uses going forward — then
+// recomputes positions.avg_cost for every currently open position from the
+// resulting open lots, which is what actually fixes the reported mismatch
+// for positions that already existed before this migration ran.
+func backfillFIFOLots(conn *sql.DB) error {
+	tx, err := conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query(`SELECT id, ticker, side, shares, price, fee FROM transactions ORDER BY ticker, date, id`)
+	if err != nil {
+		return err
+	}
+	openLots := make(map[string][]*fifoLot)
+	for rows.Next() {
+		var id int64
+		var ticker, side string
+		var shares, price, fee float64
+		if err := rows.Scan(&id, &ticker, &side, &shares, &price, &fee); err != nil {
+			rows.Close()
+			return err
+		}
+		switch side {
+		case "BUY":
+			openLots[ticker] = append(openLots[ticker], &fifoLot{id: id, remaining: shares, price: price, fee: fee, originalShares: shares})
+		case "SELL":
+			lots := openLots[ticker]
+			needed := shares
+			for len(lots) > 0 && needed > 1e-9 {
+				lot := lots[0]
+				consume := math.Min(needed, lot.remaining)
+				lot.remaining -= consume
+				needed -= consume
+				if lot.remaining <= 1e-9 {
+					lots = lots[1:]
+				}
+			}
+			openLots[ticker] = lots
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	for _, lots := range openLots {
+		for _, lot := range lots {
+			if lot.remaining <= 1e-9 {
+				continue
+			}
+			if _, err := tx.Exec(`UPDATE transactions SET remaining_shares = ? WHERE id = ?`, lot.remaining, lot.id); err != nil {
+				return err
+			}
+		}
+	}
+
+	posRows, err := tx.Query(`SELECT ticker FROM positions`)
+	if err != nil {
+		return err
+	}
+	var tickers []string
+	for posRows.Next() {
+		var t string
+		if err := posRows.Scan(&t); err != nil {
+			posRows.Close()
+			return err
+		}
+		tickers = append(tickers, t)
+	}
+	if err := posRows.Err(); err != nil {
+		posRows.Close()
+		return err
+	}
+	posRows.Close()
+
+	for _, ticker := range tickers {
+		lots := openLots[ticker]
+		var totalShares, totalCost float64
+		for _, lot := range lots {
+			if lot.remaining <= 1e-9 {
+				continue
+			}
+			costPerShare := lot.price + lot.fee/lot.originalShares
+			totalShares += lot.remaining
+			totalCost += lot.remaining * costPerShare
+		}
+		if totalShares <= 1e-9 {
+			continue
+		}
+		if _, err := tx.Exec(`UPDATE positions SET avg_cost = ? WHERE ticker = ?`, totalCost/totalShares, ticker); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (d *DB) AddTicker(ticker string) error {
@@ -693,10 +827,44 @@ func (d *DB) SetSignalState(ticker, signal, state string) error {
 	return err
 }
 
-// RecordBuy records a BUY transaction and folds it into the ticker's
-// position, recomputing the weighted-average cost (existing cost basis plus
-// this purchase's shares*price+fee, divided by the new total shares). It
-// returns the position as it stands after the buy.
+// lotAvgCost returns ticker's total remaining shares and FIFO-weighted
+// average cost across its open BUY lots (transactions rows with
+// remaining_shares > 0) — the single place RecordBuy/RecordSell derive
+// positions.shares/avg_cost from, rather than incrementally blending, so
+// avg_cost always reflects only the purchase lots that haven't been sold
+// yet. A lot's own cost per share is price + fee/shares (that buy's fee
+// spread only over its own shares, not the ticker's whole position).
+func lotAvgCost(tx *sql.Tx, ticker string) (shares, avgCost float64, err error) {
+	rows, err := tx.Query(`
+		SELECT remaining_shares, price, fee, shares FROM transactions
+		WHERE ticker = ? AND side = 'BUY' AND remaining_shares > 1e-9`, ticker)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer rows.Close()
+
+	var totalShares, totalCost float64
+	for rows.Next() {
+		var remaining, price, fee, origShares float64
+		if err := rows.Scan(&remaining, &price, &fee, &origShares); err != nil {
+			return 0, 0, err
+		}
+		totalShares += remaining
+		totalCost += remaining * (price + fee/origShares)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, 0, err
+	}
+	if totalShares <= 1e-9 {
+		return 0, 0, nil
+	}
+	return totalShares, totalCost / totalShares, nil
+}
+
+// RecordBuy records a BUY transaction as a new FIFO purchase lot
+// (remaining_shares = shares) and recomputes the ticker's position from
+// every open lot via lotAvgCost. It returns the position as it stands after
+// the buy.
 func (d *DB) RecordBuy(ticker string, shares, price, fee float64, date string) (Position, error) {
 	tx, err := d.conn.Begin()
 	if err != nil {
@@ -704,15 +872,20 @@ func (d *DB) RecordBuy(ticker string, shares, price, fee float64, date string) (
 	}
 	defer tx.Rollback()
 
-	var existingShares, existingCost float64
-	err = tx.QueryRow(`SELECT shares, avg_cost FROM positions WHERE ticker = ?`, ticker).Scan(&existingShares, &existingCost)
-	if err != nil && err != sql.ErrNoRows {
+	m := string(market.Of(ticker))
+
+	if _, err := tx.Exec(`
+		INSERT INTO transactions (ticker, side, shares, price, fee, date, remaining_shares, market)
+		VALUES (?, 'BUY', ?, ?, ?, ?, ?, ?)`,
+		ticker, shares, price, fee, date, shares, m,
+	); err != nil {
 		return Position{}, err
 	}
 
-	totalShares := existingShares + shares
-	avgCost := (existingShares*existingCost + shares*price + fee) / totalShares
-	m := string(market.Of(ticker))
+	totalShares, avgCost, err := lotAvgCost(tx, ticker)
+	if err != nil {
+		return Position{}, err
+	}
 
 	if _, err := tx.Exec(`
 		INSERT INTO positions (ticker, shares, avg_cost, market, updated_at)
@@ -726,27 +899,21 @@ func (d *DB) RecordBuy(ticker string, shares, price, fee float64, date string) (
 		return Position{}, err
 	}
 
-	if _, err := tx.Exec(`
-		INSERT INTO transactions (ticker, side, shares, price, fee, date, market)
-		VALUES (?, 'BUY', ?, ?, ?, ?, ?)`,
-		ticker, shares, price, fee, date, m,
-	); err != nil {
-		return Position{}, err
-	}
-
 	if err := tx.Commit(); err != nil {
 		return Position{}, err
 	}
 	return Position{Ticker: ticker, Shares: totalShares, AvgCost: avgCost, Market: m}, nil
 }
 
-// RecordSell records a SELL transaction against an existing position,
-// returning the realized P&L for this sale ((price - avgCost)*shares - fee)
-// and the position as it stands afterward. It returns ErrNoPosition if there
-// is nothing open for the ticker, or ErrInsufficientShares if shares exceeds
-// what's held — this project only tracks long positions, so short-selling
-// isn't representable. Selling the full position deletes the positions row
-// rather than leaving a zero-share one behind.
+// RecordSell records a SELL transaction against an existing position using
+// FIFO lot matching — the oldest open BUY lot(s) are consumed first, same as
+// both US and TW brokers — to compute this sale's realized P&L and the
+// remaining position's cost basis (lotAvgCost over whatever lots are left).
+// It returns ErrNoPosition if there is nothing open for the ticker, or
+// ErrInsufficientShares if shares exceeds what's held — this project only
+// tracks long positions, so short-selling isn't representable. Selling the
+// full position deletes the positions row rather than leaving a zero-share
+// one behind.
 func (d *DB) RecordSell(ticker string, shares, price, fee float64, date string) (Position, float64, error) {
 	tx, err := d.conn.Begin()
 	if err != nil {
@@ -754,8 +921,8 @@ func (d *DB) RecordSell(ticker string, shares, price, fee float64, date string) 
 	}
 	defer tx.Rollback()
 
-	var existingShares, existingCost, stopPrice float64
-	err = tx.QueryRow(`SELECT shares, avg_cost, stop_price FROM positions WHERE ticker = ?`, ticker).Scan(&existingShares, &existingCost, &stopPrice)
+	var existingShares, stopPrice float64
+	err = tx.QueryRow(`SELECT shares, stop_price FROM positions WHERE ticker = ?`, ticker).Scan(&existingShares, &stopPrice)
 	if err == sql.ErrNoRows {
 		return Position{}, 0, ErrNoPosition
 	}
@@ -766,8 +933,56 @@ func (d *DB) RecordSell(ticker string, shares, price, fee float64, date string) 
 		return Position{}, 0, ErrInsufficientShares
 	}
 
-	realizedPnL := (price-existingCost)*shares - fee
+	lotRows, err := tx.Query(`
+		SELECT id, remaining_shares, price, fee, shares FROM transactions
+		WHERE ticker = ? AND side = 'BUY' AND remaining_shares > 1e-9
+		ORDER BY date, id`, ticker)
+	if err != nil {
+		return Position{}, 0, err
+	}
+	type openLot struct {
+		id                                int64
+		remaining, price, fee, origShares float64
+	}
+	var lots []openLot
+	for lotRows.Next() {
+		var l openLot
+		if err := lotRows.Scan(&l.id, &l.remaining, &l.price, &l.fee, &l.origShares); err != nil {
+			lotRows.Close()
+			return Position{}, 0, err
+		}
+		lots = append(lots, l)
+	}
+	if err := lotRows.Err(); err != nil {
+		lotRows.Close()
+		return Position{}, 0, err
+	}
+	lotRows.Close()
+
+	needed := shares
+	var costBasis float64
+	for _, lot := range lots {
+		if needed <= 1e-9 {
+			break
+		}
+		consume := math.Min(needed, lot.remaining)
+		costBasis += consume * (lot.price + lot.fee/lot.origShares)
+		if _, err := tx.Exec(`UPDATE transactions SET remaining_shares = ? WHERE id = ?`, lot.remaining-consume, lot.id); err != nil {
+			return Position{}, 0, err
+		}
+		needed -= consume
+	}
+	if needed > 1e-9 {
+		// positions.shares (checked above) is supposed to always equal the
+		// sum of open lots' remaining_shares — this means the two are out of
+		// sync, a data-integrity bug rather than a normal error a caller
+		// should retry.
+		return Position{}, 0, fmt.Errorf("db: RecordSell: %s open lots %v shares short of the %v requested — position/lot data out of sync", ticker, shares-needed, shares)
+	}
+
+	realizedPnL := shares*price - costBasis - fee
 	remainingShares := existingShares - shares
+	var avgCost float64
 
 	if math.Abs(remainingShares) < 1e-9 {
 		remainingShares = 0
@@ -775,9 +990,13 @@ func (d *DB) RecordSell(ticker string, shares, price, fee float64, date string) 
 			return Position{}, 0, err
 		}
 	} else {
+		_, avgCost, err = lotAvgCost(tx, ticker)
+		if err != nil {
+			return Position{}, 0, err
+		}
 		if _, err := tx.Exec(`
-			UPDATE positions SET shares = ?, updated_at = CURRENT_TIMESTAMP WHERE ticker = ?`,
-			remainingShares, ticker,
+			UPDATE positions SET shares = ?, avg_cost = ?, updated_at = CURRENT_TIMESTAMP WHERE ticker = ?`,
+			remainingShares, avgCost, ticker,
 		); err != nil {
 			return Position{}, 0, err
 		}
@@ -794,7 +1013,7 @@ func (d *DB) RecordSell(ticker string, shares, price, fee float64, date string) 
 	if err := tx.Commit(); err != nil {
 		return Position{}, 0, err
 	}
-	return Position{Ticker: ticker, Shares: remainingShares, AvgCost: existingCost, Market: string(market.Of(ticker))}, realizedPnL, nil
+	return Position{Ticker: ticker, Shares: remainingShares, AvgCost: avgCost, Market: string(market.Of(ticker))}, realizedPnL, nil
 }
 
 // GetPosition returns the current position for ticker, or ok=false if
