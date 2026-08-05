@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"path/filepath"
 	"testing"
 
@@ -300,6 +301,103 @@ func TestRecordSellErrors(t *testing.T) {
 	}
 	if _, _, err := d.RecordSell("AAPL", 10, 100, 0, "2026-07-02"); !errors.Is(err, ErrInsufficientShares) {
 		t.Errorf("RecordSell() oversized error = %v, want ErrInsufficientShares", err)
+	}
+}
+
+// TestRecordSellFIFO pins the FIFO-vs-weighted-average divergence this was
+// added to fix: a partial sell must consume the *oldest* open lot first
+// (here, lot1 @ 100), not the blended average (125) across both lots. Before
+// this change realizedPnL would have been (200-125)*5=375 and the remaining
+// position's AvgCost would have stayed 125 — both wrong against a real
+// broker's FIFO accounting.
+func TestRecordSellFIFO(t *testing.T) {
+	d := newTestDB(t)
+
+	if _, err := d.RecordBuy("AAPL", 10, 100, 0, "2026-07-01"); err != nil {
+		t.Fatalf("RecordBuy() (lot1) error = %v", err)
+	}
+	if _, err := d.RecordBuy("AAPL", 10, 150, 0, "2026-07-02"); err != nil {
+		t.Fatalf("RecordBuy() (lot2) error = %v", err)
+	}
+
+	// Sell 5 @ 200: FIFO takes all 5 from lot1 (cost 100/share).
+	// realized = 5*200 - 5*100 - 0 = 500.
+	pos, pnl, err := d.RecordSell("AAPL", 5, 200, 0, "2026-07-03")
+	if err != nil {
+		t.Fatalf("RecordSell() error = %v", err)
+	}
+	if pnl != 500 {
+		t.Errorf("RecordSell() realizedPnL = %v, want 500 (FIFO off lot1 @ 100, not the 125 blended average)", pnl)
+	}
+	// Remaining: 5 shares left of lot1 @ 100, 10 shares of lot2 @ 150.
+	// avg_cost = (5*100 + 10*150) / 15 = 133.333...
+	wantAvgCost := (5*100.0 + 10*150.0) / 15
+	if pos.Shares != 15 || math.Abs(pos.AvgCost-wantAvgCost) > 1e-9 {
+		t.Errorf("RecordSell() remaining position = %+v, want Shares=15 AvgCost=%v", pos, wantAvgCost)
+	}
+
+	got, ok, err := d.GetPosition("AAPL")
+	if err != nil || !ok {
+		t.Fatalf("GetPosition() = %+v, %v, %v", got, ok, err)
+	}
+	if got.Shares != 15 || math.Abs(got.AvgCost-wantAvgCost) > 1e-9 {
+		t.Errorf("GetPosition() = %+v, want Shares=15 AvgCost=%v", got, wantAvgCost)
+	}
+}
+
+// TestBackfillFIFOLots pins migration 16's backfill step: given pre-existing
+// transaction history written the old way (BUY rows with remaining_shares
+// never set, a SELL's realized_pnl computed off the old blended average, and
+// a stale blended positions.avg_cost), backfillFIFOLots must reconstruct the
+// correct FIFO lot state and recompute positions.avg_cost from it — the fix
+// for positions that already existed before this migration ran.
+func TestBackfillFIFOLots(t *testing.T) {
+	d := newTestDB(t)
+
+	// Two BUY lots and a partial SELL, inserted directly to simulate
+	// pre-migration data (remaining_shares left at its 0 default, realized_pnl
+	// carrying the old, now-wrong blended-average value of 375).
+	var lot1ID, lot2ID int64
+	mustExec := func(query string, args ...any) sql.Result {
+		t.Helper()
+		res, err := d.conn.Exec(query, args...)
+		if err != nil {
+			t.Fatalf("exec %q: %v", query, err)
+		}
+		return res
+	}
+	res := mustExec(`INSERT INTO transactions (ticker, side, shares, price, fee, date, market) VALUES ('AAPL', 'BUY', 10, 100, 0, '2026-07-01', 'us')`)
+	lot1ID, _ = res.LastInsertId()
+	res = mustExec(`INSERT INTO transactions (ticker, side, shares, price, fee, date, market) VALUES ('AAPL', 'BUY', 10, 150, 0, '2026-07-02', 'us')`)
+	lot2ID, _ = res.LastInsertId()
+	mustExec(`INSERT INTO transactions (ticker, side, shares, price, fee, date, realized_pnl, market) VALUES ('AAPL', 'SELL', 5, 200, 0, '2026-07-03', 375, 'us')`)
+	mustExec(`INSERT INTO positions (ticker, shares, avg_cost, market) VALUES ('AAPL', 15, 125, 'us')`)
+
+	if err := backfillFIFOLots(d.conn); err != nil {
+		t.Fatalf("backfillFIFOLots() error = %v", err)
+	}
+
+	var remaining1, remaining2 float64
+	if err := d.conn.QueryRow(`SELECT remaining_shares FROM transactions WHERE id = ?`, lot1ID).Scan(&remaining1); err != nil {
+		t.Fatalf("query lot1 remaining_shares: %v", err)
+	}
+	if err := d.conn.QueryRow(`SELECT remaining_shares FROM transactions WHERE id = ?`, lot2ID).Scan(&remaining2); err != nil {
+		t.Fatalf("query lot2 remaining_shares: %v", err)
+	}
+	if remaining1 != 5 {
+		t.Errorf("lot1 remaining_shares = %v, want 5 (FIFO consumed 5 of the SELL's 5 shares from the oldest lot)", remaining1)
+	}
+	if remaining2 != 10 {
+		t.Errorf("lot2 remaining_shares = %v, want 10 (untouched — FIFO left lot2 alone)", remaining2)
+	}
+
+	var avgCost float64
+	if err := d.conn.QueryRow(`SELECT avg_cost FROM positions WHERE ticker = 'AAPL'`).Scan(&avgCost); err != nil {
+		t.Fatalf("query positions.avg_cost: %v", err)
+	}
+	wantAvgCost := (5*100.0 + 10*150.0) / 15
+	if math.Abs(avgCost-wantAvgCost) > 1e-9 {
+		t.Errorf("positions.avg_cost after backfill = %v, want %v (FIFO-weighted over the surviving lots, not the stale 125 blend)", avgCost, wantAvgCost)
 	}
 }
 
