@@ -9,7 +9,7 @@ function getMockData(urlStr: string): any {
   const market = parsed.searchParams.get("market") || "us";
 
   if (path === "/api/config") {
-    return { lang: "zh" };
+    return { lang: "zh", paperEnabled: true };
   }
   if (path === "/api/status") {
     return {
@@ -313,6 +313,69 @@ function getMockData(urlStr: string): any {
       holdingReturns: [{ ticker: market === "tw" ? "2330" : "NVDA", holdingDays: 22, realizedPnL: 4820 * mult }],
       maeReturns: [{ ticker: market === "tw" ? "2330" : "NVDA", maePct: -3.4, returnPct: 14.2 }],
       skippedMaeCount: 0,
+    };
+  }
+  if (path === "/api/paper") {
+    const initialCash = market === "tw" ? 1000000 : 100000;
+    const dates = Array.from({ length: 30 }, (_, i) => {
+      const d = new Date(2026, 6, 1 + i);
+      return d.toISOString().slice(0, 10);
+    });
+    let val = initialCash;
+    const curve = dates.map((date) => {
+      val += (Math.random() - 0.42) * initialCash * 0.01;
+      return { date, value: Math.round(val) };
+    });
+    const benchmark = dates.map((date, i) => ({
+      date,
+      value: Math.round(initialCash + i * initialCash * 0.002 + (Math.random() - 0.5) * initialCash * 0.003),
+    }));
+    const drawdown = curve.map((c, i) => {
+      const peak = Math.max(...curve.slice(0, i + 1).map((x: any) => x.value));
+      return { date: c.date, value: Math.min(0, c.value - peak) };
+    });
+    const finalEquity = curve[curve.length - 1].value;
+    const finalBench = benchmark[benchmark.length - 1].value;
+    const positions =
+      market === "tw"
+        ? [
+            { ticker: "2330", entryDate: "2026-07-10", avgCost: 950, shares: 300, stopPrice: 890, price: 1010, unrealizedPnL: 18000, unrealizedPct: 6.32, distToStopPct: 11.88 },
+          ]
+        : [
+            { ticker: "NVDA", entryDate: "2026-07-08", avgCost: 132.5, shares: 60, stopPrice: 121.0, price: 141.2, unrealizedPnL: 522, unrealizedPct: 6.57, distToStopPct: 14.31 },
+          ];
+    const closed =
+      market === "tw"
+        ? [
+            { ticker: "2454", entryDate: "2026-06-02", exitDate: "2026-06-20", avgCost: 1190, exitPrice: 1120, shares: 200, realizedPnL: -14000, realizedPct: -5.88, exitReason: "stop" },
+            { ticker: "0050", entryDate: "2026-05-14", exitDate: "2026-06-11", avgCost: 182, exitPrice: 198, shares: 1000, realizedPnL: 16000, realizedPct: 8.79, exitReason: "llm_sell" },
+          ]
+        : [
+            { ticker: "AMD", entryDate: "2026-06-02", exitDate: "2026-06-20", avgCost: 168.2, exitPrice: 154.8, shares: 90, realizedPnL: -1206, realizedPct: -7.97, exitReason: "stop" },
+            { ticker: "MSFT", entryDate: "2026-05-14", exitDate: "2026-06-11", avgCost: 402, exitPrice: 431, shares: 40, realizedPnL: 1160, realizedPct: 7.21, exitReason: "llm_sell" },
+          ];
+    return {
+      kpis: {
+        cash: Math.round(initialCash * 0.35),
+        positionsValue: Math.round(finalEquity - initialCash * 0.35),
+        equity: finalEquity,
+        initialCash,
+        sinceDate: "2026-05-01",
+        realizedPnL: closed.reduce((s: number, c: any) => s + c.realizedPnL, 0),
+        unrealizedPnL: positions.reduce((s: number, p: any) => s + p.unrealizedPnL, 0),
+        totalReturnPct: ((finalEquity - initialCash) / initialCash) * 100,
+        benchmarkReturnPct: ((finalBench - initialCash) / initialCash) * 100,
+        alphaPct: ((finalEquity - finalBench) / initialCash) * 100,
+        maxDrawdownPct: 4.8,
+        winRate: 0.5,
+        profitFactor: 1.4,
+        expectancy: closed.reduce((s: number, c: any) => s + c.realizedPnL, 0) / closed.length,
+      },
+      positions,
+      closed,
+      curve,
+      benchmark,
+      drawdown,
     };
   }
   if (path === "/api/rec-performance") {
