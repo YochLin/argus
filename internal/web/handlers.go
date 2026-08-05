@@ -40,6 +40,12 @@ type dashboardResponse struct {
 	// in range yet.
 	Benchmark []DateValue        `json:"benchmark"`
 	Positions []positionResponse `json:"positions"`
+	// Cash/AccountValue (declared cash balance + live position value) mirror
+	// statusResponse/riskResponse's fields of the same name and definition
+	// (buildStatus/buildRisk) — the Dashboard page's own cash-level card,
+	// not a new "what counts as account value" computation.
+	Cash         float64 `json:"cash"`
+	AccountValue float64 `json:"accountValue"`
 }
 
 type kpisResponse struct {

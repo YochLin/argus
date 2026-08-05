@@ -334,5 +334,16 @@ func buildDashboard(database dbReader, quotes quoteGetter, m market.MarketID) (d
 		resp.Positions = append(resp.Positions, pr)
 	}
 
+	var totalValue float64
+	for _, pr := range resp.Positions {
+		totalValue += pr.MarketValue
+	}
+	cash, err := loadCash(database, m)
+	if err != nil {
+		log.Printf("web: dashboard: load cash for %s: %v", m, err)
+	}
+	resp.Cash = cash
+	resp.AccountValue = totalValue + cash
+
 	return resp, nil
 }

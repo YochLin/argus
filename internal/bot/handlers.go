@@ -1232,8 +1232,21 @@ func (b *Bot) sendPortfolioSection(m market.MarketID, positions []db.Position) {
 		}
 		b.sendWithTickerActions(p.Ticker, line)
 	}
+	cash, haveCash, err := b.loadCash(m)
+	if err != nil {
+		log.Printf("portfolio: load cash (%s): %v", m, err)
+	}
+
 	if m == market.TW {
-		b.Send(i18n.T(b.lang, i18n.KeyPortfolioSummaryTWD, totalValue, realizedTotal))
+		if haveCash {
+			b.Send(i18n.T(b.lang, i18n.KeyPortfolioSummaryWithCashTWD, totalValue, realizedTotal, totalValue+cash, cash))
+		} else {
+			b.Send(i18n.T(b.lang, i18n.KeyPortfolioSummaryTWD, totalValue, realizedTotal))
+		}
+		return
+	}
+	if haveCash {
+		b.Send(i18n.T(b.lang, i18n.KeyPortfolioSummaryWithCash, totalValue, realizedTotal, totalValue+cash, cash))
 	} else {
 		b.Send(i18n.T(b.lang, i18n.KeyPortfolioSummary, totalValue, realizedTotal))
 	}
