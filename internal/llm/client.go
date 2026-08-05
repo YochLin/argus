@@ -253,28 +253,42 @@ func (c *Client) ExploreCandidates(ctx context.Context, marketNews []data.NewsIt
 
 // Chat sends text on the client's persistent chat session, starting one on
 // the first call. Unlike GenerateRecommendations/CheckStock, the session
-// stays open across calls so the agent remembers earlier turns.
+// stays open across calls so the agent remembers earlier turns. If an open
+// session fails or no session is open yet, Chat tries each backend in the
+// chain in order until one successfully starts and responds.
 func (c *Client) Chat(ctx context.Context, text string) (string, error) {
 	c.chatMu.Lock()
 	defer c.chatMu.Unlock()
 
-	if c.chatSession == nil {
-		session, err := c.startChatSession(ctx)
-		if err != nil {
-			return "", err
+	if c.chatSession != nil {
+		reply, err := c.chatSession.Send(ctx, text)
+		if err == nil {
+			return reply, nil
 		}
-		c.chatSession = session
-	}
-
-	reply, err := c.chatSession.Send(ctx, text)
-	if err != nil {
-		// The underlying session is presumably dead; drop it so the next
-		// call starts a fresh one instead of repeating the same error.
+		// The underlying session failed; drop it so we can try starting a
+		// fresh session across the backend chain below.
 		c.chatSession.Close()
 		c.chatSession = nil
-		return "", err
 	}
-	return reply, nil
+
+	systemPrompt := i18n.T(c.lang, i18n.KeySystemPromptChat)
+	var lastErr error
+	for _, b := range c.backends {
+		session, err := b.provider.NewChatSession(ctx, systemPrompt, b.chatModel)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		reply, err := session.Send(ctx, text)
+		if err != nil {
+			session.Close()
+			lastErr = err
+			continue
+		}
+		c.chatSession = session
+		return reply, nil
+	}
+	return "", lastErr
 }
 
 // ResetChat closes the persistent chat session. The next Chat call opens a
@@ -309,19 +323,4 @@ func (c *Client) prompt(ctx context.Context, prompt string, modelFor func(backen
 		lastErr = err
 	}
 	return "", lastErr
-}
-
-// startChatSession tries each backend in the chain in order and returns the
-// first ChatSession that starts successfully.
-func (c *Client) startChatSession(ctx context.Context) (ChatSession, error) {
-	systemPrompt := i18n.T(c.lang, i18n.KeySystemPromptChat)
-	var lastErr error
-	for _, b := range c.backends {
-		session, err := b.provider.NewChatSession(ctx, systemPrompt, b.chatModel)
-		if err == nil {
-			return session, nil
-		}
-		lastErr = err
-	}
-	return nil, lastErr
 }
