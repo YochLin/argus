@@ -70,6 +70,8 @@ function getMockData(urlStr: string): any {
       curve,
       drawdown,
       benchmark,
+      cash: market === "tw" ? 750000 : 22600,
+      accountValue: market === "tw" ? 3850000 : 125400,
       positions:
         market === "tw"
           ? [
