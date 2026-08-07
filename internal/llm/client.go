@@ -6,10 +6,19 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"argus/internal/data"
 	"argus/internal/i18n"
 )
+
+// callTimeout backstops every LLM call (one-shot prompt() and the
+// persistent Chat session alike) against a hung claude-agent-acp subprocess
+// (dead session, stalled network) that would otherwise block the caller's
+// goroutine forever with no error ever reaching the user. It's generous
+// slack over normal latency, not a normal-case tuning knob — a genuinely
+// slow-but-alive reply should never come close to it.
+const callTimeout = 10 * time.Minute
 
 // ErrRecommendationParseFailed is returned by GenerateRecommendations when
 // the LLM replied with non-empty text but parseRecommendations extracted
@@ -257,6 +266,9 @@ func (c *Client) ExploreCandidates(ctx context.Context, marketNews []data.NewsIt
 // session fails or no session is open yet, Chat tries each backend in the
 // chain in order until one successfully starts and responds.
 func (c *Client) Chat(ctx context.Context, text string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
+	defer cancel()
+
 	c.chatMu.Lock()
 	defer c.chatMu.Unlock()
 
@@ -311,8 +323,15 @@ func (c *Client) Close() {
 
 // prompt tries each backend in the chain in order, using modelFor to pick
 // that backend's own model string, and returns the first successful reply —
-// same fall-through-on-error shape as data.Multi.
+// same fall-through-on-error shape as data.Multi. callTimeout bounds the
+// whole call (shared across every backend tried, not reset per-backend): a
+// hung claude-agent-acp subprocess would otherwise block the caller's
+// goroutine forever with no error ever surfacing — see callTimeout's doc
+// comment.
 func (c *Client) prompt(ctx context.Context, prompt string, modelFor func(backend) string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
+	defer cancel()
+
 	systemPrompt := i18n.T(c.lang, i18n.KeySystemPromptAnalyst)
 	var lastErr error
 	for _, b := range c.backends {
