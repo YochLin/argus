@@ -279,6 +279,7 @@ func (c *Client) Chat(ctx context.Context, text string) (string, error) {
 		}
 		// The underlying session failed; drop it so we can try starting a
 		// fresh session across the backend chain below.
+		log.Printf("llm: open chat session failed, restarting from first backend: %v", err)
 		c.chatSession.Close()
 		c.chatSession = nil
 	}
@@ -288,11 +289,13 @@ func (c *Client) Chat(ctx context.Context, text string) (string, error) {
 	for _, b := range c.backends {
 		session, err := b.provider.NewChatSession(ctx, systemPrompt, b.chatModel)
 		if err != nil {
+			log.Printf("llm: backend %T failed to start chat session: %v", b.provider, err)
 			lastErr = err
 			continue
 		}
 		reply, err := session.Send(ctx, text)
 		if err != nil {
+			log.Printf("llm: backend %T failed to send chat message: %v", b.provider, err)
 			session.Close()
 			lastErr = err
 			continue
@@ -339,6 +342,7 @@ func (c *Client) prompt(ctx context.Context, prompt string, modelFor func(backen
 		if err == nil {
 			return reply, nil
 		}
+		log.Printf("llm: backend %T failed: %v", b.provider, err)
 		lastErr = err
 	}
 	return "", lastErr
