@@ -181,7 +181,7 @@ type Config struct {
 }
 
 func New(cfg Config) (*Bot, error) {
-	channel, err := NewTelegramChannel(cfg.Token, cfg.APIEndpoint, cfg.ChatID)
+	channel, err := NewTelegramChannel(cfg.Token, cfg.APIEndpoint, cfg.ChatID, cfg.Lang)
 	if err != nil {
 		return nil, err
 	}

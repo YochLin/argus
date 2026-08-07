@@ -8,6 +8,8 @@ import (
 	"unicode/utf8"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+
+	"argus/internal/i18n"
 )
 
 // telegramChannel is the only Channel implementation today — every direct
@@ -23,7 +25,7 @@ type telegramChannel struct {
 // NewTelegramChannel authenticates against the Telegram Bot API (or, in
 // tests, apiEndpoint's fake HTTP server — see daily_report_e2e_test.go)
 // and returns a Channel ready for New/NewWithChannel to hand to a Bot.
-func NewTelegramChannel(token, apiEndpoint string, chatID int64) (*telegramChannel, error) {
+func NewTelegramChannel(token, apiEndpoint string, chatID int64, lang i18n.Lang) (*telegramChannel, error) {
 	var api *tgbotapi.BotAPI
 	var err error
 	if apiEndpoint != "" {
@@ -35,7 +37,54 @@ func NewTelegramChannel(token, apiEndpoint string, chatID int64) (*telegramChann
 		return nil, fmt.Errorf("telegram: %w", err)
 	}
 	log.Printf("Telegram bot authorized: @%s", api.Self.UserName)
+	if _, err := api.Request(tgbotapi.NewSetMyCommands(botCommands(lang)...)); err != nil {
+		// Cosmetic (populates Telegram's "/" autocomplete menu) — not worth
+		// failing startup over, same log-only-on-error convention as
+		// AnswerCallback below.
+		log.Printf("telegram: set command menu: %v", err)
+	}
 	return &telegramChannel{api: api, chatID: chatID}, nil
+}
+
+// botCommands describes every user-facing slash command for Telegram's
+// native "/" autocomplete menu (set once via setMyCommands in
+// NewTelegramChannel) — separate from the i18n message tables since this is
+// UI metadata registered through its own Bot API call, not text this
+// package ever sends via Send. Kept in sync with handleMessage's dispatch
+// switch by hand; command/description text must stay within Telegram's
+// 1-32/3-256 character limits.
+func botCommands(lang i18n.Lang) []tgbotapi.BotCommand {
+	type cmd struct{ name, zh, en string }
+	cmds := []cmd{
+		{"add", "加入觀察名單，例如 /add AAPL", "Add a ticker to the watchlist"},
+		{"remove", "從觀察名單移除", "Remove a ticker from the watchlist"},
+		{"list", "列出觀察名單", "List the watchlist"},
+		{"status", "查詢報價；不帶 ticker 顯示整份名單", "Quote a ticker, or the whole watchlist if omitted"},
+		{"recommend", "AI 買賣建議，可加 us 或 tw", "AI buy/sell recommendations (optionally 'us' or 'tw')"},
+		{"check", "針對單一標的的 AI 分析", "AI analysis for a single ticker"},
+		{"track", "回顧過去 N 天建議命中率，預設 7 天", "Review recommendation hit rate over the past N days (default 7)"},
+		{"buy", "記錄買入：股數 價格 [手續費] [日期]", "Record a buy: shares price [fee] [date]"},
+		{"sell", "記錄賣出：股數 價格 [手續費] [日期]", "Record a sell: shares price [fee] [date]"},
+		{"stop", "設定或查詢停損價", "Set or view a stop-loss price"},
+		{"portfolio", "目前持倉、市值與損益", "Current positions, market value, and P&L"},
+		{"insight", "投資組合的 AI 洞察", "AI insight on the whole portfolio"},
+		{"cash", "查詢或設定現金餘額", "View or set the cash balance"},
+		{"thesis", "查詢或寫入持股論點", "View or set a holding's thesis"},
+		{"review", "AI 覆盤一筆已平倉交易", "AI review of a closed trade"},
+		{"dailyreport", "手動觸發一次每日報告", "Run the daily report now"},
+		{"fundamentals", "查詢基本面數據", "Fundamentals for a ticker"},
+		{"universe", "管理掃描用股票池：add/remove", "Manage the scan universe: add/remove"},
+		{"reset", "清空目前的 AI 對話記憶", "Clear the AI chat conversation memory"},
+	}
+	out := make([]tgbotapi.BotCommand, len(cmds))
+	for i, c := range cmds {
+		desc := c.zh
+		if lang == i18n.EN {
+			desc = c.en
+		}
+		out[i] = tgbotapi.BotCommand{Command: c.name, Description: desc}
+	}
+	return out
 }
 
 // telegramMaxMessageLen is a conservative cap on outgoing message length.
