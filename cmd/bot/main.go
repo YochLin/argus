@@ -143,7 +143,6 @@ func main() {
 		Filename:   envOr("LOG_PATH", "data/argus.log"),
 		MaxBackups: 7,
 		MaxAge:     7,
-		Compress:   true,
 	}
 	defer logFile.Close()
 	log.SetOutput(io.MultiWriter(os.Stdout, logFile))
