@@ -3,7 +3,7 @@ package i18n
 // enMessages is the English message table. Every format verb here must
 // appear in the same order as its zh.go counterpart — see the note there.
 var enMessages = map[Key]string{
-	KeyUnknownCommand:              "Unknown command. Available commands:\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [days]\n/buy <ticker> <shares> <price> [fee]\n/sell <ticker> <shares> <price> [fee]\n/stop <ticker> [price]\n/portfolio\n/insight\n/cash [amount]\n/thesis <ticker> [text]\n/review <ticker>\n/dailyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n\nSend a plain message (no leading /) to chat freely.",
+	KeyUnknownCommand:              "Unknown command. Available commands:\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [days]\n/buy <ticker> <shares> <price> [fee]\n/sell <ticker> <shares> <price> [fee]\n/stop <ticker> [price]\n/buyalert <ticker> [price|remove price]\n/portfolio\n/obuy /osell /oassign /oexercise\n/option <ticker> [call|put|csp|cc]\n/insight\n/cash [amount]\n/thesis <ticker> [text]\n/review <ticker>\n/dailyreport\n/morningreport\n/monthlyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n/paper [reset]\n\nSend a plain message (no leading /) to chat freely.",
 	KeyAddUsage:                    "Usage: /add <ticker>, e.g. /add AAPL",
 	KeyAddFailed:                   "Failed to add: %v",
 	KeyAddSuccess:                  "Added *%s* to your watchlist.",

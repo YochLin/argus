@@ -6,7 +6,7 @@ package i18n
 // sites pass positional args once and reuse them for whichever table T
 // picks.
 var zhMessages = map[Key]string{
-	KeyUnknownCommand:              "未知指令。可用指令：\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [天數]\n/buy <ticker> <股數> <價格> [手續費]\n/sell <ticker> <股數> <價格> [手續費]\n/stop <ticker> [價格]\n/portfolio\n/insight\n/cash [金額]\n/thesis <ticker> [論點文字]\n/review <ticker>\n/dailyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n\n直接傳一般訊息（不加 / 開頭）則會跟我自由對話。",
+	KeyUnknownCommand:              "未知指令。可用指令：\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [天數]\n/buy <ticker> <股數> <價格> [手續費]\n/sell <ticker> <股數> <價格> [手續費]\n/stop <ticker> [價格]\n/buyalert <ticker> [價格|remove 價格]\n/portfolio\n/obuy /osell /oassign /oexercise\n/option <ticker> [call|put|csp|cc]\n/insight\n/cash [金額]\n/thesis <ticker> [論點文字]\n/review <ticker>\n/dailyreport\n/morningreport\n/monthlyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n/paper [reset]\n\n直接傳一般訊息（不加 / 開頭）則會跟我自由對話。",
 	KeyAddUsage:                    "用法：/add <ticker>，例如 /add AAPL",
 	KeyAddFailed:                   "新增失敗：%v",
 	KeyAddSuccess:                  "已將 *%s* 加入自選股。",
