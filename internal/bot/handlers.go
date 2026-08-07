@@ -795,6 +795,7 @@ func (b *Bot) recordBuy(ticker string, shares, price, fee float64, date string) 
 	if err != nil {
 		return i18n.T(b.lang, i18n.KeyBuyFailed, err), err
 	}
+	b.adjustCash(ticker, -(shares*price + fee))
 	if err := b.db.AddTicker(ticker); err != nil {
 		log.Printf("buy: add %s to watchlist: %v", ticker, err)
 	}
@@ -895,6 +896,7 @@ func (b *Bot) recordSell(ticker string, shares, price, fee float64, date string)
 			return i18n.T(b.lang, i18n.KeySellFailed, err), false, 0, err
 		}
 	}
+	b.adjustCash(ticker, shares*price-fee)
 	return i18n.T(b.lang, i18n.KeySellSuccess, ticker, shares, price, fee, realizedPnL, pos.Shares), pos.Shares == 0, stopPrice, nil
 }
 
@@ -1372,12 +1374,13 @@ func cashSettingKeyFor(m market.MarketID) string {
 // argument it reports both currencies' current values (omitting whichever
 // isn't set); `/cash <amount>` sets USD (backward compatible with the
 // pre-Phase-6 single-currency form); `/cash usd <amount>`/`/cash twd
-// <amount>` set a currency explicitly. Deliberately never touched by /buy or
-// /sell (see PLAN.md's Phase 3.6 "現金水位" item) — transactions don't record
-// where the money came from, so auto-adjusting cash from them would drift
-// from reality quickly. This is a purely user-maintained reference value,
-// fed only into /insight/週報 (see handleInsight) — never into /recommend, so
-// the model doesn't see idle cash and start nudging toward "put it to work."
+// <amount>` set a currency explicitly. /buy and /sell nudge this value via
+// adjustCash once it's been declared here at least once (see adjustCash) —
+// deposits/withdrawals/dividends never flow through the bot, so this stays a
+// user-corrected reference value, not a ledger; re-run /cash to resync it
+// against reality whenever it drifts. Fed into /insight/週報 (see
+// handleInsight) — never into /recommend, so the model doesn't see idle cash
+// and start nudging toward "put it to work."
 func (b *Bot) handleCash(args string) {
 	args = strings.TrimSpace(args)
 	if args == "" {
@@ -1479,6 +1482,28 @@ func (b *Bot) loadCash(m market.MarketID) (float64, bool, error) {
 		return 0, false, err
 	}
 	return amount, true, nil
+}
+
+// adjustCash nudges ticker's market cash balance by delta — negative for a
+// buy's cost (shares*price+fee), positive for a sell's proceeds
+// (shares*price-fee) — but only when the user has already declared a
+// balance via /cash; with no declared baseline there's nothing sane to
+// adjust from, so this is a no-op rather than inventing one at delta. Errors
+// are log-only, same as thesisNudge/AddTicker: a trade confirmation
+// shouldn't fail because cash bookkeeping did.
+func (b *Bot) adjustCash(ticker string, delta float64) {
+	m := market.Of(ticker)
+	cash, ok, err := b.loadCash(m)
+	if err != nil {
+		log.Printf("adjust cash for %s: load: %v", ticker, err)
+		return
+	}
+	if !ok {
+		return
+	}
+	if err := b.db.SetSetting(cashSettingKeyFor(m), strconv.FormatFloat(cash+delta, 'f', 2, 64)); err != nil {
+		log.Printf("adjust cash for %s: save: %v", ticker, err)
+	}
 }
 
 // handleFundamentals shows raw fundamentals/financial-statement data

@@ -6,6 +6,7 @@ import (
 
 	"argus/internal/db"
 	"argus/internal/i18n"
+	"argus/internal/market"
 )
 
 // TestExecuteBuyValidation covers the input-validation branch shared with
@@ -106,6 +107,45 @@ func TestExecuteSellPartial(t *testing.T) {
 	pos, ok, err := d.GetPosition("AAPL")
 	if err != nil || !ok || pos.Shares != 6 {
 		t.Errorf("GetPosition() = %v, %v, %v, want 6 remaining shares", pos, ok, err)
+	}
+}
+
+// TestAdjustCash covers adjustCash's two branches: a no-op when the user
+// hasn't declared a cash balance via /cash, and a buy/sell nudge once they
+// have (see adjustCash's doc comment on why an undeclared balance is left
+// alone rather than invented from delta).
+func TestAdjustCash(t *testing.T) {
+	b, d := newPendingActionsTestBot(t)
+
+	if _, err := b.ExecuteBuy("AAPL", 10, 200, 1, "2026-07-01"); err != nil {
+		t.Fatalf("ExecuteBuy() error = %v", err)
+	}
+	if _, ok, err := b.loadCash(market.US); err != nil || ok {
+		t.Fatalf("loadCash() = _, %v, %v, want ok=false with no declared balance", ok, err)
+	}
+
+	if err := b.db.SetSetting(cashSettingKey, "10000"); err != nil {
+		t.Fatalf("SetSetting() error = %v", err)
+	}
+
+	if _, err := b.ExecuteBuy("MSFT", 5, 300, 2, "2026-07-01"); err != nil {
+		t.Fatalf("ExecuteBuy() error = %v", err)
+	}
+	cash, ok, err := b.loadCash(market.US)
+	if err != nil || !ok || cash != 10000-(5*300+2) {
+		t.Errorf("loadCash() after buy = %v, %v, %v, want %v, true, nil", cash, ok, err, 10000-(5*300+2))
+	}
+
+	if _, err := d.RecordBuy("AAPL", 10, 200, 0, "2026-06-01"); err != nil {
+		t.Fatalf("RecordBuy() error = %v", err)
+	}
+	if _, err := b.ExecuteSell(context.Background(), "AAPL", 4, 220, 3, "2026-06-10"); err != nil {
+		t.Fatalf("ExecuteSell() error = %v", err)
+	}
+	want := 10000.0 - (5*300 + 2) + (4*220 - 3)
+	cash, ok, err = b.loadCash(market.US)
+	if err != nil || !ok || cash != want {
+		t.Errorf("loadCash() after sell = %v, %v, %v, want %v, true, nil", cash, ok, err, want)
 	}
 }
 
