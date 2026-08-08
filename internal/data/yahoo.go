@@ -195,17 +195,37 @@ func (y *Yahoo) getQuote(ticker string) (*Quote, error) {
 	return q, nil
 }
 
+// yahooDefaultRange is GetHistory's fallback for an unspecified rangeParam —
+// "1y" is enough closes for a 200-period moving average and plenty of room
+// for a 14-period RSI/ATR or a 12/26/9 MACD, which only read the tail of the
+// series regardless of how much extra history is in front of it.
+//
+// yahooMaxRange/yahooMaxRangeSubstitute are the two ends of the one
+// rangeParam value GetHistory rewrites: Yahoo's chart API silently ignores
+// interval=1d for range=max and returns quarterly bars instead
+// (live-verified: AAPL "max" comes back as 168 bars, matching "3mo";
+// "1y"/"2y"/"5y"/"10y" all honor interval=1d correctly) — 10y is effectively
+// "max" for any real position's holding period and actually gives daily
+// bars. Every other rangeParam value ("2y", "3mo", ...) is an arbitrary
+// Yahoo chart-API range string passed straight through by callers, not a
+// fixed enum this function knows about, so those aren't named here.
+const (
+	yahooDefaultRange       = "1y"
+	yahooMaxRange           = "max"
+	yahooMaxRangeSubstitute = "10y"
+)
+
 // GetHistory returns daily OHLCV candles, oldest first, over rangeParam's
-// window (a Yahoo chart API range value — "1y" default is enough closes for
-// a 200-period moving average and plenty of room for a 14-period RSI/ATR or
-// a 12/26/9 MACD, which only read the tail of the series regardless of how
-// much extra history is in front of it). Open comes from
+// window (a Yahoo chart API range value). Open comes from
 // indicators.quote[0].open, same as GetQuote — the chart meta has no usable
 // open field. Date comes from the top-level timestamp array, index-aligned
 // with the quote arrays.
 func (y *Yahoo) GetHistory(ticker, rangeParam string) ([]Candle, error) {
 	if rangeParam == "" {
-		rangeParam = "1y"
+		rangeParam = yahooDefaultRange
+	}
+	if rangeParam == yahooMaxRange {
+		rangeParam = yahooMaxRangeSubstitute
 	}
 	var lastErr error
 	for _, symbol := range y.resolveSymbol(ticker) {
