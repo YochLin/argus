@@ -37,13 +37,14 @@ func (b *Bot) paperConfig(m market.MarketID) paper.Config {
 		risk = 1.0
 	}
 	return paper.Config{
-		RiskPct:         risk,
-		MaxPositionPct:  b.paperMaxPositionPct,
-		StopATRMult:     stopCandidateATRMult,
-		StopLossPct:     b.stopLossPct,
-		TrailingPct:     b.trailingStopPct,
-		TrailingATRMult: b.trailingStopATRMult,
-		Market:          m,
+		RiskPct:           risk,
+		MaxPositionPct:    b.paperMaxPositionPct,
+		StopATRMult:       stopCandidateATRMult,
+		StopLossPct:       b.stopLossPct,
+		TrailingPct:       b.trailingStopPct,
+		TrailingATRMult:   b.trailingStopATRMult,
+		TakeProfitATRMult: b.paperTakeProfitATRMult,
+		Market:            m,
 	}
 }
 
@@ -70,6 +71,20 @@ func (b *Bot) loadPaperAccount(m market.MarketID) (*paper.Account, error) {
 			continue
 		}
 		h := paper.Holding{Shares: p.Shares, AvgCost: p.AvgCost, Stop: p.StopPrice, Peak: p.AvgCost}
+		// ponytail: Target isn't a stored column — paper.db's positions row
+		// only has stop_price, so the entry ATR (and thus the take-profit
+		// price) is reverse-derived from Stop = AvgCost - stopCandidateATRMult
+		// * atr_at_entry (see docs/phase-11-paper-strategy-tuning.md §3.2).
+		// Exact for any position actually opened with an ATR-based stop; a
+		// position that fell back to the fixed StopLossPct stop gets no
+		// target (guard below), matching buy()'s "no ATR, no target" rule.
+		// Upgrade path: store atr_at_entry (or Target directly) as a column
+		// if this reverse math ever needs to be exact by construction instead
+		// of by reconstruction.
+		if b.paperTakeProfitATRMult > 0 && stopCandidateATRMult > 0 && p.StopPrice > 0 && p.StopPrice < p.AvgCost {
+			atrAtEntry := (p.AvgCost - p.StopPrice) / stopCandidateATRMult
+			h.Target = p.AvgCost + b.paperTakeProfitATRMult*atrAtEntry
+		}
 		if buyDate, ok, err := b.paperDB.GetEarliestBuyDate(p.Ticker); err == nil && ok {
 			h.EntryDate = buyDate
 			if peak, ok, err := b.paperDB.GetPeakClose(p.Ticker, buyDate); err == nil && ok && peak > 0 {

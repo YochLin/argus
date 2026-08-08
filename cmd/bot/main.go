@@ -110,6 +110,10 @@ func main() {
 	paperInitialCashUSD := envOrFloat("PAPER_INITIAL_CASH_USD", 100000)
 	paperInitialCashTWD := envOrFloat("PAPER_INITIAL_CASH_TWD", 1000000)
 	paperMaxPositionPct := envOrFloat("PAPER_MAX_POSITION_PCT", 25)
+	// PAPER_TAKE_PROFIT_ATR_MULT (2026-08-08 strategy tuning,
+	// docs/phase-11-paper-strategy-tuning.md §3) — <=0 (the default) disables
+	// take-profit entirely, same convention as TRAILING_STOP_ATR_MULT.
+	paperTakeProfitATRMult := envOrFloat("PAPER_TAKE_PROFIT_ATR_MULT", 0)
 
 	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
 	if err != nil {
@@ -245,31 +249,32 @@ func main() {
 	defer llmClient.Close() // kills any still-open persistent chat session's subprocess
 
 	telegramBot, err := bot.New(bot.Config{
-		Token:               telegramToken,
-		ChatID:              chatID,
-		DB:                  database,
-		Provider:            provider,
-		Fundamentals:        fundamentalsProvider,
-		AnalystRating:       analystRatingProvider,
-		InsiderTx:           insiderTxProvider,
-		Institutional:       twMovers,
-		Earnings:            earningsProvider,
-		MarketNews:          marketNewsProvider,
-		TWMarketNews:        twMarketNews,
-		TWMovers:            twMovers,
-		CompanyNames:        companyNameProvider,
-		OptionChain:         yahoo,
-		History:             yahoo,
-		LLM:                 llmClient,
-		Lang:                lang,
-		StopLossPct:         stopLossPct,
-		TrailingStopPct:     trailingStopPct,
-		TrailingStopATRMult: trailingStopATRMult,
-		RiskPctPerTrade:     riskPctPerTrade,
-		PaperDB:             paperDatabase,
-		PaperInitialCashUSD: paperInitialCashUSD,
-		PaperInitialCashTWD: paperInitialCashTWD,
-		PaperMaxPositionPct: paperMaxPositionPct,
+		Token:                  telegramToken,
+		ChatID:                 chatID,
+		DB:                     database,
+		Provider:               provider,
+		Fundamentals:           fundamentalsProvider,
+		AnalystRating:          analystRatingProvider,
+		InsiderTx:              insiderTxProvider,
+		Institutional:          twMovers,
+		Earnings:               earningsProvider,
+		MarketNews:             marketNewsProvider,
+		TWMarketNews:           twMarketNews,
+		TWMovers:               twMovers,
+		CompanyNames:           companyNameProvider,
+		OptionChain:            yahoo,
+		History:                yahoo,
+		LLM:                    llmClient,
+		Lang:                   lang,
+		StopLossPct:            stopLossPct,
+		TrailingStopPct:        trailingStopPct,
+		TrailingStopATRMult:    trailingStopATRMult,
+		RiskPctPerTrade:        riskPctPerTrade,
+		PaperDB:                paperDatabase,
+		PaperInitialCashUSD:    paperInitialCashUSD,
+		PaperInitialCashTWD:    paperInitialCashTWD,
+		PaperMaxPositionPct:    paperMaxPositionPct,
+		PaperTakeProfitATRMult: paperTakeProfitATRMult,
 	})
 	if err != nil {
 		log.Fatalf("init bot: %v", err)

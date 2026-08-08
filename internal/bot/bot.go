@@ -102,11 +102,12 @@ type Bot struct {
 	// cash read-modify-write across multiple DB statements that isn't
 	// otherwise atomic. ponytail: one global lock, not per-market —
 	// single-user, low-frequency, not worth finer granularity.
-	paperDB             *db.DB
-	paperMu             sync.Mutex
-	paperInitialCashUSD float64 // PAPER_INITIAL_CASH_USD env, first-run seed only
-	paperInitialCashTWD float64 // PAPER_INITIAL_CASH_TWD env, first-run seed only
-	paperMaxPositionPct float64 // PAPER_MAX_POSITION_PCT env
+	paperDB                *db.DB
+	paperMu                sync.Mutex
+	paperInitialCashUSD    float64 // PAPER_INITIAL_CASH_USD env, first-run seed only
+	paperInitialCashTWD    float64 // PAPER_INITIAL_CASH_TWD env, first-run seed only
+	paperMaxPositionPct    float64 // PAPER_MAX_POSITION_PCT env
+	paperTakeProfitATRMult float64 // PAPER_TAKE_PROFIT_ATR_MULT env; <=0 = disabled
 
 	// chatQueue feeds chatWorker, which answers plain-text messages one at a
 	// time and in the order they arrived — unlike commands, chat shares one
@@ -167,10 +168,11 @@ type Config struct {
 	// paperDB field doc comment) — PaperDB nil disables the feature
 	// entirely, same presence-of-config convention as DB/Provider being
 	// required but this one being optional.
-	PaperDB             *db.DB
-	PaperInitialCashUSD float64
-	PaperInitialCashTWD float64
-	PaperMaxPositionPct float64
+	PaperDB                *db.DB
+	PaperInitialCashUSD    float64
+	PaperInitialCashTWD    float64
+	PaperMaxPositionPct    float64
+	PaperTakeProfitATRMult float64
 
 	// APIEndpoint overrides tgbotapi's default https://api.telegram.org
 	// target — empty (the only value any real deployment ever sets) keeps
@@ -196,34 +198,35 @@ func New(cfg Config) (*Bot, error) {
 // same reason: every real call site still goes through New.
 func NewWithChannel(channel Channel, cfg Config) *Bot {
 	return &Bot{
-		channel:             channel,
-		db:                  cfg.DB,
-		provider:            cfg.Provider,
-		fundamentals:        cfg.Fundamentals,
-		analystRating:       cfg.AnalystRating,
-		insiderTx:           cfg.InsiderTx,
-		institutional:       cfg.Institutional,
-		earnings:            cfg.Earnings,
-		marketNews:          cfg.MarketNews,
-		twMarketNews:        cfg.TWMarketNews,
-		twMovers:            cfg.TWMovers,
-		companyNames:        cfg.CompanyNames,
-		optionChain:         cfg.OptionChain,
-		history:             cfg.History,
-		llm:                 cfg.LLM,
-		detector:            signals.NewDetector(cfg.Lang),
-		lang:                cfg.Lang,
-		stopLossPct:         cfg.StopLossPct,
-		trailingStopPct:     cfg.TrailingStopPct,
-		trailingStopATRMult: cfg.TrailingStopATRMult,
-		riskPctPerTrade:     cfg.RiskPctPerTrade,
-		paperDB:             cfg.PaperDB,
-		paperInitialCashUSD: cfg.PaperInitialCashUSD,
-		paperInitialCashTWD: cfg.PaperInitialCashTWD,
-		paperMaxPositionPct: cfg.PaperMaxPositionPct,
-		chatQueue:           make(chan string, 32),
-		dataCache:           newTTLCache(),
-		now:                 time.Now,
+		channel:                channel,
+		db:                     cfg.DB,
+		provider:               cfg.Provider,
+		fundamentals:           cfg.Fundamentals,
+		analystRating:          cfg.AnalystRating,
+		insiderTx:              cfg.InsiderTx,
+		institutional:          cfg.Institutional,
+		earnings:               cfg.Earnings,
+		marketNews:             cfg.MarketNews,
+		twMarketNews:           cfg.TWMarketNews,
+		twMovers:               cfg.TWMovers,
+		companyNames:           cfg.CompanyNames,
+		optionChain:            cfg.OptionChain,
+		history:                cfg.History,
+		llm:                    cfg.LLM,
+		detector:               signals.NewDetector(cfg.Lang),
+		lang:                   cfg.Lang,
+		stopLossPct:            cfg.StopLossPct,
+		trailingStopPct:        cfg.TrailingStopPct,
+		trailingStopATRMult:    cfg.TrailingStopATRMult,
+		riskPctPerTrade:        cfg.RiskPctPerTrade,
+		paperDB:                cfg.PaperDB,
+		paperInitialCashUSD:    cfg.PaperInitialCashUSD,
+		paperInitialCashTWD:    cfg.PaperInitialCashTWD,
+		paperMaxPositionPct:    cfg.PaperMaxPositionPct,
+		paperTakeProfitATRMult: cfg.PaperTakeProfitATRMult,
+		chatQueue:              make(chan string, 32),
+		dataCache:              newTTLCache(),
+		now:                    time.Now,
 	}
 }
 
