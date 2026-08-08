@@ -504,7 +504,10 @@ function mockApiPlugin(): Plugin {
           }
         );
 
+        let served = false;
         const serveMock = () => {
+          if (served) return;
+          served = true;
           const mockData = getMockData(req.url || "");
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(mockData));
