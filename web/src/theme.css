@@ -503,6 +503,13 @@ a {
   gap: 16px;
 }
 
+/* .report-section's own margin-bottom would stack on top of the grid gap
+   and make row spacing bigger than column spacing — the grid gap alone
+   already keeps every card evenly spaced. */
+.distributions-grid .report-section {
+  margin-bottom: 0;
+}
+
 .distributions-grid .span-2 {
   grid-column: 1 / -1;
 }
@@ -1027,11 +1034,13 @@ th {
   border-width: 2px;
 }
 
-.cal-cell.profit-bg {
+.cal-cell.profit-bg,
+.month-cell.profit-bg {
   background: rgba(16, 185, 129, 0.14);
 }
 
-.cal-cell.loss-bg {
+.cal-cell.loss-bg,
+.month-cell.loss-bg {
   background: rgba(239, 68, 68, 0.14);
 }
 
@@ -1192,12 +1201,26 @@ th {
   margin-bottom: 16px;
 }
 
+/* Monthly grid: a heatmap chip per month cell (mirrors the calendar day
+   cells' profit-bg/loss-bg convention) instead of plain colored text. */
+.month-cell {
+  border-radius: 6px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
 /* Reports page hero row: a narrative "edge checkup" card (win/loss
    magnitude bars) beside a compact win-rate/payoff/profit-factor/
    expectancy/best-worst stat grid — mirrors the design mockup's Reports
    hero, replacing the old plain stat-grid of the same numbers. */
 .reports-hero {
   margin-bottom: 16px;
+}
+
+/* The mockup's edge-checkup card runs wider than its stat-grid neighbor
+   (~3:2, not an even split) — narrower stat grid needs less room. */
+.reports-checkup-hero {
+  grid-template-columns: 3fr 2fr;
 }
 
 .edge-narrative {
@@ -1237,6 +1260,7 @@ th {
 }
 
 .edge-bar-fill {
+  display: block;
   height: 100%;
   border-radius: 4px;
 }
@@ -1258,14 +1282,22 @@ th {
 .quality-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 20px 16px;
+  gap: 10px 16px;
+}
+
+.report-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
 }
 
 .group-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 14px;
 }
 
 .group-tab-btn {
@@ -1301,6 +1333,7 @@ th {
 }
 
 .winrate-bar-fill {
+  display: block;
   height: 100%;
   border-radius: 3px;
   background: var(--accent);
@@ -1322,6 +1355,7 @@ th {
 }
 
 .pnl-bar-fill {
+  display: block;
   height: 100%;
   border-radius: 3px;
 }

@@ -40,7 +40,7 @@ export function MonthlyGrid({ dict, years, currency }: Props) {
             <tr key={y.year}>
               <td>{y.year}</td>
               {y.months.map((v, i) => (
-                <td key={i} className={v === null ? "" : v >= 0 ? "profit" : "loss"}>
+                <td key={i} className={v === null ? "" : `month-cell ${v >= 0 ? "profit-bg" : "loss-bg"}`}>
                   {v === null ? "" : fmtSignedMoney(v, currency)}
                 </td>
               ))}

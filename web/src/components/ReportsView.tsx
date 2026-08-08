@@ -235,7 +235,7 @@ export function ReportsView({ dict, market, names = {} }: Props) {
 
   return (
     <>
-      <div className="detail-grid-2col reports-hero">
+      <div className="detail-grid-2col reports-hero reports-checkup-hero">
         <div className="card">
           <div className="eyebrow">{dict.reportsEdgeTitle}</div>
           <div className="edge-narrative">{edgeNarrative(dict, winRate, payoffRatio)}</div>
@@ -290,17 +290,19 @@ export function ReportsView({ dict, market, names = {} }: Props) {
       {monthly && <MonthlyGrid dict={dict} years={monthly.years} currency={currency} />}
 
       <div className="card report-section">
-        <div className="eyebrow">{dict.groupBreakdown}</div>
-        <div className="group-tabs">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              className={`group-tab-btn${t.key === activeTab.key ? " active" : ""}`}
-              onClick={() => setTab(t.key)}
-            >
-              {t.label}
-            </button>
-          ))}
+        <div className="report-section-header">
+          <div className="eyebrow">{dict.groupBreakdown}</div>
+          <div className="group-tabs">
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                className={`group-tab-btn${t.key === activeTab.key ? " active" : ""}`}
+                onClick={() => setTab(t.key)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
         <GroupTable dict={dict} groups={activeTab.groups} currency={currency} dimension={activeTab.key} names={names} />
       </div>
