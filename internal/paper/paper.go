@@ -18,14 +18,15 @@ import (
 // model (FeeFor) — the two books (US/TW) never share a Config since their
 // currencies and fee schedules differ.
 type Config struct {
-	InitialCash     float64
-	RiskPct         float64 // max % of equity risked per trade (suggestShares budget)
-	MaxPositionPct  float64 // single-position notional cap, % of equity; <=0 = no cap
-	StopATRMult     float64 // ATR(14) multiple below entry price for the initial stop
-	StopLossPct     float64 // fixed % fallback when ATR is unavailable
-	TrailingPct     float64 // fixed trailing-stop distance, %; 0 = disabled
-	TrailingATRMult float64 // ATR-based trailing distance multiple; <=0 = fixed % only
-	Market          market.MarketID
+	InitialCash       float64
+	RiskPct           float64 // max % of equity risked per trade (suggestShares budget)
+	MaxPositionPct    float64 // single-position notional cap, % of equity; <=0 = no cap
+	StopATRMult       float64 // ATR(14) multiple below entry price for the initial stop
+	StopLossPct       float64 // fixed % fallback when ATR is unavailable
+	TrailingPct       float64 // fixed trailing-stop distance, %; 0 = disabled
+	TrailingATRMult   float64 // ATR-based trailing distance multiple; <=0 = fixed % only
+	TakeProfitATRMult float64 // ATR(14) multiple above entry for the take-profit target; <=0 = disabled
+	Market            market.MarketID
 }
 
 // Signal is one recommendation to apply: BUY/SELL/HOLD/"" at Price on Date.
@@ -37,10 +38,12 @@ type Signal struct {
 // Holding is one open position. Peak tracks the highest close seen since
 // entry (updated by MarkClose) for the trailing stop; Stop is the fixed
 // initial stop set at entry and never tightened — the trailing exit is a
-// separate check against Peak, not a moving Stop.
+// separate check against Peak, not a moving Stop. Target is the take-profit
+// price, also set once at entry and never moved; 0 means take-profit is
+// disabled for this holding (no ATR at entry, or TakeProfitATRMult<=0).
 type Holding struct {
-	Shares, AvgCost, Stop, Peak float64
-	EntryDate                   string
+	Shares, AvgCost, Stop, Peak, Target float64
+	EntryDate                           string
 }
 
 // Account is one book's live state — either a backtest replay's running
@@ -59,7 +62,7 @@ func NewAccount(cash float64) *Account {
 // db.Transaction (Ticker/Side/Shares/Price/Fee/Date/RealizedPnL/StopPrice
 // line up by name) so internal/bot/paper.go's persistPaperTrade and
 // cmd/bot/backtest.go's CSV writer don't need a translation layer. Reason is
-// "llm_buy"/"llm_sell"/"stop"/"trailing" — the exit-reason breakdown backtest
+// "llm_buy"/"llm_sell"/"stop"/"target"/"trailing" — the exit-reason breakdown backtest
 // reports and the web dashboard both key off it (the web side re-derives an
 // equivalent from the persisted stop_price snapshot instead, see
 // docs/phase-11-paper-account.md §7.1).
@@ -194,6 +197,14 @@ func (a *Account) buy(s Signal, price, atr float64, cfg Config) (Trade, bool) {
 		stop = price * (1 - cfg.StopLossPct/100)
 	}
 
+	// Target has no fixed-%% fallback (unlike stop's StopLossPct) — its
+	// whole meaning is an R-multiple off ATR, and without ATR there's no R
+	// to be a multiple of, so it's simply disabled for that entry.
+	var target float64
+	if atr > 0 && cfg.TakeProfitATRMult > 0 {
+		target = price + cfg.TakeProfitATRMult*atr
+	}
+
 	equity := a.Equity(map[string]float64{s.Ticker: price})
 	shares := SuggestShares(equity, cfg.RiskPct, price, stop)
 
@@ -217,6 +228,7 @@ func (a *Account) buy(s Signal, price, atr float64, cfg Config) (Trade, bool) {
 		AvgCost:   price,
 		Stop:      stop,
 		Peak:      price,
+		Target:    target,
 		EntryDate: s.Date,
 	}
 	return Trade{
@@ -268,6 +280,11 @@ func (a *Account) MarkClose(date string, closes, atrs map[string]float64, cfg Co
 
 		if close <= h.Stop {
 			trades = append(trades, a.sell(date, t, h, close, cfg, "stop"))
+			continue
+		}
+
+		if h.Target > 0 && close >= h.Target {
+			trades = append(trades, a.sell(date, t, h, close, cfg, "target"))
 			continue
 		}
 

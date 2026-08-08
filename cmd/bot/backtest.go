@@ -38,6 +38,7 @@ func runBacktest() {
 	stopPctFlag := fs.Float64("stop-pct", 10, "fixed %% stop fallback when ATR is unavailable")
 	trailingFlag := fs.Float64("trailing", 15, "fixed trailing-stop distance, %%; 0 disables")
 	trailingATRFlag := fs.Float64("trailing-atr", 0, "ATR-based trailing distance multiple; <=0 = fixed %% only")
+	takeProfitATRFlag := fs.Float64("take-profit-atr", 0, "ATR(14) multiple above entry for the take-profit target; <=0 = disabled")
 	rangeFlag := fs.String("range", "2y", "Yahoo history range to fetch per ticker")
 	csvFlag := fs.String("csv", "", "optional path to write a per-trade CSV")
 	fs.Parse(os.Args[2:])
@@ -60,14 +61,15 @@ func runBacktest() {
 		}
 	}
 	cfg := paper.Config{
-		InitialCash:     cash,
-		RiskPct:         *riskFlag,
-		MaxPositionPct:  *maxPosFlag,
-		StopATRMult:     *stopATRFlag,
-		StopLossPct:     *stopPctFlag,
-		TrailingPct:     *trailingFlag,
-		TrailingATRMult: *trailingATRFlag,
-		Market:          m,
+		InitialCash:       cash,
+		RiskPct:           *riskFlag,
+		MaxPositionPct:    *maxPosFlag,
+		StopATRMult:       *stopATRFlag,
+		StopLossPct:       *stopPctFlag,
+		TrailingPct:       *trailingFlag,
+		TrailingATRMult:   *trailingATRFlag,
+		TakeProfitATRMult: *takeProfitATRFlag,
+		Market:            m,
 	}
 
 	if err := godotenv.Load(); err != nil {
@@ -90,6 +92,7 @@ func runBacktest() {
 	var holdCount int
 	var scorable []db.Recommendation
 	sourceCounts := map[string]int{}
+	startDate := ""
 	for _, r := range all {
 		if r.Market != string(m) {
 			continue
@@ -100,6 +103,9 @@ func runBacktest() {
 		}
 		scorable = append(scorable, r)
 		sourceCounts[receval.DisplaySource(r.Source)]++
+		if startDate == "" || r.Date < startDate {
+			startDate = r.Date
+		}
 	}
 	if len(scorable) == 0 {
 		fmt.Print(i18n.T(lang, i18n.KeyEvalNoData))
@@ -144,6 +150,13 @@ func runBacktest() {
 	if !ok || len(benchSeries.dates) == 0 {
 		log.Fatalf("backtest: no benchmark (%s) history — cannot replay", benchTicker)
 	}
+	// Replay only from the first recommendation date onward — the benchmark
+	// axis drives the whole loop and the report, so without this the CAGR/
+	// benchmark/drawdown numbers compare the account against a multi-year
+	// window it was never invested in (docs/phase-11-paper-strategy-tuning.md
+	// §2). Per-ticker ATR warmup is unaffected: seriesByTicker keeps full
+	// history, only this replay axis is windowed.
+	benchSeries = benchSeries.windowFrom(startDate)
 
 	recsByDate := map[string][]db.Recommendation{}
 	for _, r := range scorable {
@@ -250,6 +263,20 @@ func (s tickerSeries) onOrBefore(date string, from int) (int, bool) {
 	return cursor, true
 }
 
+// windowFrom slices s down to bars on or after startDate, for the benchmark
+// axis only (docs/phase-11-paper-strategy-tuning.md §2) — ticker series used
+// for ATR warmup stay full-length via seriesByTicker.
+func (s tickerSeries) windowFrom(startDate string) tickerSeries {
+	if startDate == "" {
+		return s
+	}
+	i := 0
+	for i < len(s.dates) && s.dates[i] < startDate {
+		i++
+	}
+	return tickerSeries{dates: s.dates[i:], highs: s.highs[i:], lows: s.lows[i:], closes: s.closes[i:]}
+}
+
 // maxDrawdownPct is the largest peak-to-trough decline in curve as a
 // percentage of the running peak (internal/web.MaxDrawdownAbs is the same
 // walk but returns a dollar amount against a cumulative P&L curve, which
@@ -316,7 +343,7 @@ func printBacktestReport(lang i18n.Lang, cfg paper.Config, trades []paper.Trade,
 	fmt.Print(i18n.T(lang, i18n.KeyBacktestBenchmarkLine, benchTicker, benchReturnPct, totalReturnPct-benchReturnPct))
 
 	fmt.Print(i18n.T(lang, i18n.KeyBacktestExitReasonTitle))
-	for _, reason := range []string{"llm_sell", "stop", "trailing"} {
+	for _, reason := range []string{"llm_sell", "stop", "target", "trailing"} {
 		var count, wins int
 		var sumRetPct float64
 		for _, t := range trades {

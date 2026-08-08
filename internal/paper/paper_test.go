@@ -143,6 +143,48 @@ func TestMarkClose_TrailingStop(t *testing.T) {
 	}
 }
 
+func TestMarkClose_TakeProfit(t *testing.T) {
+	cfg := baseConfig()
+	cfg.TakeProfitATRMult = 2 // target = 100 + 2*atr(=1) = 102
+	acct := NewAccount(cfg.InitialCash)
+	acct.ApplySignal(Signal{Date: "2024-01-02", Ticker: "AAA", Action: "BUY", Price: 100}, 100, 1, cfg)
+	h := acct.Holdings["AAA"]
+	if h.Target != 102 {
+		t.Fatalf("target: got %v, want 102", h.Target)
+	}
+
+	trades := acct.MarkClose("2024-01-03", map[string]float64{"AAA": h.Target}, nil, cfg)
+	if len(trades) != 1 || trades[0].Reason != "target" {
+		t.Fatalf("expected one take-profit exit, got %+v", trades)
+	}
+	if trades[0].RealizedPnL <= 0 {
+		t.Errorf("expected a positive realized pnl on a take-profit exit, got %v", trades[0].RealizedPnL)
+	}
+	if _, held := acct.Holdings["AAA"]; held {
+		t.Errorf("position should be closed after take-profit exit")
+	}
+}
+
+func TestApplySignal_TakeProfitDisabled(t *testing.T) {
+	// TakeProfitATRMult=0 (the default): Target must stay 0 regardless of ATR.
+	cfg := baseConfig()
+	acct := NewAccount(cfg.InitialCash)
+	acct.ApplySignal(Signal{Date: "2024-01-02", Ticker: "AAA", Action: "BUY", Price: 100}, 100, 1, cfg)
+	if h := acct.Holdings["AAA"]; h.Target != 0 {
+		t.Errorf("TakeProfitATRMult=0: expected Target 0, got %v", h.Target)
+	}
+
+	// TakeProfitATRMult>0 but atr<=0 (fixed-%% stop fallback): still no
+	// target, since there's no ATR to derive an R-multiple from.
+	cfg2 := baseConfig()
+	cfg2.TakeProfitATRMult = 2
+	acct2 := NewAccount(cfg2.InitialCash)
+	acct2.ApplySignal(Signal{Date: "2024-01-02", Ticker: "BBB", Action: "BUY", Price: 100}, 100, 0, cfg2)
+	if h := acct2.Holdings["BBB"]; h.Target != 0 {
+		t.Errorf("atr<=0: expected Target 0, got %v", h.Target)
+	}
+}
+
 func TestCashConservation(t *testing.T) {
 	cfg := baseConfig()
 	acct := NewAccount(cfg.InitialCash)
