@@ -80,6 +80,30 @@ func TestYahooGetQuote_TWListedSuffixSucceedsFirstTry(t *testing.T) {
 	}
 }
 
+// TestYahooGetHistory_MaxRangeRewrittenTo10y pins down the fix for Yahoo's
+// chart API silently ignoring interval=1d for range=max and returning
+// quarterly bars instead (live-verified against AAPL) — GetHistory must send
+// range=10y on the wire whenever the caller asks for "max".
+func TestYahooGetHistory_MaxRangeRewrittenTo10y(t *testing.T) {
+	var gotRange string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotRange = r.URL.Query().Get("range")
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"chart":{"result":[{"timestamp":[1700000000],"indicators":{"quote":[{"open":[1],"high":[2],"low":[0.5],"close":[1.5],"volume":[100]}]}}]}}`)
+	}))
+	defer srv.Close()
+
+	y := NewYahoo()
+	y.chartBaseURL = srv.URL
+
+	if _, err := y.GetHistory("AAPL", "max"); err != nil {
+		t.Fatalf("GetHistory: %v", err)
+	}
+	if gotRange != "10y" {
+		t.Errorf("range on the wire = %q, want %q (max must be rewritten)", gotRange, "10y")
+	}
+}
+
 func TestIsUSEquitySymbol(t *testing.T) {
 	tests := []struct {
 		symbol string

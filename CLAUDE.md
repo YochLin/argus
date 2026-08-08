@@ -52,6 +52,10 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `OptionChainProvider` (US-only, Phase 12) is implemented by `yahoo.go`, which authenticates with a
   cookie + crumb handshake (`ensureCrumb`, cached on the `Yahoo` struct, retried once on a 401) that no
   other Yahoo endpoint needs — quote/history/news stay on the plain (cookie-less) `client`.
+  `GetHistory` rewrites `rangeParam == "max"` to `"10y"` before hitting the wire — Yahoo's chart API
+  silently ignores `interval=1d` for `range=max` and returns quarterly bars instead (live-verified:
+  AAPL "max" comes back as 168 bars, matching "3mo"), which would otherwise corrupt anything computed
+  off Yahoo history at that range (e.g. `/recs`/Distributions' h=1 return, MAE/MFE) without erroring.
   Full rationale, live-endpoint gotchas, and TW-specific design notes: **[docs/architecture/data.md](docs/architecture/data.md)**.
 
 - `internal/option` — Phase 12's pure functions for US equity options, independent of
