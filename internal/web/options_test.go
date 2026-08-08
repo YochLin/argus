@@ -80,6 +80,25 @@ func TestBuildOptions_ClosedExcludesOpens(t *testing.T) {
 	}
 }
 
+// TestBuildOptions_EmptyUSCollateralNotNil confirms Collateral.Positions is
+// an empty slice (not nil) when a US account has no open option positions —
+// the everyday "nothing to show" case. json.Marshal turns a nil slice into
+// `null`, and OptionsView.tsx does `collateral.positions.length` on it
+// unguarded, which throws and blanks the entire page (no error boundary).
+func TestBuildOptions_EmptyUSCollateralNotNil(t *testing.T) {
+	fdb := &fakeDB{}
+	resp, err := buildOptions(fdb, nil, &fakeQuotes{}, market.US)
+	if err != nil {
+		t.Fatalf("buildOptions: %v", err)
+	}
+	if resp.Collateral.Positions == nil {
+		t.Fatal("Collateral.Positions is nil, want empty slice (would marshal to JSON null)")
+	}
+	if b, _ := json.Marshal(resp.Collateral); string(b) != `{"lockedCash":0,"positions":[]}` {
+		t.Errorf("Collateral JSON = %s, want positions: []", b)
+	}
+}
+
 func TestBuildOptions_TWReturnsEmpty(t *testing.T) {
 	fdb := &fakeDB{optionPositions: []db.OptionPosition{
 		{ContractSymbol: "AAPL-CALL", Underlying: "AAPL", Right: "C", Strike: 315, Expiry: "2026-09-18", Multiplier: 100, Contracts: 1},

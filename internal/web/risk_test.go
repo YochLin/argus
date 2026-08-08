@@ -242,13 +242,17 @@ func TestBuildOptionCollateral_CoveredNotNaked(t *testing.T) {
 }
 
 // TestBuildOptionCollateral_TWReturnsEmpty confirms the TW market never
-// gets an options collateral summary (options are US-only).
+// gets an options collateral summary (options are US-only). collateral must
+// be non-nil (an empty slice, not nil) since it's JSON-encoded straight into
+// the API response — a nil slice marshals to `null`, and the frontend
+// (OptionsView.tsx) does `collateral.positions.length` on it unguarded,
+// which throws and blanks the whole page (no error boundary).
 func TestBuildOptionCollateral_TWReturnsEmpty(t *testing.T) {
 	fdb := &fakeDB{optionPositions: []db.OptionPosition{
 		{ContractSymbol: "AAPL260918C00320000", Underlying: "AAPL", Right: "C", Strike: 320, Multiplier: 100, Contracts: -1},
 	}}
 	lockedCash, collateral, err := buildOptionCollateral(fdb, nil, market.TW)
-	if err != nil || lockedCash != 0 || collateral != nil {
-		t.Errorf("buildOptionCollateral(TW) = %v, %v, %v, want 0, nil, nil", lockedCash, collateral, err)
+	if err != nil || lockedCash != 0 || collateral == nil || len(collateral) != 0 {
+		t.Errorf("buildOptionCollateral(TW) = %v, %v, %v, want 0, [], nil", lockedCash, collateral, err)
 	}
 }

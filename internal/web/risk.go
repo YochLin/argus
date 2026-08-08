@@ -149,12 +149,13 @@ func buildRisk(database dbReader, quotes quoteGetter, m market.MarketID, heatThr
 // US-only, same as every other options surface (options are US-only) — a
 // nil/empty result for m=tw is correct, not a degrade.
 func buildOptionCollateral(database dbReader, stockPositions []db.Position, m market.MarketID) (lockedCash float64, collateral []optionCollateralResponse, err error) {
+	collateral = []optionCollateralResponse{}
 	if m != market.US {
-		return 0, nil, nil
+		return 0, collateral, nil
 	}
 	optionPositions, err := database.GetOptionPositions()
 	if err != nil {
-		return 0, nil, err
+		return 0, collateral, err
 	}
 
 	lockedSharesByUnderlying := make(map[string]float64)
@@ -167,7 +168,7 @@ func buildOptionCollateral(database dbReader, stockPositions []db.Position, m ma
 		}
 	}
 	if len(lockedSharesByUnderlying) == 0 {
-		return lockedCash, nil, nil
+		return lockedCash, collateral, nil
 	}
 
 	heldByTicker := make(map[string]float64, len(stockPositions))
