@@ -410,6 +410,14 @@ a {
   padding: 0 16px 16px;
 }
 
+/* Grid wrappers (.kpi-grid, .dash-charts-grid, ...) carry their own
+   margin-bottom, but a bare .card has none — stacked pages built from
+   consecutive top-level .card sections (OptionsView, PaperView, ...) need
+   this to not render as one fused block. */
+.content > .card + .card {
+  margin-top: 16px;
+}
+
 @media (max-width: 720px) {
   .app-shell {
     flex-direction: column;
