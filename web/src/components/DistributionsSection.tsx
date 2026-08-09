@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { currencySymbol, fetchDistributions, type Distributions, type Market } from "../api";
 import type { Dictionary } from "../i18n";
 import { Histogram } from "./Histogram";
+import { InfoTip } from "./InfoTip";
 import { ScatterChart } from "./ScatterChart";
 
 interface Props {
@@ -29,6 +30,8 @@ export function DistributionsSection({ dict, market }: Props) {
     return null;
   }
   const currency = currencySymbol(market);
+  const fmtCurrency = (n: number) => `${currency}${n.toFixed(0)}`;
+  const fmtPct = (n: number) => `${n.toFixed(1)}%`;
   const hasAny = dist.rMultiples.length > 0 || dist.holdingReturns.length > 0 || dist.maeReturns.length > 0;
   if (!hasAny) {
     return null;
@@ -38,11 +41,18 @@ export function DistributionsSection({ dict, market }: Props) {
     <div className="distributions-grid">
       {(dist.rMultiples.length > 0 || dist.noStopCount > 0) && (
         <div className="card report-section">
-          <div className="eyebrow">{dict.rMultipleHistogram}</div>
+          <div className="eyebrow">
+            {dict.rMultipleHistogram}
+            <InfoTip text={dict.rMultipleInfo} />
+          </div>
           {dist.rMultiples.length > 0 ? (
-            <Histogram values={dist.rMultiples.map((s) => s.r)} />
+            <Histogram
+              values={dist.rMultiples.map((s) => s.r)}
+              xAxisLabel={dict.rMultipleXAxis}
+              yAxisLabel={dict.rMultipleYAxis}
+            />
           ) : (
-            <div className="empty-message">{dict.noDistributionData}</div>
+            <div className="empty-message">{dict.noStopExplanation}</div>
           )}
           <div className="stat-note">
             {dist.earliestRDate && `${dict.rMultipleNote} ${dist.earliestRDate}`}
@@ -53,20 +63,29 @@ export function DistributionsSection({ dict, market }: Props) {
 
       {dist.holdingReturns.length > 0 && (
         <div className="card report-section">
-          <div className="eyebrow">{dict.holdingDaysScatter}</div>
+          <div className="eyebrow">
+            {dict.holdingDaysScatter}
+            <InfoTip text={dict.holdingDaysInfo} />
+          </div>
           <ScatterChart
             points={dist.holdingReturns.map((s) => ({
               x: s.holdingDays,
               y: s.realizedPnL,
               label: `${s.ticker}: ${s.holdingDays}d, ${currency}${s.realizedPnL.toFixed(0)}`,
             }))}
+            xLabel={dict.holdingDaysXAxis}
+            yLabel={dict.holdingDaysYAxis}
+            fmtY={fmtCurrency}
           />
         </div>
       )}
 
       {(dist.maeReturns.length > 0 || dist.skippedMaeCount > 0) && (
         <div className="card report-section span-2">
-          <div className="eyebrow">{dict.maeReturnScatter}</div>
+          <div className="eyebrow">
+            {dict.maeReturnScatter}
+            <InfoTip text={dict.maeReturnInfo} />
+          </div>
           {dist.maeReturns.length > 0 && (
             <ScatterChart
               points={dist.maeReturns.map((s) => ({
@@ -74,6 +93,10 @@ export function DistributionsSection({ dict, market }: Props) {
                 y: s.returnPct,
                 label: `${s.ticker}: MAE ${s.maePct.toFixed(1)}%, ${s.returnPct.toFixed(1)}%`,
               }))}
+              xLabel={dict.maeXAxis}
+              yLabel={dict.maeYAxis}
+              fmtX={fmtPct}
+              fmtY={fmtPct}
             />
           )}
           <div className="stat-note">
