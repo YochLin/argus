@@ -162,12 +162,21 @@ export interface Dictionary {
   lessonsLabel: string;
   rMultipleHistogram: string;
   rMultipleNote: string;
+  rMultipleInfo: string;
+  rMultipleXAxis: string;
+  rMultipleYAxis: string;
   noStopSamples: string;
+  noStopExplanation: string;
   holdingDaysScatter: string;
+  holdingDaysInfo: string;
+  holdingDaysXAxis: string;
+  holdingDaysYAxis: string;
   maeReturnScatter: string;
   maeReturnNote: string;
+  maeReturnInfo: string;
+  maeXAxis: string;
+  maeYAxis: string;
   skippedSamples: string;
-  noDistributionData: string;
   // themeLight/themeDark are TopBar's toggle-button label — shown for the
   // *action* the button performs (switch to X), not the current state, same
   // convention as Sidebar's market/lang pills labeling the destination.
@@ -449,12 +458,24 @@ const en: Dictionary = {
   lessonsLabel: "TRADE LESSONS",
   rMultipleHistogram: "R-MULTIPLE DISTRIBUTION",
   rMultipleNote: "R data accumulating since",
+  rMultipleInfo:
+    "Each closed round's realized P&L divided by its initial risk (entry price minus stop price) — shows whether your winners are actually outsized relative to what you risked.",
+  rMultipleXAxis: "R Multiple",
+  rMultipleYAxis: "Count",
   noStopSamples: "no-stop samples",
+  noStopExplanation: "These closed rounds were bought without a stop-loss set, so R can't be computed.",
   holdingDaysScatter: "HOLDING DAYS VS REALIZED P&L",
+  holdingDaysInfo:
+    "How long each closed round was held vs. what it realized — points near the top are fast winners, points to the right took a long time to pay off (or didn't).",
+  holdingDaysXAxis: "Holding Days",
+  holdingDaysYAxis: "Realized P&L",
   maeReturnScatter: "MAE VS RETURN (CLOSE-ONLY APPROXIMATION)",
   maeReturnNote: "x = deepest adverse close % from entry, y = final return % — close prices only, intraday extremes aren't available",
+  maeReturnInfo:
+    "How far a round drew down against you (MAE) vs. what it ultimately returned — upper-left had a rough ride to a good outcome, lower-right gave back gains after holding up well.",
+  maeXAxis: "MAE %",
+  maeYAxis: "Return %",
   skippedSamples: "skipped (no snapshot data)",
-  noDistributionData: "No closed rounds yet.",
   themeLight: "Light",
   themeDark: "Dark",
   addTrade: "+ Trade",
@@ -715,12 +736,21 @@ const zh: Dictionary = {
   lessonsLabel: "交易教訓",
   rMultipleHistogram: "R-MULTIPLE 分布",
   rMultipleNote: "R 資料自",
+  rMultipleInfo: "每個已平倉回合的已實現損益除以初始風險（進場價−停損價）——看你的獲利是否真的相對於承擔的風險放大。",
+  rMultipleXAxis: "R 值",
+  rMultipleYAxis: "筆數",
   noStopSamples: "無停損樣本",
+  noStopExplanation: "這些已平倉回合買進時沒有設定停損，因此無法計算 R 值。",
   holdingDaysScatter: "持有天數 vs 已實現損益",
+  holdingDaysInfo: "每個已平倉回合的持有天數 vs 最終損益——點越靠上代表獲利越快，點越靠右代表拖了很久才有結果（或沒有結果）。",
+  holdingDaysXAxis: "持有天數",
+  holdingDaysYAxis: "已實現損益",
   maeReturnScatter: "MAE vs 報酬（以收盤價近似）",
   maeReturnNote: "x = 期間內對進場價最深不利收盤 %，y = 最終報酬 %——僅收盤價，無盤中極值",
+  maeReturnInfo: "回合期間對你最不利的收盤價跌幅（MAE）vs 最終報酬——左上代表過程震盪但結果不錯，右下代表撐住了卻後來把獲利吐回去。",
+  maeXAxis: "MAE %",
+  maeYAxis: "報酬 %",
   skippedSamples: "略過（無快照資料）",
-  noDistributionData: "目前沒有已平倉回合。",
   themeLight: "日間",
   themeDark: "夜間",
   addTrade: "＋交易",

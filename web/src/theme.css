@@ -1453,21 +1453,89 @@ th {
 
 /* Phase 8 PR4's distribution views (docs/phase-8-trader-analytics.md §6.1):
    a hand-rolled bar histogram and SVG scatter plot, no charting library —
-   see Histogram.tsx/ScatterChart.tsx's own doc comments for why. */
+   see Histogram.tsx/ScatterChart.tsx's own doc comments for why. Readability
+   pass (2026-08-08) added axis names/ticks and hover explainers throughout. */
+.histogram-wrap {
+  margin-top: 8px;
+}
+
+.histogram-body {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.histogram-y-label {
+  writing-mode: vertical-rl;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.histogram-y-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  height: 160px;
+  padding-bottom: 18px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+}
+
+.histogram-x-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  text-align: center;
+  margin-top: 4px;
+}
+
 .histogram {
+  flex: 1;
   display: flex;
   align-items: flex-end;
   gap: 4px;
   height: 160px;
-  margin-top: 8px;
 }
 
 .histogram-col {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   height: 100%;
+}
+
+.histogram-tip {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 4px;
+  width: max-content;
+  padding: 4px 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.histogram-col:hover .histogram-tip {
+  opacity: 1;
+  visibility: visible;
 }
 
 .histogram-count {
@@ -1522,6 +1590,37 @@ th {
   fill: var(--ink-3);
 }
 
+.scatter-axis-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--ink-3);
+}
+
+.scatter-hit {
+  fill: transparent;
+}
+
+.scatter-point-group {
+  cursor: pointer;
+}
+
+.scatter-point-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--ink);
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+}
+
+.scatter-point-group:hover .scatter-point-label,
+.scatter-point-group:focus .scatter-point-label {
+  opacity: 1;
+}
+
 .scatter-point-profit {
   fill: var(--profit);
   fill-opacity: 0.75;
@@ -1530,6 +1629,45 @@ th {
 .scatter-point-loss {
   fill: var(--loss);
   fill-opacity: 0.75;
+}
+
+.info-tip {
+  position: relative;
+  display: inline-flex;
+  margin-left: 6px;
+  color: var(--ink-3);
+  cursor: help;
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+.info-tip-bubble {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  margin-top: 6px;
+  width: max-content;
+  max-width: 260px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--ink);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.info-tip:hover .info-tip-bubble,
+.info-tip:focus-within .info-tip-bubble {
+  opacity: 1;
+  visibility: visible;
 }
 
 /* Phase 8 PR4's round-detail thesis/lessons blocks (§6.2). */
