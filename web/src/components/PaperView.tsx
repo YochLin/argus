@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { currencySymbol, fetchPaper, tickerLabel, type Market, type Paper } from "../api";
 import type { Dictionary } from "../i18n";
-import { DrawdownChart } from "./DrawdownChart";
 import { KpiCard } from "./KpiCard";
 import { PnlChart } from "./PnlChart";
 
@@ -50,12 +49,17 @@ export function PaperView({ dict, market, names = {}, onTickerClick }: Props) {
     return <div className="loading">{dict.loading}</div>;
   }
 
-  const { kpis, curve, drawdown, benchmark, positions, closed } = paper;
+  const { kpis, curve, benchmark, positions, closed } = paper;
   const currency = currencySymbol(market);
 
   return (
     <>
-      <div className="kpi-grid">
+      <div className="readonly-notice">
+        <span className="readonly-notice-badge">{dict.paperReadOnlyBadge}</span>
+        {dict.paperReadOnlyNotice}
+      </div>
+
+      <div className="stat-grid">
         <KpiCard label={dict.paperEquity} value={kpis.equity} format="currency" currency={currency} />
         <KpiCard label={dict.paperTotalReturn} value={kpis.totalReturnPct} format="percentValue" colorMode="pnl" />
         <KpiCard label={dict.paperBenchmarkReturn} value={kpis.benchmarkReturnPct} format="percentValue" />
@@ -66,10 +70,7 @@ export function PaperView({ dict, market, names = {}, onTickerClick }: Props) {
         <KpiCard label={dict.expectancy} value={kpis.expectancy} format="currency" colorMode="pnl" currency={currency} />
       </div>
 
-      <div className="dash-charts-grid">
-        <PnlChart curve={curve} benchmark={benchmark} dict={dict} title={dict.paperEquity} />
-        {drawdown.length > 0 && <DrawdownChart drawdown={drawdown} dict={dict} />}
-      </div>
+      <PnlChart curve={curve} benchmark={benchmark} dict={dict} title={dict.paperEquity} />
 
       <div className="card">
         <div className="eyebrow">{dict.positions}</div>
