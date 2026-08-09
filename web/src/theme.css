@@ -1470,6 +1470,13 @@ th {
   height: 100%;
 }
 
+.histogram-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  height: 14px;
+}
+
 .histogram-bar-track {
   flex: 1;
   width: 100%;
@@ -1507,6 +1514,12 @@ th {
 .scatter-axis {
   stroke: var(--border);
   stroke-width: 1;
+}
+
+.scatter-tick {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--ink-3);
 }
 
 .scatter-point-profit {
