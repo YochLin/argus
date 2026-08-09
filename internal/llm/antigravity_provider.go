@@ -2,10 +2,12 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+	"unicode/utf8"
 )
 
 // AntigravityProvider drives Google's Antigravity CLI (`agy`) as a fallback
@@ -15,33 +17,19 @@ import (
 // constructed by main.go only when ANTIGRAVITY_ENABLED is set — it's opt-in
 // rather than always-on because of the tool-safety tradeoff below.
 //
-// Every call runs with --sandbox. agy's non-interactive `-p` mode
-// auto-approves every tool call it decides to make — including write_file —
-// with no working read-only/plan-mode equivalent (confirmed against
-// google-antigravity/antigravity-cli issue #45; even the CLI's own `strict`
-// permission preset isn't reliably honored in `-p` runs). --sandbox does not
-// stop the model from calling tools, it only contains *where* those calls
-// execute, so a stray write/exec lands in a throwaway container instead of
-// the real VPS filesystem — see PLAN.md's architecture-debt entry for why
-// this is a deliberate, accepted risk rather than an oversight. This also
-// means the VPS needs a working sandbox/container runtime available to
-// `agy`, a new operational dependency the bare-metal systemd deployment
-// doesn't otherwise have.
+// Calls do NOT run with --sandbox, and deliberately not with
+// --dangerously-skip-permissions either. Verified against a live agy install:
+// headless `-p` mode auto-*denies* any tool call needing permission rather
+// than auto-approving it ("a tool required the \"write_file\" permission that
+// headless mode cannot prompt for, so it was auto-denied"), with or without
+// --mode plan. An earlier version of this file assumed the opposite and paid
+// for --sandbox's container-runtime dependency on the VPS to contain writes
+// that headless mode was never going to allow in the first place.
 //
-// Two more things are unverified against a real `agy` install (there's no
-// safe way to test them without one) and may need adjusting once this runs
-// against the live CLI:
-//   - `-p` has a reported bug where stdout goes missing under a non-TTY pipe
-//     (antigravity-cli#76) — exactly how os/exec invokes it. Left as-is
-//     rather than pre-emptively wrapped in a pty-faking workaround (e.g.
-//     `script`), since that workaround is itself unverified and would need
-//     shell-quoting the prompt text to avoid command injection; if this bug
-//     bites in practice, ANTIGRAVITY_CLI_COMMAND can point at a wrapper
-//     script instead of changing this code.
-//   - `-p` has no session id it reliably surfaces to resume a conversation
-//     (antigravity-cli#7), which is why antigravityChatSession replays the
-//     whole transcript every turn instead of trying to resume a backing
-//     session the way acpChatSession does.
+// Every call uses --output-format json: it's the only way to get the
+// conversation id back (needed by runAntigravity's chunked feed and by
+// antigravityChatSession), and it separates the reply from any stray
+// diagnostic lines agy writes alongside it.
 type AntigravityProvider struct{}
 
 func (AntigravityProvider) Prompt(ctx context.Context, systemPrompt, model, text string) (string, error) {
@@ -49,70 +37,165 @@ func (AntigravityProvider) Prompt(ctx context.Context, systemPrompt, model, text
 	if systemPrompt != "" {
 		prompt = systemPrompt + "\n\n" + text
 	}
-	return runAntigravity(ctx, model, prompt)
+	reply, _, err := runAntigravity(ctx, model, "", prompt)
+	return reply, err
 }
 
 func (AntigravityProvider) NewChatSession(ctx context.Context, systemPrompt, model string) (ChatSession, error) {
 	return &antigravityChatSession{systemPrompt: systemPrompt, model: model}, nil
 }
 
-// antigravityChatSession replays the whole conversation transcript on every
-// turn instead of resuming a backing session (see AntigravityProvider's doc
-// comment for why) — conversation memory lives here in Go, not in an agy
-// process the way it does for acpChatSession.
+// antigravityChatSession keeps its history in an agy-side conversation
+// (resumed by id via --conversation) rather than replaying the whole
+// transcript from Go on every turn. convID is empty until the first turn
+// returns one; a turn that fails leaves it untouched, so the next Send
+// retries against the same conversation rather than silently starting a new
+// one mid-chat.
 type antigravityChatSession struct {
 	systemPrompt string
 	model        string
-	turns        []string // alternating "User: "/"Assistant: " lines, oldest first
+	convID       string
 }
 
 func (s *antigravityChatSession) Send(ctx context.Context, text string) (string, error) {
-	var sb strings.Builder
-	if s.systemPrompt != "" {
-		sb.WriteString(s.systemPrompt)
-		sb.WriteString("\n\n")
+	// The system prompt rides along with the first turn only — later turns
+	// resume a conversation that already has it.
+	if s.convID == "" && s.systemPrompt != "" {
+		text = s.systemPrompt + "\n\n" + text
 	}
-	for _, t := range s.turns {
-		sb.WriteString(t)
-		sb.WriteString("\n")
-	}
-	fmt.Fprintf(&sb, "User: %s\n", text)
-	sb.WriteString("Assistant:")
-
-	reply, err := runAntigravity(ctx, s.model, sb.String())
+	reply, convID, err := runAntigravity(ctx, s.model, s.convID, text)
 	if err != nil {
 		return "", err
 	}
-	s.turns = append(s.turns, "User: "+text, "Assistant: "+reply)
+	s.convID = convID
 	return reply, nil
 }
 
-// Close is a no-op: there's no backing process or remote session to tear
-// down — history lives in the antigravityChatSession value itself.
+// Close is a no-op: there's no local process to tear down, and agy's
+// conversations persist on its own side with no explicit end call.
 func (s *antigravityChatSession) Close() error {
 	return nil
 }
 
-// runAntigravity shells out to `agy -p` for a single non-interactive turn.
-func runAntigravity(ctx context.Context, model, prompt string) (string, error) {
-	args := []string{"-p", prompt, "--sandbox"}
+// agyMaxPromptArg caps how much prompt text goes into a single `agy -p <text>`
+// argument. Linux caps one argv entry at MAX_ARG_STRLEN = 128KiB — a kernel
+// constant, unrelated to (and far below) ARG_MAX — so an oversized prompt
+// fails at exec time with "argument list too long", never reaching agy at
+// all. A realistic /recommend prompt already runs ~107KB at 25 watchlist +
+// 15 candidate tickers, so this is a live wall on the VPS, not a theoretical
+// one. macOS has no per-argument cap, which is why this only bites in
+// production.
+//
+// The remaining ~48KiB of headroom covers the per-chunk framing text below
+// plus the other args.
+const agyMaxPromptArg = 80 * 1024
+
+// runAntigravity runs prompt through agy and returns the reply plus the
+// conversation id it ran in. resumeID continues an existing conversation
+// (empty starts a new one).
+//
+// A prompt too big for one argv entry is fed as several turns of one
+// conversation instead: each turn's text lands in agy's context in full, and
+// the last turn answers with everything before it still in context. The
+// alternative — dumping the prompt to a file and letting agy read it — was
+// measured and rejected: agy greps/skims a large file rather than ingesting
+// it (a 287KB file came back at 23K input tokens), which for a multi-ticker
+// analysis silently drops most of the input instead of erroring. Chunked
+// turns keep the full text in context, confirmed by input_tokens climbing to
+// the whole prompt's worth by the final turn.
+func runAntigravity(ctx context.Context, model, resumeID, prompt string) (reply string, convID string, err error) {
+	chunks := splitPrompt(prompt, agyMaxPromptArg)
+	convID = resumeID
+	for i, chunk := range chunks {
+		text := chunk
+		last := i == len(chunks)-1
+		if len(chunks) > 1 {
+			// Framing text is intentionally not in internal/i18n: it's
+			// transport plumbing that never reaches the user (only the final
+			// turn's reply is returned), and the model follows it regardless
+			// of the language the surrounding prompt is written in.
+			if last {
+				text = fmt.Sprintf("[input part %d/%d — final part]\n%s\n\n[end of input] All parts have now been sent. Answer the instructions given at the very beginning of part 1, using every part.", i+1, len(chunks), chunk)
+			} else {
+				text = fmt.Sprintf("[input part %d/%d] This is a partial input. Do not answer yet, do not analyze, reply with exactly ACK.\n%s", i+1, len(chunks), chunk)
+			}
+		}
+		res, err := runAgyOnce(ctx, model, convID, text)
+		if err != nil {
+			return "", "", err
+		}
+		convID = res.ConversationID
+		if last {
+			if res.Response == "" {
+				// An empty final reply means the run produced nothing usable
+				// (e.g. a tool call was auto-denied, see AntigravityProvider)
+				// — an error, not blank text handed to the user.
+				return "", "", fmt.Errorf("agy: empty response (status %q)", res.Status)
+			}
+			return strings.TrimSpace(res.Response), convID, nil
+		}
+	}
+	return "", "", fmt.Errorf("agy: empty prompt")
+}
+
+// agyResult is the subset of `agy --output-format json`'s result object this
+// package uses.
+type agyResult struct {
+	ConversationID string `json:"conversation_id"`
+	Status         string `json:"status"`
+	Response       string `json:"response"`
+}
+
+// runAgyOnce shells out to `agy -p` for a single non-interactive turn.
+func runAgyOnce(ctx context.Context, model, resumeID, text string) (agyResult, error) {
+	args := []string{"-p", text, "--output-format", "json"}
 	if model != "" {
 		args = append(args, "--model", model)
 	}
+	if resumeID != "" {
+		args = append(args, "--conversation", resumeID)
+	}
 
-	cmd := exec.CommandContext(ctx, agyCommand(), args...)
-	out, err := cmd.Output()
+	out, err := exec.CommandContext(ctx, agyCommand(), args...).Output()
 	if err != nil {
-		return "", fmt.Errorf("agy: %w", err)
+		return agyResult{}, fmt.Errorf("agy: %w", err)
 	}
-	reply := strings.TrimSpace(string(out))
-	if reply == "" {
-		// Could be a genuinely empty reply, or the known non-TTY stdout bug
-		// (see AntigravityProvider's doc comment) — treat both as an error
-		// rather than silently returning blank text to the user.
-		return "", fmt.Errorf("agy: empty response")
+	// agy can precede the result object with plain diagnostic lines, so take
+	// the last line that parses as JSON rather than the whole of stdout.
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		var res agyResult
+		if json.Unmarshal([]byte(lines[i]), &res) == nil && res.ConversationID != "" {
+			return res, nil
+		}
 	}
-	return reply, nil
+	return agyResult{}, fmt.Errorf("agy: no JSON result in output")
+}
+
+// splitPrompt breaks s into chunks of at most limit bytes, cutting at line
+// boundaries so a chunk never ends mid-row of a data table. A single line
+// longer than limit is hard-split at the nearest rune boundary below the
+// limit — content is never dropped, and never cut through a multi-byte rune.
+func splitPrompt(s string, limit int) []string {
+	if len(s) <= limit {
+		return []string{s}
+	}
+	var chunks []string
+	for len(s) > limit {
+		cut := strings.LastIndexByte(s[:limit], '\n') + 1 // keep the newline
+		if cut <= 0 {
+			cut = limit
+			for cut > 0 && !utf8.RuneStart(s[cut]) {
+				cut--
+			}
+		}
+		chunks = append(chunks, s[:cut])
+		s = s[cut:]
+	}
+	if s != "" {
+		chunks = append(chunks, s)
+	}
+	return chunks
 }
 
 // agyCommand resolves how to launch the Antigravity CLI. Defaults to `agy`
