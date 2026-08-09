@@ -19,7 +19,7 @@ export function ScatterChart({ points, height = 240 }: Props) {
     return null;
   }
   const width = 640;
-  const pad = 36;
+  const pad = 44;
 
   const xs = points.map((p) => p.x);
   const ys = points.map((p) => p.y);
@@ -32,11 +32,33 @@ export function ScatterChart({ points, height = 240 }: Props) {
 
   const sx = (x: number) => pad + ((x - xMin) / xRange) * (width - 2 * pad);
   const sy = (y: number) => height - pad - ((y - yMin) / yRange) * (height - 2 * pad);
+  const fmt = (n: number) => (Number.isInteger(n) ? n.toFixed(0) : n.toFixed(1));
+
+  // Tick values: min, max, and 0 (when it's a distinct point inside the range) —
+  // without these the axis lines alone give no sense of scale, only sign.
+  const xTicks = [xMin, ...(xMin < 0 && xMax > 0 ? [0] : []), xMax];
+  const yTicks = [yMin, ...(yMin < 0 && yMax > 0 ? [0] : []), yMax];
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="scatter-chart">
       <line x1={pad} y1={sy(0)} x2={width - pad} y2={sy(0)} className="scatter-axis" />
       <line x1={sx(0)} y1={pad} x2={sx(0)} y2={height - pad} className="scatter-axis" />
+      {xTicks.map((t, i) => (
+        <text
+          key={`x${i}`}
+          x={sx(t)}
+          y={height - pad + 14}
+          textAnchor={t === xMin ? "start" : t === xMax ? "end" : "middle"}
+          className="scatter-tick"
+        >
+          {fmt(t)}
+        </text>
+      ))}
+      {yTicks.map((t, i) => (
+        <text key={`y${i}`} x={pad - 6} y={sy(t) + 3} textAnchor="end" className="scatter-tick">
+          {fmt(t)}
+        </text>
+      ))}
       {points.map((p, i) => (
         <circle
           key={i}

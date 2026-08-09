@@ -32,6 +32,7 @@ export function Histogram({ values, binCount = 8 }: Props) {
         const heightPct = maxCount > 0 ? (count / maxCount) * 100 : 0;
         return (
           <div className="histogram-col" key={i} title={`${binStart.toFixed(1)}R — n=${count}`}>
+            <div className="histogram-count">{count > 0 ? count : ""}</div>
             <div className="histogram-bar-track">
               <div
                 className={`histogram-bar ${binStart >= 0 ? "histogram-bar-profit" : "histogram-bar-loss"}`}
