@@ -495,6 +495,17 @@ function mockApiPlugin(): Plugin {
           return next();
         }
 
+        // FORCE_MOCK=1 skips the backend proxy entirely — useful when a
+        // real (but data-empty) backend is reachable, since a 200 response
+        // short-circuits the error/timeout fallback below and mock data
+        // never gets a chance to serve.
+        if (process.env.FORCE_MOCK) {
+          const mockData = getMockData(req.url || "");
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(mockData));
+          return;
+        }
+
         const proxyReq = http.request(
           `http://127.0.0.1:8090${req.url}`,
           { method: req.method, headers: req.headers, timeout: 500 },

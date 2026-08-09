@@ -270,6 +270,8 @@ export interface Dictionary {
   // Account page — sidebar nav link gated on /api/config's paperEnabled,
   // same "hidden entirely when the feature is off" convention as navImport.
   navPaper: string;
+  paperReadOnlyBadge: string;
+  paperReadOnlyNotice: string;
   paperEquity: string;
   paperInitialCash: string;
   paperTotalReturn: string;
@@ -553,6 +555,8 @@ const en: Dictionary = {
   importAppliedPrefix: "Applied ",
   importAppliedSuffix: " row(s).",
   navPaper: "Paper Account",
+  paperReadOnlyBadge: "READ-ONLY",
+  paperReadOnlyNotice: "Executed automatically by the live strategy. No manual trading here.",
   paperEquity: "EQUITY",
   paperInitialCash: "Initial Cash",
   paperTotalReturn: "TOTAL RETURN",
@@ -828,6 +832,8 @@ const zh: Dictionary = {
   importAppliedPrefix: "已匯入 ",
   importAppliedSuffix: " 筆。",
   navPaper: "虛擬帳戶",
+  paperReadOnlyBadge: "唯讀",
+  paperReadOnlyNotice: "由自動策略即時執行，這裡只看不能下單。",
   paperEquity: "權益",
   paperInitialCash: "起始資金",
   paperTotalReturn: "總報酬",
