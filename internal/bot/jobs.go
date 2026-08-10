@@ -1225,6 +1225,14 @@ func (b *Bot) weeklyNetWorthLine(m market.MarketID, cash float64, haveCash bool)
 // Wired up only after several manual /insight runs had proven the
 // underlying prompt, so an untuned prompt never lands in the push channel
 // (see docs/phase-3.6-portfolio-insight.md).
+//
+// One message per market, each from its own LLM call over only that market's
+// holdings, cash, /track summary and earnings preview: a single combined call
+// produced a review that compared TWD position sizes against USD ones,
+// summed both into one "total assets" figure, and interleaved US and TW
+// judgments in one wall of prose. Markets with no positions are skipped
+// entirely (no empty per-market message), same convention as
+// RunMonthlyReport's per-market blocks.
 func (b *Bot) RunWeeklyReview(ctx context.Context) {
 	defer b.recoverJobPanic("weekly review")
 
@@ -1240,68 +1248,68 @@ func (b *Bot) RunWeeklyReview(ctx context.Context) {
 
 	b.Send(i18n.T(b.lang, i18n.KeyWeeklyReviewStart))
 
-	tickers := make([]string, len(positions))
-	positionsMap := make(map[string]db.Position, len(positions))
-	for i, p := range positions {
-		tickers[i] = p.Ticker
-		positionsMap[p.Ticker] = p
-	}
-
-	earnings := b.loadEarnings(tickers)
-	stocks := b.fetchStockData(tickers, true, positionsMap, earnings, nil, nil, nil)
-
-	theses := b.loadTheses(tickers)
-	vsSPY := b.loadVsSPY(stocks, positionsMap)
-	for i := range stocks {
-		ticker := stocks[i].Quote.Ticker
-		if th, ok := theses[ticker]; ok {
-			stocks[i].Thesis = &th
-		}
-		if v, ok := vsSPY[ticker]; ok {
-			stocks[i].VsSPY = &v
-		}
-	}
-
-	cashUSD, haveCashUSD, err := b.loadCash(market.US)
-	if err != nil {
-		log.Printf("weekly review: load cash (USD): %v", err)
-	}
-	cashTWD, haveCashTWD, err := b.loadCash(market.TW)
-	if err != nil {
-		log.Printf("weekly review: load cash (TWD): %v", err)
-	}
-
-	var trackSummary string
+	// Computed once for both markets — computeTrackRows fetches a quote per
+	// recommended ticker, and running it twice would double that traffic just
+	// to throw half the rows away each time. Each market's call filters it.
+	var trackRows []trackRow
 	if rows, _, ok, err := b.computeTrackRows(7); err != nil {
 		log.Printf("weekly review: track rows: %v", err)
 	} else if ok {
-		overall, bySource, byMarket := summarizeTrack(rows)
+		trackRows = rows
+	}
+
+	for _, m := range []market.MarketID{market.US, market.TW} {
+		b.runWeeklyReviewMarket(ctx, m, positions, trackRows)
+	}
+}
+
+// runWeeklyReviewMarket is RunWeeklyReview's per-market half: one LLM call
+// and one message covering market m only. Returns silently when m has no
+// positions.
+func (b *Bot) runWeeklyReviewMarket(ctx context.Context, m market.MarketID, positions []db.Position, trackRows []trackRow) {
+	stocks, earnings := b.portfolioStocks(m, positions)
+	if len(stocks) == 0 {
+		return
+	}
+
+	cash, haveCash, err := b.loadCash(m)
+	if err != nil {
+		log.Printf("weekly review: load cash (%s): %v", m, err)
+	}
+
+	var trackSummary string
+	var marketRows []trackRow
+	for _, r := range trackRows {
+		if r.Market == m {
+			marketRows = append(marketRows, r)
+		}
+	}
+	if len(marketRows) > 0 {
+		overall, bySource, byMarket := summarizeTrack(marketRows)
 		trackSummary = renderTrackSummary(b.lang, overall, bySource, byMarket)
 	}
 
-	result, err := b.llm.WeeklyReview(ctx, stocks, cashUSD, haveCashUSD, cashTWD, haveCashTWD, trackSummary)
+	result, err := b.llm.WeeklyReview(ctx, stocks, cash, haveCash, trackSummary, m == market.TW)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyLLMFailed, err))
 		return
 	}
 
+	titleKey := i18n.KeyWeeklyReviewResultTitleUS
+	if m == market.TW {
+		titleKey = i18n.KeyWeeklyReviewResultTitleTW
+	}
+
 	var sb strings.Builder
-	// Two net-worth lines (Phase 6 PR2 §5.3), one per market — either is
-	// skipped individually when that market has no snapshot history yet
+	// Skipped individually when this market has no snapshot history yet
 	// (weeklyNetWorthLine's own "" = skip contract).
-	if line, err := b.weeklyNetWorthLine(market.US, cashUSD, haveCashUSD); err != nil {
-		log.Printf("weekly review: net worth line (US): %v", err)
+	if line, err := b.weeklyNetWorthLine(m, cash, haveCash); err != nil {
+		log.Printf("weekly review: net worth line (%s): %v", m, err)
 	} else if line != "" {
 		sb.WriteString(line)
 		sb.WriteString("\n")
 	}
-	if line, err := b.weeklyNetWorthLine(market.TW, cashTWD, haveCashTWD); err != nil {
-		log.Printf("weekly review: net worth line (TW): %v", err)
-	} else if line != "" {
-		sb.WriteString(line)
-		sb.WriteString("\n")
-	}
-	sb.WriteString(i18n.T(b.lang, i18n.KeyWeeklyReviewResultTitle, result))
+	sb.WriteString(i18n.T(b.lang, titleKey, result))
 	sb.WriteString(renderEarningsPreview(b.lang, earnings, 7))
 
 	b.Send(sb.String())

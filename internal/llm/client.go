@@ -168,9 +168,11 @@ func (c *Client) CheckStock(ctx context.Context, stock StockData) (string, error
 // CheckStock's single-ticker view. Reuses checkModel (no dedicated
 // insightModel/env var): this is the same one-shot-session shape as
 // CheckStock, just a different prompt, and doesn't warrant its own model
-// tier for a rarely-invoked command.
-func (c *Client) InsightPortfolio(ctx context.Context, positions []StockData, cashUSD float64, haveCashUSD bool, cashTWD float64, haveCashTWD bool) (string, error) {
-	prompt := buildInsightPrompt(c.lang, positions, cashUSD, haveCashUSD, cashTWD, haveCashTWD)
+// tier for a rarely-invoked command. One call per market, same as
+// WeeklyReview — positions and cash both belong to the market isTW
+// identifies.
+func (c *Client) InsightPortfolio(ctx context.Context, positions []StockData, cash float64, haveCash bool, isTW bool) (string, error) {
+	prompt := buildInsightPrompt(c.lang, positions, cash, haveCash, isTW)
 	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
 }
 
@@ -180,8 +182,11 @@ func (c *Client) InsightPortfolio(ctx context.Context, positions []StockData, ca
 // history yet) folded into the same prompt so the model's portfolio
 // judgment and its comment on recommendation accuracy come out of one
 // coherent call. Reuses checkModel, same reasoning as InsightPortfolio.
-func (c *Client) WeeklyReview(ctx context.Context, positions []StockData, cashUSD float64, haveCashUSD bool, cashTWD float64, haveCashTWD bool, trackSummary string) (string, error) {
-	prompt := buildWeeklyReviewPrompt(c.lang, positions, cashUSD, haveCashUSD, cashTWD, haveCashTWD, trackSummary)
+// One call per market — positions, cash and trackSummary all belong to the
+// market isTW identifies (same flag convention as GenerateRecommendations);
+// see buildWeeklyReviewPrompt for why the two markets aren't mixed.
+func (c *Client) WeeklyReview(ctx context.Context, positions []StockData, cash float64, haveCash bool, trackSummary string, isTW bool) (string, error) {
+	prompt := buildWeeklyReviewPrompt(c.lang, positions, cash, haveCash, trackSummary, isTW)
 	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
 }
 

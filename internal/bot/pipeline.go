@@ -798,6 +798,46 @@ func (b *Bot) loadRecentLessons() []llm.PastLesson {
 	return out
 }
 
+// portfolioStocks assembles the per-position StockData that the
+// portfolio-level LLM calls (/insight and the weekly review) both feed their
+// prompts, scoped to a single market: quotes/technicals/fundamentals via
+// fetchStockData, plus each position's earnings date, holding thesis and
+// vs-benchmark return. Returns nil, nil when m has no positions at all, so
+// callers skip that market's message entirely rather than sending an empty
+// one. Market-scoped because mixing markets into one prompt sums TWD and USD
+// position values into a single meaningless total (see
+// llm.buildWeeklyReviewPrompt).
+func (b *Bot) portfolioStocks(m market.MarketID, positions []db.Position) ([]llm.StockData, map[string]data.EarningsEvent) {
+	var tickers []string
+	positionsMap := make(map[string]db.Position, len(positions))
+	for _, p := range positions {
+		if market.Of(p.Ticker) != m {
+			continue
+		}
+		tickers = append(tickers, p.Ticker)
+		positionsMap[p.Ticker] = p
+	}
+	if len(tickers) == 0 {
+		return nil, nil
+	}
+
+	earnings := b.loadEarnings(tickers)
+	stocks := b.fetchStockData(tickers, true, positionsMap, earnings, nil, nil, nil)
+
+	theses := b.loadTheses(tickers)
+	vsBench := b.loadVsSPY(stocks, positionsMap)
+	for i := range stocks {
+		ticker := stocks[i].Quote.Ticker
+		if th, ok := theses[ticker]; ok {
+			stocks[i].Thesis = &th
+		}
+		if v, ok := vsBench[ticker]; ok {
+			stocks[i].VsSPY = &v
+		}
+	}
+	return stocks, earnings
+}
+
 // loadEarnings returns each ticker's next scheduled earnings date within
 // earningsPromptWindowDays, keyed by ticker: Finnhub's real per-company date
 // for a US ticker, and (2026-07-28 TW data-gap PR) data.GetTWUpcomingEarnings'
@@ -854,10 +894,11 @@ func (b *Bot) loadTheses(tickers []string) map[string]string {
 // over the same period. Split out from loadVsSPY (which owns the DB/quote
 // lookups) so the arithmetic is independently testable, same shape as
 // breachAlertDecision.
-func computeVsSPY(currentPrice, avgCost, spyPrice, spyEntryClose float64) llm.VsSPYReturn {
+func computeVsSPY(currentPrice, avgCost, spyPrice, spyEntryClose float64, bench string) llm.VsSPYReturn {
 	return llm.VsSPYReturn{
 		TickerPct: (currentPrice - avgCost) / avgCost * 100,
 		SPYPct:    (spyPrice - spyEntryClose) / spyEntryClose * 100,
+		Bench:     bench,
 	}
 }
 
@@ -917,7 +958,7 @@ func (b *Bot) loadVsSPY(stocks []llm.StockData, positions map[string]db.Position
 		if !ok || benchEntryClose == 0 {
 			continue
 		}
-		out[ticker] = computeVsSPY(s.Quote.Price, p.AvgCost, benchQuote.Price, benchEntryClose)
+		out[ticker] = computeVsSPY(s.Quote.Price, p.AvgCost, benchQuote.Price, benchEntryClose, benchmarkFor(m))
 	}
 	return out
 }

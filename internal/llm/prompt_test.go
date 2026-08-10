@@ -15,7 +15,7 @@ func TestBuildInsightPromptTotalValueAndCashLine(t *testing.T) {
 		{Quote: &data.Quote{Ticker: "MSFT", Price: 300}, Position: &Position{Shares: 5, AvgCost: 250}},
 	}
 
-	prompt := buildInsightPrompt(i18n.EN, positions, 500, true, 0, false)
+	prompt := buildInsightPrompt(i18n.EN, positions, 500, true, false)
 
 	// Total position value: 10*200 + 5*300 = 3500; grand total with cash: 4000.
 	if !strings.Contains(prompt, "3500.00") {
@@ -39,7 +39,7 @@ func TestBuildInsightPromptOmitsCashLineWhenUnset(t *testing.T) {
 		{Quote: &data.Quote{Ticker: "AAPL", Price: 200}, Position: &Position{Shares: 10, AvgCost: 150}},
 	}
 
-	prompt := buildInsightPrompt(i18n.EN, positions, 0, false, 0, false)
+	prompt := buildInsightPrompt(i18n.EN, positions, 0, false, false)
 
 	if strings.Contains(prompt, "Cash balance") {
 		t.Errorf("buildInsightPrompt() with haveCash=false should omit the cash line entirely, got:\n%s", prompt)
@@ -58,7 +58,7 @@ func TestBuildInsightPromptSkipsValueForPositionWithoutQuote(t *testing.T) {
 		{Quote: nil, Position: &Position{Shares: 5, AvgCost: 100}},
 	}
 
-	prompt := buildInsightPrompt(i18n.EN, positions, 0, false, 0, false)
+	prompt := buildInsightPrompt(i18n.EN, positions, 0, false, false)
 
 	if !strings.Contains(prompt, "2000.00") {
 		t.Errorf("buildInsightPrompt() missing total position value 2000.00 (should ignore the quote-less position), got:\n%s", prompt)
@@ -76,7 +76,7 @@ func TestBuildInsightPromptRendersThesisAndVsSPY(t *testing.T) {
 		},
 	}
 
-	prompt := buildInsightPrompt(i18n.EN, positions, 0, false, 0, false)
+	prompt := buildInsightPrompt(i18n.EN, positions, 0, false, false)
 
 	if !strings.Contains(prompt, thesis) {
 		t.Errorf("buildInsightPrompt() missing thesis text, got:\n%s", prompt)
@@ -91,7 +91,7 @@ func TestBuildWeeklyReviewPromptIncludesTrackSummaryWhenPresent(t *testing.T) {
 		{Quote: &data.Quote{Ticker: "AAPL", Price: 200}, Position: &Position{Shares: 10, AvgCost: 150}},
 	}
 
-	prompt := buildWeeklyReviewPrompt(i18n.EN, positions, 0, false, 0, false, "Hit rate: 3/5 (60%)")
+	prompt := buildWeeklyReviewPrompt(i18n.EN, positions, 0, false, "Hit rate: 3/5 (60%)", false)
 
 	if !strings.Contains(prompt, "Hit rate: 3/5 (60%)") {
 		t.Errorf("buildWeeklyReviewPrompt() missing track summary text, got:\n%s", prompt)
@@ -106,10 +106,25 @@ func TestBuildWeeklyReviewPromptOmitsTrackSectionWhenEmpty(t *testing.T) {
 		{Quote: &data.Quote{Ticker: "AAPL", Price: 200}, Position: &Position{Shares: 10, AvgCost: 150}},
 	}
 
-	prompt := buildWeeklyReviewPrompt(i18n.EN, positions, 0, false, 0, false, "")
+	prompt := buildWeeklyReviewPrompt(i18n.EN, positions, 0, false, "", false)
 
 	if strings.Contains(prompt, "This week's recommendation tracking") {
 		t.Errorf("buildWeeklyReviewPrompt() with empty trackSummary should omit the track section entirely, got:\n%s", prompt)
+	}
+}
+
+func TestBuildWeeklyReviewPromptTWMarketNote(t *testing.T) {
+	positions := []StockData{
+		{Quote: &data.Quote{Ticker: "2330", Price: 1000}, Position: &Position{Shares: 1000, AvgCost: 900}},
+	}
+
+	tw := buildWeeklyReviewPrompt(i18n.EN, positions, 0, false, "", true)
+	if !strings.Contains(tw, "TWD") {
+		t.Errorf("buildWeeklyReviewPrompt(isTW=true) should declare the prompt TWD-denominated, got:\n%s", tw)
+	}
+	us := buildWeeklyReviewPrompt(i18n.EN, positions, 0, false, "", false)
+	if strings.Contains(us, "TWD") {
+		t.Errorf("buildWeeklyReviewPrompt(isTW=false) should not carry the TW market note, got:\n%s", us)
 	}
 }
 
@@ -119,7 +134,7 @@ func TestBuildWeeklyReviewPromptTotalValueAndCashLine(t *testing.T) {
 		{Quote: &data.Quote{Ticker: "MSFT", Price: 300}, Position: &Position{Shares: 5, AvgCost: 250}},
 	}
 
-	prompt := buildWeeklyReviewPrompt(i18n.EN, positions, 500, true, 0, false, "")
+	prompt := buildWeeklyReviewPrompt(i18n.EN, positions, 500, true, "", false)
 
 	// Total position value: 10*200 + 5*300 = 3500; grand total with cash: 4000.
 	if !strings.Contains(prompt, "3500.00") || !strings.Contains(prompt, "500.00") || !strings.Contains(prompt, "4000.00") {

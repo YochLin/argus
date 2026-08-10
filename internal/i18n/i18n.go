@@ -182,10 +182,19 @@ const (
 	KeyPortfolioLotSuffix          Key = "portfolio_lot_suffix"
 	KeyJobPanic                    Key = "job_panic"
 
-	KeyInsightResultTitle Key = "insight_result_title"
+	// /insight sends one message per market (separate LLM calls over separate
+	// holdings — see bot.handleInsight), so each needs its own market-labeled
+	// title, same pair as KeyWeeklyReviewResultTitleUS/TW.
+	KeyInsightResultTitleUS Key = "insight_result_title_us"
+	KeyInsightResultTitleTW Key = "insight_result_title_tw"
 
-	KeyWeeklyReviewStart          Key = "weekly_review_start"
-	KeyWeeklyReviewResultTitle    Key = "weekly_review_result_title"
+	KeyWeeklyReviewStart Key = "weekly_review_start"
+	// The weekly review is sent as one message per market (US and TW are
+	// separate LLM calls over separate holdings — see bot.RunWeeklyReview),
+	// so each needs its own market-labeled title, same US/TW key-pair
+	// precedent as KeyPortfolioSectionUS/TW.
+	KeyWeeklyReviewResultTitleUS  Key = "weekly_review_result_title_us"
+	KeyWeeklyReviewResultTitleTW  Key = "weekly_review_result_title_tw"
 	KeyWeeklyNetWorthLine         Key = "weekly_net_worth_line"
 	KeyWeeklyNetWorthLineWithCash Key = "weekly_net_worth_line_with_cash"
 	// Phase 6 PR2's TW counterparts of the two keys above (§5.3) — a full

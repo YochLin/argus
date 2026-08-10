@@ -131,10 +131,14 @@ type PastLesson struct {
 // percentages ignore dividends (SPY distributes too, so this is a
 // price-return-vs-price-return comparison on both sides — consistent, if not
 // total-return-precise; see docs/phase-3.6-portfolio-insight.md's dividend
-// icebox note).
+// icebox note). Bench is the benchmark ticker the SPYPct side was measured
+// against (SPY for a US holding, 0050 for a TW one — see bot.benchmarkFor):
+// with both markets in the same report, a line that hardcoded "SPY" would
+// mislabel every TW comparison.
 type VsSPYReturn struct {
 	TickerPct float64
 	SPYPct    float64
+	Bench     string
 }
 
 // Technicals is the subset of computed technical-indicator values an LLM
@@ -691,7 +695,7 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 	}
 
 	if v := s.VsSPY; v != nil {
-		fmt.Fprint(sb, i18n.T(lang, i18n.KeyVsSPYLine, v.TickerPct, v.SPYPct))
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyVsSPYLine, v.TickerPct, v.Bench, v.SPYPct))
 	}
 
 	if len(s.PastLessons) > 0 {
@@ -754,24 +758,26 @@ func buildCheckPrompt(lang i18n.Lang, s StockData) string {
 }
 
 // buildInsightPrompt is Phase 3.6's portfolio-level analysis prompt: every
-// held position (via writeStockSection, same per-ticker rendering
+// held position (via writeStockSection, the same per-ticker rendering
 // /recommend and /check already use — quote, technicals, fundamentals,
 // earnings, cost basis) followed by a portfolio-wide summary line and a task
 // block that explicitly asks for concentration/thesis/rebalancing judgment
-// rather than a repeat of the per-ticker analysis above it. cashUSD is only
-// rendered when haveCashUSD is true (the user has run /cash at least once) —
+// rather than a repeat of the per-ticker analysis above it. cash is only
+// rendered when haveCash is true (the user has run /cash at least once) —
 // see PLAN.md's Phase 3.6 "現金水位" item: an unset cash balance should read
 // as "no data," not silently as $0, which would misleadingly suggest 100%
-// invested. cashTWD/haveCashTWD is Phase 6's second book
-// (docs/phase-6-tw-market.md §3.2) — rendered as its own line rather than
-// folded into totalValue+cash the way USD is, since totalValue already mixes
-// USD and TWD position values together (an accepted gap, see that doc's §7
-// "/insight 混市場" — this prompt still runs once over every held position
-// regardless of market) and adding a TWD figure into that same mixed-
-// currency total would only compound the error.
-func buildInsightPrompt(lang i18n.Lang, positions []StockData, cashUSD float64, haveCashUSD bool, cashTWD float64, haveCashTWD bool) string {
+// invested.
+//
+// One market per call (isTW says which, reusing KeyRecTWMarketNote to declare
+// the whole prompt TWD-denominated), same split as buildWeeklyReviewPrompt:
+// a mixed prompt summed TWD and USD position values into one meaningless
+// total value and had the model comparing position sizes across currencies.
+func buildInsightPrompt(lang i18n.Lang, positions []StockData, cash float64, haveCash bool, isTW bool) string {
 	var sb strings.Builder
 	sb.WriteString(i18n.T(lang, i18n.KeyInsightPromptIntro))
+	if isTW {
+		sb.WriteString(i18n.T(lang, i18n.KeyRecTWMarketNote))
+	}
 
 	var totalValue float64
 	for _, s := range positions {
@@ -782,11 +788,8 @@ func buildInsightPrompt(lang i18n.Lang, positions []StockData, cashUSD float64, 
 	}
 
 	sb.WriteString(i18n.T(lang, i18n.KeyInsightPositionValueLine, totalValue))
-	if haveCashUSD {
-		sb.WriteString(i18n.T(lang, i18n.KeyInsightCashLine, cashUSD, totalValue+cashUSD))
-	}
-	if haveCashTWD {
-		sb.WriteString(i18n.T(lang, i18n.KeyInsightCashLineTWD, cashTWD))
+	if haveCash {
+		sb.WriteString(i18n.T(lang, i18n.KeyInsightCashLine, cash, totalValue+cash))
 	}
 
 	sb.WriteString(i18n.T(lang, i18n.KeyInsightPromptTask))
@@ -800,9 +803,19 @@ func buildInsightPrompt(lang i18n.Lang, positions []StockData, cashUSD float64, 
 // folded into the same prompt so the model's portfolio judgment and its
 // comment on recommendation accuracy come from a single coherent call
 // rather than two.
-func buildWeeklyReviewPrompt(lang i18n.Lang, positions []StockData, cashUSD float64, haveCashUSD bool, cashTWD float64, haveCashTWD bool, trackSummary string) string {
+//
+// One market per call (positions/cash/trackSummary are all that market's, and
+// isTW says which — reusing KeyRecTWMarketNote to declare the whole prompt
+// TWD-denominated, same as buildRecommendationPrompt): a mixed prompt summed
+// TWD and USD position values into one number and left the model comparing
+// concentration across two currencies, which is what made the combined review
+// unreadable.
+func buildWeeklyReviewPrompt(lang i18n.Lang, positions []StockData, cash float64, haveCash bool, trackSummary string, isTW bool) string {
 	var sb strings.Builder
 	sb.WriteString(i18n.T(lang, i18n.KeyWeeklyReviewPromptIntro))
+	if isTW {
+		sb.WriteString(i18n.T(lang, i18n.KeyRecTWMarketNote))
+	}
 
 	var totalValue float64
 	for _, s := range positions {
@@ -813,11 +826,8 @@ func buildWeeklyReviewPrompt(lang i18n.Lang, positions []StockData, cashUSD floa
 	}
 
 	sb.WriteString(i18n.T(lang, i18n.KeyInsightPositionValueLine, totalValue))
-	if haveCashUSD {
-		sb.WriteString(i18n.T(lang, i18n.KeyInsightCashLine, cashUSD, totalValue+cashUSD))
-	}
-	if haveCashTWD {
-		sb.WriteString(i18n.T(lang, i18n.KeyInsightCashLineTWD, cashTWD))
+	if haveCash {
+		sb.WriteString(i18n.T(lang, i18n.KeyInsightCashLine, cash, totalValue+cash))
 	}
 
 	if trackSummary != "" {
@@ -850,7 +860,7 @@ func buildTradeReviewPrompt(lang i18n.Lang, trade ClosedTrade) string {
 		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyTradeReviewRangeLine, trade.PeriodHigh, trade.PeriodLow))
 	}
 	if trade.VsSPY != nil {
-		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyVsSPYLine, trade.VsSPY.TickerPct, trade.VsSPY.SPYPct))
+		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyVsSPYLine, trade.VsSPY.TickerPct, trade.VsSPY.Bench, trade.VsSPY.SPYPct))
 	}
 	if trade.Thesis != nil {
 		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyThesisLine, *trade.Thesis))
