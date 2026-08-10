@@ -112,10 +112,30 @@ func (c *telegramChannel) Send(text string) {
 	for _, chunk := range splitMessage(text, telegramMaxMessageLen) {
 		msg := tgbotapi.NewMessage(c.chatID, chunk)
 		msg.ParseMode = "Markdown"
-		if _, err := c.api.Send(msg); err != nil {
+		_, err := c.api.Send(msg)
+		if err != nil && isMarkdownParseError(err) {
+			msg.ParseMode = ""
+			_, err = c.api.Send(msg)
+		}
+		if err != nil {
 			log.Printf("send error: %v", err)
 		}
 	}
+}
+
+// isMarkdownParseError reports whether err is Telegram rejecting a message
+// for unbalanced Markdown rather than anything about delivery. Message text
+// is assembled from i18n templates that wrap dynamic values in *bold*, and
+// those values can carry a stray Markdown character the template never
+// escapes — a TWSE company short name is literally "國巨*" (2327), and a
+// user's own /thesis text can contain any of _ * [ `. Telegram 400s the
+// whole send in that case, so without the plain-text retry in Send the user
+// gets total silence from a command that otherwise worked (the DB write
+// already happened). Matched on the error string because tgbotapi surfaces
+// this as a generic *tgbotapi.Error with no distinguishing code — every
+// parse failure's message starts "Bad Request: can't parse entities".
+func isMarkdownParseError(err error) bool {
+	return strings.Contains(err.Error(), "can't parse entities")
 }
 
 // SendWithButtons bypasses Send's chunking helper — every caller here is a
@@ -130,6 +150,10 @@ func (c *telegramChannel) SendWithButtons(text string, buttons []Button) error {
 	msg.ParseMode = "Markdown"
 	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(row)
 	_, err := c.api.Send(msg)
+	if err != nil && isMarkdownParseError(err) {
+		msg.ParseMode = ""
+		_, err = c.api.Send(msg)
+	}
 	return err
 }
 
