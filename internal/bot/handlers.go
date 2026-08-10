@@ -1073,7 +1073,7 @@ func (b *Bot) buildClosedTradeReview(ticker string, stopPrice float64) (llm.Clos
 		if startErr != nil || endErr != nil {
 			log.Printf("review %s: spy close: start err=%v end err=%v", ticker, startErr, endErr)
 		} else if startOK && endOK {
-			vs := computeVsSPY(exitPrice, entryPrice, spyEnd, spyStart)
+			vs := computeVsSPY(exitPrice, entryPrice, spyEnd, spyStart, benchmarkTicker)
 			trade.VsSPY = &vs
 		}
 	}
@@ -1297,6 +1297,11 @@ func lotSuffix(lang i18n.Lang, m market.MarketID, shares float64) string {
 // exactly like /recommend and RunDailyReport do (same attach-and-render
 // StockData fields: technicals, fundamentals, earnings, cost basis) rather
 // than building a separate data-gathering path.
+//
+// One message per market, each from its own LLM call over only that market's
+// holdings and cash — same reasoning as RunWeeklyReview's split: a combined
+// call weighed TWD position sizes against USD ones and summed both into one
+// "total assets" number.
 func (b *Bot) handleInsight(ctx context.Context) {
 	positions, err := b.db.GetPositions()
 	if err != nil {
@@ -1310,43 +1315,35 @@ func (b *Bot) handleInsight(ctx context.Context) {
 
 	b.Send(i18n.T(b.lang, i18n.KeyAnalyzing))
 
-	tickers := make([]string, len(positions))
-	positionsMap := make(map[string]db.Position, len(positions))
-	for i, p := range positions {
-		tickers[i] = p.Ticker
-		positionsMap[p.Ticker] = p
+	for _, m := range []market.MarketID{market.US, market.TW} {
+		b.insightMarket(ctx, m, positions)
+	}
+}
+
+// insightMarket is handleInsight's per-market half: one LLM call and one
+// message covering market m only, silently skipped when m holds nothing.
+func (b *Bot) insightMarket(ctx context.Context, m market.MarketID, positions []db.Position) {
+	stocks, _ := b.portfolioStocks(m, positions)
+	if len(stocks) == 0 {
+		return
 	}
 
-	earnings := b.loadEarnings(tickers)
-	stocks := b.fetchStockData(tickers, true, positionsMap, earnings, nil, nil, nil)
-
-	theses := b.loadTheses(tickers)
-	vsSPY := b.loadVsSPY(stocks, positionsMap)
-	for i := range stocks {
-		ticker := stocks[i].Quote.Ticker
-		if th, ok := theses[ticker]; ok {
-			stocks[i].Thesis = &th
-		}
-		if v, ok := vsSPY[ticker]; ok {
-			stocks[i].VsSPY = &v
-		}
-	}
-
-	cashUSD, haveCashUSD, err := b.loadCash(market.US)
+	cash, haveCash, err := b.loadCash(m)
 	if err != nil {
-		log.Printf("insight: load cash (USD): %v", err)
-	}
-	cashTWD, haveCashTWD, err := b.loadCash(market.TW)
-	if err != nil {
-		log.Printf("insight: load cash (TWD): %v", err)
+		log.Printf("insight: load cash (%s): %v", m, err)
 	}
 
-	result, err := b.llm.InsightPortfolio(ctx, stocks, cashUSD, haveCashUSD, cashTWD, haveCashTWD)
+	result, err := b.llm.InsightPortfolio(ctx, stocks, cash, haveCash, m == market.TW)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyLLMFailed, err))
 		return
 	}
-	b.Send(i18n.T(b.lang, i18n.KeyInsightResultTitle, result))
+
+	titleKey := i18n.KeyInsightResultTitleUS
+	if m == market.TW {
+		titleKey = i18n.KeyInsightResultTitleTW
+	}
+	b.Send(i18n.T(b.lang, titleKey, result))
 }
 
 // cashSettingKey/cashSettingKeyTWD are the db.settings keys /cash reads/

@@ -102,10 +102,12 @@ var enMessages = map[Key]string{
 	KeyPortfolioLotSuffix:          " (= %d board lots)",
 	KeyJobPanic:                    "⚠️ *%s* hit an unexpected error and aborted: %v",
 
-	KeyInsightResultTitle: "💡 *Portfolio Insight*\n\n%s",
+	KeyInsightResultTitleUS: "💡 *Portfolio Insight | US*\n\n%s",
+	KeyInsightResultTitleTW: "💡 *Portfolio Insight | TW*\n\n%s",
 
 	KeyWeeklyReviewStart:                  "📅 Generating this week's portfolio review...",
-	KeyWeeklyReviewResultTitle:            "📅 *Weekly Portfolio Review*\n\n%s",
+	KeyWeeklyReviewResultTitleUS:          "📅 *Weekly Portfolio Review | US*\n\n%s",
+	KeyWeeklyReviewResultTitleTW:          "📅 *Weekly Portfolio Review | TW*\n\n%s",
 	KeyWeeklyNetWorthLine:                 "📈 Total value: $%.2f (%+.1f%% vs a week ago)\n",
 	KeyWeeklyNetWorthLineWithCash:         "📈 Total value: $%.2f (%+.1f%% vs a week ago) | Total assets incl. cash: $%.2f\n",
 	KeyWeeklyNetWorthLineTWD:              "📈 TW total value: NT$%.2f (%+.1f%% vs a week ago)\n",
@@ -380,14 +382,15 @@ Please analyze the whole portfolio in English (don't repeat the per-ticker data 
    shown, does it still hold, and what's changed; for holdings with no thesis, assess whether the likely original
    rationale still holds
 3. Performance vs. the market: where "vs. market" data is provided, call out any holding that's actually
-   underperforming SPY — a position being up doesn't mean it was the right call
+   underperforming its own market's benchmark (the benchmark is named in the data) — a position being up
+   doesn't mean it was the right call
 4. Add/reduce/stop-loss suggestions: which positions should be added to, trimmed, or given a stop-loss, and why
 5. If a cash balance is provided, briefly comment on whether the current positions/cash split makes sense
 
 Keep the reply concise — under 600 words total.
 `,
 
-	KeyWeeklyReviewPromptIntro: "You are a US equities analyst. Give this week's portfolio review for the whole set of holdings below (not a repeat of each ticker's individual analysis).\n\n",
+	KeyWeeklyReviewPromptIntro: "You are an equities analyst. Give this week's portfolio review for the whole set of holdings below (not a repeat of each ticker's individual analysis).\n\n",
 	KeyWeeklyReviewTrackHeader: "\nThis week's recommendation tracking:\n",
 	KeyWeeklyReviewPromptTask: `
 Please analyze the whole portfolio in English (don't repeat the per-ticker data already listed — focus on portfolio-level judgment):
@@ -397,7 +400,8 @@ Please analyze the whole portfolio in English (don't repeat the per-ticker data 
    shown, does it still hold, and what's changed; for holdings with no thesis, assess whether the likely original
    rationale still holds
 3. Performance vs. the market: where "vs. market" data is provided, call out any holding that's actually
-   underperforming SPY — a position being up doesn't mean it was the right call
+   underperforming its own market's benchmark (the benchmark is named in the data) — a position being up
+   doesn't mean it was the right call
 4. Add/reduce/stop-loss suggestions: which positions should be added to, trimmed, or given a stop-loss, and why
 5. If a cash balance is provided, briefly comment on whether the current positions/cash split makes sense
 6. If "this week's recommendation tracking" data is provided above, briefly comment on which kind of call (by
@@ -494,7 +498,7 @@ Write only from the data actually provided above — omit any section you have n
 	KeyEarningsLineEstimated:   "- ⚠️ Est. statutory filing deadline: %s (in %d days) — expect volatility\n",
 	KeyScanHitLine:             "- 🔎 Scan hit: %s\n",
 	KeyThesisLine:              "- 📝 Holding thesis: %s\n",
-	KeyVsSPYLine:               "- vs. market: %+.1f%% over the holding period vs. SPY %+.1f%% over the same period\n",
+	KeyVsSPYLine:               "- vs. market: %+.1f%% over the holding period vs. %s %+.1f%% over the same period\n",
 	KeyTechnicalsSummaryLine:   "- Technicals: RSI(14) %.1f | MACD %s\n",
 	KeyTechnicalsMALine:        "- %s MA%d ($%.2f)\n",
 	KeyVolumeRatioLine:         "- Volume: %.1fx 20-day avg\n",

@@ -558,8 +558,8 @@ func TestComputeVsSPY(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := computeVsSPY(tt.currentPrice, tt.avgCost, tt.spyPrice, tt.spyEntry)
-			if !floatsClose(got.TickerPct, tt.wantTickerPct) || !floatsClose(got.SPYPct, tt.wantSPYPct) {
+			got := computeVsSPY(tt.currentPrice, tt.avgCost, tt.spyPrice, tt.spyEntry, "SPY")
+			if !floatsClose(got.TickerPct, tt.wantTickerPct) || !floatsClose(got.SPYPct, tt.wantSPYPct) || got.Bench != "SPY" {
 				t.Errorf("computeVsSPY(%v, %v, %v, %v) = %+v, want {%v %v}",
 					tt.currentPrice, tt.avgCost, tt.spyPrice, tt.spyEntry, got, tt.wantTickerPct, tt.wantSPYPct)
 			}
