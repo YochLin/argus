@@ -207,6 +207,7 @@ export interface Dictionary {
   searchPlaceholder: string;
   watchlistCount: string;
   noMatch: string;
+  heldOnly: string;
   nearestSup: string;
   nearestRes: string;
   ma20: string;
@@ -500,6 +501,7 @@ const en: Dictionary = {
   searchPlaceholder: "Search ticker or name…",
   watchlistCount: "Watchlist",
   noMatch: "No matching tickers found.",
+  heldOnly: "Holdings only",
   nearestSup: "Nearest Support",
   nearestRes: "Nearest Resistance",
   ma20: "MA20",
@@ -777,6 +779,7 @@ const zh: Dictionary = {
   searchPlaceholder: "搜尋標的或名稱…",
   watchlistCount: "追蹤清單",
   noMatch: "找不到符合的標的。",
+  heldOnly: "已持倉",
   nearestSup: "最近支撐",
   nearestRes: "最近壓力",
   ma20: "MA20",
