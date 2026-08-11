@@ -70,6 +70,7 @@ func runBacktest() {
 		TrailingATRMult:   *trailingATRFlag,
 		TakeProfitATRMult: *takeProfitATRFlag,
 		Market:            m,
+		FeeDiscount:       1.0, // no CLI flag — backtest defaults to the undiscounted statutory rate
 	}
 
 	if err := godotenv.Load(); err != nil {

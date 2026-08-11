@@ -5,6 +5,7 @@ import (
 
 	"argus/internal/data"
 	"argus/internal/i18n"
+	"argus/internal/market"
 )
 
 type Signal struct {
@@ -30,28 +31,35 @@ const (
 )
 
 type Detector struct {
-	priceThresholdPct float64 // alert if abs(changePercent) >= this
-	volumeMultiplier  float64 // alert if volume >= avgVolume * this
-	rsiOverbought     float64
-	rsiOversold       float64
-	lang              i18n.Lang
+	priceThresholdPct   float64 // alert if abs(changePercent) >= this, US tickers
+	priceThresholdPctTW float64 // same, TW tickers — TW's daily ±10% limit makes 3% routine noise (docs/tw-us-parity.md §7)
+	volumeMultiplier    float64 // alert if volume >= avgVolume * this
+	rsiOverbought       float64
+	rsiOversold         float64
+	lang                i18n.Lang
 }
 
 func NewDetector(lang i18n.Lang) *Detector {
 	return &Detector{
-		priceThresholdPct: 3.0,
-		volumeMultiplier:  2.0,
-		rsiOverbought:     70,
-		rsiOversold:       30,
-		lang:              lang,
+		priceThresholdPct:   3.0,
+		priceThresholdPctTW: 5.0,
+		volumeMultiplier:    2.0,
+		rsiOverbought:       70,
+		rsiOversold:         30,
+		lang:                lang,
 	}
 }
 
 func (d *Detector) CheckQuote(q *data.Quote) []Signal {
 	var signals []Signal
 
+	threshold := d.priceThresholdPct
+	if market.Of(q.Ticker) == market.TW {
+		threshold = d.priceThresholdPctTW
+	}
+
 	// Price movement signal
-	if math.Abs(q.ChangePercent) >= d.priceThresholdPct {
+	if math.Abs(q.ChangePercent) >= threshold {
 		dirKey := i18n.KeyPriceUp
 		if q.ChangePercent < 0 {
 			dirKey = i18n.KeyPriceDown

@@ -27,6 +27,7 @@ type Config struct {
 	TrailingATRMult   float64 // ATR-based trailing distance multiple; <=0 = fixed % only
 	TakeProfitATRMult float64 // ATR(14) multiple above entry for the take-profit target; <=0 = disabled
 	Market            market.MarketID
+	FeeDiscount       float64 // TW brokerage discount on the commission leg only (statutory tax never discounts); 1.0 = no discount. Unused for US.
 }
 
 // Signal is one recommendation to apply: BUY/SELL/HOLD/"" at Price on Date.
@@ -72,24 +73,45 @@ type Trade struct {
 	Reason                                string
 }
 
-// feeRate returns the round-trip-relevant one-sided fee rate: 0 for US
-// (commission-free assumption, matching the rest of this codebase), and
-// Taiwan's brokerage/tax schedule otherwise. ponytail: flat statutory rates,
-// no broker discount — promote to a Config field if that precision matters.
-func feeRate(m market.MarketID, side string) float64 {
+// twMinFee is TWSE brokers' standard commission floor — most brokers charge
+// a flat NT$20 on any fill whose 0.1425%*discount commission would otherwise
+// round below it. The 0.3% securities transaction tax (sell side) is a
+// statutory rate and never discounted or floored.
+const twMinFee = 20.0
+
+// feeRate returns the round-trip-relevant one-sided commission rate (tax
+// excluded): 0 for US (commission-free assumption, matching the rest of this
+// codebase), and Taiwan's brokerage rate net of discount otherwise. discount
+// is a broker's fraction of the statutory 0.1425% commission (1.0 = no
+// discount, e.g. 0.28 for a 72%-off e-brokerage plan) — the securities
+// transaction tax is not a commission and is applied separately in FeeFor.
+func feeRate(m market.MarketID, discount float64) float64 {
 	if m != market.TW {
 		return 0
 	}
-	if side == "SELL" {
-		return 0.001425 + 0.003
-	}
-	return 0.001425
+	return 0.001425 * discount
 }
 
 // FeeFor is the dollar fee for one fill of notional value on side ("BUY" or
-// "SELL") in market m.
-func FeeFor(m market.MarketID, side string, notional float64) float64 {
-	return notional * feeRate(m, side)
+// "SELL") in market m, with a broker commission discount (1.0 = none; unused
+// for US). TW sells additionally pay the 0.3% securities transaction tax
+// (never discounted), and any TW fee below twMinFee is raised to it — both
+// match real Taiwan brokerage statements. ponytail: discount and twMinFee
+// are broker-specific (vary by plan); the 0.1425%/0.3% rates are statutory
+// and shouldn't move with them — keep that split if this ever grows a
+// per-broker fee table.
+func FeeFor(m market.MarketID, side string, notional, discount float64) float64 {
+	if m != market.TW {
+		return 0
+	}
+	fee := notional * feeRate(m, discount)
+	if side == "SELL" {
+		fee += notional * 0.003
+	}
+	if fee < twMinFee {
+		fee = twMinFee
+	}
+	return fee
 }
 
 // SuggestShares is internal/bot/pipeline.go's sizing formula, moved here so
@@ -213,7 +235,7 @@ func (a *Account) buy(s Signal, price, atr float64, cfg Config) (Trade, bool) {
 			shares = cap
 		}
 	}
-	if cap := int(a.Cash / (price * (1 + feeRate(cfg.Market, "BUY")))); cap < shares {
+	if cap := int(a.Cash / (price * (1 + feeRate(cfg.Market, cfg.FeeDiscount)))); cap < shares {
 		shares = cap
 	}
 	if shares < 1 {
@@ -221,7 +243,7 @@ func (a *Account) buy(s Signal, price, atr float64, cfg Config) (Trade, bool) {
 	}
 
 	notional := price * float64(shares)
-	fee := FeeFor(cfg.Market, "BUY", notional)
+	fee := FeeFor(cfg.Market, "BUY", notional, cfg.FeeDiscount)
 	a.Cash -= notional + fee
 	a.Holdings[s.Ticker] = Holding{
 		Shares:    float64(shares),
@@ -240,7 +262,7 @@ func (a *Account) buy(s Signal, price, atr float64, cfg Config) (Trade, bool) {
 
 func (a *Account) sell(date, ticker string, h Holding, price float64, cfg Config, reason string) Trade {
 	notional := price * h.Shares
-	fee := FeeFor(cfg.Market, "SELL", notional)
+	fee := FeeFor(cfg.Market, "SELL", notional, cfg.FeeDiscount)
 	proceeds := notional - fee
 	realized := proceeds - h.AvgCost*h.Shares
 	a.Cash += proceeds

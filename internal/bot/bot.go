@@ -20,9 +20,14 @@ var cst = time.FixedZone("CST", 8*3600)
 // low-frequency trader deciding whether to enter a position now or wait.
 // earningsAlertDays is the (narrower) window for the proactive Telegram
 // reminder, close enough to actually be actionable that week.
+// earningsAlertDaysTW is wider — TW's earnings dates (internal/data/
+// tw_earnings.go) are a statutory-deadline proxy, not the company's actual
+// announcement date, and companies routinely announce well before that
+// deadline, so a 3-day window often only fires after the fact.
 const (
 	earningsPromptWindowDays = 14
 	earningsAlertDays        = 3
+	earningsAlertDaysTW      = 14
 	earningsSignalFamily     = "earnings"
 
 	// marketNewsLimit is double the per-ticker news limit (5, see
@@ -81,6 +86,8 @@ type Bot struct {
 	// existed.
 	stopLossPct         float64
 	trailingStopPct     float64
+	stopLossPctTW       float64
+	trailingStopPctTW   float64
 	trailingStopATRMult float64
 
 	// riskPctPerTrade (RISK_PCT_PER_TRADE env, Phase 3.11 PR1) is the max
@@ -89,6 +96,13 @@ type Bot struct {
 	// default) disables the whole feature, same convention as
 	// stopLossPct/trailingStopPct.
 	riskPctPerTrade float64
+
+	// twFeeDiscount (TW_BROKER_FEE_DISCOUNT env, Phase 13 §3) is the
+	// fraction of TW's statutory 0.1425% commission the user's broker
+	// actually charges (1.0 = no discount) — fed to paper.FeeFor for both
+	// the live paper account and real /buy·/sell fee auto-calc. Unused for
+	// US, which is commission-free throughout this codebase.
+	twFeeDiscount float64
 
 	// paperDB is the live paper account's own SQLite connection (Phase 11
 	// PR3, see docs/phase-11-paper-account.md §6.1) — a second file, same
@@ -160,8 +174,18 @@ type Config struct {
 	Lang                i18n.Lang
 	StopLossPct         float64 // STOP_LOSS_PCT env; 0 disables the check
 	TrailingStopPct     float64 // TRAILING_STOP_PCT env; 0 disables the check
+	// StopLossPctTW/TrailingStopPctTW (STOP_LOSS_PCT_TW/TRAILING_STOP_PCT_TW
+	// env, Phase 13 §7) are TW's wider thresholds — a single TW daily ±10%
+	// limit move would otherwise itself trigger the US-calibrated 10%/15%
+	// defaults. 0 means "not set", not "disabled" (unlike StopLossPct/
+	// TrailingStopPct's own 0-disables convention) — New falls back to
+	// StopLossPct/TrailingStopPct so existing deployments with no _TW env
+	// set keep behaving exactly as before this option existed.
+	StopLossPctTW       float64
+	TrailingStopPctTW   float64
 	TrailingStopATRMult float64 // TRAILING_STOP_ATR_MULT env; <= 0 disables the ATR-based distance
 	RiskPctPerTrade     float64 // RISK_PCT_PER_TRADE env; <= 0 disables the sizing suggestion
+	TWFeeDiscount       float64 // TW_BROKER_FEE_DISCOUNT env; 1.0 = no discount
 
 	// PaperDB/PaperInitialCashUSD/PaperInitialCashTWD/PaperMaxPositionPct
 	// configure Phase 11 PR3's live paper account (see the Bot struct's
@@ -197,6 +221,14 @@ func New(cfg Config) (*Bot, error) {
 // New. Mirrors internal/llm's NewClient/NewClientWithProvider split for the
 // same reason: every real call site still goes through New.
 func NewWithChannel(channel Channel, cfg Config) *Bot {
+	stopLossPctTW := cfg.StopLossPctTW
+	if stopLossPctTW == 0 {
+		stopLossPctTW = cfg.StopLossPct
+	}
+	trailingStopPctTW := cfg.TrailingStopPctTW
+	if trailingStopPctTW == 0 {
+		trailingStopPctTW = cfg.TrailingStopPct
+	}
 	return &Bot{
 		channel:                channel,
 		db:                     cfg.DB,
@@ -217,8 +249,11 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		lang:                   cfg.Lang,
 		stopLossPct:            cfg.StopLossPct,
 		trailingStopPct:        cfg.TrailingStopPct,
+		stopLossPctTW:          stopLossPctTW,
+		trailingStopPctTW:      trailingStopPctTW,
 		trailingStopATRMult:    cfg.TrailingStopATRMult,
 		riskPctPerTrade:        cfg.RiskPctPerTrade,
+		twFeeDiscount:          cfg.TWFeeDiscount,
 		paperDB:                cfg.PaperDB,
 		paperInitialCashUSD:    cfg.PaperInitialCashUSD,
 		paperInitialCashTWD:    cfg.PaperInitialCashTWD,

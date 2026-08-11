@@ -10,6 +10,7 @@ import (
 
 	"argus/internal/data"
 	"argus/internal/i18n"
+	"argus/internal/market"
 )
 
 // Fundamentals renders the full Fundamentals struct field-by-field.
@@ -75,6 +76,22 @@ func FinancialStatement(lang i18n.Lang, st *data.FinancialStatement) string {
 		sb.WriteString(i18n.T(lang, i18n.KeyFreeCashFlow, Commaf(st.FreeCashFlow/1e6)))
 	}
 	return sb.String()
+}
+
+// Money formats v as a currency string appropriate for ticker's market
+// ("NT$1,234" for TW, "$1,234" for US) — the single call site every
+// per-ticker money amount should go through instead of a hardcoded "$%.2f".
+// Reuses Commaf (rounds to whole units, no cents) rather than adding a
+// second number formatter.
+func Money(ticker string, v float64) string {
+	prefix := "$"
+	if market.Of(ticker) == market.TW {
+		prefix = "NT$"
+	}
+	if v < 0 {
+		return "-" + prefix + Commaf(-v)
+	}
+	return prefix + Commaf(v)
 }
 
 // Commaf formats a float as a rounded integer with thousands separators

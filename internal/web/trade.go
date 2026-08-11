@@ -18,8 +18,8 @@ import (
 // concrete type in, the same seam convention as bot.Channel/
 // llm.Provider/NewClientWithProvider.
 type TradeExecutor interface {
-	ExecuteBuy(ticker string, shares, price, fee float64, date string) (string, error)
-	ExecuteSell(ctx context.Context, ticker string, shares, price, fee float64, date string) (string, error)
+	ExecuteBuy(ticker string, shares, price float64, fee *float64, date string) (string, error)
+	ExecuteSell(ctx context.Context, ticker string, shares, price float64, fee *float64, date string) (string, error)
 	ExecuteSetStop(ticker string, price float64) (string, error)
 	// ExecuteAddBuyAlert backs POST /api/buy-alerts/add — a quote fetch (to
 	// infer the alert's direction, see bot.buyAlertDirection) is bot-layer
@@ -43,12 +43,15 @@ type buyAlertWriter interface {
 	RemoveBuyAlert(id int64) error
 }
 
+// Fee is a *float64 so an omitted JSON field (nil) can be told apart from an
+// explicit 0 — nil triggers ExecuteBuy/ExecuteSell's TW fee auto-calc
+// (Phase 13 §3.2), matching parseTradeArgs' feeSet distinction.
 type tradeRequest struct {
-	Ticker string  `json:"ticker"`
-	Shares float64 `json:"shares"`
-	Price  float64 `json:"price"`
-	Fee    float64 `json:"fee"`
-	Date   string  `json:"date"`
+	Ticker string   `json:"ticker"`
+	Shares float64  `json:"shares"`
+	Price  float64  `json:"price"`
+	Fee    *float64 `json:"fee"`
+	Date   string   `json:"date"`
 }
 
 type stopRequest struct {

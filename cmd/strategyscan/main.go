@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"argus/internal/data"
+	"argus/internal/market"
 	"argus/internal/signals"
 )
 
@@ -41,6 +42,7 @@ func main() {
 
 	tickers := parseTickers(sp500TickersRaw)
 	fmt.Printf("Loaded %d S&P 500 tickers.\n", len(tickers))
+	screenParams := signals.DefaultScreenParams(market.US)
 
 	yahoo := data.NewYahoo()
 
@@ -94,8 +96,8 @@ func main() {
 				}
 			}
 
-			isSqueeze := signals.CheckSqueezeBreakoutExact(sub)
-			isBox := signals.CheckBoxBottomReboundExact(sub)
+			isSqueeze := signals.CheckSqueezeBreakoutExact(sub, screenParams)
+			isBox := signals.CheckBoxBottomReboundExact(sub, screenParams)
 
 			if !isSqueeze && !isBox {
 				continue

@@ -43,7 +43,7 @@ func TestRecordBuyCreatesPendingActionNotAPosition(t *testing.T) {
 	if err := json.Unmarshal([]byte(a.Payload), &payload); err != nil {
 		t.Fatalf("Payload didn't decode as tradePayload: %v", err)
 	}
-	if payload.Ticker != "AAPL" || payload.Shares != 10.0 || payload.Price != 200.0 || payload.Fee != 1.5 || payload.Date != "2026-01-15" {
+	if payload.Ticker != "AAPL" || payload.Shares != 10.0 || payload.Price != 200.0 || payload.Fee == nil || *payload.Fee != 1.5 || payload.Date != "2026-01-15" {
 		t.Errorf("Payload = %+v, want ticker=AAPL shares=10 price=200 fee=1.5 date=2026-01-15", payload)
 	}
 }

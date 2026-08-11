@@ -102,17 +102,22 @@ const (
 	KeyDailyReportStart            Key = "daily_report_start"
 	KeyMorningBriefingStart        Key = "morning_briefing_start"
 	KeyMorningBriefingMarketClosed Key = "morning_briefing_market_closed"
-	KeyNoRecommendationsToday      Key = "no_recommendations_today"
-	KeyTrackUsage                  Key = "track_usage"
-	KeyTrackTitle                  Key = "track_title"
-	KeyTrackEmpty                  Key = "track_empty"
-	KeyTrackLine                   Key = "track_line"
-	KeyTrackLineNoPrice            Key = "track_line_no_price"
-	KeyTrackSummary                Key = "track_summary"
-	KeyTrackLineVsSPY              Key = "track_line_vs_spy"
-	KeyTrackAvgReturnLine          Key = "track_avg_return_line"
-	KeyTrackBySourceHeader         Key = "track_by_source_header"
-	KeyTrackBySourceLine           Key = "track_by_source_line"
+	// KeyTWMorningBriefingStart/KeyTWMorningBriefingMarketClosed are
+	// KeyMorningBriefingStart/KeyMorningBriefingMarketClosed's Taiwan-market
+	// twins for RunTWMorningBriefing's 08:30 pre-open recap.
+	KeyTWMorningBriefingStart        Key = "tw_morning_briefing_start"
+	KeyTWMorningBriefingMarketClosed Key = "tw_morning_briefing_market_closed"
+	KeyNoRecommendationsToday        Key = "no_recommendations_today"
+	KeyTrackUsage                    Key = "track_usage"
+	KeyTrackTitle                    Key = "track_title"
+	KeyTrackEmpty                    Key = "track_empty"
+	KeyTrackLine                     Key = "track_line"
+	KeyTrackLineNoPrice              Key = "track_line_no_price"
+	KeyTrackSummary                  Key = "track_summary"
+	KeyTrackLineVsSPY                Key = "track_line_vs_spy"
+	KeyTrackAvgReturnLine            Key = "track_avg_return_line"
+	KeyTrackBySourceHeader           Key = "track_by_source_header"
+	KeyTrackBySourceLine             Key = "track_by_source_line"
 	// Phase 6 PR2's /track market-dimension breakdown (§5.3, mirrors the
 	// by-source breakdown above) — only rendered when more than one market
 	// appears in the tracked window, same "only when there's more than one
@@ -128,6 +133,10 @@ const (
 	KeySellSuccess            Key = "sell_success"
 	KeySellNoPosition         Key = "sell_no_position"
 	KeySellInsufficientShares Key = "sell_insufficient_shares"
+	// KeyFeeAutoNote (Phase 13 §3.2) is appended to a buy/sell confirmation
+	// when the fee wasn't typed explicitly and was instead auto-calculated
+	// via paper.FeeFor (TW only — US auto-calc is always 0).
+	KeyFeeAutoNote Key = "fee_auto_note"
 
 	// Phase 3.11 PR1's /stop TICKER [PRICE] (see
 	// docs/phase-3.11-trade-risk-management.md §3.2/§3.6).
@@ -400,6 +409,11 @@ const (
 	KeySystemPromptChat    Key = "system_prompt_chat"
 
 	KeyRecPromptIntro Key = "rec_prompt_intro"
+	// KeyRecPromptIntroTW is KeyRecPromptIntro's Taiwan-market twin —
+	// buildRecommendationPrompt selects between the two by isTW instead of
+	// always opening with "US equities analyst" and relying on
+	// KeyRecTWMarketNote alone to correct the model's framing.
+	KeyRecPromptIntroTW Key = "rec_prompt_intro_tw"
 	// KeyRecTWMarketNote is Phase 6 PR2's TW-market prompt context (§5.1) —
 	// prepended right after KeyRecPromptIntro only when
 	// GenerateRecommendations' isTW flag is set, so the model knows this
@@ -438,7 +452,13 @@ const (
 	KeyExploreReasonLabel Key = "explore_reason_label"
 
 	KeyCheckPromptIntro Key = "check_prompt_intro"
-	KeyCheckPromptTask  Key = "check_prompt_task"
+	// KeyCheckPromptIntroTW is KeyCheckPromptIntro's Taiwan-market twin,
+	// selected by buildCheckPrompt via market.Of(s.Quote.Ticker) — /check
+	// works on either market (see handleCheck), so this can't default to
+	// "US equities analyst" the way KeyExplorePromptIntro (US-only by
+	// design) still can.
+	KeyCheckPromptIntroTW Key = "check_prompt_intro_tw"
+	KeyCheckPromptTask    Key = "check_prompt_task"
 
 	KeyInsightPromptIntro       Key = "insight_prompt_intro"
 	KeyInsightPositionValueLine Key = "insight_position_value_line"
@@ -472,6 +492,13 @@ const (
 	KeyMorningBriefingWatchlistHeader Key = "morning_briefing_watchlist_header"
 	KeyMorningBriefingMoversHeader    Key = "morning_briefing_movers_header"
 	KeyMorningBriefingTaskBlock       Key = "morning_briefing_task_block"
+	// KeyTWMorningBriefingPromptIntro/KeyTWMorningBriefingTaskBlock are
+	// KeyMorningBriefingPromptIntro/KeyMorningBriefingTaskBlock's Taiwan twins
+	// — pre-open tone (not a post-close recap), TW analyst persona, TWD
+	// pricing, ±10% daily limit context. The indices/VIX/news/watchlist/
+	// movers header keys stay shared (market-neutral section labels).
+	KeyTWMorningBriefingPromptIntro Key = "tw_morning_briefing_prompt_intro"
+	KeyTWMorningBriefingTaskBlock   Key = "tw_morning_briefing_task_block"
 
 	KeyPastLessonsHeader   Key = "past_lessons_header"
 	KeyPastLessonLine      Key = "past_lesson_line"

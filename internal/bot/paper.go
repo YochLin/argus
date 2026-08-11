@@ -45,6 +45,7 @@ func (b *Bot) paperConfig(m market.MarketID) paper.Config {
 		TrailingATRMult:   b.trailingStopATRMult,
 		TakeProfitATRMult: b.paperTakeProfitATRMult,
 		Market:            m,
+		FeeDiscount:       b.twFeeDiscount,
 	}
 }
 

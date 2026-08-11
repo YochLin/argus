@@ -5,23 +5,56 @@ import (
 
 	"argus/internal/data"
 	"argus/internal/i18n"
+	"argus/internal/market"
 )
 
 const (
-	strategyLookbackDays = 5       // 「近 N 日內曾觸發」窗口;原為配合 universe scan 5 天輪掃,改為每日全掃後留作漏掃緩衝(假日/bot 停機/掃描中斷),重複觸發由 signal_states 去重
-	minAvgVolume5d       = 500_000 // 網 1 流動性門檻(股)
-	squeezeBWWindow      = 20      // 帶寬新低的回看窗
-	breakoutVolMult      = 2.0     // 突破日量 >= 2x 前 5 日均量
-	boxWindowDays        = 30      // 網 2 箱型窗口
-	boxMaxRangePct       = 15.0    // 箱型高低差上限 %
-	boxFloorPct          = 2.0     // 距箱底 %
-	kdOversold           = 25.0    // K 低檔門檻
-	rsiReboundLevel      = 30.0    // RSI 超賣線
-	rsiReboundLookback   = 3       // RSI 近 N 日內曾 < 30
+	strategyLookbackDays = 5    // 「近 N 日內曾觸發」窗口;原為配合 universe scan 5 天輪掃,改為每日全掃後留作漏掃緩衝(假日/bot 停機/掃描中斷),重複觸發由 signal_states 去重
+	squeezeBWWindow      = 20   // 帶寬新低的回看窗
+	boxWindowDays        = 30   // 網 2 箱型窗口
+	kdOversold           = 25.0 // K 低檔門檻
+	rsiReboundLevel      = 30.0 // RSI 超賣線
+	rsiReboundLookback   = 3    // RSI 近 N 日內曾 < 30
 
 	FamilyStrategySqueeze = "strategy_squeeze"
 	FamilyStrategyBox     = "strategy_box"
 )
+
+// ScreenParams holds the market-calibrated thresholds CheckSqueezeBreakoutExact/
+// CheckBoxBottomReboundExact screen against (Phase 13 §7) — a struct param
+// rather than fields on Detector because SqueezeBreakout/BoxBottomRebound are
+// pure functions called directly by computeTechnicals, not methods on
+// Detector. minAvgVolume5d/boxMaxRangePct are the two knobs that actually
+// differ per market (see DefaultScreenParams); boxFloorPct/breakoutVolMult
+// are relative values with no institutional-rule dependency, so both markets
+// share one constant for those instead of duplicating them per-market.
+// ponytail: MinAvgVolume5d is share-count, not notional (avgV5 x price) — a
+// single market-scale threshold on notional would let both markets share one
+// number instead of a per-market share-count constant, but that's a bigger
+// change than this pass calls for (§7's "本輪不做"). Upgrade path: swap the
+// liquidity check in CheckSqueezeBreakoutExact for a notional comparison if
+// per-market recalibration ever proves too fiddly.
+type ScreenParams struct {
+	MinAvgVolume5d  float64 // 網 1 流動性門檻(股)
+	BoxMaxRangePct  float64 // 箱型高低差上限 %
+	BoxFloorPct     float64 // 距箱底 %
+	BreakoutVolMult float64 // 突破日量 >= N x 前 5 日均量
+}
+
+// DefaultScreenParams returns m's calibrated ScreenParams. TW's
+// minAvgVolume5d/boxMaxRangePct are wider than US's starting point per
+// docs/tw-us-parity.md §7 — TW's tw150 universe skews toward larger caps
+// (1,000 張 filters out thin mid-caps an SP500-scale US threshold wouldn't
+// catch), and TW's ±10% daily limit makes a 15% "consolidation" box
+// virtually untriggerable, so it's widened to 18%. These are calibration
+// starting points, not backtested values — see §7's calibration-script note
+// (deliberately not committed to this codebase).
+func DefaultScreenParams(m market.MarketID) ScreenParams {
+	if m == market.TW {
+		return ScreenParams{MinAvgVolume5d: 1_000_000, BoxMaxRangePct: 18.0, BoxFloorPct: 2.0, BreakoutVolMult: 2.0}
+	}
+	return ScreenParams{MinAvgVolume5d: 500_000, BoxMaxRangePct: 15.0, BoxFloorPct: 2.0, BreakoutVolMult: 2.0}
+}
 
 type StrategyHit struct {
 	Name    string // "squeeze_breakout" / "box_bottom"
@@ -30,7 +63,7 @@ type StrategyHit struct {
 
 // SqueezeBreakout evaluates candles for Squeeze Breakout triggers within the last strategyLookbackDays.
 // Returns the most recent hit (smallest DaysAgo) or nil if none triggered.
-func SqueezeBreakout(candles []data.Candle) *StrategyHit {
+func SqueezeBreakout(candles []data.Candle, p ScreenParams) *StrategyHit {
 	n := len(candles)
 	for offset := 0; offset < strategyLookbackDays; offset++ {
 		evalIdx := n - 1 - offset
@@ -38,7 +71,7 @@ func SqueezeBreakout(candles []data.Candle) *StrategyHit {
 			break
 		}
 		sub := candles[:evalIdx+1]
-		if CheckSqueezeBreakoutExact(sub) {
+		if CheckSqueezeBreakoutExact(sub, p) {
 			return &StrategyHit{
 				Name:    "squeeze_breakout",
 				DaysAgo: offset,
@@ -50,7 +83,7 @@ func SqueezeBreakout(candles []data.Candle) *StrategyHit {
 
 // BoxBottomRebound evaluates candles for Box Bottom Rebound triggers within the last strategyLookbackDays.
 // Returns the most recent hit (smallest DaysAgo) or nil if none triggered.
-func BoxBottomRebound(candles []data.Candle) *StrategyHit {
+func BoxBottomRebound(candles []data.Candle, p ScreenParams) *StrategyHit {
 	n := len(candles)
 	for offset := 0; offset < strategyLookbackDays; offset++ {
 		evalIdx := n - 1 - offset
@@ -58,7 +91,7 @@ func BoxBottomRebound(candles []data.Candle) *StrategyHit {
 			break
 		}
 		sub := candles[:evalIdx+1]
-		if CheckBoxBottomReboundExact(sub) {
+		if CheckBoxBottomReboundExact(sub, p) {
 			return &StrategyHit{
 				Name:    "box_bottom",
 				DaysAgo: offset,
@@ -68,7 +101,7 @@ func BoxBottomRebound(candles []data.Candle) *StrategyHit {
 	return nil
 }
 
-func CheckSqueezeBreakoutExact(candles []data.Candle) bool {
+func CheckSqueezeBreakoutExact(candles []data.Candle, p ScreenParams) bool {
 	n := len(candles)
 	if n < 60 {
 		return false
@@ -76,14 +109,14 @@ func CheckSqueezeBreakoutExact(candles []data.Candle) bool {
 	closes := data.Closes(candles)
 	volumes := data.Volumes(candles)
 
-	// 1. Liquidity: avg volume of preceding 5 days > minAvgVolume5d
+	// 1. Liquidity: avg volume of preceding 5 days > p.MinAvgVolume5d
 	window5v := volumes[n-6 : n-1]
 	var sumV int64
 	for _, v := range window5v {
 		sumV += v
 	}
 	avgV5 := float64(sumV) / 5.0
-	if avgV5 < minAvgVolume5d {
+	if avgV5 < p.MinAvgVolume5d {
 		return false
 	}
 
@@ -117,7 +150,7 @@ func CheckSqueezeBreakoutExact(candles []data.Candle) bool {
 	}
 	evalClose := closes[n-1]
 	evalVol := float64(volumes[n-1])
-	if evalClose <= upper || evalVol < breakoutVolMult*avgV5 {
+	if evalClose <= upper || evalVol < p.BreakoutVolMult*avgV5 {
 		return false
 	}
 
@@ -131,7 +164,7 @@ func CheckSqueezeBreakoutExact(candles []data.Candle) bool {
 	return true
 }
 
-func CheckBoxBottomReboundExact(candles []data.Candle) bool {
+func CheckBoxBottomReboundExact(candles []data.Candle, p ScreenParams) bool {
 	n := len(candles)
 	if n < 60 {
 		return false
@@ -140,7 +173,7 @@ func CheckBoxBottomReboundExact(candles []data.Candle) bool {
 	lows := data.Lows(candles)
 	closes := data.Closes(candles)
 
-	// 1. Box shape: 30-day close range <= 15%
+	// 1. Box shape: 30-day close range <= p.BoxMaxRangePct
 	boxCloses := closes[n-boxWindowDays:]
 	minC := boxCloses[0]
 	maxC := boxCloses[0]
@@ -152,13 +185,13 @@ func CheckBoxBottomReboundExact(candles []data.Candle) bool {
 			maxC = c
 		}
 	}
-	if minC <= 0 || (maxC-minC)/minC*100.0 > boxMaxRangePct {
+	if minC <= 0 || (maxC-minC)/minC*100.0 > p.BoxMaxRangePct {
 		return false
 	}
 
-	// 2. Floor: eval close distance to 30-day min close <= 2%
+	// 2. Floor: eval close distance to 30-day min close <= p.BoxFloorPct
 	evalClose := closes[n-1]
-	if (evalClose-minC)/minC*100.0 > boxFloorPct {
+	if (evalClose-minC)/minC*100.0 > p.BoxFloorPct {
 		return false
 	}
 
@@ -202,7 +235,7 @@ func CheckBoxBottomReboundExact(candles []data.Candle) bool {
 }
 
 func (d *Detector) CheckSqueezeBreakout(ticker string, candles []data.Candle, prevState string) (sig *Signal, newState string) {
-	hit := SqueezeBreakout(candles)
+	hit := SqueezeBreakout(candles, DefaultScreenParams(market.Of(ticker)))
 	if hit == nil {
 		return nil, ""
 	}
@@ -224,7 +257,7 @@ func (d *Detector) CheckSqueezeBreakout(ticker string, candles []data.Candle, pr
 }
 
 func (d *Detector) CheckBoxBottom(ticker string, candles []data.Candle, prevState string) (sig *Signal, newState string) {
-	hit := BoxBottomRebound(candles)
+	hit := BoxBottomRebound(candles, DefaultScreenParams(market.Of(ticker)))
 	if hit == nil {
 		return nil, ""
 	}

@@ -236,44 +236,64 @@ func TestDaysUntil(t *testing.T) {
 
 func TestParseTradeArgs(t *testing.T) {
 	t.Run("ticker shares price", func(t *testing.T) {
-		ticker, shares, price, fee, date, err := parseTradeArgs("aapl 10 205.5")
+		ticker, shares, price, fee, feeSet, date, err := parseTradeArgs("aapl 10 205.5")
 		if err != nil {
 			t.Fatalf("parseTradeArgs() error = %v", err)
 		}
-		if ticker != "AAPL" || shares != 10 || price != 205.5 || fee != 0 || date != "" {
-			t.Errorf("parseTradeArgs() = %q, %v, %v, %v, %q; want AAPL, 10, 205.5, 0, \"\"", ticker, shares, price, fee, date)
+		if ticker != "AAPL" || shares != 10 || price != 205.5 || fee != 0 || feeSet || date != "" {
+			t.Errorf("parseTradeArgs() = %q, %v, %v, %v, %v, %q; want AAPL, 10, 205.5, 0, false, \"\"", ticker, shares, price, fee, feeSet, date)
 		}
 	})
 
 	t.Run("with fee", func(t *testing.T) {
-		ticker, shares, price, fee, date, err := parseTradeArgs("MSFT 5 400 1.5")
+		ticker, shares, price, fee, feeSet, date, err := parseTradeArgs("MSFT 5 400 1.5")
 		if err != nil {
 			t.Fatalf("parseTradeArgs() error = %v", err)
 		}
-		if ticker != "MSFT" || shares != 5 || price != 400 || fee != 1.5 || date != "" {
-			t.Errorf("parseTradeArgs() = %q, %v, %v, %v, %q; want MSFT, 5, 400, 1.5, \"\"", ticker, shares, price, fee, date)
+		if ticker != "MSFT" || shares != 5 || price != 400 || fee != 1.5 || !feeSet || date != "" {
+			t.Errorf("parseTradeArgs() = %q, %v, %v, %v, %v, %q; want MSFT, 5, 400, 1.5, true, \"\"", ticker, shares, price, fee, feeSet, date)
 		}
 	})
 
 	t.Run("with date, no fee", func(t *testing.T) {
-		ticker, shares, price, fee, date, err := parseTradeArgs("AAPL 10 200 2026-01-15")
+		ticker, shares, price, fee, feeSet, date, err := parseTradeArgs("AAPL 10 200 2026-01-15")
 		if err != nil {
 			t.Fatalf("parseTradeArgs() error = %v", err)
 		}
-		if ticker != "AAPL" || shares != 10 || price != 200 || fee != 0 || date != "2026-01-15" {
-			t.Errorf("parseTradeArgs() = %q, %v, %v, %v, %q; want AAPL, 10, 200, 0, 2026-01-15", ticker, shares, price, fee, date)
+		if ticker != "AAPL" || shares != 10 || price != 200 || fee != 0 || feeSet || date != "2026-01-15" {
+			t.Errorf("parseTradeArgs() = %q, %v, %v, %v, %v, %q; want AAPL, 10, 200, 0, false, 2026-01-15", ticker, shares, price, fee, feeSet, date)
 		}
 	})
 
 	t.Run("with fee and date, either order", func(t *testing.T) {
 		for _, args := range []string{"AAPL 10 200 1.5 2026-01-15", "AAPL 10 200 2026-01-15 1.5"} {
-			ticker, shares, price, fee, date, err := parseTradeArgs(args)
+			ticker, shares, price, fee, feeSet, date, err := parseTradeArgs(args)
 			if err != nil {
 				t.Fatalf("parseTradeArgs(%q) error = %v", args, err)
 			}
-			if ticker != "AAPL" || shares != 10 || price != 200 || fee != 1.5 || date != "2026-01-15" {
-				t.Errorf("parseTradeArgs(%q) = %q, %v, %v, %v, %q; want AAPL, 10, 200, 1.5, 2026-01-15", args, ticker, shares, price, fee, date)
+			if ticker != "AAPL" || shares != 10 || price != 200 || fee != 1.5 || !feeSet || date != "2026-01-15" {
+				t.Errorf("parseTradeArgs(%q) = %q, %v, %v, %v, %v, %q; want AAPL, 10, 200, 1.5, true, 2026-01-15", args, ticker, shares, price, fee, feeSet, date)
 			}
+		}
+	})
+
+	// Phase 13 §11.3: an explicit 0 must be distinguishable from an omitted
+	// fee, since only the latter triggers TW's fee auto-calc.
+	t.Run("explicit zero fee is feeSet, unlike an omitted one", func(t *testing.T) {
+		_, _, _, fee, feeSet, _, err := parseTradeArgs("2330 1000 100")
+		if err != nil {
+			t.Fatalf("parseTradeArgs() error = %v", err)
+		}
+		if fee != 0 || feeSet {
+			t.Errorf("parseTradeArgs(no fee) = fee %v, feeSet %v; want 0, false", fee, feeSet)
+		}
+
+		_, _, _, fee, feeSet, _, err = parseTradeArgs("2330 1000 100 0")
+		if err != nil {
+			t.Fatalf("parseTradeArgs() error = %v", err)
+		}
+		if fee != 0 || !feeSet {
+			t.Errorf("parseTradeArgs(fee=0) = fee %v, feeSet %v; want 0, true", fee, feeSet)
 		}
 	})
 
@@ -292,7 +312,7 @@ func TestParseTradeArgs(t *testing.T) {
 		"AAPL abc 200",
 		"AAPL 10 200 2026-13-40",
 	} {
-		if _, _, _, _, _, err := parseTradeArgs(args); err == nil {
+		if _, _, _, _, _, _, err := parseTradeArgs(args); err == nil {
 			t.Errorf("parseTradeArgs(%q) error = nil, want error", args)
 		}
 	}
@@ -388,7 +408,7 @@ func TestFormatChatContext(t *testing.T) {
 			"AAPL": {Date: "2026-07-05", Close: 210, ChangePercent: 1.5},
 		}
 		out := formatChatContext(i18n.EN, []string{"AAPL"}, nil, snapshots)
-		if !strings.Contains(out, "AAPL") || !strings.Contains(out, "210.00") {
+		if !strings.Contains(out, "AAPL") || !strings.Contains(out, "$210") {
 			t.Errorf("formatChatContext() = %q, want it to contain ticker and close price", out)
 		}
 		if strings.Contains(out, "holding") {
@@ -1091,7 +1111,7 @@ func TestRecordSellClosedFlag(t *testing.T) {
 		t.Fatalf("SetStopPrice() error = %v", err)
 	}
 
-	msg, closed, stopPrice, err := b.recordSell("AAPL", 4, 220, 0, "2026-06-10")
+	msg, closed, stopPrice, err := b.recordSell("AAPL", 4, 220, 0, false, "2026-06-10")
 	if err != nil {
 		t.Errorf("recordSell() error = %v, want nil for a valid partial sell", err)
 	}
@@ -1102,7 +1122,7 @@ func TestRecordSellClosedFlag(t *testing.T) {
 		t.Errorf("recordSell() stopPrice = %v, want 180 (read before the sell)", stopPrice)
 	}
 
-	msg, closed, stopPrice, err = b.recordSell("AAPL", 6, 230, 0, "2026-06-20")
+	msg, closed, stopPrice, err = b.recordSell("AAPL", 6, 230, 0, false, "2026-06-20")
 	if err != nil {
 		t.Errorf("recordSell() error = %v, want nil for a valid closing sell", err)
 	}
@@ -1113,7 +1133,7 @@ func TestRecordSellClosedFlag(t *testing.T) {
 		t.Errorf("recordSell() stopPrice = %v, want 180 for the sell that fully closed the position", stopPrice)
 	}
 
-	msg, closed, stopPrice, err = b.recordSell("AAPL", 1, 200, 0, "2026-06-21")
+	msg, closed, stopPrice, err = b.recordSell("AAPL", 1, 200, 0, false, "2026-06-21")
 	if err == nil {
 		t.Errorf("recordSell() error = nil, want ErrNoPosition (no position left)")
 	}

@@ -19,20 +19,23 @@ import (
 // there's no third package both already depend on for this), same
 // deliberate small duplication as formatFundamentals/commaf elsewhere in
 // this package (see server.go's package doc comment).
+// Fee is a *float64 (nil when the model omits it) so internal/bot's
+// executePendingAction can tell "not specified, auto-calculate" apart from
+// an explicit 0 — same feeSet distinction as parseTradeArgs (Phase 13 §3.2).
 type tradePayload struct {
-	Ticker string  `json:"ticker"`
-	Shares float64 `json:"shares"`
-	Price  float64 `json:"price"`
-	Fee    float64 `json:"fee"`
-	Date   string  `json:"date"`
+	Ticker string   `json:"ticker"`
+	Shares float64  `json:"shares"`
+	Price  float64  `json:"price"`
+	Fee    *float64 `json:"fee"`
+	Date   string   `json:"date"`
 }
 
 type tradeInput struct {
-	Ticker string  `json:"ticker" jsonschema:"US stock ticker symbol, e.g. AAPL"`
-	Shares float64 `json:"shares" jsonschema:"number of shares, must be positive"`
-	Price  float64 `json:"price" jsonschema:"price per share in USD, must be positive"`
-	Fee    float64 `json:"fee,omitempty" jsonschema:"optional transaction fee in USD, default 0"`
-	Date   string  `json:"date,omitempty" jsonschema:"optional trade date as YYYY-MM-DD; defaults to today if omitted"`
+	Ticker string   `json:"ticker" jsonschema:"US stock ticker symbol, e.g. AAPL"`
+	Shares float64  `json:"shares" jsonschema:"number of shares, must be positive"`
+	Price  float64  `json:"price" jsonschema:"price per share in USD, must be positive"`
+	Fee    *float64 `json:"fee,omitempty" jsonschema:"optional transaction fee; omit to auto-calculate from the broker's fee schedule"`
+	Date   string   `json:"date,omitempty" jsonschema:"optional trade date as YYYY-MM-DD; defaults to today if omitted"`
 }
 
 // registerTradeWriteTools adds Phase 4's "交易記錄工具化" tools —
@@ -83,7 +86,7 @@ func (ts *toolset) proposeTrade(actionType string, in tradeInput, resultKey i18n
 	} else if _, err := time.Parse("2006-01-02", date); err != nil {
 		return nil, nil, ts.mcpErr(i18n.KeyMCPTradeInvalidInput)
 	}
-	if ticker == "" || in.Shares <= 0 || in.Price <= 0 || in.Fee < 0 {
+	if ticker == "" || in.Shares <= 0 || in.Price <= 0 || (in.Fee != nil && *in.Fee < 0) {
 		return nil, nil, ts.mcpErr(i18n.KeyMCPTradeInvalidInput)
 	}
 

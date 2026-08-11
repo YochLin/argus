@@ -208,6 +208,27 @@ func (s *Scheduler) AddMorningBriefing(ctx context.Context, fn JobFunc) {
 	log.Println("scheduler: morning briefing registered at 07:00 CST (Tue–Sat)")
 }
 
+// AddTWMorningBriefing schedules the TW-market pre-open briefing at 08:30
+// CST, Monday–Friday (TW's own trading calendar, not the US Tue–Sat shifted
+// week AddMorningBriefing uses) — a read-only narrative recap 30 minutes
+// before TW's 09:00 open: prior TW close, overnight US performance, VIX, TW
+// market news. Distinct from AddTWDailyReport's 11:30 CST run, which makes
+// an actual BUY/SELL/HOLD call once the TW session is already underway.
+// 08:30 sits before both AddTWDailyReport (11:30) and the afternoon cluster
+// of AddTWClosingSnapshot/AddTWUniverseScan (14:30/14:40) — "how did
+// overnight US affect TW today" is only useful pre-open, so this can't be
+// folded into either of those later jobs.
+func (s *Scheduler) AddTWMorningBriefing(ctx context.Context, fn JobFunc) {
+	_, err := s.c.AddFunc("0 30 8 * * 1-5", func() {
+		log.Println("scheduler: running tw morning briefing")
+		fn(ctx)
+	})
+	if err != nil {
+		log.Fatalf("scheduler: add tw morning briefing: %v", err)
+	}
+	log.Println("scheduler: tw morning briefing registered at 08:30 CST (Mon–Fri)")
+}
+
 // AddLogRotation schedules fn (typically a rotating log writer's Rotate
 // method) at midnight CST daily. lumberjack.Logger only rotates on size by
 // itself, so this is what turns that into an actual daily rotation; MaxAge/

@@ -17,6 +17,7 @@ import (
 	"argus/internal/i18n"
 	"argus/internal/llm"
 	"argus/internal/market"
+	"argus/internal/paper"
 	"argus/internal/render"
 	"argus/internal/webfetch"
 )
@@ -412,40 +413,42 @@ var tradeDateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 // YYYY-MM-DD token is the date, any other numeric token is the fee), so
 // "10 200 1.5 2026-01-15" and "10 200 2026-01-15" (no fee) both parse. date
 // is returned as "" when omitted; the caller defaults that to today.
-func parseTradeArgs(args string) (ticker string, shares, price, fee float64, date string, err error) {
+// feeSet distinguishes "no fee argument typed" (auto-calculate via
+// paper.FeeFor) from "explicitly typed 0" (Phase 13 §3.2) — a plain float64
+// can't tell those apart since both are 0.
+func parseTradeArgs(args string) (ticker string, shares, price, fee float64, feeSet bool, date string, err error) {
 	fields := strings.Fields(args)
 	if len(fields) < 3 || len(fields) > 5 {
-		return "", 0, 0, 0, "", fmt.Errorf("expected <ticker> <shares> <price> [fee] [date]")
+		return "", 0, 0, 0, false, "", fmt.Errorf("expected <ticker> <shares> <price> [fee] [date]")
 	}
 	ticker = strings.ToUpper(fields[0])
 	if shares, err = strconv.ParseFloat(fields[1], 64); err != nil || shares <= 0 {
-		return "", 0, 0, 0, "", fmt.Errorf("invalid shares %q", fields[1])
+		return "", 0, 0, 0, false, "", fmt.Errorf("invalid shares %q", fields[1])
 	}
 	if price, err = strconv.ParseFloat(fields[2], 64); err != nil || price <= 0 {
-		return "", 0, 0, 0, "", fmt.Errorf("invalid price %q", fields[2])
+		return "", 0, 0, 0, false, "", fmt.Errorf("invalid price %q", fields[2])
 	}
 
-	feeSet := false
 	for _, f := range fields[3:] {
 		if tradeDateRe.MatchString(f) {
 			if date != "" {
-				return "", 0, 0, 0, "", fmt.Errorf("duplicate date %q", f)
+				return "", 0, 0, 0, false, "", fmt.Errorf("duplicate date %q", f)
 			}
 			if _, perr := time.Parse("2006-01-02", f); perr != nil {
-				return "", 0, 0, 0, "", fmt.Errorf("invalid date %q", f)
+				return "", 0, 0, 0, false, "", fmt.Errorf("invalid date %q", f)
 			}
 			date = f
 			continue
 		}
 		if feeSet {
-			return "", 0, 0, 0, "", fmt.Errorf("unexpected argument %q", f)
+			return "", 0, 0, 0, false, "", fmt.Errorf("unexpected argument %q", f)
 		}
 		if fee, err = strconv.ParseFloat(f, 64); err != nil || fee < 0 {
-			return "", 0, 0, 0, "", fmt.Errorf("invalid fee %q", f)
+			return "", 0, 0, 0, false, "", fmt.Errorf("invalid fee %q", f)
 		}
 		feeSet = true
 	}
-	return ticker, shares, price, fee, date, nil
+	return ticker, shares, price, fee, feeSet, date, nil
 }
 
 // parseStopArgs parses /stop's "<ticker> [price]" arguments — price is
@@ -525,7 +528,7 @@ func (b *Bot) setStop(ticker string, price float64) (string, error) {
 	}
 	if price >= suggestion.LatestClose {
 		err = fmt.Errorf("stop price must be below latest close")
-		return i18n.T(b.lang, i18n.KeyStopInvalidPrice, price, suggestion.LatestClose), err
+		return i18n.T(b.lang, i18n.KeyStopInvalidPrice, b.money(ticker, price), b.money(ticker, suggestion.LatestClose)), err
 	}
 
 	if err = b.db.SetStopPrice(ticker, price); err != nil {
@@ -537,7 +540,7 @@ func (b *Bot) setStop(ticker string, price float64) (string, error) {
 
 	distPct := (suggestion.LatestClose - price) / suggestion.LatestClose * 100
 	riskPerShare := pos.AvgCost - price
-	return i18n.T(b.lang, i18n.KeyStopSet, b.tickerLabel(ticker), price, distPct, riskPerShare), nil
+	return i18n.T(b.lang, i18n.KeyStopSet, b.tickerLabel(ticker), b.money(ticker, price), distPct, b.money(ticker, riskPerShare)), nil
 }
 
 // showStop renders /stop TICKER's no-price branch: the current setting (or
@@ -548,7 +551,7 @@ func (b *Bot) setStop(ticker string, price float64) (string, error) {
 func (b *Bot) showStop(ticker string, pos db.Position) {
 	var sb strings.Builder
 	if pos.StopPrice > 0 {
-		sb.WriteString(i18n.T(b.lang, i18n.KeyStopShow, b.tickerLabel(ticker), pos.StopPrice))
+		sb.WriteString(i18n.T(b.lang, i18n.KeyStopShow, b.tickerLabel(ticker), b.money(ticker, pos.StopPrice)))
 	} else {
 		sb.WriteString(i18n.T(b.lang, i18n.KeyStopNotSet, b.tickerLabel(ticker), b.stopLossPct))
 	}
@@ -560,13 +563,13 @@ func (b *Bot) showStop(ticker string, pos db.Position) {
 	}
 	sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidatesHeader))
 	if suggestion.Low10 > 0 {
-		sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidateLine, i18n.T(b.lang, i18n.KeyStopLow10Label), suggestion.Low10))
+		sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidateLine, i18n.T(b.lang, i18n.KeyStopLow10Label), b.money(ticker, suggestion.Low10)))
 	}
 	if suggestion.Low20 > 0 {
-		sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidateLine, i18n.T(b.lang, i18n.KeyStopLow20Label), suggestion.Low20))
+		sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidateLine, i18n.T(b.lang, i18n.KeyStopLow20Label), b.money(ticker, suggestion.Low20)))
 	}
 	if suggestion.ATRBased > 0 {
-		sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidateLine, i18n.T(b.lang, i18n.KeyStopATRLabel), suggestion.ATRBased))
+		sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidateLine, i18n.T(b.lang, i18n.KeyStopATRLabel), b.money(ticker, suggestion.ATRBased)))
 	}
 	b.Send(sb.String())
 }
@@ -586,16 +589,16 @@ func (b *Bot) buyStopSuggestion(ticker string, existingStopPrice float64) string
 	var sb strings.Builder
 	sb.WriteString(i18n.T(b.lang, i18n.KeyBuyStopSuggestion))
 	if suggestion.Low10 > 0 {
-		sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidateLine, i18n.T(b.lang, i18n.KeyStopLow10Label), suggestion.Low10))
+		sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidateLine, i18n.T(b.lang, i18n.KeyStopLow10Label), b.money(ticker, suggestion.Low10)))
 	}
 	if suggestion.Low20 > 0 {
-		sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidateLine, i18n.T(b.lang, i18n.KeyStopLow20Label), suggestion.Low20))
+		sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidateLine, i18n.T(b.lang, i18n.KeyStopLow20Label), b.money(ticker, suggestion.Low20)))
 	}
 	if suggestion.ATRBased > 0 {
-		sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidateLine, i18n.T(b.lang, i18n.KeyStopATRLabel), suggestion.ATRBased))
+		sb.WriteString(i18n.T(b.lang, i18n.KeyStopCandidateLine, i18n.T(b.lang, i18n.KeyStopATRLabel), b.money(ticker, suggestion.ATRBased)))
 	}
 	if existingStopPrice > 0 {
-		sb.WriteString(i18n.T(b.lang, i18n.KeyBuyStopAddOnNote, ticker, existingStopPrice))
+		sb.WriteString(i18n.T(b.lang, i18n.KeyBuyStopAddOnNote, ticker, b.money(ticker, existingStopPrice)))
 	}
 	return sb.String()
 }
@@ -690,7 +693,7 @@ func (b *Bot) addBuyAlert(ticker string, price float64) (string, error) {
 		return i18n.T(b.lang, i18n.KeyBuyAlertQueryFailed, err), err
 	}
 
-	return i18n.T(b.lang, i18n.KeyBuyAlertSet, b.tickerLabel(ticker), price, b.buyAlertDirPhrase(direction)), nil
+	return i18n.T(b.lang, i18n.KeyBuyAlertSet, b.tickerLabel(ticker), b.money(ticker, price), b.buyAlertDirPhrase(direction)), nil
 }
 
 // showBuyAlerts renders /buyalert TICKER's no-price branch: every alert
@@ -709,7 +712,7 @@ func (b *Bot) showBuyAlerts(ticker string) {
 	var sb strings.Builder
 	sb.WriteString(i18n.T(b.lang, i18n.KeyBuyAlertListHeader, b.tickerLabel(ticker)))
 	for _, a := range alerts {
-		sb.WriteString(i18n.T(b.lang, i18n.KeyBuyAlertLine, a.Price, b.buyAlertDirPhrase(a.Direction)))
+		sb.WriteString(i18n.T(b.lang, i18n.KeyBuyAlertLine, b.money(ticker, a.Price), b.buyAlertDirPhrase(a.Direction)))
 	}
 	b.Send(sb.String())
 }
@@ -736,10 +739,10 @@ func (b *Bot) removeBuyAlert(ticker string, price float64) {
 		}
 	}
 	if !found {
-		b.Send(i18n.T(b.lang, i18n.KeyBuyAlertNotFound, b.tickerLabel(ticker), price))
+		b.Send(i18n.T(b.lang, i18n.KeyBuyAlertNotFound, b.tickerLabel(ticker), b.money(ticker, price)))
 		return
 	}
-	b.Send(i18n.T(b.lang, i18n.KeyBuyAlertRemoved, b.tickerLabel(ticker), price))
+	b.Send(i18n.T(b.lang, i18n.KeyBuyAlertRemoved, b.tickerLabel(ticker), b.money(ticker, price)))
 }
 
 // ExecuteAddBuyAlert is internal/web's POST /api/buy-alerts/add entry point
@@ -760,7 +763,7 @@ func (b *Bot) ExecuteAddBuyAlert(ticker string, price float64) (string, error) {
 // oldest-first so realized P&L is computed against the cost basis as it
 // actually stood at the time.
 func (b *Bot) handleBuy(args string) {
-	ticker, shares, price, fee, date, err := parseTradeArgs(args)
+	ticker, shares, price, fee, feeSet, date, err := parseTradeArgs(args)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyBuyUsage))
 		return
@@ -768,7 +771,11 @@ func (b *Bot) handleBuy(args string) {
 	if date == "" {
 		date = todayDate()
 	}
-	msg, _ := b.recordBuy(ticker, shares, price, fee, date)
+	feeAuto := !feeSet
+	if feeAuto {
+		fee = paper.FeeFor(market.Of(ticker), "BUY", shares*price, b.twFeeDiscount)
+	}
+	msg, _ := b.recordBuy(ticker, shares, price, fee, feeAuto, date)
 	b.Send(msg)
 }
 
@@ -780,7 +787,7 @@ func (b *Bot) handleBuy(args string) {
 // needs to distinguish success/failure programmatically (ExecuteBuy, see
 // docs/phase-10-web-trade-input.md §4.2) without re-parsing msg's already
 // i18n-rendered text.
-func (b *Bot) recordBuy(ticker string, shares, price, fee float64, date string) (string, error) {
+func (b *Bot) recordBuy(ticker string, shares, price, fee float64, feeAuto bool, date string) (string, error) {
 	// Read any stop price already on the position before the buy — RecordBuy
 	// deliberately doesn't touch it, but buyStopSuggestion's add-on note
 	// needs to know it was there.
@@ -799,7 +806,11 @@ func (b *Bot) recordBuy(ticker string, shares, price, fee float64, date string) 
 	if err := b.db.AddTicker(ticker); err != nil {
 		log.Printf("buy: add %s to watchlist: %v", ticker, err)
 	}
-	msg := i18n.T(b.lang, i18n.KeyBuySuccess, ticker, shares, price, fee, pos.Shares, pos.AvgCost) + b.thesisNudge(ticker)
+	msg := i18n.T(b.lang, i18n.KeyBuySuccess, ticker, shares, b.money(ticker, price), b.money(ticker, fee), pos.Shares, b.money(ticker, pos.AvgCost))
+	if feeAuto {
+		msg += i18n.T(b.lang, i18n.KeyFeeAutoNote)
+	}
+	msg += b.thesisNudge(ticker)
 	return msg + b.buyStopSuggestion(ticker, existingStopPrice), nil
 }
 
@@ -812,14 +823,21 @@ func (b *Bot) recordBuy(ticker string, shares, price, fee float64, date string) 
 // same "date defaults in the handler, not the shared function" convention
 // parseTradeArgs' own callers follow. On invalid input this still sends
 // (and returns) the same KeyBuyUsage text a malformed /buy command would.
-func (b *Bot) ExecuteBuy(ticker string, shares, price, fee float64, date string) (string, error) {
+func (b *Bot) ExecuteBuy(ticker string, shares, price float64, fee *float64, date string) (string, error) {
 	ticker = strings.ToUpper(strings.TrimSpace(ticker))
-	if ticker == "" || shares <= 0 || price <= 0 || fee < 0 {
+	if ticker == "" || shares <= 0 || price <= 0 || (fee != nil && *fee < 0) {
 		msg := i18n.T(b.lang, i18n.KeyBuyUsage)
 		b.Send(msg)
 		return msg, fmt.Errorf("invalid buy arguments")
 	}
-	msg, err := b.recordBuy(ticker, shares, price, fee, date)
+	feeAuto := fee == nil
+	feeVal := 0.0
+	if feeAuto {
+		feeVal = paper.FeeFor(market.Of(ticker), "BUY", shares*price, b.twFeeDiscount)
+	} else {
+		feeVal = *fee
+	}
+	msg, err := b.recordBuy(ticker, shares, price, feeVal, feeAuto, date)
 	b.Send(msg)
 	return msg, err
 }
@@ -851,7 +869,7 @@ func (b *Bot) thesisNudge(ticker string) string {
 // their sell confirmation and doesn't need a second alert about the review
 // itself failing.
 func (b *Bot) handleSell(ctx context.Context, args string) {
-	ticker, shares, price, fee, date, err := parseTradeArgs(args)
+	ticker, shares, price, fee, feeSet, date, err := parseTradeArgs(args)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeySellUsage))
 		return
@@ -859,7 +877,11 @@ func (b *Bot) handleSell(ctx context.Context, args string) {
 	if date == "" {
 		date = todayDate()
 	}
-	msg, closed, stopPrice, _ := b.recordSell(ticker, shares, price, fee, date)
+	feeAuto := !feeSet
+	if feeAuto {
+		fee = paper.FeeFor(market.Of(ticker), "SELL", shares*price, b.twFeeDiscount)
+	}
+	msg, closed, stopPrice, _ := b.recordSell(ticker, shares, price, fee, feeAuto, date)
 	b.Send(msg)
 	if closed {
 		go b.reviewClosedTrade(ctx, ticker, stopPrice)
@@ -878,7 +900,7 @@ func (b *Bot) handleSell(ctx context.Context, args string) {
 // with it; always 0 on an error path or when no stop had ever been set. err
 // is nil on success, same "for a programmatic caller, not for re-parsing
 // msg" purpose as recordBuy's (see ExecuteSell).
-func (b *Bot) recordSell(ticker string, shares, price, fee float64, date string) (msg string, closed bool, stopPrice float64, err error) {
+func (b *Bot) recordSell(ticker string, shares, price, fee float64, feeAuto bool, date string) (msg string, closed bool, stopPrice float64, err error) {
 	if prevPos, ok, gerr := b.db.GetPosition(ticker); gerr != nil {
 		log.Printf("sell %s: get position for stop price: %v", ticker, gerr)
 	} else if ok {
@@ -897,21 +919,32 @@ func (b *Bot) recordSell(ticker string, shares, price, fee float64, date string)
 		}
 	}
 	b.adjustCash(ticker, shares*price-fee)
-	return i18n.T(b.lang, i18n.KeySellSuccess, ticker, shares, price, fee, realizedPnL, pos.Shares), pos.Shares == 0, stopPrice, nil
+	msg = i18n.T(b.lang, i18n.KeySellSuccess, ticker, shares, b.money(ticker, price), b.money(ticker, fee), realizedPnL, pos.Shares)
+	if feeAuto {
+		msg += i18n.T(b.lang, i18n.KeyFeeAutoNote)
+	}
+	return msg, pos.Shares == 0, stopPrice, nil
 }
 
 // ExecuteSell is ExecuteBuy's sibling for internal/web's POST
 // /api/trade/sell (see docs/phase-10-web-trade-input.md §4.2) — same
 // validation/Telegram-parity shape, plus triggering the same sell-review
 // goroutine handleSell kicks off on a closing sell.
-func (b *Bot) ExecuteSell(ctx context.Context, ticker string, shares, price, fee float64, date string) (string, error) {
+func (b *Bot) ExecuteSell(ctx context.Context, ticker string, shares, price float64, fee *float64, date string) (string, error) {
 	ticker = strings.ToUpper(strings.TrimSpace(ticker))
-	if ticker == "" || shares <= 0 || price <= 0 || fee < 0 {
+	if ticker == "" || shares <= 0 || price <= 0 || (fee != nil && *fee < 0) {
 		msg := i18n.T(b.lang, i18n.KeySellUsage)
 		b.Send(msg)
 		return msg, fmt.Errorf("invalid sell arguments")
 	}
-	msg, closed, stopPrice, err := b.recordSell(ticker, shares, price, fee, date)
+	feeAuto := fee == nil
+	feeVal := 0.0
+	if feeAuto {
+		feeVal = paper.FeeFor(market.Of(ticker), "SELL", shares*price, b.twFeeDiscount)
+	} else {
+		feeVal = *fee
+	}
+	msg, closed, stopPrice, err := b.recordSell(ticker, shares, price, feeVal, feeAuto, date)
 	b.Send(msg)
 	if closed {
 		go b.reviewClosedTrade(ctx, ticker, stopPrice)
@@ -1230,7 +1263,7 @@ func (b *Bot) sendPortfolioSection(m market.MarketID, positions []db.Position) {
 		unrealized := (q.Price - p.AvgCost) * p.Shares
 		unrealizedPct := (q.Price - p.AvgCost) / p.AvgCost * 100
 		totalValue += marketValue
-		line := i18n.T(b.lang, i18n.KeyPortfolioLine, b.tickerLabel(p.Ticker), p.Shares, p.AvgCost, q.Price, marketValue, unrealized, unrealizedPct)
+		line := i18n.T(b.lang, i18n.KeyPortfolioLine, b.tickerLabel(p.Ticker), p.Shares, b.money(p.Ticker, p.AvgCost), b.money(p.Ticker, q.Price), b.money(p.Ticker, marketValue), unrealized, unrealizedPct)
 		if note := lotSuffix(b.lang, m, p.Shares); note != "" {
 			// KeyPortfolioLine ends "...%%)\n\n" — splice the note onto that
 			// last content line rather than appending after the trailing

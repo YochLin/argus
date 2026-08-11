@@ -34,6 +34,7 @@ func baseConfig() Config {
 		StopATRMult:    2,
 		StopLossPct:    10,
 		Market:         market.US,
+		FeeDiscount:    1.0,
 	}
 }
 
@@ -202,7 +203,7 @@ func TestCashConservation(t *testing.T) {
 
 func TestFeeFor_TW(t *testing.T) {
 	notional := 100000.0
-	sellFee := FeeFor(market.TW, "SELL", notional)
+	sellFee := FeeFor(market.TW, "SELL", notional, 1.0)
 	wantFee := notional * (0.001425 + 0.003)
 	if !almostEqual(sellFee, wantFee) {
 		t.Errorf("TW sell fee: got %v, want %v", sellFee, wantFee)
@@ -228,7 +229,24 @@ func TestFeeFor_TW(t *testing.T) {
 }
 
 func TestFeeFor_US(t *testing.T) {
-	if got := FeeFor(market.US, "BUY", 10000); got != 0 {
+	if got := FeeFor(market.US, "BUY", 10000, 1.0); got != 0 {
 		t.Errorf("US fee should be 0, got %v", got)
+	}
+}
+
+// TestFeeFor_TWDiscountAndMinFee covers §11.2 of docs/tw-us-parity.md: a
+// TW buy of 1 lot at NT$100 (notional 100,000) pays NT$142.50 (rounds to
+// 142 via float truncation elsewhere) at discount=1.0, but hits the NT$20
+// commission floor at discount=0.28 (100,000*0.001425*0.28 = 39.9, still
+// above the floor — use a smaller notional to actually hit it).
+func TestFeeFor_TWDiscountAndMinFee(t *testing.T) {
+	if got, want := FeeFor(market.TW, "BUY", 100000, 1.0), 142.5; !almostEqual(got, want) {
+		t.Errorf("TW buy fee at discount=1.0: got %v, want %v", got, want)
+	}
+	if got, want := FeeFor(market.TW, "BUY", 100000, 0.28), 39.9; !almostEqual(got, want) {
+		t.Errorf("TW buy fee at discount=0.28: got %v, want %v", got, want)
+	}
+	if got, want := FeeFor(market.TW, "BUY", 5000, 0.28), twMinFee; !almostEqual(got, want) {
+		t.Errorf("TW buy fee below min: got %v, want floor %v", got, want)
 	}
 }

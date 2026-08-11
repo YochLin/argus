@@ -26,11 +26,11 @@ const (
 // can't-share-an-import cases (see that file's doc comment), since bot
 // doesn't import mcptools and mcptools can't import bot.
 type tradePayload struct {
-	Ticker string  `json:"ticker"`
-	Shares float64 `json:"shares"`
-	Price  float64 `json:"price"`
-	Fee    float64 `json:"fee"`
-	Date   string  `json:"date"`
+	Ticker string   `json:"ticker"`
+	Shares float64  `json:"shares"`
+	Price  float64  `json:"price"`
+	Fee    *float64 `json:"fee"`
+	Date   string   `json:"date"`
 }
 
 func decodeTradePayload(payload string) (tradePayload, bool) {
@@ -39,6 +39,17 @@ func decodeTradePayload(payload string) (tradePayload, bool) {
 		return tradePayload{}, false
 	}
 	return p, true
+}
+
+// resolvePendingFee is an MCP-proposed trade's Fee, defaulting to 0 when the
+// model omitted it — LLM tool calls don't know the user's broker discount,
+// so unlike parseTradeArgs/ExecuteBuy's human-facing paths this never
+// auto-calculates via paper.FeeFor.
+func resolvePendingFee(p tradePayload) float64 {
+	if p.Fee == nil {
+		return 0
+	}
+	return *p.Fee
 }
 
 // sendPendingActionPrompts checks for any db.PendingAction rows a chat tool
@@ -84,13 +95,13 @@ func (b *Bot) describePendingAction(a db.PendingAction) (string, bool) {
 		if !ok {
 			return "", false
 		}
-		return i18n.T(b.lang, i18n.KeyPendingBuyConfirm, p.Ticker, p.Shares, p.Price, p.Fee, p.Date), true
+		return i18n.T(b.lang, i18n.KeyPendingBuyConfirm, p.Ticker, p.Shares, b.money(p.Ticker, p.Price), b.money(p.Ticker, resolvePendingFee(p)), p.Date), true
 	case db.PendingActionRecordSell:
 		p, ok := decodeTradePayload(a.Payload)
 		if !ok {
 			return "", false
 		}
-		return i18n.T(b.lang, i18n.KeyPendingSellConfirm, p.Ticker, p.Shares, p.Price, p.Fee, p.Date), true
+		return i18n.T(b.lang, i18n.KeyPendingSellConfirm, p.Ticker, p.Shares, b.money(p.Ticker, p.Price), b.money(p.Ticker, resolvePendingFee(p)), p.Date), true
 	default:
 		return "", false
 	}
@@ -213,14 +224,14 @@ func (b *Bot) executePendingAction(ctx context.Context, action db.PendingAction)
 		if !ok {
 			return i18n.T(b.lang, i18n.KeyPendingActionExecFailed)
 		}
-		msg, _ := b.recordBuy(p.Ticker, p.Shares, p.Price, p.Fee, p.Date)
+		msg, _ := b.recordBuy(p.Ticker, p.Shares, p.Price, resolvePendingFee(p), false, p.Date)
 		return msg
 	case db.PendingActionRecordSell:
 		p, ok := decodeTradePayload(action.Payload)
 		if !ok {
 			return i18n.T(b.lang, i18n.KeyPendingActionExecFailed)
 		}
-		msg, closed, stopPrice, _ := b.recordSell(p.Ticker, p.Shares, p.Price, p.Fee, p.Date)
+		msg, closed, stopPrice, _ := b.recordSell(p.Ticker, p.Shares, p.Price, resolvePendingFee(p), false, p.Date)
 		if closed {
 			go b.reviewClosedTrade(ctx, p.Ticker, stopPrice)
 		}

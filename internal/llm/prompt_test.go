@@ -403,7 +403,7 @@ func TestWriteMarketContext(t *testing.T) {
 
 	t.Run("SPY only omits VIX line", func(t *testing.T) {
 		var sb strings.Builder
-		writeMarketContext(&sb, i18n.EN, &MarketContext{SPYPrice: 500, SPYMA50: 490, SPYMA200: 480})
+		writeMarketContext(&sb, i18n.EN, &MarketContext{Bench: "SPY", SPYPrice: 500, SPYMA50: 490, SPYMA200: 480})
 		got := sb.String()
 		if !strings.Contains(got, "SPY price") {
 			t.Errorf("writeMarketContext() missing SPY line, got:\n%s", got)
@@ -427,7 +427,7 @@ func TestWriteMarketContext(t *testing.T) {
 
 	t.Run("full context renders both lines with labels", func(t *testing.T) {
 		var sb strings.Builder
-		writeMarketContext(&sb, i18n.EN, &MarketContext{SPYPrice: 500, SPYMA50: 490, SPYMA200: 480, VIX: 30})
+		writeMarketContext(&sb, i18n.EN, &MarketContext{Bench: "SPY", SPYPrice: 500, SPYMA50: 490, SPYMA200: 480, VIX: 30})
 		got := sb.String()
 		if !strings.Contains(got, "risk-on") {
 			t.Errorf("writeMarketContext() missing risk-on label, got:\n%s", got)
@@ -439,7 +439,7 @@ func TestWriteMarketContext(t *testing.T) {
 
 	t.Run("VolProxyPct renders TW's volatility-proxy line instead of VIX", func(t *testing.T) {
 		var sb strings.Builder
-		writeMarketContext(&sb, i18n.EN, &MarketContext{SPYPrice: 45, SPYMA50: 44, SPYMA200: 43, VolProxyPct: 2.5})
+		writeMarketContext(&sb, i18n.EN, &MarketContext{Bench: "0050", SPYPrice: 45, SPYMA50: 44, SPYMA200: 43, VolProxyPct: 2.5})
 		got := sb.String()
 		if !strings.Contains(got, "Volatility proxy") {
 			t.Errorf("writeMarketContext() missing volatility-proxy line, got:\n%s", got)
@@ -451,7 +451,7 @@ func TestWriteMarketContext(t *testing.T) {
 
 	t.Run("VolProxyPct zero omits the volatility-proxy line", func(t *testing.T) {
 		var sb strings.Builder
-		writeMarketContext(&sb, i18n.EN, &MarketContext{SPYPrice: 45, SPYMA50: 44, SPYMA200: 43})
+		writeMarketContext(&sb, i18n.EN, &MarketContext{Bench: "0050", SPYPrice: 45, SPYMA50: 44, SPYMA200: 43})
 		if strings.Contains(sb.String(), "Volatility proxy") {
 			t.Errorf("writeMarketContext() should omit volatility-proxy line when VolProxyPct is 0, got:\n%s", sb.String())
 		}
