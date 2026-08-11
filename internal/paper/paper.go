@@ -95,23 +95,25 @@ func feeRate(m market.MarketID, discount float64) float64 {
 // FeeFor is the dollar fee for one fill of notional value on side ("BUY" or
 // "SELL") in market m, with a broker commission discount (1.0 = none; unused
 // for US). TW sells additionally pay the 0.3% securities transaction tax
-// (never discounted), and any TW fee below twMinFee is raised to it — both
-// match real Taiwan brokerage statements. ponytail: discount and twMinFee
-// are broker-specific (vary by plan); the 0.1425%/0.3% rates are statutory
-// and shouldn't move with them — keep that split if this ever grows a
-// per-broker fee table.
+// (never discounted), and any TW commission below twMinFee is raised to it
+// before the tax is added — the NT$20 floor is a brokerage commission floor,
+// not a floor on commission+tax combined, so it must apply before the tax
+// leg is added or a small sell's fee is underestimated. ponytail: discount
+// and twMinFee are broker-specific (vary by plan); the 0.1425%/0.3% rates
+// are statutory and shouldn't move with them — keep that split if this ever
+// grows a per-broker fee table.
 func FeeFor(m market.MarketID, side string, notional, discount float64) float64 {
 	if m != market.TW {
 		return 0
 	}
-	fee := notional * feeRate(m, discount)
+	commission := notional * feeRate(m, discount)
+	if commission < twMinFee {
+		commission = twMinFee
+	}
 	if side == "SELL" {
-		fee += notional * 0.003
+		commission += notional * 0.003
 	}
-	if fee < twMinFee {
-		fee = twMinFee
-	}
-	return fee
+	return commission
 }
 
 // SuggestShares is internal/bot/pipeline.go's sizing formula, moved here so
@@ -235,7 +237,16 @@ func (a *Account) buy(s Signal, price, atr float64, cfg Config) (Trade, bool) {
 			shares = cap
 		}
 	}
-	if cap := int(a.Cash / (price * (1 + feeRate(cfg.Market, cfg.FeeDiscount)))); cap < shares {
+	// Cash cap must budget for FeeFor's twMinFee floor, not just the
+	// percentage rate — a naive price*(1+feeRate) estimate underbudgets any
+	// TW fill small enough that the percentage fee would round below
+	// twMinFee, which can push a.Cash negative once FeeFor's actual floor
+	// applies. minFeeBudget is 0 for US, matching FeeFor's own 0 there.
+	minFeeBudget := 0.0
+	if cfg.Market == market.TW {
+		minFeeBudget = twMinFee
+	}
+	if cap := int((a.Cash - minFeeBudget) / (price * (1 + feeRate(cfg.Market, cfg.FeeDiscount)))); cap < shares {
 		shares = cap
 	}
 	if shares < 1 {

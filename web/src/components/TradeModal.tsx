@@ -76,7 +76,7 @@ export function TradeModal({
                 ticker: cleanTicker,
                 shares: Number(shares),
                 price: Number(price),
-                fee: fee ? Number(fee) : 0,
+                fee: fee ? Number(fee) : undefined,
                 date: date || undefined,
               });
       setSuccessMsg(res.message);

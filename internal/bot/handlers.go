@@ -553,7 +553,11 @@ func (b *Bot) showStop(ticker string, pos db.Position) {
 	if pos.StopPrice > 0 {
 		sb.WriteString(i18n.T(b.lang, i18n.KeyStopShow, b.tickerLabel(ticker), b.money(ticker, pos.StopPrice)))
 	} else {
-		sb.WriteString(i18n.T(b.lang, i18n.KeyStopNotSet, b.tickerLabel(ticker), b.stopLossPct))
+		stopLossPct := b.stopLossPct
+		if market.Of(ticker) == market.TW {
+			stopLossPct = b.stopLossPctTW
+		}
+		sb.WriteString(i18n.T(b.lang, i18n.KeyStopNotSet, b.tickerLabel(ticker), stopLossPct))
 	}
 
 	suggestion, ok := b.computeStopSuggestion(ticker)

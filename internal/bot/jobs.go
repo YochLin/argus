@@ -628,9 +628,14 @@ func (b *Bot) runUniverseScan(ctx context.Context, m market.MarketID) {
 	// quote-freshness heuristic, see its own doc comment for why TW has no
 	// fixed holiday calendar). Without this, a holiday rerun would scan
 	// stale/unchanged data and risk a duplicate scan_hits row for the same
-	// signal.
+	// signal. US checks yesterday's CST date, not today's — this job runs at
+	// 05:45 CST (like RunClosingSnapshot's 05:30), which is already the next
+	// calendar day in Taiwan relative to the US session just closed, so
+	// checking today's date misjudges Saturday (a genuine trading day,
+	// Friday's session) as a weekend skip and can misjudge the day after a
+	// US holiday too.
 	if m == market.US {
-		if !market.IsTradingDay(b.now().In(cst)) {
+		if !market.IsTradingDay(b.now().In(cst).AddDate(0, 0, -1)) {
 			log.Printf("universe scan: market=%s closed, skipping", m)
 			return
 		}

@@ -36,12 +36,18 @@ func (b *Bot) paperConfig(m market.MarketID) paper.Config {
 	if risk <= 0 {
 		risk = 1.0
 	}
+	stopLossPct := b.stopLossPct
+	trailingPct := b.trailingStopPct
+	if m == market.TW {
+		stopLossPct = b.stopLossPctTW
+		trailingPct = b.trailingStopPctTW
+	}
 	return paper.Config{
 		RiskPct:           risk,
 		MaxPositionPct:    b.paperMaxPositionPct,
 		StopATRMult:       stopCandidateATRMult,
-		StopLossPct:       b.stopLossPct,
-		TrailingPct:       b.trailingStopPct,
+		StopLossPct:       stopLossPct,
+		TrailingPct:       trailingPct,
 		TrailingATRMult:   b.trailingStopATRMult,
 		TakeProfitATRMult: b.paperTakeProfitATRMult,
 		Market:            m,

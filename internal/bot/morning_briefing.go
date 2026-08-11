@@ -136,12 +136,15 @@ func (b *Bot) RunUSMorningBriefing(ctx context.Context) {
 // looser than twMarketClosedStaleness (12h, used by isTWMarketClosed for the
 // 11:30 daily report) because at 08:30 TW pre-open, the latest 0050 close is
 // already ~19h old on an ordinary trading day; isTWMarketClosed would report
-// "closed" every single morning if reused here. >48h stale means multiple
-// consecutive non-trading days (weekend + holiday, or a multi-day holiday
-// like Lunar New Year) — genuinely too old to recap. Known gap: the first
-// morning after a long holiday still fires, but that day's prior-session
-// recap content is still valid, just not same-day-fresh.
-const twPreOpenStaleness = 48 * time.Hour
+// "closed" every single morning if reused here. Must clear a bare weekend
+// gap (Friday 13:30 close to Monday 08:30 pre-open is 67h — 48h was live-
+// verified to misfire on every single Monday) with slack to spare; 72h
+// covers weekend + a single adjacent holiday. Known gap: a multi-day holiday
+// (e.g. Lunar New Year) still exceeds this and correctly reports closed for
+// its first post-holiday morning — that day's prior-session recap content
+// would still be valid, just not same-day-fresh, so this is an accepted
+// trade-off rather than an attempt to cover every holiday length.
+const twPreOpenStaleness = 72 * time.Hour
 
 // RunTWMorningBriefing is the 08:30 CST scheduler entry point (see
 // scheduler.AddTWMorningBriefing): a read-only narrative recap 30 minutes
