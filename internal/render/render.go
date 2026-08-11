@@ -5,6 +5,7 @@
 package render
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -78,20 +79,22 @@ func FinancialStatement(lang i18n.Lang, st *data.FinancialStatement) string {
 	return sb.String()
 }
 
-// Money formats v as a currency string appropriate for ticker's market
-// ("NT$1,234" for TW, "$1,234" for US) — the single call site every
-// per-ticker money amount should go through instead of a hardcoded "$%.2f".
-// Reuses Commaf (rounds to whole units, no cents) rather than adding a
-// second number formatter.
+// Money formats v as a currency string appropriate for ticker's market:
+// "NT$1,234" for TW (Commaf, whole units — TW share prices/fees are quoted
+// without cents) and "$1,234.56" for US (commaf2, two decimals — a US price/
+// fee rounded to whole dollars via Commaf misleads on trade confirmations,
+// stop prices, and fees, e.g. $205.50 -> "$206").
 func Money(ticker string, v float64) string {
-	prefix := "$"
 	if market.Of(ticker) == market.TW {
-		prefix = "NT$"
+		if v < 0 {
+			return "-NT$" + Commaf(-v)
+		}
+		return "NT$" + Commaf(v)
 	}
 	if v < 0 {
-		return "-" + prefix + Commaf(-v)
+		return "-$" + commaf2(-v)
 	}
-	return prefix + Commaf(v)
+	return "$" + commaf2(v)
 }
 
 // Commaf formats a float as a rounded integer with thousands separators
@@ -117,4 +120,13 @@ func Commaf(v float64) string {
 		return "-" + string(out)
 	}
 	return string(out)
+}
+
+// commaf2 formats a non-negative float with thousands separators and two
+// decimal places (e.g. 205.5 -> "205.50") — Money's US-dollar leg, where
+// Commaf's whole-unit rounding would misrepresent a per-share price/fee.
+func commaf2(v float64) string {
+	cents := int64(v*100 + 0.5)
+	whole := Commaf(float64(cents / 100))
+	return whole + "." + fmt.Sprintf("%02d", cents%100)
 }

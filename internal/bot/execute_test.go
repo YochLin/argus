@@ -167,7 +167,7 @@ func TestExecuteSetStop(t *testing.T) {
 		if err == nil {
 			t.Errorf("ExecuteSetStop() error = nil, want an error (stop >= latest close)")
 		}
-		if want := i18n.T(i18n.EN, i18n.KeyStopInvalidPrice, "$100", "$100"); msg != want {
+		if want := i18n.T(i18n.EN, i18n.KeyStopInvalidPrice, "$100.00", "$100.00"); msg != want {
 			t.Errorf("ExecuteSetStop() msg = %q, want %q", msg, want)
 		}
 	})
