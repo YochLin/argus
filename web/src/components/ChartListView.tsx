@@ -70,6 +70,7 @@ export function ChartListView({
   const [items, setItems] = useState<WatchlistSummaryItem[] | null>(null);
   const [error, setError] = useState(false);
   const [search, setSearch] = useState("");
+  const [heldOnly, setHeldOnly] = useState(false);
   const [newTicker, setNewTicker] = useState("");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -129,8 +130,10 @@ export function ChartListView({
   }
 
   const currency = currencySymbol(market);
+  const heldTotal = items ? items.filter((item) => item.heldShares > 0).length : 0;
   const filteredItems = items
     ? items.filter((item) => {
+        if (heldOnly && item.heldShares <= 0) return false;
         const q = search.trim().toLowerCase();
         if (!q) return true;
         const name = names[item.ticker] || "";
@@ -147,6 +150,17 @@ export function ChartListView({
           </div>
         </div>
         <div className="watchlist-controls">
+          <button
+            className={`watchlist-held-filter${heldOnly ? " active" : ""}`}
+            aria-pressed={heldOnly}
+            onClick={() => setHeldOnly((v) => !v)}
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+              <path d="M2.5 8.5 L6 12 L13.5 4" />
+            </svg>
+            <span>{dict.heldOnly}</span>
+            <span className="watchlist-held-filter-count">{heldTotal}</span>
+          </button>
           <input
             className="watchlist-search-input"
             value={search}
@@ -177,7 +191,7 @@ export function ChartListView({
       {!items ? (
         <div className="loading">{dict.loading}</div>
       ) : filteredItems.length === 0 ? (
-        <div className="card empty-message">{search.trim() ? dict.noMatch : dict.pickTicker}</div>
+        <div className="card empty-message">{search.trim() || heldOnly ? dict.noMatch : dict.pickTicker}</div>
       ) : (
         <div className="watchlist-grid">
           {filteredItems.map((item) => {
