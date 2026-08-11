@@ -544,14 +544,22 @@ func (b *Bot) checkStatefulSignals(ticker string, candles []data.Candle, isBearR
 }
 
 // scanChunkCount and universeScanRequestDelay govern Phase 2.6's daily
-// candidate-pool scan: the universe (~500 S&P 500 + manual tickers) is split
-// into scanChunkCount rotating slices — matching the closing-snapshot cadence
-// of Tue–Sat, 5 trading days/week — so a full pass covers roughly 100
-// tickers/day. universeScanRequestDelay throttles Yahoo history requests
-// within a chunk, per PLAN.md's explicit note not to hammer it.
+// candidate-pool scan. Originally the universe (~500 S&P 500 + manual
+// tickers) was split into 5 rotating slices so each day only fetched ~100
+// histories; that traded freshness for request volume, which cost more than
+// it saved — a Squeeze Breakout seen 4 days late is a chase, not an entry,
+// and the RSI/MACD state machines silently collapsed any round trip that
+// started and finished inside one rotation. Since the scan is an unattended
+// 05:45 cron with no ctx timeout, wall-clock is free where request *rate* is
+// not, so the chunking is off (chunkCount 1 = whole universe daily) and the
+// budget is spent on a longer per-request delay instead: ~500 tickers × 1s
+// is ~10 min, still well under the 06:00 backup, at a third of the old
+// requests-per-second. Both stay tunable knobs rather than inlined constants
+// — if Yahoo ever starts 429ing, raise the delay first, and only go back to
+// chunkCount 2+ if that isn't enough.
 const (
-	scanChunkCount           = 5
-	universeScanRequestDelay = 300 * time.Millisecond
+	scanChunkCount           = 1
+	universeScanRequestDelay = 1 * time.Second
 )
 
 // universeScanChunk returns the slice of tickers to scan for dayIndex (an
@@ -596,9 +604,11 @@ func (b *Bot) RunTWUniverseScan(ctx context.Context) {
 	b.runUniverseScan(ctx, market.TW)
 }
 
-// runUniverseScan is Phase 2.6's chunked candidate-pool scan, generalized by
-// Phase 6 PR2 to run per-market: it checks today's rotating slice of
-// market m's universe entries (filtered via market.Of(ticker) — not by
+// runUniverseScan is Phase 2.6's candidate-pool scan, generalized by
+// Phase 6 PR2 to run per-market: it checks market m's universe entries
+// (all of them daily as of scanChunkCount 1, see that const's comment;
+// still routed through universeScanChunk so the rotation can come back as a
+// one-line change) (filtered via market.Of(ticker) — not by
 // source, since a manually /universe add'ed TW ticker is source='manual'
 // and must still be scanned as TW, see docs/phase-6-tw-market.md §5.2)
 // excluding anything already on m's own watchlist (which gets a full
