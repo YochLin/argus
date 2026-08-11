@@ -9,6 +9,8 @@ import (
 	"argus/internal/market"
 )
 
+func feePtr(v float64) *float64 { return &v }
+
 // TestExecuteBuyValidation covers the input-validation branch shared with
 // internal/web's POST /api/trade/buy (see ExecuteBuy) — invalid input never
 // reaches db.RecordBuy, and still gets the same usage text /buy itself
@@ -21,13 +23,13 @@ func TestExecuteBuyValidation(t *testing.T) {
 		ticker string
 		shares float64
 		price  float64
-		fee    float64
+		fee    *float64
 	}{
-		{"empty ticker", "", 10, 100, 0},
-		{"zero shares", "AAPL", 0, 100, 0},
-		{"negative shares", "AAPL", -1, 100, 0},
-		{"zero price", "AAPL", 10, 0, 0},
-		{"negative fee", "AAPL", 10, 100, -1},
+		{"empty ticker", "", 10, 100, feePtr(0)},
+		{"zero shares", "AAPL", 0, 100, feePtr(0)},
+		{"negative shares", "AAPL", -1, 100, feePtr(0)},
+		{"zero price", "AAPL", 10, 0, feePtr(0)},
+		{"negative fee", "AAPL", 10, 100, feePtr(-1)},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			msg, err := b.ExecuteBuy(tt.ticker, tt.shares, tt.price, tt.fee, "2026-07-01")
@@ -44,7 +46,7 @@ func TestExecuteBuyValidation(t *testing.T) {
 func TestExecuteBuySuccess(t *testing.T) {
 	b, d := newPendingActionsTestBot(t)
 
-	msg, err := b.ExecuteBuy("AAPL", 10, 200, 1, "2026-07-01")
+	msg, err := b.ExecuteBuy("AAPL", 10, 200, feePtr(1), "2026-07-01")
 	if err != nil {
 		t.Fatalf("ExecuteBuy() error = %v", err)
 	}
@@ -77,7 +79,7 @@ func TestExecuteBuySuccess(t *testing.T) {
 func TestExecuteSellNoPosition(t *testing.T) {
 	b, _ := newPendingActionsTestBot(t)
 
-	msg, err := b.ExecuteSell(context.Background(), "AAPL", 1, 100, 0, "2026-07-01")
+	msg, err := b.ExecuteSell(context.Background(), "AAPL", 1, 100, feePtr(0), "2026-07-01")
 	if err == nil {
 		t.Errorf("ExecuteSell() error = nil, want ErrNoPosition")
 	}
@@ -96,7 +98,7 @@ func TestExecuteSellPartial(t *testing.T) {
 		t.Fatalf("RecordBuy() error = %v", err)
 	}
 
-	msg, err := b.ExecuteSell(context.Background(), "AAPL", 4, 220, 0, "2026-06-10")
+	msg, err := b.ExecuteSell(context.Background(), "AAPL", 4, 220, feePtr(0), "2026-06-10")
 	if err != nil {
 		t.Fatalf("ExecuteSell() error = %v", err)
 	}
@@ -117,7 +119,7 @@ func TestExecuteSellPartial(t *testing.T) {
 func TestAdjustCash(t *testing.T) {
 	b, d := newPendingActionsTestBot(t)
 
-	if _, err := b.ExecuteBuy("AAPL", 10, 200, 1, "2026-07-01"); err != nil {
+	if _, err := b.ExecuteBuy("AAPL", 10, 200, feePtr(1), "2026-07-01"); err != nil {
 		t.Fatalf("ExecuteBuy() error = %v", err)
 	}
 	if _, ok, err := b.loadCash(market.US); err != nil || ok {
@@ -128,7 +130,7 @@ func TestAdjustCash(t *testing.T) {
 		t.Fatalf("SetSetting() error = %v", err)
 	}
 
-	if _, err := b.ExecuteBuy("MSFT", 5, 300, 2, "2026-07-01"); err != nil {
+	if _, err := b.ExecuteBuy("MSFT", 5, 300, feePtr(2), "2026-07-01"); err != nil {
 		t.Fatalf("ExecuteBuy() error = %v", err)
 	}
 	cash, ok, err := b.loadCash(market.US)
@@ -139,7 +141,7 @@ func TestAdjustCash(t *testing.T) {
 	if _, err := d.RecordBuy("AAPL", 10, 200, 0, "2026-06-01"); err != nil {
 		t.Fatalf("RecordBuy() error = %v", err)
 	}
-	if _, err := b.ExecuteSell(context.Background(), "AAPL", 4, 220, 3, "2026-06-10"); err != nil {
+	if _, err := b.ExecuteSell(context.Background(), "AAPL", 4, 220, feePtr(3), "2026-06-10"); err != nil {
 		t.Fatalf("ExecuteSell() error = %v", err)
 	}
 	want := 10000.0 - (5*300 + 2) + (4*220 - 3)
@@ -165,7 +167,7 @@ func TestExecuteSetStop(t *testing.T) {
 		if err == nil {
 			t.Errorf("ExecuteSetStop() error = nil, want an error (stop >= latest close)")
 		}
-		if want := i18n.T(i18n.EN, i18n.KeyStopInvalidPrice, 100.0, 100.0); msg != want {
+		if want := i18n.T(i18n.EN, i18n.KeyStopInvalidPrice, "$100.00", "$100.00"); msg != want {
 			t.Errorf("ExecuteSetStop() msg = %q, want %q", msg, want)
 		}
 	})

@@ -9,6 +9,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/market"
+	"argus/internal/render"
 )
 
 // formatChatContext renders the read-only background block prefixed to
@@ -30,9 +31,9 @@ func formatChatContext(lang i18n.Lang, tickers []string, positions map[string]db
 		}
 		if p, held := positions[t]; held {
 			unrealizedPct := (snap.Close - p.AvgCost) / p.AvgCost * 100
-			sb.WriteString(i18n.T(lang, i18n.KeyChatContextPositionLine, t, snap.Date, snap.Close, snap.ChangePercent, p.Shares, p.AvgCost, unrealizedPct))
+			sb.WriteString(i18n.T(lang, i18n.KeyChatContextPositionLine, t, snap.Date, render.Money(t, snap.Close), snap.ChangePercent, p.Shares, render.Money(t, p.AvgCost), unrealizedPct))
 		} else {
-			sb.WriteString(i18n.T(lang, i18n.KeyChatContextWatchLine, t, snap.Date, snap.Close, snap.ChangePercent))
+			sb.WriteString(i18n.T(lang, i18n.KeyChatContextWatchLine, t, snap.Date, render.Money(t, snap.Close), snap.ChangePercent))
 		}
 	}
 	sb.WriteString(i18n.T(lang, i18n.KeyChatContextFooter))
@@ -83,6 +84,12 @@ func (b *Bot) companyName(ticker string) string {
 // of printing a bare ticker directly.
 func (b *Bot) tickerLabel(ticker string) string {
 	return data.TickerLabel(ticker, b.companyName(ticker))
+}
+
+// money is render.Money, exposed as a *Bot method so call sites read
+// b.money(ticker, v) like the rest of this file's helpers.
+func (b *Bot) money(ticker string, v float64) string {
+	return render.Money(ticker, v)
 }
 
 func todayDate() string {

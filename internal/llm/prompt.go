@@ -7,6 +7,8 @@ import (
 
 	"argus/internal/data"
 	"argus/internal/i18n"
+	"argus/internal/market"
+	"argus/internal/render"
 )
 
 type StockData struct {
@@ -285,6 +287,11 @@ type ClosedTrade struct {
 // own candles rather than an options-implied figure, so it's rendered with
 // its own line and wording, never conflated with VIX.
 type MarketContext struct {
+	// Bench is the benchmark ticker SPYPrice/SPYMA50/SPYMA200 were computed
+	// from ("SPY" for US, "0050" for TW — see bot.benchmarkFor) — the field
+	// names predate TW support and stay SPY-named, but the rendered label
+	// must say which benchmark this actually is.
+	Bench                       string
 	SPYPrice, SPYMA50, SPYMA200 float64
 	VIX                         float64
 	VolProxyPct                 float64
@@ -342,7 +349,7 @@ func writeMarketContext(sb *strings.Builder, lang i18n.Lang, m *MarketContext) {
 
 	sb.WriteString(i18n.T(lang, i18n.KeyMarketRegimeHeader))
 	if haveSPY {
-		fmt.Fprint(sb, i18n.T(lang, i18n.KeyMarketRegimeSPYLine, m.SPYPrice, m.SPYMA200, m.SPYMA50, i18n.T(lang, regimeLabel(m.SPYPrice, m.SPYMA200))))
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyMarketRegimeSPYLine, m.Bench, render.Money(m.Bench, m.SPYPrice), render.Money(m.Bench, m.SPYMA200), render.Money(m.Bench, m.SPYMA50), i18n.T(lang, regimeLabel(m.SPYPrice, m.SPYMA200))))
 	}
 	if haveVIX {
 		fmt.Fprint(sb, i18n.T(lang, i18n.KeyMarketRegimeVIXLine, m.VIX, i18n.T(lang, vixLabel(m.VIX))))
@@ -365,17 +372,23 @@ type IndexQuote struct {
 	ChangePercent float64
 }
 
-// buildMorningBriefingPrompt is the 07:00 CST morning briefing's prompt (see
-// bot.RunUSMorningBriefing): a narrative recap of the US session that just
-// closed, distinct from buildRecommendationPrompt's BUY/SELL/HOLD framing.
-// Reuses writeStockSection for the watchlist/movers sections the same way
-// buildRecommendationPrompt does — StockData's per-field degradation means
-// passing quote+news-only values (no Technicals/Fundamentals, see
-// bot.loadQuoteHighlights) renders safely with no changes needed there.
-func buildMorningBriefingPrompt(lang i18n.Lang, date string, indices []IndexQuote, vix float64, marketNews []data.NewsItem, watchlist []StockData, movers []StockData) string {
+// buildMorningBriefingPrompt is the 07:00 CST US morning briefing's prompt
+// (see bot.RunUSMorningBriefing), or, when isTW is true, the 08:30 CST TW
+// pre-open briefing's prompt (see bot.RunTWMorningBriefing) — either way a
+// narrative recap, distinct from buildRecommendationPrompt's BUY/SELL/HOLD
+// framing. Reuses writeStockSection for the watchlist/movers sections the
+// same way buildRecommendationPrompt does — StockData's per-field
+// degradation means passing quote+news-only values (no
+// Technicals/Fundamentals, see bot.loadQuoteHighlights) renders safely with
+// no changes needed there.
+func buildMorningBriefingPrompt(lang i18n.Lang, date string, indices []IndexQuote, vix float64, marketNews []data.NewsItem, watchlist []StockData, movers []StockData, isTW bool) string {
 	var sb strings.Builder
 
-	sb.WriteString(i18n.T(lang, i18n.KeyMorningBriefingPromptIntro))
+	if isTW {
+		sb.WriteString(i18n.T(lang, i18n.KeyTWMorningBriefingPromptIntro))
+	} else {
+		sb.WriteString(i18n.T(lang, i18n.KeyMorningBriefingPromptIntro))
+	}
 
 	sb.WriteString(i18n.T(lang, i18n.KeyMorningBriefingIndicesHeader))
 	for _, idx := range indices {
@@ -415,16 +428,22 @@ func buildMorningBriefingPrompt(lang i18n.Lang, date string, indices []IndexQuot
 		}
 	}
 
-	sb.WriteString(i18n.T(lang, i18n.KeyMorningBriefingTaskBlock, date))
+	if isTW {
+		sb.WriteString(i18n.T(lang, i18n.KeyTWMorningBriefingTaskBlock, date))
+	} else {
+		sb.WriteString(i18n.T(lang, i18n.KeyMorningBriefingTaskBlock, date))
+	}
 	return sb.String()
 }
 
 func buildRecommendationPrompt(lang i18n.Lang, watchlist []StockData, candidates []StockData, marketNews []data.NewsItem, market *MarketContext, recentLessons []PastLesson, isTW bool) string {
 	var sb strings.Builder
 
-	sb.WriteString(i18n.T(lang, i18n.KeyRecPromptIntro))
 	if isTW {
+		sb.WriteString(i18n.T(lang, i18n.KeyRecPromptIntroTW))
 		sb.WriteString(i18n.T(lang, i18n.KeyRecTWMarketNote))
+	} else {
+		sb.WriteString(i18n.T(lang, i18n.KeyRecPromptIntro))
 	}
 	writeMarketContext(&sb, lang, market)
 	writeRecentLessons(&sb, lang, recentLessons)
@@ -750,7 +769,11 @@ func buildExplorePrompt(lang i18n.Lang, marketNews []data.NewsItem, exclude []st
 
 func buildCheckPrompt(lang i18n.Lang, s StockData) string {
 	var sb strings.Builder
-	sb.WriteString(i18n.T(lang, i18n.KeyCheckPromptIntro))
+	if s.Quote != nil && market.Of(s.Quote.Ticker) == market.TW {
+		sb.WriteString(i18n.T(lang, i18n.KeyCheckPromptIntroTW))
+	} else {
+		sb.WriteString(i18n.T(lang, i18n.KeyCheckPromptIntro))
+	}
 	writeStockSection(&sb, lang, s)
 	sb.WriteString(i18n.T(lang, i18n.KeyCheckPromptTask))
 	sb.WriteString(i18n.T(lang, i18n.KeyTechGuidanceBlock))

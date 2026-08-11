@@ -83,3 +83,26 @@ func TestCommaf(t *testing.T) {
 		}
 	}
 }
+
+// TestMoney covers the US-vs-TW split: US keeps cents (a whole-dollar
+// round like Commaf's would misrepresent a per-share price/fee, e.g.
+// $205.50 rounding to "$206"), TW stays whole-unit as it's quoted.
+func TestMoney(t *testing.T) {
+	tests := []struct {
+		ticker string
+		in     float64
+		want   string
+	}{
+		{"AAPL", 205.50, "$205.50"},
+		{"AAPL", 1234.5, "$1,234.50"},
+		{"AAPL", 0.99, "$0.99"},
+		{"AAPL", -205.50, "-$205.50"},
+		{"2330", 1234, "NT$1,234"},
+		{"2330", -20, "-NT$20"},
+	}
+	for _, tt := range tests {
+		if got := Money(tt.ticker, tt.in); got != tt.want {
+			t.Errorf("Money(%q, %v) = %q, want %q", tt.ticker, tt.in, got, tt.want)
+		}
+	}
+}

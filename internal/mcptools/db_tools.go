@@ -14,6 +14,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/market"
+	"argus/internal/render"
 )
 
 // benchmarkTicker mirrors internal/bot's own benchmarkTicker (SPY) —
@@ -157,7 +158,7 @@ func (ts *toolset) writePortfolioSection(sb *strings.Builder, m market.MarketID,
 		unrealized := (q.Price - p.AvgCost) * p.Shares
 		unrealizedPct := (q.Price - p.AvgCost) / p.AvgCost * 100
 		totalValue += marketValue
-		sb.WriteString(i18n.T(ts.lang, i18n.KeyPortfolioLine, p.Ticker, p.Shares, p.AvgCost, q.Price, marketValue, unrealized, unrealizedPct))
+		sb.WriteString(i18n.T(ts.lang, i18n.KeyPortfolioLine, p.Ticker, p.Shares, render.Money(p.Ticker, p.AvgCost), render.Money(p.Ticker, q.Price), render.Money(p.Ticker, marketValue), unrealized, unrealizedPct))
 	}
 	if m == market.TW {
 		sb.WriteString(i18n.T(ts.lang, i18n.KeyPortfolioSummaryTWD, totalValue, realizedTotal))
@@ -266,9 +267,9 @@ func (ts *toolset) getRecommendationStats(ctx context.Context, _ *mcp.CallToolRe
 			}
 
 			if haveSPY {
-				sb.WriteString(i18n.T(ts.lang, i18n.KeyTrackLineVsSPY, r.Date, r.Ticker, action, base, q.Price, changePct, spyChangePct, verdict))
+				sb.WriteString(i18n.T(ts.lang, i18n.KeyTrackLineVsSPY, r.Date, r.Ticker, action, render.Money(r.Ticker, base), render.Money(r.Ticker, q.Price), changePct, benchmarkTicker, spyChangePct, verdict))
 			} else {
-				sb.WriteString(i18n.T(ts.lang, i18n.KeyTrackLine, r.Date, r.Ticker, action, base, q.Price, changePct, verdict))
+				sb.WriteString(i18n.T(ts.lang, i18n.KeyTrackLine, r.Date, r.Ticker, action, render.Money(r.Ticker, base), render.Money(r.Ticker, q.Price), changePct, verdict))
 			}
 		}
 

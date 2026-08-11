@@ -71,7 +71,7 @@ func TestGetPortfolio(t *testing.T) {
 	if isError {
 		t.Fatalf("get_portfolio returned an error result: %s", text)
 	}
-	for _, want := range []string{"AAPL", "150.00", "200.00", "2000.00"} {
+	for _, want := range []string{"AAPL", "$150", "$200", "$2,000"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("get_portfolio result missing %q, got:\n%s", want, text)
 		}
@@ -123,8 +123,8 @@ func TestGetPortfolioMarketSubtotals(t *testing.T) {
 	if strings.Contains(twSection, "60.00") {
 		t.Errorf("TW section leaked AAPL's realized P&L, got:\n%s", twSection)
 	}
-	if !strings.Contains(twSection, "950.00") {
-		t.Errorf("TW section missing 2330's price 950.00, got:\n%s", twSection)
+	if !strings.Contains(twSection, "NT$950") {
+		t.Errorf("TW section missing 2330's price NT$950, got:\n%s", twSection)
 	}
 }
 
@@ -156,7 +156,7 @@ func TestGetRecommendationStats(t *testing.T) {
 	if isError {
 		t.Fatalf("get_recommendation_stats returned an error result: %s", text)
 	}
-	for _, want := range []string{"AAPL", "BUY", "150.00", "165.00", "Hit rate: 1/1"} {
+	for _, want := range []string{"AAPL", "BUY", "$150", "$165", "Hit rate: 1/1"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("get_recommendation_stats result missing %q, got:\n%s", want, text)
 		}

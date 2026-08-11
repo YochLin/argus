@@ -6,6 +6,7 @@ import (
 
 	"argus/internal/data"
 	"argus/internal/i18n"
+	"argus/internal/market"
 )
 
 func generateBaseCandles(count int) []data.Candle {
@@ -29,7 +30,8 @@ func generateBaseCandles(count int) []data.Candle {
 func TestSqueezeBreakoutSynthetic(t *testing.T) {
 	// Insufficient candles
 	candlesShort := generateBaseCandles(50)
-	if hit := SqueezeBreakout(candlesShort); hit != nil {
+	usParams := DefaultScreenParams(market.US)
+	if hit := SqueezeBreakout(candlesShort, usParams); hit != nil {
 		t.Fatalf("expected nil for < 60 candles")
 	}
 
@@ -54,7 +56,7 @@ func TestSqueezeBreakoutSynthetic(t *testing.T) {
 	candles[79].High = 121.0
 	candles[79].Volume = 3_000_000
 
-	hit := SqueezeBreakout(candles)
+	hit := SqueezeBreakout(candles, usParams)
 	if hit == nil {
 		t.Fatalf("expected SqueezeBreakout hit, got nil")
 	}
@@ -107,7 +109,7 @@ func TestBoxBottomReboundSynthetic(t *testing.T) {
 		}
 	}
 
-	hit := BoxBottomRebound(candles)
+	hit := BoxBottomRebound(candles, DefaultScreenParams(market.US))
 	det := NewDetector(i18n.ZH)
 	sig, state := det.CheckBoxBottom("TEST", candles, "")
 	if hit == nil {

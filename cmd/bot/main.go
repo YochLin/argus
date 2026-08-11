@@ -86,6 +86,16 @@ func main() {
 	// that /track is the intended feedback loop for tuning these later.
 	stopLossPct := envOrFloat("STOP_LOSS_PCT", 10)
 	trailingStopPct := envOrFloat("TRAILING_STOP_PCT", 15)
+	// STOP_LOSS_PCT_TW/TRAILING_STOP_PCT_TW (Phase 13 §7) default to TW's
+	// wider calibration (a single ±10% daily-limit move shouldn't itself
+	// trigger the US-calibrated 10%/15% thresholds above) — 0 is reserved as
+	// "not set" (bot.NewWithChannel falls back to stopLossPct/
+	// trailingStopPct when 0), so an operator who explicitly wants TW's
+	// check disabled must still go through stopLossPct/trailingStopPct's own
+	// STOP_LOSS_PCT=0 today; disabling only TW independently isn't
+	// supported yet.
+	stopLossPctTW := envOrFloat("STOP_LOSS_PCT_TW", 12)
+	trailingStopPctTW := envOrFloat("TRAILING_STOP_PCT_TW", 18)
 	// TRAILING_STOP_ATR_MULT defaults to 0 (disabled): opt-in, not
 	// presence-gated, since it changes when a real-money alert fires — see
 	// docs/phase-3.8-atr-trailing-stop.md.
@@ -96,6 +106,10 @@ func main() {
 	// it's opt-in rather than shipped with a default like stopLossPct/
 	// trailingStopPct's 10/15.
 	riskPctPerTrade := envOrFloat("RISK_PCT_PER_TRADE", 0)
+	// TW_BROKER_FEE_DISCOUNT (Phase 13 §3) defaults to 1.0 (no discount) so
+	// an unconfigured deployment's TW fee auto-calc matches the statutory
+	// rate; common e-brokerage plans are 0.6/0.28.
+	twFeeDiscount := envOrFloat("TW_BROKER_FEE_DISCOUNT", 1.0)
 	// RISK_HEAT_PCT (Phase 8 PR1) is the /risk page's portfolio-heat warning
 	// threshold — defaults to 6.0 (a textbook-common figure, not backtested)
 	// when unset; <=0 disables the frontend's warning line entirely, same
@@ -268,8 +282,11 @@ func main() {
 		Lang:                   lang,
 		StopLossPct:            stopLossPct,
 		TrailingStopPct:        trailingStopPct,
+		StopLossPctTW:          stopLossPctTW,
+		TrailingStopPctTW:      trailingStopPctTW,
 		TrailingStopATRMult:    trailingStopATRMult,
 		RiskPctPerTrade:        riskPctPerTrade,
+		TWFeeDiscount:          twFeeDiscount,
 		PaperDB:                paperDatabase,
 		PaperInitialCashUSD:    paperInitialCashUSD,
 		PaperInitialCashTWD:    paperInitialCashTWD,
@@ -326,6 +343,9 @@ func main() {
 	})
 	sched.AddTWDailyReport(ctx, func(ctx context.Context) {
 		telegramBot.RunTWDailyReport(ctx)
+	})
+	sched.AddTWMorningBriefing(ctx, func(ctx context.Context) {
+		telegramBot.RunTWMorningBriefing(ctx)
 	})
 	sched.AddClosingSnapshot(ctx, func(ctx context.Context) {
 		telegramBot.RunClosingSnapshot(ctx, market.US)

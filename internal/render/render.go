@@ -5,11 +5,13 @@
 package render
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
 	"argus/internal/data"
 	"argus/internal/i18n"
+	"argus/internal/market"
 )
 
 // Fundamentals renders the full Fundamentals struct field-by-field.
@@ -77,6 +79,24 @@ func FinancialStatement(lang i18n.Lang, st *data.FinancialStatement) string {
 	return sb.String()
 }
 
+// Money formats v as a currency string appropriate for ticker's market:
+// "NT$1,234" for TW (Commaf, whole units — TW share prices/fees are quoted
+// without cents) and "$1,234.56" for US (commaf2, two decimals — a US price/
+// fee rounded to whole dollars via Commaf misleads on trade confirmations,
+// stop prices, and fees, e.g. $205.50 -> "$206").
+func Money(ticker string, v float64) string {
+	if market.Of(ticker) == market.TW {
+		if v < 0 {
+			return "-NT$" + Commaf(-v)
+		}
+		return "NT$" + Commaf(v)
+	}
+	if v < 0 {
+		return "-$" + commaf2(-v)
+	}
+	return "$" + commaf2(v)
+}
+
 // Commaf formats a float as a rounded integer with thousands separators
 // (e.g. 4321020 -> "4,321,020"), for human-facing Telegram output.
 func Commaf(v float64) string {
@@ -100,4 +120,13 @@ func Commaf(v float64) string {
 		return "-" + string(out)
 	}
 	return string(out)
+}
+
+// commaf2 formats a non-negative float with thousands separators and two
+// decimal places (e.g. 205.5 -> "205.50") — Money's US-dollar leg, where
+// Commaf's whole-unit rounding would misrepresent a per-share price/fee.
+func commaf2(v float64) string {
+	cents := int64(v*100 + 0.5)
+	whole := Commaf(float64(cents / 100))
+	return whole + "." + fmt.Sprintf("%02d", cents%100)
 }

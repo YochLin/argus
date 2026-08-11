@@ -362,11 +362,9 @@ func (b *Bot) runDailyReport(ctx context.Context, m market.MarketID) {
 
 	// Two-stage LLM exploration (Phase 2.6 解凍) is US-only: it validates
 	// nominations via data.IsUSEquitySymbol, which would reject every TW
-	// ticker shape outright, and marketNews (its only trigger condition) is
-	// already nil for a TW call (see gatherRecommendationInputs) — so this
-	// naturally never fires for TW even without the explicit market.US guard,
-	// but the guard documents the intent rather than relying on that as an
-	// accident of two other conditions.
+	// ticker shape outright. marketNews is no longer TW-empty on its own
+	// (cnyes now feeds b.twMarketNews — see loadMarketNews) so this guard is
+	// the only thing keeping exploreCandidates from running against TW news.
 	var explore map[string]string
 	if m == market.US {
 		explore = b.exploreCandidates(ctx, &in)
@@ -624,6 +622,28 @@ func (b *Bot) RunTWUniverseScan(ctx context.Context) {
 func (b *Bot) runUniverseScan(ctx context.Context, m market.MarketID) {
 	defer b.recoverJobPanic("universe scan")
 
+	// Trading-day gate (Phase 13 §8) — silent, no Telegram send, same
+	// closed-market signals RunClosingSnapshot/runDailyReport already use
+	// per market (US: NYSE calendar; TW: isTWMarketClosed's live
+	// quote-freshness heuristic, see its own doc comment for why TW has no
+	// fixed holiday calendar). Without this, a holiday rerun would scan
+	// stale/unchanged data and risk a duplicate scan_hits row for the same
+	// signal. US checks yesterday's CST date, not today's — this job runs at
+	// 05:45 CST (like RunClosingSnapshot's 05:30), which is already the next
+	// calendar day in Taiwan relative to the US session just closed, so
+	// checking today's date misjudges Saturday (a genuine trading day,
+	// Friday's session) as a weekend skip and can misjudge the day after a
+	// US holiday too.
+	if m == market.US {
+		if !market.IsTradingDay(b.now().In(cst).AddDate(0, 0, -1)) {
+			log.Printf("universe scan: market=%s closed, skipping", m)
+			return
+		}
+	} else if b.isTWMarketClosed() {
+		log.Printf("universe scan: market=%s closed, skipping", m)
+		return
+	}
+
 	entries, err := b.db.GetUniverse()
 	if err != nil {
 		log.Printf("universe scan: universe: %v", err)
@@ -693,8 +713,12 @@ func (b *Bot) checkEarningsAlerts(tickers []string, earnings map[string]data.Ear
 		if !ok {
 			continue
 		}
+		alertDays := earningsAlertDays
+		if market.Of(t) == market.TW {
+			alertDays = earningsAlertDaysTW
+		}
 		days := daysUntil(e.Date)
-		if days < 0 || days > earningsAlertDays {
+		if days < 0 || days > alertDays {
 			continue
 		}
 
@@ -840,6 +864,11 @@ func (b *Bot) checkStopLossAlerts(positions []db.Position, prices map[string]flo
 			continue
 		}
 
+		stopLossPct := b.stopLossPct
+		if market.Of(p.Ticker) == market.TW {
+			stopLossPct = b.stopLossPctTW
+		}
+
 		prev, err := b.db.GetSignalState(p.Ticker, stopLossSignalFamily)
 		if err != nil {
 			log.Printf("stop loss state %s: %v", p.Ticker, err)
@@ -855,15 +884,15 @@ func (b *Bot) checkStopLossAlerts(positions []db.Position, prices map[string]flo
 			if !shouldAlert {
 				continue
 			}
-			lines = append(lines, i18n.T(b.lang, i18n.KeyStopPriceHit, b.tickerLabel(p.Ticker), p.StopPrice, price))
+			lines = append(lines, i18n.T(b.lang, i18n.KeyStopPriceHit, b.tickerLabel(p.Ticker), b.money(p.Ticker, p.StopPrice), b.money(p.Ticker, price)))
 			continue
 		}
 
-		if b.stopLossPct <= 0 {
+		if stopLossPct <= 0 {
 			continue
 		}
 		lossPct := (p.AvgCost - price) / p.AvgCost * 100
-		_, shouldAlert, newState := breachAlertDecision(lossPct, b.stopLossPct, prev)
+		_, shouldAlert, newState := breachAlertDecision(lossPct, stopLossPct, prev)
 		if newState != prev {
 			if err := b.db.SetSignalState(p.Ticker, stopLossSignalFamily, newState); err != nil {
 				log.Printf("stop loss state %s: %v", p.Ticker, err)
@@ -872,7 +901,7 @@ func (b *Bot) checkStopLossAlerts(positions []db.Position, prices map[string]flo
 		if !shouldAlert {
 			continue
 		}
-		lines = append(lines, i18n.T(b.lang, i18n.KeyStopLossAlertLine, b.tickerLabel(p.Ticker), p.AvgCost, price, lossPct))
+		lines = append(lines, i18n.T(b.lang, i18n.KeyStopLossAlertLine, b.tickerLabel(p.Ticker), b.money(p.Ticker, p.AvgCost), b.money(p.Ticker, price), lossPct))
 	}
 	if len(lines) == 0 {
 		return
@@ -905,11 +934,19 @@ func (b *Bot) checkStopLossAlerts(positions []db.Position, prices map[string]flo
 // shape as checkStopLossAlerts (see breachAlertDecision), under its own
 // signal_states family so the two checks don't share state.
 func (b *Bot) checkTrailingStopAlerts(positions []db.Position, prices map[string]float64, atrs map[string]float64) {
-	if b.trailingStopPct <= 0 && b.trailingStopATRMult <= 0 {
+	if b.trailingStopPct <= 0 && b.trailingStopPctTW <= 0 && b.trailingStopATRMult <= 0 {
 		return
 	}
 	var lines []string
 	for _, p := range positions {
+		trailingStopPct := b.trailingStopPct
+		if market.Of(p.Ticker) == market.TW {
+			trailingStopPct = b.trailingStopPctTW
+		}
+		if trailingStopPct <= 0 && b.trailingStopATRMult <= 0 {
+			continue
+		}
+
 		buyDate, ok, err := b.db.GetEarliestBuyDate(p.Ticker)
 		if err != nil {
 			log.Printf("trailing stop: earliest buy %s: %v", p.Ticker, err)
@@ -938,9 +975,9 @@ func (b *Bot) checkTrailingStopAlerts(positions []db.Position, prices map[string
 				atr = t.ATR14
 			}
 		}
-		thresholdPct, atrBased, ok := paper.TrailingStopThreshold(b.trailingStopPct, b.trailingStopATRMult, atr, peak)
+		thresholdPct, atrBased, ok := paper.TrailingStopThreshold(trailingStopPct, b.trailingStopATRMult, atr, peak)
 		if !ok {
-			log.Printf("trailing stop: no usable threshold for %s (fixed=%.2f atrMult=%.2f atr=%.2f)", p.Ticker, b.trailingStopPct, b.trailingStopATRMult, atr)
+			log.Printf("trailing stop: no usable threshold for %s (fixed=%.2f atrMult=%.2f atr=%.2f)", p.Ticker, trailingStopPct, b.trailingStopATRMult, atr)
 			continue
 		}
 
@@ -958,9 +995,9 @@ func (b *Bot) checkTrailingStopAlerts(positions []db.Position, prices map[string
 			continue
 		}
 		if atrBased {
-			lines = append(lines, i18n.T(b.lang, i18n.KeyTrailingStopAlertLineATR, b.tickerLabel(p.Ticker), peak, price, drawdownPct, thresholdPct, b.trailingStopATRMult))
+			lines = append(lines, i18n.T(b.lang, i18n.KeyTrailingStopAlertLineATR, b.tickerLabel(p.Ticker), b.money(p.Ticker, peak), b.money(p.Ticker, price), drawdownPct, thresholdPct, b.trailingStopATRMult))
 		} else {
-			lines = append(lines, i18n.T(b.lang, i18n.KeyTrailingStopAlertLine, b.tickerLabel(p.Ticker), peak, price, drawdownPct))
+			lines = append(lines, i18n.T(b.lang, i18n.KeyTrailingStopAlertLine, b.tickerLabel(p.Ticker), b.money(p.Ticker, peak), b.money(p.Ticker, price), drawdownPct))
 		}
 	}
 	if len(lines) == 0 {
@@ -1051,7 +1088,7 @@ func (b *Bot) checkTargetAlerts(positions []db.Position, prices map[string]float
 		if !shouldAlert {
 			continue
 		}
-		lines = append(lines, i18n.T(b.lang, i18n.KeyTargetReached, b.tickerLabel(p.Ticker), targetRMultiple, target, price))
+		lines = append(lines, i18n.T(b.lang, i18n.KeyTargetReached, b.tickerLabel(p.Ticker), targetRMultiple, b.money(p.Ticker, target), b.money(p.Ticker, price)))
 	}
 	if len(lines) == 0 {
 		return
@@ -1115,7 +1152,7 @@ func (b *Bot) checkMA5BreakAlerts(positions []db.Position, prices map[string]flo
 		if !shouldAlert {
 			continue
 		}
-		lines = append(lines, i18n.T(b.lang, i18n.KeyMA5Break, b.tickerLabel(p.Ticker), ma5, price))
+		lines = append(lines, i18n.T(b.lang, i18n.KeyMA5Break, b.tickerLabel(p.Ticker), b.money(p.Ticker, ma5), b.money(p.Ticker, price)))
 	}
 	if len(lines) == 0 {
 		return
@@ -1161,7 +1198,7 @@ func (b *Bot) checkBuyAlerts(alerts []db.BuyAlert, prices map[string]float64) {
 		if err := b.db.RemoveBuyAlert(a.ID); err != nil {
 			log.Printf("buy alert remove %s (id=%d): %v", a.Ticker, a.ID, err)
 		}
-		lines = append(lines, i18n.T(b.lang, i18n.KeyBuyAlertHitLine, b.tickerLabel(a.Ticker), a.Price, price, b.buyAlertDirPhrase(a.Direction)))
+		lines = append(lines, i18n.T(b.lang, i18n.KeyBuyAlertHitLine, b.tickerLabel(a.Ticker), b.money(a.Ticker, a.Price), b.money(a.Ticker, price), b.buyAlertDirPhrase(a.Direction)))
 	}
 	if len(lines) == 0 {
 		return

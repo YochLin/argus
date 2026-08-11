@@ -13,6 +13,8 @@ import (
 	"argus/internal/i18n"
 )
 
+func feePtr(v float64) *float64 { return &v }
+
 // fakeTrade is a TradeExecutor stub recording its last call's arguments.
 type fakeTrade struct {
 	buyMsg, sellMsg, stopMsg, buyAlertMsg string
@@ -22,12 +24,12 @@ type fakeTrade struct {
 	lastBuyAlert                          buyAlertRequest
 }
 
-func (f *fakeTrade) ExecuteBuy(ticker string, shares, price, fee float64, date string) (string, error) {
+func (f *fakeTrade) ExecuteBuy(ticker string, shares, price float64, fee *float64, date string) (string, error) {
 	f.lastBuy = tradeRequest{Ticker: ticker, Shares: shares, Price: price, Fee: fee, Date: date}
 	return f.buyMsg, f.buyErr
 }
 
-func (f *fakeTrade) ExecuteSell(_ context.Context, ticker string, shares, price, fee float64, date string) (string, error) {
+func (f *fakeTrade) ExecuteSell(_ context.Context, ticker string, shares, price float64, fee *float64, date string) (string, error) {
 	f.lastSell = tradeRequest{Ticker: ticker, Shares: shares, Price: price, Fee: fee, Date: date}
 	return f.sellMsg, f.sellErr
 }
@@ -176,7 +178,7 @@ func TestHandleTradeBuy(t *testing.T) {
 	cookie := loginAndGetCookie(t, s, "secret")
 
 	t.Run("defaults an omitted date to today", func(t *testing.T) {
-		body, _ := json.Marshal(tradeRequest{Ticker: "aapl", Shares: 10, Price: 200, Fee: 1})
+		body, _ := json.Marshal(tradeRequest{Ticker: "aapl", Shares: 10, Price: 200, Fee: feePtr(1)})
 		req := httptest.NewRequest(http.MethodPost, "/api/trade/buy", bytes.NewReader(body))
 		req.AddCookie(cookie)
 		rec := httptest.NewRecorder()

@@ -10,6 +10,8 @@ import (
 
 	"argus/internal/db"
 	"argus/internal/i18n"
+	"argus/internal/market"
+	"argus/internal/paper"
 )
 
 // callbackConfirmPrefix/callbackRejectPrefix identify a Telegram inline
@@ -26,11 +28,11 @@ const (
 // can't-share-an-import cases (see that file's doc comment), since bot
 // doesn't import mcptools and mcptools can't import bot.
 type tradePayload struct {
-	Ticker string  `json:"ticker"`
-	Shares float64 `json:"shares"`
-	Price  float64 `json:"price"`
-	Fee    float64 `json:"fee"`
-	Date   string  `json:"date"`
+	Ticker string   `json:"ticker"`
+	Shares float64  `json:"shares"`
+	Price  float64  `json:"price"`
+	Fee    *float64 `json:"fee"`
+	Date   string   `json:"date"`
 }
 
 func decodeTradePayload(payload string) (tradePayload, bool) {
@@ -39,6 +41,18 @@ func decodeTradePayload(payload string) (tradePayload, bool) {
 		return tradePayload{}, false
 	}
 	return p, true
+}
+
+// resolvePendingFee is an MCP-proposed trade's Fee: an explicit value if the
+// model set one, otherwise auto-calculated via paper.FeeFor exactly like
+// ExecuteBuy/ExecuteSell's nil-fee branch — the tool schema promises "omit
+// to auto-calculate", so this must match, not silently default to 0 (which
+// used to skip TW's brokerage fee entirely on an MCP-confirmed trade).
+func (b *Bot) resolvePendingFee(p tradePayload, side string) float64 {
+	if p.Fee != nil {
+		return *p.Fee
+	}
+	return paper.FeeFor(market.Of(p.Ticker), side, p.Shares*p.Price, b.twFeeDiscount)
 }
 
 // sendPendingActionPrompts checks for any db.PendingAction rows a chat tool
@@ -84,13 +98,13 @@ func (b *Bot) describePendingAction(a db.PendingAction) (string, bool) {
 		if !ok {
 			return "", false
 		}
-		return i18n.T(b.lang, i18n.KeyPendingBuyConfirm, p.Ticker, p.Shares, p.Price, p.Fee, p.Date), true
+		return i18n.T(b.lang, i18n.KeyPendingBuyConfirm, p.Ticker, p.Shares, b.money(p.Ticker, p.Price), b.money(p.Ticker, b.resolvePendingFee(p, "BUY")), p.Date), true
 	case db.PendingActionRecordSell:
 		p, ok := decodeTradePayload(a.Payload)
 		if !ok {
 			return "", false
 		}
-		return i18n.T(b.lang, i18n.KeyPendingSellConfirm, p.Ticker, p.Shares, p.Price, p.Fee, p.Date), true
+		return i18n.T(b.lang, i18n.KeyPendingSellConfirm, p.Ticker, p.Shares, b.money(p.Ticker, p.Price), b.money(p.Ticker, b.resolvePendingFee(p, "SELL")), p.Date), true
 	default:
 		return "", false
 	}
@@ -213,14 +227,14 @@ func (b *Bot) executePendingAction(ctx context.Context, action db.PendingAction)
 		if !ok {
 			return i18n.T(b.lang, i18n.KeyPendingActionExecFailed)
 		}
-		msg, _ := b.recordBuy(p.Ticker, p.Shares, p.Price, p.Fee, p.Date)
+		msg, _ := b.recordBuy(p.Ticker, p.Shares, p.Price, b.resolvePendingFee(p, "BUY"), p.Fee == nil, p.Date)
 		return msg
 	case db.PendingActionRecordSell:
 		p, ok := decodeTradePayload(action.Payload)
 		if !ok {
 			return i18n.T(b.lang, i18n.KeyPendingActionExecFailed)
 		}
-		msg, closed, stopPrice, _ := b.recordSell(p.Ticker, p.Shares, p.Price, p.Fee, p.Date)
+		msg, closed, stopPrice, _ := b.recordSell(p.Ticker, p.Shares, p.Price, b.resolvePendingFee(p, "SELL"), p.Fee == nil, p.Date)
 		if closed {
 			go b.reviewClosedTrade(ctx, p.Ticker, stopPrice)
 		}

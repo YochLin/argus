@@ -255,7 +255,7 @@ func (b *Bot) buildSizingLines(recs []llm.Recommendation, prices, atrs map[strin
 			continue
 		}
 		riskBudget := accountVal * b.riskPctPerTrade / 100
-		lines[r.Ticker] = i18n.T(b.lang, i18n.KeySizingLine, riskBudget, stop, shares)
+		lines[r.Ticker] = i18n.T(b.lang, i18n.KeySizingLine, b.money(r.Ticker, riskBudget), b.money(r.Ticker, stop), shares)
 	}
 	return lines
 }
@@ -556,11 +556,12 @@ func (b *Bot) computeTechnicals(ticker string, spyCloses []float64) (*llm.Techni
 		t.BollingerPctB = &pctB
 	}
 
+	screenParams := signals.DefaultScreenParams(market.Of(ticker))
 	var stratHits []llm.StrategyHitInfo
-	if hit := signals.SqueezeBreakout(candles); hit != nil {
+	if hit := signals.SqueezeBreakout(candles, screenParams); hit != nil {
 		stratHits = append(stratHits, llm.StrategyHitInfo{Name: hit.Name, DaysAgo: hit.DaysAgo})
 	}
-	if hit := signals.BoxBottomRebound(candles); hit != nil {
+	if hit := signals.BoxBottomRebound(candles, screenParams); hit != nil {
 		stratHits = append(stratHits, llm.StrategyHitInfo{Name: hit.Name, DaysAgo: hit.DaysAgo})
 	}
 
@@ -673,6 +674,7 @@ func (b *Bot) computeMarketRegime(m market.MarketID) *llm.MarketContext {
 	var mc llm.MarketContext
 
 	bench := benchmarkFor(m)
+	mc.Bench = bench
 	candles, err := b.history.GetHistory(bench, "1y")
 	if err != nil {
 		log.Printf("market regime: %s history: %v", bench, err)
@@ -1114,9 +1116,9 @@ func (b *Bot) computeTrackRows(days int) (rows []trackRow, lines []string, ok bo
 		}
 
 		if haveBench {
-			lines = append(lines, i18n.T(b.lang, i18n.KeyTrackLineVsSPY, r.Date, r.Ticker, action, base, q.Price, changePct, benchTicker, benchChangePct, verdict))
+			lines = append(lines, i18n.T(b.lang, i18n.KeyTrackLineVsSPY, r.Date, r.Ticker, action, b.money(r.Ticker, base), b.money(r.Ticker, q.Price), changePct, benchTicker, benchChangePct, verdict))
 		} else {
-			lines = append(lines, i18n.T(b.lang, i18n.KeyTrackLine, r.Date, r.Ticker, action, base, q.Price, changePct, verdict))
+			lines = append(lines, i18n.T(b.lang, i18n.KeyTrackLine, r.Date, r.Ticker, action, b.money(r.Ticker, base), b.money(r.Ticker, q.Price), changePct, verdict))
 		}
 	}
 

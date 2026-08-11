@@ -34,6 +34,7 @@ func baseConfig() Config {
 		StopATRMult:    2,
 		StopLossPct:    10,
 		Market:         market.US,
+		FeeDiscount:    1.0,
 	}
 }
 
@@ -72,6 +73,29 @@ func TestApplySignal_CashCap(t *testing.T) {
 	}
 	if trade.Shares > 5 {
 		t.Errorf("expected cash cap to bound shares near 5, got %v", trade.Shares)
+	}
+	if acct.Cash < 0 {
+		t.Errorf("cash went negative: %v", acct.Cash)
+	}
+}
+
+// TestApplySignal_TWCashCapBudgetsMinFee guards against the cash-cap sizing
+// estimate ignoring FeeFor's twMinFee floor: a low-priced TW fill where the
+// percentage-rate fee estimate rounds under twMinFee must still leave
+// account cash non-negative once the actual (floored) fee is charged.
+func TestApplySignal_TWCashCapBudgetsMinFee(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Market = market.TW
+	cfg.FeeDiscount = 0.6
+	cfg.MaxPositionPct = 0 // isolate the cash-cap branch
+	acct := NewAccount(999)
+
+	trade, ok := acct.ApplySignal(Signal{Date: "2024-01-02", Ticker: "2330", Action: "BUY", Price: 20}, 20, 1, cfg)
+	if !ok {
+		t.Fatalf("expected buy to execute")
+	}
+	if trade.Fee < twMinFee {
+		t.Fatalf("expected the min-fee floor to apply, got fee %v", trade.Fee)
 	}
 	if acct.Cash < 0 {
 		t.Errorf("cash went negative: %v", acct.Cash)
@@ -202,7 +226,7 @@ func TestCashConservation(t *testing.T) {
 
 func TestFeeFor_TW(t *testing.T) {
 	notional := 100000.0
-	sellFee := FeeFor(market.TW, "SELL", notional)
+	sellFee := FeeFor(market.TW, "SELL", notional, 1.0)
 	wantFee := notional * (0.001425 + 0.003)
 	if !almostEqual(sellFee, wantFee) {
 		t.Errorf("TW sell fee: got %v, want %v", sellFee, wantFee)
@@ -228,7 +252,38 @@ func TestFeeFor_TW(t *testing.T) {
 }
 
 func TestFeeFor_US(t *testing.T) {
-	if got := FeeFor(market.US, "BUY", 10000); got != 0 {
+	if got := FeeFor(market.US, "BUY", 10000, 1.0); got != 0 {
 		t.Errorf("US fee should be 0, got %v", got)
+	}
+}
+
+// TestFeeFor_TWDiscountAndMinFee covers §11.2 of docs/tw-us-parity.md: a
+// TW buy of 1 lot at NT$100 (notional 100,000) pays NT$142.50 (rounds to
+// 142 via float truncation elsewhere) at discount=1.0, but hits the NT$20
+// commission floor at discount=0.28 (100,000*0.001425*0.28 = 39.9, still
+// above the floor — use a smaller notional to actually hit it).
+func TestFeeFor_TWDiscountAndMinFee(t *testing.T) {
+	if got, want := FeeFor(market.TW, "BUY", 100000, 1.0), 142.5; !almostEqual(got, want) {
+		t.Errorf("TW buy fee at discount=1.0: got %v, want %v", got, want)
+	}
+	if got, want := FeeFor(market.TW, "BUY", 100000, 0.28), 39.9; !almostEqual(got, want) {
+		t.Errorf("TW buy fee at discount=0.28: got %v, want %v", got, want)
+	}
+	if got, want := FeeFor(market.TW, "BUY", 5000, 0.28), twMinFee; !almostEqual(got, want) {
+		t.Errorf("TW buy fee below min: got %v, want floor %v", got, want)
+	}
+}
+
+// TestFeeFor_TWSellMinFeeAppliesBeforeTax guards against the twMinFee floor
+// being (mis)applied to commission+tax combined: a small sell whose
+// commission alone rounds below the floor must still pay floor+tax, not
+// just the floor — see FeeFor's own doc comment for why order matters.
+func TestFeeFor_TWSellMinFeeAppliesBeforeTax(t *testing.T) {
+	notional := 5000.0
+	discount := 0.6
+	commission := notional * 0.001425 * discount // 4.275, below twMinFee
+	want := twMinFee + notional*0.003             // 20 + 15 = 35
+	if got := FeeFor(market.TW, "SELL", notional, discount); !almostEqual(got, want) {
+		t.Errorf("TW sell fee below commission floor: got %v, want %v (commission alone would be %v)", got, want, commission)
 	}
 }

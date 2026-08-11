@@ -191,14 +191,15 @@ func (c *Client) WeeklyReview(ctx context.Context, positions []StockData, cash f
 }
 
 // MorningBriefing performs the 07:00 CST narrative recap of the US session
-// that just closed (see bot.RunUSMorningBriefing) — indices, macro news,
-// watchlist/mover highlights — distinct from GenerateRecommendations' own
-// BUY/SELL/HOLD framing and from InsightPortfolio's holdings-only scope.
-// Returns the model's reply verbatim; no marker parsing, unlike
-// GenerateRecommendations/ReviewTrade. Reuses checkModel, same reasoning as
-// InsightPortfolio/WeeklyReview.
-func (c *Client) MorningBriefing(ctx context.Context, date string, indices []IndexQuote, vix float64, marketNews []data.NewsItem, watchlist []StockData, movers []StockData) (string, error) {
-	prompt := buildMorningBriefingPrompt(c.lang, date, indices, vix, marketNews, watchlist, movers)
+// that just closed (see bot.RunUSMorningBriefing), or, when isTW is true,
+// the 08:30 CST TW pre-open recap (see bot.RunTWMorningBriefing) — indices,
+// macro news, watchlist/mover highlights — distinct from
+// GenerateRecommendations' own BUY/SELL/HOLD framing and from
+// InsightPortfolio's holdings-only scope. Returns the model's reply
+// verbatim; no marker parsing, unlike GenerateRecommendations/ReviewTrade.
+// Reuses checkModel, same reasoning as InsightPortfolio/WeeklyReview.
+func (c *Client) MorningBriefing(ctx context.Context, date string, indices []IndexQuote, vix float64, marketNews []data.NewsItem, watchlist []StockData, movers []StockData, isTW bool) (string, error) {
+	prompt := buildMorningBriefingPrompt(c.lang, date, indices, vix, marketNews, watchlist, movers, isTW)
 	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
 }
 
