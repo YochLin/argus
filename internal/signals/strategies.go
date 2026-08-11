@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	strategyLookbackDays = 5       // 「近 N 日內曾觸發」窗口,配合 universe scan 5 天輪掃
+	strategyLookbackDays = 5       // 「近 N 日內曾觸發」窗口;原為配合 universe scan 5 天輪掃,改為每日全掃後留作漏掃緩衝(假日/bot 停機/掃描中斷),重複觸發由 signal_states 去重
 	minAvgVolume5d       = 500_000 // 網 1 流動性門檻(股)
 	squeezeBWWindow      = 20      // 帶寬新低的回看窗
 	breakoutVolMult      = 2.0     // 突破日量 >= 2x 前 5 日均量

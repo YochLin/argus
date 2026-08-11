@@ -85,10 +85,15 @@ func (s *Scheduler) AddTWClosingSnapshot(ctx context.Context, fn JobFunc) {
 	log.Println("scheduler: TW closing snapshot registered at 14:30 CST (Mon–Fri)")
 }
 
-// AddUniverseScan schedules Phase 2.6's chunked candidate-pool scan at 05:45
-// CST, Tuesday–Saturday — after the closing snapshot (05:30) has updated
+// AddUniverseScan schedules Phase 2.6's candidate-pool scan at 05:45 CST,
+// Tuesday–Saturday — after the closing snapshot (05:30) has updated
 // daily_snapshots/positions data, and before the backup (06:00) so a fresh
-// scan_hits row from today is included in that day's backup.
+// scan_hits row from today is included in that day's backup. That 15-minute
+// window is why bot.universeScanRequestDelay is a knob and not a bigger
+// number: the full-universe scan it now runs takes ~10 min, so a delay much
+// past 1s starts spilling today's later hits into tomorrow's backup (a
+// cosmetic loss, not data loss — Backup's VACUUM INTO is a plain read and
+// won't contend with the scan's writes).
 func (s *Scheduler) AddUniverseScan(ctx context.Context, fn JobFunc) {
 	_, err := s.c.AddFunc("0 45 5 * * 2-6", func() {
 		log.Println("scheduler: running universe scan")
