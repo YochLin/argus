@@ -112,8 +112,11 @@ func (b *Bot) gatherRecommendationInputs(m market.MarketID) (recommendationInput
 // (quick_actions.go, UX quick win) attaches to that ticker specifically —
 // Telegram inline keyboards belong to one message, not a sub-section of one.
 // m selects which market's account value buildSizingLines sizes BUY
-// recommendations against (Phase 6 PR2).
-func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommendation, sources map[string]string, m market.MarketID, stockLists ...[]llm.StockData) {
+// recommendations against (Phase 6 PR2). candidateCount is passed explicitly
+// (rather than read off stockLists' last element positionally) so the
+// candidates-empty message stays correct even if a caller's stockLists order
+// ever changes.
+func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommendation, sources map[string]string, m market.MarketID, candidateCount int, stockLists ...[]llm.StockData) {
 	if newsSummary != "" {
 		b.Send(i18n.T(b.lang, i18n.KeyMarketNewsSummaryTitle) + newsSummary)
 	}
@@ -137,8 +140,12 @@ func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommen
 	watchlistRecs, candidateRecs := splitRecsBySource(recs, sources)
 
 	b.Send(i18n.T(b.lang, i18n.KeyRecommendationsTitle))
-	b.sendRecGroup(i18n.KeyRecWatchlistSectionTitle, watchlistRecs, sizing)
-	b.sendRecGroup(i18n.KeyRecCandidatesSectionTitle, candidateRecs, sizing)
+	b.sendRecGroup(i18n.KeyRecWatchlistSectionTitle, watchlistRecs, sizing, "")
+	candidatesEmptyMsg := i18n.T(b.lang, i18n.KeyRecCandidatesAnalyzedNone, candidateCount)
+	if candidateCount == 0 {
+		candidatesEmptyMsg = i18n.T(b.lang, i18n.KeyRecCandidatesUnavailable)
+	}
+	b.sendRecGroup(i18n.KeyRecCandidatesSectionTitle, candidateRecs, sizing, candidatesEmptyMsg)
 
 	var dbRecs []db.Recommendation
 	for _, r := range recs {
@@ -181,11 +188,18 @@ func splitRecsBySource(recs []llm.Recommendation, sources map[string]string) (wa
 // message (with a [Check]/[Buy]/[Sell] quick-action row attached — see
 // sendWithTickerActions), so the group's numbering that used to appear in
 // one combined block is dropped rather than kept per-message, where it
-// would just read as a stray "1." on every single message. Sends nothing at
-// all — title included — when recs is empty, so a day with no new-candidate
-// picks doesn't leave a dangling header with nothing under it.
-func (b *Bot) sendRecGroup(titleKey i18n.Key, recs []llm.Recommendation, sizing map[string]string) {
+// would just read as a stray "1." on every single message. Sends no title
+// when recs is empty, so a day with no new-candidate picks doesn't leave a
+// dangling header with nothing under it — instead sends emptyMsg standalone
+// if non-empty (the watchlist section still passes "" to stay fully silent,
+// since a normal day with nothing to flag there needs no message; only the
+// candidates section distinguishes "analyzed N, picked none" from "had
+// nothing to analyze" — see PLAN.md's /recommend empty-result UX item).
+func (b *Bot) sendRecGroup(titleKey i18n.Key, recs []llm.Recommendation, sizing map[string]string, emptyMsg string) {
 	if len(recs) == 0 {
+		if emptyMsg != "" {
+			b.Send(emptyMsg)
+		}
 		return
 	}
 	b.Send(i18n.T(b.lang, titleKey))

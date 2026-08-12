@@ -158,6 +158,7 @@ func (b *Bot) runRecommend(ctx context.Context, m market.MarketID) {
 	}
 
 	if len(recs) == 0 {
+		b.Send(i18n.T(b.lang, i18n.KeyNoRecommendations))
 		return
 	}
 
@@ -166,7 +167,7 @@ func (b *Bot) runRecommend(ctx context.Context, m market.MarketID) {
 	// — an interactive /recommend doesn't get a second one-shot LLM call
 	// tacked onto its latency.
 	sources := recommendationSources(in.watchlistTickers, in.candidateTickers, in.scanHits, nil)
-	b.sendAndSaveRecommendations(summary, recs, sources, m, in.watchlist, in.candidates)
+	b.sendAndSaveRecommendations(summary, recs, sources, m, len(in.candidateTickers), in.watchlist, in.candidates)
 }
 
 func (b *Bot) handleCheck(ctx context.Context, ticker string) {

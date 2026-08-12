@@ -386,7 +386,7 @@ func (b *Bot) runDailyReport(ctx context.Context, m market.MarketID) {
 	}
 
 	sources := recommendationSources(in.watchlistTickers, in.candidateTickers, in.scanHits, explore)
-	b.sendAndSaveRecommendations(summary, recs, sources, m, in.watchlist, in.candidates)
+	b.sendAndSaveRecommendations(summary, recs, sources, m, len(in.candidateTickers), in.watchlist, in.candidates)
 }
 
 // exploreCandidates is Phase 2.6 解凍's two-stage LLM exploration (see

@@ -68,12 +68,19 @@ const (
 	KeyAnalyzing            Key = "analyzing"
 	KeyWatchlistQueryFailed Key = "watchlist_query_failed"
 	KeyLLMFailed            Key = "llm_failed"
+	// KeyNoRecommendations is /recommend's len(recs)==0 reply — per
+	// llm.TestGenerateRecommendations_EmptyReplyIsNotParseFailure, that only
+	// happens when the LLM's reply was itself empty (a reply with content but
+	// no parseable blocks is ErrRecommendationParseFailed/KeyRecParseFailed
+	// instead), so this is genuinely an abnormal "try again" case, not a
+	// normal empty result — see KeyNoRecommendationsToday below, which must
+	// carry the same tone for the same reason.
+	KeyNoRecommendations Key = "no_recommendations"
 	// KeyRecParseFailed is the LLM 解析失敗觀測 notification (PLAN.md, UX 剩餘項):
 	// sent when the LLM replied with non-empty text but the reply had zero
 	// parseable [TICKER: ...] blocks (llm.ErrRecommendationParseFailed) — a
-	// formatting drift, distinct from a legitimate empty-recommendations reply,
-	// which is silent (see runRecommend) / KeyNoRecommendationsToday, with no
-	// error at all.
+	// formatting drift, distinct from KeyNoRecommendations/
+	// KeyNoRecommendationsToday above/below.
 	KeyRecParseFailed       Key = "rec_parse_failed"
 	KeyRecommendationsTitle Key = "recommendations_title"
 	// KeyRecommendUsage is Phase 6 PR2's /recommend [tw|us] argument-parsing
@@ -82,6 +89,16 @@ const (
 	KeyRecommendUsage            Key = "recommend_usage"
 	KeyRecWatchlistSectionTitle  Key = "rec_watchlist_section_title"
 	KeyRecCandidatesSectionTitle Key = "rec_candidates_section_title"
+	// KeyRecCandidatesAnalyzedNone/KeyRecCandidatesUnavailable are
+	// sendRecGroup's two distinct candidates-section empty states (PLAN.md's
+	// /recommend empty-result UX item) — both silent before this, which made
+	// "LLM analyzed candidates but picked none" (normal) indistinguishable
+	// from "no candidates ever reached the LLM" (usually a market-movers
+	// fetch failure — see gatherRecommendationInputs' log.Printf, still not
+	// surfaced to chat). KeyRecCandidatesAnalyzedNone takes the candidate
+	// count as %d so the message proves the bot actually did work.
+	KeyRecCandidatesAnalyzedNone Key = "rec_candidates_analyzed_none"
+	KeyRecCandidatesUnavailable  Key = "rec_candidates_unavailable"
 	// KeySizingLine is Phase 3.11 PR1's bot-computed R-based position-sizing
 	// suggestion (§3.4), appended under each BUY recommendation's reason —
 	// bot.buildSizingLines does the arithmetic, this key only renders it.
