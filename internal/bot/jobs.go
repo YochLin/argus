@@ -538,7 +538,77 @@ func (b *Bot) checkStatefulSignals(ticker string, candles []data.Candle, isBearR
 		}
 	}
 
+	// Strategy 3: Trend Breakout (Phase 14 網 3) — revenue-growth gate is
+	// short-circuited: only evaluated when the (zero-request) technical AND
+	// already passed, so the FinMind/Finnhub hit stays ~0-5/day (see
+	// docs/phase-14-strategy-screens-2.md §4.2c).
+	prevBreakout, err := b.db.GetSignalState(ticker, signals.FamilyStrategyBreakout)
+	if err != nil {
+		log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategyBreakout, err)
+	}
+	sig, newBreakout := b.detector.CheckTrendBreakout(ticker, candles, prevBreakout)
+	if sig != nil {
+		p := signals.DefaultScreenParams(market.Of(ticker))
+		if p.RequireRevenueGrowth && !b.revenueGrowthOK(ticker, p.MinRevenueGrowthPct) {
+			sig = nil
+		}
+	}
+	if sig != nil {
+		if isBearRegime {
+			sig.Message += "\n" + i18n.T(b.lang, i18n.KeyStrategyBearRegimeWarning)
+		}
+		out = append(out, *sig)
+	}
+	if newBreakout != prevBreakout {
+		if err := b.db.SetSignalState(ticker, signals.FamilyStrategyBreakout, newBreakout); err != nil {
+			log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategyBreakout, err)
+		}
+	}
+
+	// Strategy 4: Trend Pullback (Phase 14 網 4)
+	prevPullback, err := b.db.GetSignalState(ticker, signals.FamilyStrategyPullback)
+	if err != nil {
+		log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategyPullback, err)
+	}
+	sig, newPullback := b.detector.CheckTrendPullback(ticker, candles, prevPullback)
+	if sig != nil {
+		if isBearRegime {
+			sig.Message += "\n" + i18n.T(b.lang, i18n.KeyStrategyBearRegimeWarning)
+		}
+		out = append(out, *sig)
+	}
+	if newPullback != prevPullback {
+		if err := b.db.SetSignalState(ticker, signals.FamilyStrategyPullback, newPullback); err != nil {
+			log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategyPullback, err)
+		}
+	}
+
 	return out
+}
+
+// revenueGrowthOK is Phase 14 §4.2c's short-circuit fundamentals gate for
+// 網 3【趨勢突破】's TW-only revenue-growth condition: called only after the
+// technical AND already passed (0-5 tickers/day, not the full universe), so
+// routing through cachedFundamentals keeps this to one FinMind request per
+// ticker per slowDataCacheTTL window rather than one per scan. minPct is
+// ScreenParams.MinRevenueGrowthPct; the underlying field differs by market
+// (data.Fundamentals.MonthRevenueYoYPct is TW-only) but b.fundamentals
+// already routes US/TW via FundamentalsRouter, so this reads whichever field
+// is non-zero for ticker's market.
+func (b *Bot) revenueGrowthOK(ticker string, minPct float64) bool {
+	if b.fundamentals == nil {
+		return false
+	}
+	fd, err := b.cachedFundamentals(ticker)
+	if err != nil {
+		log.Printf("revenue growth gate %s: %v", ticker, err)
+		return false
+	}
+	growth := fd.MonthRevenueYoYPct
+	if market.Of(ticker) != market.TW {
+		growth = fd.RevenueGrowthYoY
+	}
+	return growth > minPct
 }
 
 // scanChunkCount and universeScanRequestDelay govern Phase 2.6's daily

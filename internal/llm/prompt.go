@@ -104,8 +104,9 @@ type StockData struct {
 	// recentLessons parameter) rather than a per-ticker field, since it
 	// isn't about any one ticker.
 	PastLessons []PastLesson
-	// StrategyHits (Phase 3.10) contains any strategy screen hit (squeeze_breakout
-	// or box_bottom) detected within the last 5 days.
+	// StrategyHits (Phase 3.10, extended Phase 14) contains any strategy
+	// screen hit (squeeze_breakout / box_bottom / trend_breakout /
+	// trend_pullback) detected within the last 5 days.
 	StrategyHits []StrategyHitInfo
 }
 
@@ -596,6 +597,10 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 			nameStr = i18n.T(lang, i18n.KeyStrategySqueezeName)
 		} else if hit.Name == "box_bottom" {
 			nameStr = i18n.T(lang, i18n.KeyStrategyBoxName)
+		} else if hit.Name == "trend_breakout" {
+			nameStr = i18n.T(lang, i18n.KeyStrategyBreakoutName)
+		} else if hit.Name == "trend_pullback" {
+			nameStr = i18n.T(lang, i18n.KeyStrategyPullbackName)
 		}
 		daysAgoStr := i18n.T(lang, i18n.KeyDaysAgoToday)
 		if hit.DaysAgo > 0 {

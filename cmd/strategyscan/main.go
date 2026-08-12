@@ -3,6 +3,7 @@ package main
 import (
 	_ "embed"
 	"encoding/csv"
+	"flag"
 	"fmt"
 	"os"
 	"sort"
@@ -16,6 +17,9 @@ import (
 
 //go:embed sp500_tickers.txt
 var sp500TickersRaw string
+
+//go:embed tw150_tickers.txt
+var tw150TickersRaw string
 
 type TriggerRecord struct {
 	Ticker       string
@@ -38,23 +42,42 @@ type TriggerRecord struct {
 }
 
 func main() {
-	fmt.Println("=== Argus Strategy Historical Study Tool (cmd/strategyscan) ===")
+	marketFlag := flag.String("market", "us", "market to scan: us|tw")
+	flag.Parse()
 
-	tickers := parseTickers(sp500TickersRaw)
-	fmt.Printf("Loaded %d S&P 500 tickers.\n", len(tickers))
-	screenParams := signals.DefaultScreenParams(market.US)
+	m := market.US
+	if *marketFlag == "tw" {
+		m = market.TW
+	} else if *marketFlag != "us" {
+		fmt.Printf("Error: -market must be us or tw, got %q\n", *marketFlag)
+		os.Exit(1)
+	}
+
+	fmt.Printf("=== Argus Strategy Historical Study Tool (cmd/strategyscan, market=%s) ===\n", m)
+
+	var tickers []string
+	benchTicker := "SPY"
+	if m == market.TW {
+		tickers = parseTickers(tw150TickersRaw)
+		benchTicker = "0050"
+		fmt.Printf("Loaded %d tw150 tickers.\n", len(tickers))
+	} else {
+		tickers = parseTickers(sp500TickersRaw)
+		fmt.Printf("Loaded %d S&P 500 tickers.\n", len(tickers))
+	}
+	screenParams := signals.DefaultScreenParams(m)
 
 	yahoo := data.NewYahoo()
 
-	fmt.Println("Fetching SPY history for market regime and benchmark...")
-	spyCandles, err := yahoo.GetHistory("SPY", "1y")
+	fmt.Printf("Fetching %s history for market regime and benchmark...\n", benchTicker)
+	spyCandles, err := yahoo.GetHistory(benchTicker, "1y")
 	if err != nil || len(spyCandles) < 60 {
-		fmt.Printf("Error fetching SPY history: %v\n", err)
+		fmt.Printf("Error fetching %s history: %v\n", benchTicker, err)
 		os.Exit(1)
 	}
-	fmt.Printf("SPY loaded with %d daily bars.\n", len(spyCandles))
+	fmt.Printf("%s loaded with %d daily bars.\n", benchTicker, len(spyCandles))
 
-	// Map SPY date string -> index
+	// Map benchmark date string -> index
 	spyDateIdx := make(map[string]int)
 	for i, c := range spyCandles {
 		dateStr := c.Date.Format("2006-01-02")
@@ -96,10 +119,21 @@ func main() {
 				}
 			}
 
-			isSqueeze := signals.CheckSqueezeBreakoutExact(sub, screenParams)
-			isBox := signals.CheckBoxBottomReboundExact(sub, screenParams)
+			hits := map[string]bool{
+				"squeeze_breakout": signals.CheckSqueezeBreakoutExact(sub, screenParams),
+				"box_bottom":       signals.CheckBoxBottomReboundExact(sub, screenParams),
+				"trend_breakout":   signals.CheckTrendBreakoutExact(sub, screenParams),
+				"trend_pullback":   signals.CheckTrendPullbackExact(sub, screenParams),
+			}
 
-			if !isSqueeze && !isBox {
+			anyHit := false
+			for _, hit := range hits {
+				if hit {
+					anyHit = true
+					break
+				}
+			}
+			if !anyHit {
 				continue
 			}
 
@@ -108,37 +142,14 @@ func main() {
 			r10, spyR10, ok10 := calcForwardReturn(t, 10, candles, spyCandles, spyDateIdx)
 			r20, spyR20, ok20 := calcForwardReturn(t, 20, candles, spyCandles, spyDateIdx)
 
-			if isSqueeze {
+			for _, strat := range []string{"squeeze_breakout", "box_bottom", "trend_breakout", "trend_pullback"} {
+				if !hits[strat] {
+					continue
+				}
 				rec := TriggerRecord{
 					Ticker:       ticker,
 					Date:         evalDateStr,
-					Strategy:     "squeeze_breakout",
-					EntryPrice:   entryPrice,
-					MarketRegime: marketRegime,
-				}
-				if ok5 {
-					rec.Ret5d = r5
-					rec.SpyRet5d = spyR5
-					rec.BeatSpy5d = r5 > spyR5
-				}
-				if ok10 {
-					rec.Ret10d = r10
-					rec.SpyRet10d = spyR10
-					rec.BeatSpy10d = r10 > spyR10
-				}
-				if ok20 {
-					rec.Ret20d = r20
-					rec.SpyRet20d = spyR20
-					rec.BeatSpy20d = r20 > spyR20
-				}
-				records = append(records, rec)
-			}
-
-			if isBox {
-				rec := TriggerRecord{
-					Ticker:       ticker,
-					Date:         evalDateStr,
-					Strategy:     "box_bottom",
+					Strategy:     strat,
 					EntryPrice:   entryPrice,
 					MarketRegime: marketRegime,
 				}
@@ -165,11 +176,13 @@ func main() {
 	fmt.Printf("\nFinished scanning. Total trigger events recorded: %d\n", len(records))
 
 	// Write CSV
-	writeCSV("strategyscan_results.csv", records)
+	writeCSV(fmt.Sprintf("strategyscan_results_%s.csv", m), records)
 
 	// Output summary statistics
 	printSummary("Squeeze Breakout (網 1)", filterByStrategy(records, "squeeze_breakout"))
 	printSummary("Box Bottom Rebound (網 2)", filterByStrategy(records, "box_bottom"))
+	printSummary("Trend Breakout (網 3)", filterByStrategy(records, "trend_breakout"))
+	printSummary("Trend Pullback (網 4)", filterByStrategy(records, "trend_pullback"))
 }
 
 func parseTickers(raw string) []string {

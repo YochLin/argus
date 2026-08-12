@@ -2,6 +2,9 @@ package signals
 
 import (
 	"testing"
+	"time"
+
+	"argus/internal/data"
 )
 
 func TestStochasticSeries(t *testing.T) {
@@ -125,6 +128,85 @@ func TestLowestClose(t *testing.T) {
 	}
 	if got := LowestClose(closes, 10); got != 0 {
 		t.Errorf("LowestClose() with insufficient data = %v, want 0", got)
+	}
+}
+
+func candleAt(daysAgo int, open, high, low, close float64) data.Candle {
+	return data.Candle{
+		Date:  time.Now().AddDate(0, 0, -daysAgo),
+		Open:  open,
+		High:  high,
+		Low:   low,
+		Close: close,
+	}
+}
+
+func TestIsBullishReversalBar(t *testing.T) {
+	// Hammer: long lower wick (>= 2x body), closes in upper half
+	hammer := []data.Candle{
+		candleAt(1, 100, 101, 95, 99),
+		candleAt(0, 96, 97, 90, 96.5), // body 0.5, lower wick 6, closes near top
+	}
+	if !IsBullishReversalBar(hammer) {
+		t.Errorf("expected hammer to be a bullish reversal bar")
+	}
+
+	// Bullish engulfing: today's body fully engulfs yesterday's down body
+	engulfing := []data.Candle{
+		candleAt(1, 100, 101, 97, 98), // down bar: open 100, close 98
+		candleAt(0, 97, 103, 96, 102), // up bar engulfing 98..100
+	}
+	if !IsBullishReversalBar(engulfing) {
+		t.Errorf("expected engulfing to be a bullish reversal bar")
+	}
+
+	// Close breaks above previous day's high
+	breakHigh := []data.Candle{
+		candleAt(1, 100, 102, 99, 100),
+		candleAt(0, 100, 105, 99, 103), // closes above 102
+	}
+	if !IsBullishReversalBar(breakHigh) {
+		t.Errorf("expected close-above-prior-high to be a bullish reversal bar")
+	}
+
+	// None of the three: small body, no wick, close below prior high
+	flat := []data.Candle{
+		candleAt(1, 100, 102, 99, 101),
+		candleAt(0, 100, 101, 99.5, 100.5),
+	}
+	if IsBullishReversalBar(flat) {
+		t.Errorf("expected flat bar to not be a bullish reversal bar")
+	}
+
+	if IsBullishReversalBar([]data.Candle{candleAt(0, 100, 101, 99, 100)}) {
+		t.Errorf("expected false for < 2 candles")
+	}
+}
+
+func TestIsSolidBullBar(t *testing.T) {
+	// Black candle (close <= open)
+	if IsSolidBullBar(data.Candle{Open: 100, Close: 99, High: 101, Low: 98}, 0.5) {
+		t.Errorf("expected false for a black candle")
+	}
+
+	// Upper wick too long relative to body
+	if IsSolidBullBar(data.Candle{Open: 100, Close: 101, High: 104, Low: 99}, 0.5) {
+		t.Errorf("expected false when upper wick exceeds ratio")
+	}
+
+	// Solid bull bar: small upper wick relative to body
+	if !IsSolidBullBar(data.Candle{Open: 100, Close: 105, High: 106, Low: 99}, 0.5) {
+		t.Errorf("expected true for a solid bull bar")
+	}
+}
+
+func TestDeviationPct(t *testing.T) {
+	if _, ok := DeviationPct(100, 0); ok {
+		t.Errorf("expected ok=false when ma <= 0")
+	}
+	dev, ok := DeviationPct(110, 100)
+	if !ok || dev != 10.0 {
+		t.Errorf("DeviationPct(110, 100) = %v, %v; want 10.0, true", dev, ok)
 	}
 }
 

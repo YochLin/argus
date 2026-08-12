@@ -642,4 +642,9 @@ var zhMessages = map[Key]string{
 	KeyOptionSelectFailed:       "選契約失敗：%v",
 	KeyOptionSelectNoCandidates: "%s 目前沒有符合 %s 篩選條件（流動性或 delta/到期天數）的契約",
 	KeyOptionSelectLine:         "%s\n現價 $%.2f  Delta %.3f  IV %.1f%%  未平倉量 %d  價差 %.1f%%  剩餘 %d 天",
+
+	KeyStrategyTrendBreakout: "🚀 %s 觸發【趨勢突破】(%s)：創新高 + 均線多頭排列 + 攻擊量 + 乖離未過大",
+	KeyStrategyTrendPullback: "🎯 %s 觸發【趨勢回檔】(%s)：季線上彎 + 拉回月線量縮 + KD 低檔轉折 + 止跌 K 線",
+	KeyStrategyBreakoutName:  "趨勢突破",
+	KeyStrategyPullbackName:  "趨勢回檔",
 }

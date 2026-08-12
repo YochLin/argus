@@ -653,4 +653,9 @@ Write only from the data actually provided above — omit any section you have n
 	KeyOptionSelectFailed:       "Option selection failed: %v",
 	KeyOptionSelectNoCandidates: "No candidates for %s (%s) passed the liquidity/delta/DTE screen",
 	KeyOptionSelectLine:         "%s\nMark $%.2f  Delta %.3f  IV %.1f%%  OI %d  Spread %.1f%%  DTE %d",
+
+	KeyStrategyTrendBreakout: "🚀 %s triggered [Trend Breakout] (%s): New high + bullish MA alignment + attack volume + deviation within range",
+	KeyStrategyTrendPullback: "🎯 %s triggered [Trend Pullback] (%s): MA60 sloping up + pullback to MA20 volume dry-up + KD oversold turn + reversal bar",
+	KeyStrategyBreakoutName:  "Trend Breakout",
+	KeyStrategyPullbackName:  "Trend Pullback",
 }

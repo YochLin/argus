@@ -2,6 +2,8 @@ package signals
 
 import (
 	"math"
+
+	"argus/internal/data"
 )
 
 const (
@@ -205,6 +207,71 @@ func LowestClose(closes []float64, n int) float64 {
 		}
 	}
 	return low
+}
+
+// IsBullishReversalBar reports whether candles' last bar looks like a
+// stopped-falling bar (Phase 14 網 4's entry trigger) — any one of: a hammer
+// (lower wick >= 2x body, closing in the bar's upper half), a bullish
+// engulfing (today's real body fully engulfs yesterday's down-body), or a
+// close breaking above the previous day's high. Pure OHLC pattern match, no
+// swing-point detection (phase-3.10 already ruled that out as too
+// error-prone — see docs/phase-14-strategy-screens-2.md §6). Returns false
+// if fewer than 2 candles.
+func IsBullishReversalBar(candles []data.Candle) bool {
+	n := len(candles)
+	if n < 2 {
+		return false
+	}
+	today := candles[n-1]
+	yesterday := candles[n-2]
+
+	body := math.Abs(today.Close - today.Open)
+	rangeHL := today.High - today.Low
+	if rangeHL > 0 {
+		lowerWick := math.Min(today.Open, today.Close) - today.Low
+		midpoint := today.Low + rangeHL/2
+		if lowerWick >= 2*body && today.Close >= midpoint {
+			return true
+		}
+	}
+
+	if yesterday.Close < yesterday.Open { // yesterday was a down bar
+		if today.Close > today.Open && today.Open <= yesterday.Close && today.Close >= yesterday.Open {
+			return true
+		}
+	}
+
+	if today.Close > yesterday.High {
+		return true
+	}
+
+	return false
+}
+
+// DeviationPct returns the percentage deviation of close from ma:
+// (close - ma) / ma * 100. Used by 網 3/網 4 for the MA20 "not too extended"
+// gate. Returns ok=false when ma <= 0 — deviation's legal range includes 0
+// (price sitting exactly on the average), so it can't reuse the 0-sentinel
+// convention MA/VolumeRatio use, same reasoning as BollingerPctB.
+func DeviationPct(close, ma float64) (float64, bool) {
+	if ma <= 0 {
+		return 0, false
+	}
+	return (close - ma) / ma * 100.0, true
+}
+
+// IsSolidBullBar reports whether c is a solid bull candle: closes above open,
+// and the upper wick (high - close) is at most maxWickRatio times the real
+// body (close - open). A long upper wick relative to the body signals heavy
+// overhead selling pressure right at the breakout — 網 3's false-breakout
+// filter (docs/phase-14-strategy-screens-2.md §4.2).
+func IsSolidBullBar(c data.Candle, maxWickRatio float64) bool {
+	if c.Close <= c.Open {
+		return false
+	}
+	body := c.Close - c.Open
+	upperWick := c.High - c.Close
+	return upperWick <= body*maxWickRatio
 }
 
 // RelativeStrength computes (stock return % - SPY return %) over the trailing lookback bars.

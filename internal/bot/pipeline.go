@@ -564,6 +564,12 @@ func (b *Bot) computeTechnicals(ticker string, spyCloses []float64) (*llm.Techni
 	if hit := signals.BoxBottomRebound(candles, screenParams); hit != nil {
 		stratHits = append(stratHits, llm.StrategyHitInfo{Name: hit.Name, DaysAgo: hit.DaysAgo})
 	}
+	if hit := signals.TrendBreakout(candles, screenParams); hit != nil {
+		stratHits = append(stratHits, llm.StrategyHitInfo{Name: hit.Name, DaysAgo: hit.DaysAgo})
+	}
+	if hit := signals.TrendPullback(candles, screenParams); hit != nil {
+		stratHits = append(stratHits, llm.StrategyHitInfo{Name: hit.Name, DaysAgo: hit.DaysAgo})
+	}
 
 	recent := candles
 	if len(recent) > promptCandleCount {

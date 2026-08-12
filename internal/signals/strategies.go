@@ -18,6 +18,9 @@ const (
 
 	FamilyStrategySqueeze = "strategy_squeeze"
 	FamilyStrategyBox     = "strategy_box"
+
+	FamilyStrategyPullback = "strategy_pullback"
+	FamilyStrategyBreakout = "strategy_breakout"
 )
 
 // ScreenParams holds the market-calibrated thresholds CheckSqueezeBreakoutExact/
@@ -39,6 +42,22 @@ type ScreenParams struct {
 	BoxMaxRangePct  float64 // 箱型高低差上限 %
 	BoxFloorPct     float64 // 距箱底 %
 	BreakoutVolMult float64 // 突破日量 >= N x 前 5 日均量
+
+	// 網 3 趨勢突破（Phase 14）
+	NewHighLookback   int     // 創新高回看窗（日），60
+	BreakoutVolMA20   float64 // 突破日量 >= N x MA20 均量，1.5
+	MaxMA20DevPct     float64 // 距 MA20 乖離上限 %，US 15 / TW 12（台股 ±10% 漲跌幅，波動結構較緊）
+	MaxUpperWickRatio float64 // 上影線 / 實體 上限，0.5
+
+	// 網 4 趨勢回檔（Phase 14）
+	PullbackMA20DevPct float64 // 距 MA20 ±N%，2.0
+	PullbackVolRatio   float64 // 拉回量縮門檻，VolumeRatio(20) < N
+	PullbackKDLevel    float64 // K 低檔門檻，30
+	MA60SlopeLookback  int     // MA60 上彎的比較窗（日），10
+
+	// 基本面短路求值開關（bot 層依此決定是否打 FinMind/Finnhub，見 internal/bot）
+	RequireRevenueGrowth bool    // TW true / US false
+	MinRevenueGrowthPct  float64 // 10.0
 }
 
 // DefaultScreenParams returns m's calibrated ScreenParams. TW's
@@ -48,12 +67,27 @@ type ScreenParams struct {
 // catch), and TW's ±10% daily limit makes a 15% "consolidation" box
 // virtually untriggerable, so it's widened to 18%. These are calibration
 // starting points, not backtested values — see §7's calibration-script note
-// (deliberately not committed to this codebase).
+// (deliberately not committed to this codebase). Phase 14 adds 網 3/網 4's
+// thresholds under the same "starting point, not backtested" caveat — TW's
+// MaxMA20DevPct is tighter (12% vs US 15%) for the same ±10% daily-limit
+// reason BoxMaxRangePct is wider; RequireRevenueGrowth is TW-only since
+// Finnhub has no monthly-revenue concept (data.Fundamentals.MonthRevenueYoYPct
+// is TW-only, see that field's doc comment).
 func DefaultScreenParams(m market.MarketID) ScreenParams {
 	if m == market.TW {
-		return ScreenParams{MinAvgVolume5d: 1_000_000, BoxMaxRangePct: 18.0, BoxFloorPct: 2.0, BreakoutVolMult: 2.0}
+		return ScreenParams{
+			MinAvgVolume5d: 1_000_000, BoxMaxRangePct: 18.0, BoxFloorPct: 2.0, BreakoutVolMult: 2.0,
+			NewHighLookback: 60, BreakoutVolMA20: 1.5, MaxMA20DevPct: 12.0, MaxUpperWickRatio: 0.5,
+			PullbackMA20DevPct: 2.0, PullbackVolRatio: 0.8, PullbackKDLevel: 30.0, MA60SlopeLookback: 10,
+			RequireRevenueGrowth: true, MinRevenueGrowthPct: 10.0,
+		}
 	}
-	return ScreenParams{MinAvgVolume5d: 500_000, BoxMaxRangePct: 15.0, BoxFloorPct: 2.0, BreakoutVolMult: 2.0}
+	return ScreenParams{
+		MinAvgVolume5d: 500_000, BoxMaxRangePct: 15.0, BoxFloorPct: 2.0, BreakoutVolMult: 2.0,
+		NewHighLookback: 60, BreakoutVolMA20: 1.5, MaxMA20DevPct: 15.0, MaxUpperWickRatio: 0.5,
+		PullbackMA20DevPct: 2.0, PullbackVolRatio: 0.8, PullbackKDLevel: 30.0, MA60SlopeLookback: 10,
+		RequireRevenueGrowth: false, MinRevenueGrowthPct: 10.0,
+	}
 }
 
 type StrategyHit struct {
@@ -275,5 +309,209 @@ func (d *Detector) CheckBoxBottom(ticker string, candles []data.Candle, prevStat
 		Ticker:  ticker,
 		Type:    "strategy_box_bottom",
 		Message: i18n.T(d.lang, i18n.KeyStrategyBoxBottom, ticker, daysAgoStr),
+	}, newState
+}
+
+// TrendPullback evaluates candles for Trend Pullback (網 4) triggers within
+// the last strategyLookbackDays. Returns the most recent hit (smallest
+// DaysAgo) or nil if none triggered.
+func TrendPullback(candles []data.Candle, p ScreenParams) *StrategyHit {
+	n := len(candles)
+	for offset := 0; offset < strategyLookbackDays; offset++ {
+		evalIdx := n - 1 - offset
+		if evalIdx < 60 {
+			break
+		}
+		sub := candles[:evalIdx+1]
+		if CheckTrendPullbackExact(sub, p) {
+			return &StrategyHit{
+				Name:    "trend_pullback",
+				DaysAgo: offset,
+			}
+		}
+	}
+	return nil
+}
+
+// TrendBreakout evaluates candles for Trend Breakout (網 3) triggers within
+// the last strategyLookbackDays. Returns the most recent hit (smallest
+// DaysAgo) or nil if none triggered.
+func TrendBreakout(candles []data.Candle, p ScreenParams) *StrategyHit {
+	n := len(candles)
+	for offset := 0; offset < strategyLookbackDays; offset++ {
+		evalIdx := n - 1 - offset
+		if evalIdx < 60 {
+			break
+		}
+		sub := candles[:evalIdx+1]
+		if CheckTrendBreakoutExact(sub, p) {
+			return &StrategyHit{
+				Name:    "trend_breakout",
+				DaysAgo: offset,
+			}
+		}
+	}
+	return nil
+}
+
+// CheckTrendPullbackExact evaluates candles' last bar (網 4【趨勢回檔】):
+// only buy a pullback inside an established uptrend, never a falling knife.
+// See docs/phase-14-strategy-screens-2.md §4.1 for the condition rationale.
+func CheckTrendPullbackExact(candles []data.Candle, p ScreenParams) bool {
+	n := len(candles)
+	if n < 60+p.MA60SlopeLookback {
+		return false
+	}
+	closes := data.Closes(candles)
+	volumes := data.Volumes(candles)
+	highs := data.Highs(candles)
+	lows := data.Lows(candles)
+
+	// 1. Trend established: MA60 sloping up and close above MA60
+	ma60Today := MA(closes, 60)
+	ma60Past := MA(closes[:n-p.MA60SlopeLookback], 60)
+	if ma60Today == 0 || ma60Past == 0 || ma60Today <= ma60Past {
+		return false
+	}
+	evalClose := closes[n-1]
+	if evalClose <= ma60Today {
+		return false
+	}
+
+	// 2. Pulled back to MA20: |deviation| <= PullbackMA20DevPct
+	ma20 := MA(closes, 20)
+	dev, ok := DeviationPct(evalClose, ma20)
+	if !ok || math.Abs(dev) > p.PullbackMA20DevPct {
+		return false
+	}
+
+	// 3. Volume dry-up: today's volume ratio < PullbackVolRatio
+	volRatio := VolumeRatio(volumes, 20)
+	if volRatio == 0 || volRatio >= p.PullbackVolRatio {
+		return false
+	}
+
+	// 4. KD oversold turn: K < PullbackKDLevel AND (golden cross OR hook up)
+	kSeries, dSeries := StochasticSeries(highs, lows, closes, 9, 3)
+	if kSeries == nil || dSeries == nil || len(kSeries) < 2 {
+		return false
+	}
+	kToday := kSeries[n-1]
+	dToday := dSeries[n-1]
+	kPrev := kSeries[n-2]
+	dPrev := dSeries[n-2]
+	if kToday >= p.PullbackKDLevel {
+		return false
+	}
+	goldenCross := kPrev <= dPrev && kToday > dToday
+	hookUp := kPrev < p.PullbackKDLevel && kToday > kPrev
+	if !goldenCross && !hookUp {
+		return false
+	}
+
+	// 5. Reversal bar confirming the bounce
+	if !IsBullishReversalBar(candles) {
+		return false
+	}
+
+	return true
+}
+
+// CheckTrendBreakoutExact evaluates candles' last bar (網 3【趨勢突破】):
+// new high + bullish MA alignment + attack volume, gated by a deviation cap
+// to filter out exhaustion spikes. See
+// docs/phase-14-strategy-screens-2.md §4.2 for the condition rationale.
+func CheckTrendBreakoutExact(candles []data.Candle, p ScreenParams) bool {
+	n := len(candles)
+	if n < 60 {
+		return false
+	}
+	closes := data.Closes(candles)
+	volumes := data.Volumes(candles)
+
+	// 1. Liquidity: avg volume of preceding 5 days > p.MinAvgVolume5d
+	window5v := volumes[n-6 : n-1]
+	var sumV int64
+	for _, v := range window5v {
+		sumV += v
+	}
+	avgV5 := float64(sumV) / 5.0
+	if avgV5 < p.MinAvgVolume5d {
+		return false
+	}
+
+	// 2. New high
+	if !IsNewHigh(closes, p.NewHighLookback) {
+		return false
+	}
+
+	// 3. Bullish MA alignment: MA5 > MA20 > MA60
+	if MAAlignment(closes) != StateBullish {
+		return false
+	}
+
+	// 4. Attack volume: today's volume ratio >= BreakoutVolMA20
+	volRatio := VolumeRatio(volumes, 20)
+	if volRatio == 0 || volRatio < p.BreakoutVolMA20 {
+		return false
+	}
+
+	// 5. Deviation gate: not too extended above MA20 — the most important
+	// false-breakout filter (docs/phase-14-strategy-screens-2.md §4.2)
+	ma20 := MA(closes, 20)
+	dev, ok := DeviationPct(closes[n-1], ma20)
+	if !ok || dev > p.MaxMA20DevPct {
+		return false
+	}
+
+	// 6. Solid bull bar: small upper wick relative to body
+	if !IsSolidBullBar(candles[n-1], p.MaxUpperWickRatio) {
+		return false
+	}
+
+	return true
+}
+
+func (d *Detector) CheckTrendPullback(ticker string, candles []data.Candle, prevState string) (sig *Signal, newState string) {
+	hit := TrendPullback(candles, DefaultScreenParams(market.Of(ticker)))
+	if hit == nil {
+		return nil, ""
+	}
+	newState = "hit"
+	if prevState == "hit" {
+		return nil, newState
+	}
+
+	daysAgoStr := i18n.T(d.lang, i18n.KeyDaysAgoToday)
+	if hit.DaysAgo > 0 {
+		daysAgoStr = i18n.T(d.lang, i18n.KeyDaysAgoN, hit.DaysAgo)
+	}
+
+	return &Signal{
+		Ticker:  ticker,
+		Type:    "strategy_trend_pullback",
+		Message: i18n.T(d.lang, i18n.KeyStrategyTrendPullback, ticker, daysAgoStr),
+	}, newState
+}
+
+func (d *Detector) CheckTrendBreakout(ticker string, candles []data.Candle, prevState string) (sig *Signal, newState string) {
+	hit := TrendBreakout(candles, DefaultScreenParams(market.Of(ticker)))
+	if hit == nil {
+		return nil, ""
+	}
+	newState = "hit"
+	if prevState == "hit" {
+		return nil, newState
+	}
+
+	daysAgoStr := i18n.T(d.lang, i18n.KeyDaysAgoToday)
+	if hit.DaysAgo > 0 {
+		daysAgoStr = i18n.T(d.lang, i18n.KeyDaysAgoN, hit.DaysAgo)
+	}
+
+	return &Signal{
+		Ticker:  ticker,
+		Type:    "strategy_trend_breakout",
+		Message: i18n.T(d.lang, i18n.KeyStrategyTrendBreakout, ticker, daysAgoStr),
 	}, newState
 }
