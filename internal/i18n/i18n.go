@@ -68,13 +68,12 @@ const (
 	KeyAnalyzing            Key = "analyzing"
 	KeyWatchlistQueryFailed Key = "watchlist_query_failed"
 	KeyLLMFailed            Key = "llm_failed"
-	KeyNoRecommendations    Key = "no_recommendations"
 	// KeyRecParseFailed is the LLM 解析失敗觀測 notification (PLAN.md, UX 剩餘項):
 	// sent when the LLM replied with non-empty text but the reply had zero
 	// parseable [TICKER: ...] blocks (llm.ErrRecommendationParseFailed) — a
-	// formatting drift, distinct from a legitimate "no recommendations" reply,
-	// which still goes through KeyNoRecommendations/KeyNoRecommendationsToday
-	// with no error at all.
+	// formatting drift, distinct from a legitimate empty-recommendations reply,
+	// which is silent (see runRecommend) / KeyNoRecommendationsToday, with no
+	// error at all.
 	KeyRecParseFailed       Key = "rec_parse_failed"
 	KeyRecommendationsTitle Key = "recommendations_title"
 	// KeyRecommendUsage is Phase 6 PR2's /recommend [tw|us] argument-parsing

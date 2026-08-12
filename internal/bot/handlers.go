@@ -158,7 +158,6 @@ func (b *Bot) runRecommend(ctx context.Context, m market.MarketID) {
 	}
 
 	if len(recs) == 0 {
-		b.Send(i18n.T(b.lang, i18n.KeyNoRecommendations))
 		return
 	}
 
