@@ -104,9 +104,15 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
 
 - `internal/signals` — pure functions for rule-based technical signals (RSI, MACD, Stochastic KD,
   Bollinger Bandwidth, MA Alignment, Volume-Price, New High, Relative Strength, Lowest Close) and
-  strategy screens (Squeeze Breakout, Box Bottom Rebound), independent of Telegram/LLM/DB. Stateful
-  checks (`CheckRSIState`, `CheckMACDCross`, etc.) take and return persisted state as parameters — the
-  DB round-trip lives in `internal/bot`, not here. Details: **[docs/architecture/signals.md](docs/architecture/signals.md)**.
+  strategy screens (Squeeze Breakout, Box Bottom Rebound, and Phase 14's Trend Breakout/Trend Pullback),
+  independent of Telegram/LLM/DB. Every screen follows the same three-layer shape: `Check<Name>Exact(candles,
+  params) bool` (pure boolean gate), `<Name>(candles, params) *StrategyHit` (wraps the exact check with a
+  5-day lookback so a signal from a few days ago still surfaces), and `Detector.Check<Name>(ticker, candles,
+  prevState) (*Signal, newState)` (adds alert-once-per-occurrence dedup on top). All four screens take a
+  `ScreenParams` (from `DefaultScreenParams(market.MarketID)`, Phase 13) rather than package-level constants,
+  since thresholds differ between TW and US. Stateful checks (`CheckRSIState`, `CheckMACDCross`, etc.) take
+  and return persisted state as parameters — the DB round-trip lives in `internal/bot`, not here. Details:
+  **[docs/architecture/signals.md](docs/architecture/signals.md)**.
 
 - `internal/scheduler` — thin wrapper around `robfig/cron` fixed to `time.FixedZone("CST", 8*3600)`
   (avoids needing `tzdata` in the Alpine Docker image). Registers the daily report, closing snapshot
@@ -146,7 +152,12 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   `/portfolio`'s options section and the expiry-scan job (hung off `RunClosingSnapshot(US)`, resolved
   only via a `pending_actions` confirm/reject, never automatically — an ITM expiry is an
   assignment/exercise, not a zero). `/option TICKER [call|put|csp|cc]` (defaults to `call`) runs
-  `internal/option.Select` against a live chain and replies with the passing contracts.
+  `internal/option.Select` against a live chain and replies with the passing contracts. Phase 14's Trend
+  Breakout/Trend Pullback strategies are wired into `checkStatefulSignals` (`jobs.go`) alongside the
+  existing Squeeze Breakout/Box Bottom Rebound screens; Trend Breakout additionally short-circuits its own
+  signal via `revenueGrowthOK` when `ScreenParams.RequireRevenueGrowth` is set — a fundamentals-based gate
+  evaluated in `internal/bot` (reading `MonthRevenueYoYPct` for TW vs `RevenueGrowthYoY` for US via
+  `b.cachedFundamentals`), not in `internal/signals`, since the latter stays DB/network-free.
   Full command-by-command and job-by-job rationale: **[docs/architecture/bot.md](docs/architecture/bot.md)**.
 
 - `internal/mcptools` — Phase 3.5's MCP (Model Context Protocol) tool surface for chat, using the

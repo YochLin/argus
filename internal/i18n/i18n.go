@@ -711,4 +711,13 @@ const (
 	KeyOptionSelectFailed       Key = "option_select_failed"
 	KeyOptionSelectNoCandidates Key = "option_select_no_candidates"
 	KeyOptionSelectLine         Key = "option_select_line"
+
+	// KeyStrategyTrendBreakout/KeyStrategyTrendPullback (Phase 14 網 3/網 4)
+	// are alert messages, parallel to KeyStrategySqueezeBreakout/
+	// KeyStrategyBoxBottom; KeyStrategyBreakoutName/KeyStrategyPullbackName
+	// are the short display names writeStockSection's hit.Name mapping uses.
+	KeyStrategyTrendBreakout Key = "strategy_trend_breakout"
+	KeyStrategyTrendPullback Key = "strategy_trend_pullback"
+	KeyStrategyBreakoutName  Key = "strategy_breakout_name"
+	KeyStrategyPullbackName  Key = "strategy_pullback_name"
 )
