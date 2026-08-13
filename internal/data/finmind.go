@@ -295,11 +295,16 @@ func (f *FinMind) GetCompanyName(ticker string) (string, error) {
 	return name, nil
 }
 
-// TrustNetDay is one trading day's Investment Trust (投信) net buy in
-// shares, Phase 15's 網 5【主力跟單】input.
+// TrustNetDay is one trading day's Investment Trust (投信) and Foreign
+// Investor (外資) net buy in shares, 網 5【主力跟單】's input. ForeignNet
+// rides along on the same row/request as Net (both columns are in the same
+// Wide dataset) purely as a same-day sell-pressure filter — see
+// ScreenParams.TrustForeignSellVolPctMax — not because foreign flow is
+// itself a signal here.
 type TrustNetDay struct {
-	Date time.Time
-	Net  int64 // buy - sell, can be negative
+	Date       time.Time
+	Net        int64 // 投信 buy - sell, can be negative
+	ForeignNet int64 // 外資 buy - sell, can be negative
 }
 
 // TrustNetProvider is TW-only (see docs/phase-15-trust-follow.md §1 —
@@ -314,14 +319,16 @@ type finmindTrustRow struct {
 	Date                string `json:"date"`
 	InvestmentTrustBuy  int64  `json:"Investment_Trust_buy"`
 	InvestmentTrustSell int64  `json:"Investment_Trust_sell"`
+	ForeignInvestorBuy  int64  `json:"Foreign_Investor_buy"`
+	ForeignInvestorSell int64  `json:"Foreign_Investor_sell"`
 }
 
-// GetTrustNetSeries fetches days worth of investment-trust net buy/sell via
-// TaiwanStockInstitutionalInvestorsBuySellWide (one row/day, not the 5-6
-// row/day long-table form — see docs/phase-15-trust-follow.md §4.1). The
-// calendar-day window is doubled to absorb weekends/holidays that don't
-// carry a trading row. Returned oldest-first, matching internal/signals'
-// slice convention.
+// GetTrustNetSeries fetches days worth of investment-trust/foreign-investor
+// net buy/sell via TaiwanStockInstitutionalInvestorsBuySellWide (one
+// row/day, not the 5-6 row/day long-table form — see
+// docs/phase-15-trust-follow.md §4.1). The calendar-day window is doubled to
+// absorb weekends/holidays that don't carry a trading row. Returned
+// oldest-first, matching internal/signals' slice convention.
 func (f *FinMind) GetTrustNetSeries(ticker string, days int) ([]TrustNetDay, error) {
 	if market.Of(ticker) != market.TW {
 		return nil, errNotTWTicker
@@ -340,7 +347,11 @@ func (f *FinMind) GetTrustNetSeries(ticker string, days int) ([]TrustNetDay, err
 		if err != nil {
 			continue
 		}
-		out = append(out, TrustNetDay{Date: t, Net: r.InvestmentTrustBuy - r.InvestmentTrustSell})
+		out = append(out, TrustNetDay{
+			Date:       t,
+			Net:        r.InvestmentTrustBuy - r.InvestmentTrustSell,
+			ForeignNet: r.ForeignInvestorBuy - r.ForeignInvestorSell,
+		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Date.Before(out[j].Date) })
 	return out, nil

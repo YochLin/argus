@@ -68,8 +68,8 @@ func finmindServer(t *testing.T) *httptest.Server {
 			]}`))
 		case "TaiwanStockInstitutionalInvestorsBuySellWide":
 			w.Write([]byte(`{"msg":"success","status":200,"data":[
-				{"date":"2026-07-23","stock_id":"2330","Investment_Trust_buy":1000000,"Investment_Trust_sell":300000},
-				{"date":"2026-07-22","stock_id":"2330","Investment_Trust_buy":200000,"Investment_Trust_sell":500000}
+				{"date":"2026-07-23","stock_id":"2330","Investment_Trust_buy":1000000,"Investment_Trust_sell":300000,"Foreign_Investor_buy":500000,"Foreign_Investor_sell":4000000},
+				{"date":"2026-07-22","stock_id":"2330","Investment_Trust_buy":200000,"Investment_Trust_sell":500000,"Foreign_Investor_buy":1000000,"Foreign_Investor_sell":600000}
 			]}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -199,11 +199,11 @@ func TestFinMindGetTrustNetSeries(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("len(rows) = %d, want 2", len(rows))
 	}
-	if rows[0].Date.Format("2006-01-02") != "2026-07-22" || rows[0].Net != 200000-500000 {
-		t.Errorf("rows[0] = %+v, want date 2026-07-22, net -300000", rows[0])
+	if rows[0].Date.Format("2006-01-02") != "2026-07-22" || rows[0].Net != 200000-500000 || rows[0].ForeignNet != 1000000-600000 {
+		t.Errorf("rows[0] = %+v, want date 2026-07-22, net -300000, foreign net 400000", rows[0])
 	}
-	if rows[1].Date.Format("2006-01-02") != "2026-07-23" || rows[1].Net != 1000000-300000 {
-		t.Errorf("rows[1] = %+v, want date 2026-07-23, net 700000", rows[1])
+	if rows[1].Date.Format("2006-01-02") != "2026-07-23" || rows[1].Net != 1000000-300000 || rows[1].ForeignNet != 500000-4000000 {
+		t.Errorf("rows[1] = %+v, want date 2026-07-23, net 700000, foreign net -3500000", rows[1])
 	}
 }
 
