@@ -23,6 +23,9 @@ func TestFinMindTWGuard(t *testing.T) {
 	if _, err := f.GetCompanyName("AAPL"); err != errNotTWTicker {
 		t.Errorf("GetCompanyName(AAPL) error = %v, want errNotTWTicker", err)
 	}
+	if _, err := f.GetTrustNetSeries("AAPL", 60); err != errNotTWTicker {
+		t.Errorf("GetTrustNetSeries(AAPL) error = %v, want errNotTWTicker", err)
+	}
 }
 
 // finmindServer serves recorded 2330 (TSMC) responses — live-curled from
@@ -62,6 +65,11 @@ func finmindServer(t *testing.T) *httptest.Server {
 			w.Write([]byte(`{"msg":"success","status":200,"data":[
 				{"industry_category":"半導體業","stock_id":"2330","stock_name":"台積電","type":"twse","date":"2026-07-24"},
 				{"industry_category":"電子工業","stock_id":"2330","stock_name":"台積電","type":"twse","date":"2026-07-24"}
+			]}`))
+		case "TaiwanStockInstitutionalInvestorsBuySellWide":
+			w.Write([]byte(`{"msg":"success","status":200,"data":[
+				{"date":"2026-07-23","stock_id":"2330","Investment_Trust_buy":1000000,"Investment_Trust_sell":300000},
+				{"date":"2026-07-22","stock_id":"2330","Investment_Trust_buy":200000,"Investment_Trust_sell":500000}
 			]}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -171,6 +179,31 @@ func TestFinMindGetCompanyNameCaches(t *testing.T) {
 	}
 	if requests != 1 {
 		t.Errorf("requests = %d, want 1 (later calls should hit nameCache)", requests)
+	}
+}
+
+// TestFinMindGetTrustNetSeries confirms the Wide dataset's buy/sell columns
+// net out correctly and the result comes back oldest-first even though the
+// mock (like the real API) doesn't guarantee row order.
+func TestFinMindGetTrustNetSeries(t *testing.T) {
+	srv := finmindServer(t)
+	defer srv.Close()
+
+	f := NewFinMind("")
+	f.baseURL = srv.URL
+
+	rows, err := f.GetTrustNetSeries("2330", 60)
+	if err != nil {
+		t.Fatalf("GetTrustNetSeries: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("len(rows) = %d, want 2", len(rows))
+	}
+	if rows[0].Date.Format("2006-01-02") != "2026-07-22" || rows[0].Net != 200000-500000 {
+		t.Errorf("rows[0] = %+v, want date 2026-07-22, net -300000", rows[0])
+	}
+	if rows[1].Date.Format("2006-01-02") != "2026-07-23" || rows[1].Net != 1000000-300000 {
+		t.Errorf("rows[1] = %+v, want date 2026-07-23, net 700000", rows[1])
 	}
 }
 
