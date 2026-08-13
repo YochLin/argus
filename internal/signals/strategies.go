@@ -200,12 +200,25 @@ func CheckSqueezeBreakoutExact(candles []data.Candle, p ScreenParams) bool {
 
 func CheckBoxBottomReboundExact(candles []data.Candle, p ScreenParams) bool {
 	n := len(candles)
-	if n < 60 {
+	if n < 60+p.MA60SlopeLookback {
 		return false
 	}
 	highs := data.Highs(candles)
 	lows := data.Lows(candles)
 	closes := data.Closes(candles)
+
+	// 0. Trend pre-filter (2026-08-12 audit, §11.7/§11.7): box-bottom dip
+	// buying with no regard for trend is a repeatable 3~4σ loser vs baseline
+	// (docs/phase-14-strategy-screens-2.md §11.5/§11.7). Reuses 網 4's exact MA60
+	// gate rather than inventing a new one.
+	ma60Today := MA(closes, 60)
+	ma60Past := MA(closes[:n-p.MA60SlopeLookback], 60)
+	if ma60Today == 0 || ma60Past == 0 || ma60Today <= ma60Past {
+		return false
+	}
+	if closes[n-1] <= ma60Today {
+		return false
+	}
 
 	// 1. Box shape: 30-day close range <= p.BoxMaxRangePct
 	boxCloses := closes[n-boxWindowDays:]
