@@ -27,7 +27,7 @@ var tw150TickersRaw string
 // record loop and the summary printout.
 var baseStrategies = []string{"squeeze_breakout", "box_bottom", "trend_breakout", "trend_pullback"}
 
-const trustStrategy = "trust_accumulation"
+const trustStrategy = "trust_follow"
 
 const baselineStrategy = "baseline"
 
@@ -112,7 +112,7 @@ func main() {
 
 	// Phase 15 §4.5: trust-net fetch accounting, counted and printed
 	// separately rather than folded silently into fetchFailed — a failure
-	// here just means that ticker's trust_accumulation gets skipped for the
+	// here just means that ticker's trust_follow gets skipped for the
 	// day, not that the ticker itself is dropped from the study.
 	trustFetchFailed := 0
 	var trustFailedTickers []string
@@ -145,10 +145,12 @@ func main() {
 		fetched++
 
 		// Phase 15 §4.5: one extra FinMind request per TW ticker, whole
-		// history in one shot rather than day-by-day — trustAligned stays
-		// nil on failure, which just drops trust_accumulation for this
-		// ticker's records below (baseline/other strategies are unaffected).
-		var trustAligned []int64
+		// history in one shot rather than day-by-day — trustAligned/
+		// foreignAligned stay nil on failure, which just drops trust_follow
+		// for this ticker's records below (baseline/other strategies are
+		// unaffected). Both series ride the same request/rows (see
+		// data.TrustNetDay).
+		var trustAligned, foreignAligned []int64
 		if m == market.TW {
 			time.Sleep(200 * time.Millisecond) // rate limit
 			rows, err := finmind.GetTrustNetSeries(ticker, len(candles))
@@ -157,6 +159,7 @@ func main() {
 				trustFailedTickers = append(trustFailedTickers, ticker)
 			} else {
 				trustAligned = signals.AlignTrustNet(candles, rows)
+				foreignAligned = signals.AlignForeignNet(candles, rows)
 			}
 		}
 
@@ -217,7 +220,7 @@ func main() {
 				"trend_pullback":   signals.CheckTrendPullbackExact(sub, screenParams),
 			}
 			if trustAligned != nil {
-				hits[trustStrategy] = signals.CheckTrustAccumulationExact(sub, trustAligned[:t+1], screenParams)
+				hits[trustStrategy] = signals.CheckTrustFollowExact(sub, trustAligned[:t+1], foreignAligned[:t+1], screenParams)
 			}
 
 			for _, strat := range strategies {
@@ -281,7 +284,7 @@ func main() {
 	printSummary(benchTicker, "Trend Breakout (網 3)", filterByStrategy(records, "trend_breakout"), &baseline10x20{baseline10, baseline20})
 	printSummary(benchTicker, "Trend Pullback (網 4)", filterByStrategy(records, "trend_pullback"), &baseline10x20{baseline10, baseline20})
 	if m == market.TW {
-		printSummary(benchTicker, "Trust Accumulation (網 5，主力跟單)", filterByStrategy(records, trustStrategy), &baseline10x20{baseline10, baseline20})
+		printSummary(benchTicker, "Trust Follow (網 5，主力跟單 v2)", filterByStrategy(records, trustStrategy), &baseline10x20{baseline10, baseline20})
 	}
 }
 
