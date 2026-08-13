@@ -649,4 +649,5 @@ var zhMessages = map[Key]string{
 	KeyStrategyTrendPullback: "🎯 %s 觸發【趨勢回檔】(%s)：季線上彎 + 拉回月線量縮 + KD 低檔轉折 + 止跌 K 線",
 	KeyStrategyBreakoutName:  "趨勢突破",
 	KeyStrategyPullbackName:  "趨勢回檔",
+	KeyStrategyTrustFollow:   "🐳 %s 觸發【主力跟單】(%s)：投信近 %d 日買超佔量 %.1f%% + 站上季線且上彎",
 }

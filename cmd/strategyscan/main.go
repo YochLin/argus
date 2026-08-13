@@ -21,9 +21,13 @@ var sp500TickersRaw string
 //go:embed tw150_tickers.txt
 var tw150TickersRaw string
 
-// strategies lists the four rule-based screens in a fixed order shared by the
-// hit map, the record loop and the summary printout.
-var strategies = []string{"squeeze_breakout", "box_bottom", "trend_breakout", "trend_pullback"}
+// baseStrategies are the four technical screens common to both markets;
+// twStrategies adds Phase 15's 網 5 (TW only — no US equivalent, see
+// docs/phase-15-trust-follow.md §6). Order is shared by the hit map, the
+// record loop and the summary printout.
+var baseStrategies = []string{"squeeze_breakout", "box_bottom", "trend_breakout", "trend_pullback"}
+
+const trustStrategy = "trust_follow"
 
 const baselineStrategy = "baseline"
 
@@ -67,9 +71,11 @@ func main() {
 
 	var tickers []string
 	benchTicker := "SPY"
+	strategies := baseStrategies
 	if m == market.TW {
 		tickers = parseTickers(tw150TickersRaw)
 		benchTicker = "0050"
+		strategies = append(append([]string{}, baseStrategies...), trustStrategy)
 		fmt.Printf("Loaded %d tw150 tickers.\n", len(tickers))
 	} else {
 		tickers = parseTickers(sp500TickersRaw)
@@ -78,6 +84,10 @@ func main() {
 	screenParams := signals.DefaultScreenParams(m)
 
 	yahoo := data.NewYahoo()
+	// docs/phase-15-trust-follow.md §4.1: FinMind's free tier serves every
+	// dataset used here unauthenticated (live-verified), so this backtest
+	// tool doesn't gate construction on FINMIND_TOKEN the way the bot does.
+	finmind := data.NewFinMind(os.Getenv("FINMIND_TOKEN"))
 
 	fmt.Printf("Fetching %s history for market regime and benchmark...\n", benchTicker)
 	benchCandles, err := yahoo.GetHistory(benchTicker, *rangeFlag)
@@ -99,6 +109,13 @@ func main() {
 	// §10.2: fetch accounting — "503 listed" was never the same as "503 fetched".
 	fetched, fetchFailed, tooShort := 0, 0, 0
 	var failedTickers []string
+
+	// Phase 15 §4.5: trust-net fetch accounting, counted and printed
+	// separately rather than folded silently into fetchFailed — a failure
+	// here just means that ticker's trust_follow gets skipped for the
+	// day, not that the ticker itself is dropped from the study.
+	trustFetchFailed := 0
+	var trustFailedTickers []string
 
 	// §10.4: alert-once dedup, aligned with signals.strategyLookbackDays (unexported;
 	// value confirmed at internal/signals/strategies.go). lastHit is reset per ticker.
@@ -126,6 +143,25 @@ func main() {
 			continue
 		}
 		fetched++
+
+		// Phase 15 §4.5: one extra FinMind request per TW ticker, whole
+		// history in one shot rather than day-by-day — trustAligned/
+		// foreignAligned stay nil on failure, which just drops trust_follow
+		// for this ticker's records below (baseline/other strategies are
+		// unaffected). Both series ride the same request/rows (see
+		// data.TrustNetDay).
+		var trustAligned, foreignAligned []int64
+		if m == market.TW {
+			time.Sleep(200 * time.Millisecond) // rate limit
+			rows, err := finmind.GetTrustNetSeries(ticker, len(candles))
+			if err != nil {
+				trustFetchFailed++
+				trustFailedTickers = append(trustFailedTickers, ticker)
+			} else {
+				trustAligned = signals.AlignTrustNet(candles, rows)
+				foreignAligned = signals.AlignForeignNet(candles, rows)
+			}
+		}
 
 		lastHit := make(map[string]int) // strategy -> last recorded index t
 
@@ -183,6 +219,9 @@ func main() {
 				"trend_breakout":   signals.CheckTrendBreakoutExact(sub, screenParams),
 				"trend_pullback":   signals.CheckTrendPullbackExact(sub, screenParams),
 			}
+			if trustAligned != nil {
+				hits[trustStrategy] = signals.CheckTrustFollowExact(sub, trustAligned[:t+1], foreignAligned[:t+1], screenParams)
+			}
 
 			for _, strat := range strategies {
 				if !hits[strat] {
@@ -216,6 +255,16 @@ func main() {
 		}
 		fmt.Printf("Fetch failures (first %d of %d): %s\n", len(shown), len(failedTickers), strings.Join(shown, ", "))
 	}
+	if m == market.TW {
+		fmt.Printf("Trust-net (FinMind): %d fetch errors out of %d fetched tickers\n", trustFetchFailed, fetched)
+		if len(trustFailedTickers) > 0 {
+			shown := trustFailedTickers
+			if len(shown) > 10 {
+				shown = shown[:10]
+			}
+			fmt.Printf("Trust-net fetch failures (first %d of %d): %s\n", len(shown), len(trustFailedTickers), strings.Join(shown, ", "))
+		}
+	}
 
 	// ponytail: baseline keeps every (ticker, day) record in memory (~5y x 503
 	// tickers ~= 600k rows, ~90MB) rather than streaming stats — fine for an
@@ -234,6 +283,9 @@ func main() {
 	printSummary(benchTicker, "Box Bottom Rebound (網 2)", filterByStrategy(records, "box_bottom"), &baseline10x20{baseline10, baseline20})
 	printSummary(benchTicker, "Trend Breakout (網 3)", filterByStrategy(records, "trend_breakout"), &baseline10x20{baseline10, baseline20})
 	printSummary(benchTicker, "Trend Pullback (網 4)", filterByStrategy(records, "trend_pullback"), &baseline10x20{baseline10, baseline20})
+	if m == market.TW {
+		printSummary(benchTicker, "Trust Follow (網 5，主力跟單 v2)", filterByStrategy(records, trustStrategy), &baseline10x20{baseline10, baseline20})
+	}
 }
 
 func parseTickers(raw string) []string {

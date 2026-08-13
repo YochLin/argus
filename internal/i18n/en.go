@@ -660,4 +660,5 @@ Write only from the data actually provided above — omit any section you have n
 	KeyStrategyTrendPullback: "🎯 %s triggered [Trend Pullback] (%s): MA60 sloping up + pullback to MA20 volume dry-up + KD oversold turn + reversal bar",
 	KeyStrategyBreakoutName:  "Trend Breakout",
 	KeyStrategyPullbackName:  "Trend Pullback",
+	KeyStrategyTrustFollow:   "🐳 %s triggered [Trust Follow] (%s): %d-day trust buying at %.1f%% of volume + above rising MA60",
 }

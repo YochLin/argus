@@ -60,8 +60,11 @@ type finmindEnvelope struct {
 	Data   json.RawMessage `json:"data"`
 }
 
-func (f *FinMind) get(dataset, dataID, startDate string, out any) error {
+func (f *FinMind) get(dataset, dataID, startDate, endDate string, out any) error {
 	url := fmt.Sprintf("%s?dataset=%s&data_id=%s&start_date=%s", f.baseURL, dataset, dataID, startDate)
+	if endDate != "" {
+		url += "&end_date=" + endDate
+	}
 	if f.token != "" {
 		url += "&token=" + f.token
 	}
@@ -117,7 +120,7 @@ func (f *FinMind) GetFundamentals(ticker string) (*Fundamentals, error) {
 
 	var perRows []finmindPERRow
 	perStart := time.Now().AddDate(0, 0, -10).Format("2006-01-02")
-	if err := f.get("TaiwanStockPER", ticker, perStart, &perRows); err != nil {
+	if err := f.get("TaiwanStockPER", ticker, perStart, "", &perRows); err != nil {
 		return nil, err
 	}
 	if len(perRows) == 0 {
@@ -139,7 +142,7 @@ func (f *FinMind) GetFundamentals(ticker string) (*Fundamentals, error) {
 	// internal/bot's fetchStockData.
 	statementStart := time.Now().AddDate(0, -6, 0).Format("2006-01-02")
 	var stRows []finmindStatementRow
-	if err := f.get("TaiwanStockFinancialStatements", ticker, statementStart, &stRows); err == nil {
+	if err := f.get("TaiwanStockFinancialStatements", ticker, statementStart, "", &stRows); err == nil {
 		var latestDate string
 		for _, r := range stRows {
 			if r.Date > latestDate {
@@ -167,7 +170,7 @@ func (f *FinMind) GetFundamentals(ticker string) (*Fundamentals, error) {
 
 	revenueStart := time.Now().AddDate(0, -14, 0).Format("2006-01-02")
 	var revRows []finmindRevenueRow
-	if err := f.get("TaiwanStockMonthRevenue", ticker, revenueStart, &revRows); err == nil && len(revRows) > 0 {
+	if err := f.get("TaiwanStockMonthRevenue", ticker, revenueStart, "", &revRows); err == nil && len(revRows) > 0 {
 		sort.Slice(revRows, func(i, j int) bool { return revRows[i].Date < revRows[j].Date })
 		latest := revRows[len(revRows)-1]
 		for _, r := range revRows {
@@ -196,7 +199,7 @@ func (f *FinMind) GetFinancialStatements(ticker, freq string) (*FinancialStateme
 	}
 	var rows []finmindStatementRow
 	start := time.Now().AddDate(-2, 0, 0).Format("2006-01-02")
-	if err := f.get("TaiwanStockFinancialStatements", ticker, start, &rows); err != nil {
+	if err := f.get("TaiwanStockFinancialStatements", ticker, start, "", &rows); err != nil {
 		return nil, err
 	}
 	if len(rows) == 0 {
@@ -277,7 +280,7 @@ func (f *FinMind) GetCompanyName(ticker string) (string, error) {
 	f.nameMu.Unlock()
 
 	var rows []finmindInfoRow
-	if err := f.get("TaiwanStockInfo", ticker, "", &rows); err != nil {
+	if err := f.get("TaiwanStockInfo", ticker, "", "", &rows); err != nil {
 		return "", err
 	}
 	if len(rows) == 0 || rows[0].StockName == "" {
@@ -290,4 +293,66 @@ func (f *FinMind) GetCompanyName(ticker string) (string, error) {
 	f.nameMu.Unlock()
 
 	return name, nil
+}
+
+// TrustNetDay is one trading day's Investment Trust (投信) and Foreign
+// Investor (外資) net buy in shares, 網 5【主力跟單】's input. ForeignNet
+// rides along on the same row/request as Net (both columns are in the same
+// Wide dataset) purely as a same-day sell-pressure filter — see
+// ScreenParams.TrustForeignSellVolPctMax — not because foreign flow is
+// itself a signal here.
+type TrustNetDay struct {
+	Date       time.Time
+	Net        int64 // 投信 buy - sell, can be negative
+	ForeignNet int64 // 外資 buy - sell, can be negative
+}
+
+// TrustNetProvider is TW-only (see docs/phase-15-trust-follow.md §1 —
+// investment-trust *flow* is the only free-tier data available; *holding
+// ratio* has no free source at all), same convention as
+// InstitutionalFlowProvider.
+type TrustNetProvider interface {
+	GetTrustNetSeries(ticker string, days int) ([]TrustNetDay, error)
+}
+
+type finmindTrustRow struct {
+	Date                string `json:"date"`
+	InvestmentTrustBuy  int64  `json:"Investment_Trust_buy"`
+	InvestmentTrustSell int64  `json:"Investment_Trust_sell"`
+	ForeignInvestorBuy  int64  `json:"Foreign_Investor_buy"`
+	ForeignInvestorSell int64  `json:"Foreign_Investor_sell"`
+}
+
+// GetTrustNetSeries fetches days worth of investment-trust/foreign-investor
+// net buy/sell via TaiwanStockInstitutionalInvestorsBuySellWide (one
+// row/day, not the 5-6 row/day long-table form — see
+// docs/phase-15-trust-follow.md §4.1). The calendar-day window is doubled to
+// absorb weekends/holidays that don't carry a trading row. Returned
+// oldest-first, matching internal/signals' slice convention.
+func (f *FinMind) GetTrustNetSeries(ticker string, days int) ([]TrustNetDay, error) {
+	if market.Of(ticker) != market.TW {
+		return nil, errNotTWTicker
+	}
+
+	start := time.Now().AddDate(0, 0, -days*2).Format("2006-01-02")
+	end := time.Now().Format("2006-01-02")
+	var rows []finmindTrustRow
+	if err := f.get("TaiwanStockInstitutionalInvestorsBuySellWide", ticker, start, end, &rows); err != nil {
+		return nil, err
+	}
+
+	out := make([]TrustNetDay, 0, len(rows))
+	for _, r := range rows {
+		t, err := time.Parse("2006-01-02", r.Date)
+		if err != nil {
+			continue
+		}
+		out = append(out, TrustNetDay{
+			Date:       t,
+			Net:        r.InvestmentTrustBuy - r.InvestmentTrustSell,
+			ForeignNet: r.ForeignInvestorBuy - r.ForeignInvestorSell,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Date.Before(out[j].Date) })
+	return out, nil
 }

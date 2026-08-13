@@ -21,6 +21,8 @@ const (
 
 	FamilyStrategyPullback = "strategy_pullback"
 	FamilyStrategyBreakout = "strategy_breakout"
+
+	FamilyStrategyTrust = "strategy_trust"
 )
 
 // ScreenParams holds the market-calibrated thresholds CheckSqueezeBreakoutExact/
@@ -58,6 +60,11 @@ type ScreenParams struct {
 	// 基本面短路求值開關（bot 層依此決定是否打 FinMind/Finnhub，見 internal/bot）
 	RequireRevenueGrowth bool    // TW true / US false
 	MinRevenueGrowthPct  float64 // 10.0
+
+	// 網 5 主力跟單（Phase 15 v2，TW only）
+	TrustNetVolPctMin         float64 // 短窗（3或5日）投信買超 / 該窗成交量 下限 %，3.0
+	TrustForeignSellVolPctMax float64 // 當日外資賣超 / 當日成交量 下限（負值，跌破即排除「土洋對作」），-3.0
+	RequireTrustData          bool    // TW true / US false —— bot 層據此決定要不要打 FinMind
 }
 
 // DefaultScreenParams returns m's calibrated ScreenParams. TW's
@@ -80,6 +87,7 @@ func DefaultScreenParams(m market.MarketID) ScreenParams {
 			NewHighLookback: 60, BreakoutVolMA20: 1.5, MaxMA20DevPct: 12.0, MaxUpperWickRatio: 0.5,
 			PullbackMA20DevPct: 2.0, PullbackVolRatio: 0.8, PullbackKDLevel: 30.0, MA60SlopeLookback: 10,
 			RequireRevenueGrowth: true, MinRevenueGrowthPct: 10.0,
+			TrustNetVolPctMin: 3.0, TrustForeignSellVolPctMax: -3.0, RequireTrustData: true,
 		}
 	}
 	return ScreenParams{
@@ -87,6 +95,7 @@ func DefaultScreenParams(m market.MarketID) ScreenParams {
 		NewHighLookback: 60, BreakoutVolMA20: 1.5, MaxMA20DevPct: 15.0, MaxUpperWickRatio: 0.5,
 		PullbackMA20DevPct: 2.0, PullbackVolRatio: 0.8, PullbackKDLevel: 30.0, MA60SlopeLookback: 10,
 		RequireRevenueGrowth: false, MinRevenueGrowthPct: 10.0,
+		RequireTrustData: false,
 	}
 }
 

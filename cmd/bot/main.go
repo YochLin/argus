@@ -199,6 +199,7 @@ func main() {
 	var earningsProvider data.EarningsProvider
 	var marketNewsProvider data.MarketNewsProvider
 	var companyNameProvider data.CompanyNameProvider
+	var trustNetProvider data.TrustNetProvider
 	fundamentalsRouter := &data.FundamentalsRouter{}
 	if finnhubKey != "" {
 		finnhub := data.NewFinnhub(finnhubKey)
@@ -220,6 +221,7 @@ func main() {
 		finmind := data.NewFinMind(finmindToken)
 		fundamentalsRouter.TW = finmind
 		companyNameProvider = finmind
+		trustNetProvider = finmind
 	}
 	// fundamentalsProvider stays nil (not a router wrapping two nil fields)
 	// when neither key is set, preserving every existing `if b.fundamentals
@@ -276,6 +278,7 @@ func main() {
 		TWMarketNews:           twMarketNews,
 		TWMovers:               twMovers,
 		CompanyNames:           companyNameProvider,
+		TrustNet:               trustNetProvider,
 		OptionChain:            yahoo,
 		History:                yahoo,
 		LLM:                    llmClient,

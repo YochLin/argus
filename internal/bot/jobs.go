@@ -583,6 +583,39 @@ func (b *Bot) checkStatefulSignals(ticker string, candles []data.Candle, isBearR
 		}
 	}
 
+	// Strategy 5: Trust Follow (Phase 15 網 5, TW only) — the FinMind call is
+	// short-circuited behind TrustFollowTechnicalGate the same way Strategy
+	// 3's revenue-growth gate is short-circuited (see revenueGrowthOK's doc
+	// comment): only tickers that already clear the candle-only liquidity/
+	// trend/deviation conditions are worth a network request, keeping this to
+	// a handful of TW tickers per day rather than the whole universe.
+	p := signals.DefaultScreenParams(market.Of(ticker))
+	if p.RequireTrustData && b.trustNet != nil && signals.TrustFollowTechnicalGate(candles, p) {
+		prevTrust, err := b.db.GetSignalState(ticker, signals.FamilyStrategyTrust)
+		if err != nil {
+			log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategyTrust, err)
+		}
+		rows, err := b.trustNet.GetTrustNetSeries(ticker, len(candles))
+		if err != nil {
+			log.Printf("trust net %s: %v", ticker, err)
+		} else {
+			trustAligned := signals.AlignTrustNet(candles, rows)
+			foreignAligned := signals.AlignForeignNet(candles, rows)
+			sig, newTrust := b.detector.CheckTrustFollow(ticker, candles, trustAligned, foreignAligned, prevTrust)
+			if sig != nil {
+				if isBearRegime {
+					sig.Message += "\n" + i18n.T(b.lang, i18n.KeyStrategyBearRegimeWarning)
+				}
+				out = append(out, *sig)
+			}
+			if newTrust != prevTrust {
+				if err := b.db.SetSignalState(ticker, signals.FamilyStrategyTrust, newTrust); err != nil {
+					log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategyTrust, err)
+				}
+			}
+		}
+	}
+
 	return out
 }
 
