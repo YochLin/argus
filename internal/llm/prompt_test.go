@@ -518,6 +518,15 @@ func TestBuildRecommendationPromptOmitsRecentLessonsWhenEmpty(t *testing.T) {
 	}
 }
 
+func TestBuildRecommendationPromptUsesFocusedOutputRules(t *testing.T) {
+	prompt := buildRecommendationPrompt(i18n.EN, nil, nil, nil, nil, nil, false)
+	for _, want := range []string{"Position:", "worth buying now", "omit the entire block"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("buildRecommendationPrompt() missing focused-output rule %q, got:\n%s", want, prompt)
+		}
+	}
+}
+
 func TestWriteStockSectionRendersPhase310TechnicalsAndStrategyHits(t *testing.T) {
 	stochK, stochD := 75.5, 68.2
 	bandwidth := 0.085

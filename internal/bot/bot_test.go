@@ -740,6 +740,26 @@ func TestSplitRecsBySource(t *testing.T) {
 	}
 }
 
+func TestFilterRecsForDisplay(t *testing.T) {
+	recs := []llm.Recommendation{
+		{Ticker: "AAPL", Action: "HOLD"},
+		{Ticker: "MSFT", Action: "HOLD"},
+		{Ticker: "NVDA", Action: "BUY"},
+		{Ticker: "TSLA", Action: "SELL"},
+	}
+	held := map[string]bool{"AAPL": true}
+
+	got := filterRecsForDisplay(recs, held)
+	want := []llm.Recommendation{
+		{Ticker: "AAPL", Action: "HOLD"},
+		{Ticker: "NVDA", Action: "BUY"},
+		{Ticker: "TSLA", Action: "SELL"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("filterRecsForDisplay() = %+v, want %+v", got, want)
+	}
+}
+
 func TestFormatRecLine(t *testing.T) {
 	t.Run("includes the action separator when Action is set", func(t *testing.T) {
 		r := llm.Recommendation{Ticker: "MSFT", Action: "BUY", Reason: "cloud growth."}

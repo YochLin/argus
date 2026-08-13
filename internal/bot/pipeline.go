@@ -123,12 +123,16 @@ func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommen
 
 	prices := make(map[string]float64)
 	atrs := make(map[string]float64)
+	held := make(map[string]bool)
 	for _, list := range stockLists {
 		for _, s := range list {
 			if s.Quote == nil {
 				continue
 			}
 			prices[s.Quote.Ticker] = s.Quote.Price
+			if s.Position != nil {
+				held[s.Quote.Ticker] = true
+			}
 			if s.Technicals != nil && s.Technicals.ATR14 > 0 {
 				atrs[s.Quote.Ticker] = s.Technicals.ATR14
 			}
@@ -137,10 +141,11 @@ func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommen
 
 	sizing := b.buildSizingLines(recs, prices, atrs, m)
 
-	watchlistRecs, candidateRecs := splitRecsBySource(recs, sources)
+	displayRecs := filterRecsForDisplay(recs, held)
+	watchlistRecs, candidateRecs := splitRecsBySource(displayRecs, sources)
 
 	b.Send(i18n.T(b.lang, i18n.KeyRecommendationsTitle))
-	b.sendRecGroup(i18n.KeyRecWatchlistSectionTitle, watchlistRecs, sizing, "")
+	b.sendRecGroup(i18n.KeyRecWatchlistSectionTitle, watchlistRecs, sizing, i18n.T(b.lang, i18n.KeyRecWatchlistNoneActionable))
 	candidatesEmptyMsg := i18n.T(b.lang, i18n.KeyRecCandidatesAnalyzedNone, candidateCount)
 	if candidateCount == 0 {
 		candidatesEmptyMsg = i18n.T(b.lang, i18n.KeyRecCandidatesUnavailable)
@@ -162,6 +167,22 @@ func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommen
 	}
 
 	b.applyPaperTrades(recs, prices, atrs, m)
+}
+
+// filterRecsForDisplay is the rendering-side guard for the focused
+// recommendation UX. The prompt asks the model to omit non-held watchlist
+// HOLD blocks, but a model can still ignore that instruction. Keep the raw
+// recommendations for persistence and tracking; only suppress those
+// non-actionable display rows here.
+func filterRecsForDisplay(recs []llm.Recommendation, held map[string]bool) []llm.Recommendation {
+	var filtered []llm.Recommendation
+	for _, r := range recs {
+		if r.Action == "HOLD" && !held[r.Ticker] {
+			continue
+		}
+		filtered = append(filtered, r)
+	}
+	return filtered
 }
 
 // splitRecsBySource divides recs into watchlist/held picks vs. new-candidate
@@ -191,10 +212,9 @@ func splitRecsBySource(recs []llm.Recommendation, sources map[string]string) (wa
 // would just read as a stray "1." on every single message. Sends no title
 // when recs is empty, so a day with no new-candidate picks doesn't leave a
 // dangling header with nothing under it — instead sends emptyMsg standalone
-// if non-empty (the watchlist section still passes "" to stay fully silent,
-// since a normal day with nothing to flag there needs no message; only the
-// candidates section distinguishes "analyzed N, picked none" from "had
-// nothing to analyze" — see PLAN.md's /recommend empty-result UX item).
+// if non-empty. The watchlist section now passes an explicit "nothing
+// actionable" message because filtering non-held HOLD rows makes an empty
+// watchlist group a normal outcome, not an invisible one.
 func (b *Bot) sendRecGroup(titleKey i18n.Key, recs []llm.Recommendation, sizing map[string]string, emptyMsg string) {
 	if len(recs) == 0 {
 		if emptyMsg != "" {

@@ -29,6 +29,7 @@ var zhMessages = map[Key]string{
 	KeyRecommendUsage:                "用法：/recommend [tw|us]（不帶參數＝依序跑美股與台股兩份報告）",
 	KeyRecWatchlistSectionTitle:      "📋 *自選股與持倉*\n",
 	KeyRecCandidatesSectionTitle:     "🆕 *新標的推薦*\n",
+	KeyRecWatchlistNoneActionable:    "自選股與持倉今日無需操作。",
 	KeyRecCandidatesAnalyzedNone:     "已分析 %d 檔候選標的，今日沒有值得推薦的新標的。",
 	KeyRecCandidatesUnavailable:      "今日無候選標的可分析（漲跌幅榜取得失敗或無策略命中）。",
 	KeySizingLine:                    "💰 風險倉位建議：可承受虧損 %s，停損參考 %s（現價−2×ATR），建議股數 %d\n",
@@ -309,8 +310,10 @@ var zhMessages = map[Key]string{
 	KeyRecTaskBlock: `
 ## 任務
 
-自選股的每一檔都必須給出明確操作建議，動作只能是 BUY、SELL、HOLD 三者之一；
-大盤熱門標的則只挑出你看好、值得買進的（最多 3 檔，動作為 BUY），沒有就不列。
+逐一查看上方的標的，但只輸出真正需要使用者注意的項目：區塊內有「持倉:」那行的
+每一檔都必須給出明確操作建議，動作只能是 BUY、SELL、HOLD 三者之一，並維持完整分析；
+沒有「持倉:」的自選股只有在你認為值得現在買進時才輸出（動作為 BUY），否則整個區塊不要輸出；
+大盤熱門標的維持相同規則，只挑出你看好、值得買進的（最多 3 檔，動作為 BUY），沒有就不列。
 
 評估每檔新聞時，請留意每則是利多還是利空，並融入你的原因說明。
 
@@ -330,7 +333,7 @@ var zhMessages = map[Key]string{
 說明這個理由為什麼不成立或影響有限；給出 SELL 建議則反過來，先列出最強的看多理由再
 說明為何不足以支撐續抱。這是為了避免你只挑對結論有利的資料說故事、忽略對立證據。
 
-輸出格式請嚴格遵守以下結構，每檔一個區塊，不要有額外文字：
+輸出格式請嚴格遵守以下結構，每個要輸出的標的一個區塊，不要有額外文字：
 
 [TICKER: AAPL]
 %s BUY
