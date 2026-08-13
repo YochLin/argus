@@ -736,8 +736,8 @@ const (
 	KeyStrategyTrendPullback Key = "strategy_trend_pullback"
 	KeyStrategyBreakoutName  Key = "strategy_breakout_name"
 
-	// KeyStrategyTrustAccumulation (Phase 15 網 5【主力跟單】, TW only) —
-	// same alert-message shape as the four screens above.
-	KeyStrategyTrustAccumulation Key = "strategy_trust_accumulation"
-	KeyStrategyPullbackName      Key = "strategy_pullback_name"
+	// KeyStrategyTrustFollow (Phase 15 v2 網 5【主力跟單】, TW only) — same
+	// alert-message shape as the four screens above.
+	KeyStrategyTrustFollow  Key = "strategy_trust_follow"
+	KeyStrategyPullbackName Key = "strategy_pullback_name"
 )

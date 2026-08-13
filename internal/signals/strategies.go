@@ -61,13 +61,10 @@ type ScreenParams struct {
 	RequireRevenueGrowth bool    // TW true / US false
 	MinRevenueGrowthPct  float64 // 10.0
 
-	// 網 5 主力跟單（Phase 15，TW only）
-	TrustLookback      int     // 行為序列回看窗（日），60
-	TrustConsecMin     int     // 連續買超天數下限，3
-	TrustConsecMax     int     // 連續買超天數上限（超過視為已在拉抬/出貨），8
-	TrustNetVolPctMin  float64 // 近 TrustLookback 日投信淨買超 / 總成交量 下限 %，1.0
-	TrustDormantPctMax float64 // 連買段之前的「沉睡段」同一比率上限 %，0.5
-	RequireTrustData   bool    // TW true / US false —— bot 層據此決定要不要打 FinMind
+	// 網 5 主力跟單（Phase 15 v2，TW only）
+	TrustNetVolPctMin         float64 // 短窗（3或5日）投信買超 / 該窗成交量 下限 %，3.0
+	TrustForeignSellVolPctMax float64 // 當日外資賣超 / 當日成交量 下限（負值，跌破即排除「土洋對作」），-3.0
+	RequireTrustData          bool    // TW true / US false —— bot 層據此決定要不要打 FinMind
 }
 
 // DefaultScreenParams returns m's calibrated ScreenParams. TW's
@@ -90,8 +87,7 @@ func DefaultScreenParams(m market.MarketID) ScreenParams {
 			NewHighLookback: 60, BreakoutVolMA20: 1.5, MaxMA20DevPct: 12.0, MaxUpperWickRatio: 0.5,
 			PullbackMA20DevPct: 2.0, PullbackVolRatio: 0.8, PullbackKDLevel: 30.0, MA60SlopeLookback: 10,
 			RequireRevenueGrowth: true, MinRevenueGrowthPct: 10.0,
-			TrustLookback: 60, TrustConsecMin: 3, TrustConsecMax: 8,
-			TrustNetVolPctMin: 1.0, TrustDormantPctMax: 0.5, RequireTrustData: true,
+			TrustNetVolPctMin: 3.0, TrustForeignSellVolPctMax: -3.0, RequireTrustData: true,
 		}
 	}
 	return ScreenParams{
