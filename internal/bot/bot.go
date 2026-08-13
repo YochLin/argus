@@ -61,6 +61,7 @@ type Bot struct {
 	twMarketNews  data.MarketNewsProvider         // TW's marketNews counterpart (cnyes), always non-nil — no API key required
 	twMovers      data.TWMarketMoversProvider     // TW's GetMarketMovers counterpart (TWSE OpenAPI), always non-nil — no API key required
 	companyNames  data.CompanyNameProvider        // nil if FINMIND_TOKEN isn't set
+	trustNet      data.TrustNetProvider           // Phase 15 網 5【主力跟單】, TW only; nil if FINMIND_TOKEN isn't set
 	optionChain   data.OptionChainProvider        // Phase 12, US-only; always non-nil in real use (Yahoo needs no API key), nil-checked anyway for tests that build a partial Bot
 	history       data.HistoryProvider
 	llm           *llm.Client
@@ -155,25 +156,26 @@ type Bot struct {
 // is deliberately not the 架構債 "設定整理" item (centralized env parsing/
 // validation in main.go); it only fixes this constructor's signature.
 type Config struct {
-	Token               string
-	ChatID              int64
-	DB                  *db.DB
-	Provider            data.Provider
-	Fundamentals        data.FundamentalsProvider       // nil if FINNHUB_API_KEY isn't set
-	AnalystRating       data.AnalystRatingProvider      // nil if FINNHUB_API_KEY isn't set
-	InsiderTx           data.InsiderTransactionProvider // nil if FINNHUB_API_KEY isn't set
-	Institutional       data.InstitutionalFlowProvider  // TW's 三大法人 counterpart (TWSE T86) — always non-nil, no API key required
-	Earnings            data.EarningsProvider           // nil if FINNHUB_API_KEY isn't set
-	MarketNews          data.MarketNewsProvider         // nil if FINNHUB_API_KEY isn't set
-	TWMarketNews        data.MarketNewsProvider         // TW's MarketNews counterpart (cnyes) — always non-nil, no API key required
-	TWMovers            data.TWMarketMoversProvider     // TW's GetMarketMovers counterpart (TWSE OpenAPI) — always non-nil, no API key required
-	CompanyNames        data.CompanyNameProvider        // nil if FINMIND_TOKEN isn't set
-	OptionChain         data.OptionChainProvider        // Phase 12, US-only; always non-nil in real use
-	History             data.HistoryProvider
-	LLM                 *llm.Client
-	Lang                i18n.Lang
-	StopLossPct         float64 // STOP_LOSS_PCT env; 0 disables the check
-	TrailingStopPct     float64 // TRAILING_STOP_PCT env; 0 disables the check
+	Token           string
+	ChatID          int64
+	DB              *db.DB
+	Provider        data.Provider
+	Fundamentals    data.FundamentalsProvider       // nil if FINNHUB_API_KEY isn't set
+	AnalystRating   data.AnalystRatingProvider      // nil if FINNHUB_API_KEY isn't set
+	InsiderTx       data.InsiderTransactionProvider // nil if FINNHUB_API_KEY isn't set
+	Institutional   data.InstitutionalFlowProvider  // TW's 三大法人 counterpart (TWSE T86) — always non-nil, no API key required
+	Earnings        data.EarningsProvider           // nil if FINNHUB_API_KEY isn't set
+	MarketNews      data.MarketNewsProvider         // nil if FINNHUB_API_KEY isn't set
+	TWMarketNews    data.MarketNewsProvider         // TW's MarketNews counterpart (cnyes) — always non-nil, no API key required
+	TWMovers        data.TWMarketMoversProvider     // TW's GetMarketMovers counterpart (TWSE OpenAPI) — always non-nil, no API key required
+	CompanyNames    data.CompanyNameProvider        // nil if FINMIND_TOKEN isn't set
+	TrustNet        data.TrustNetProvider           // Phase 15 網 5【主力跟單】, TW only; nil if FINMIND_TOKEN isn't set
+	OptionChain     data.OptionChainProvider        // Phase 12, US-only; always non-nil in real use
+	History         data.HistoryProvider
+	LLM             *llm.Client
+	Lang            i18n.Lang
+	StopLossPct     float64 // STOP_LOSS_PCT env; 0 disables the check
+	TrailingStopPct float64 // TRAILING_STOP_PCT env; 0 disables the check
 	// StopLossPctTW/TrailingStopPctTW (STOP_LOSS_PCT_TW/TRAILING_STOP_PCT_TW
 	// env, Phase 13 §7) are TW's wider thresholds — a single TW daily ±10%
 	// limit move would otherwise itself trigger the US-calibrated 10%/15%
@@ -242,6 +244,7 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		twMarketNews:           cfg.TWMarketNews,
 		twMovers:               cfg.TWMovers,
 		companyNames:           cfg.CompanyNames,
+		trustNet:               cfg.TrustNet,
 		optionChain:            cfg.OptionChain,
 		history:                cfg.History,
 		llm:                    cfg.LLM,
