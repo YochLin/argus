@@ -26,6 +26,7 @@ var enMessages = map[Key]string{
 	KeyRecommendUsage:                "Usage: /recommend [tw|us] (no argument = run both US and TW reports in sequence)",
 	KeyRecWatchlistSectionTitle:      "📋 *Watchlist & Holdings*\n",
 	KeyRecCandidatesSectionTitle:     "🆕 *New Candidates*\n",
+	KeyRecWatchlistNoneActionable:    "No action needed for the watchlist or holdings today.",
 	KeyRecCandidatesAnalyzedNone:     "Analyzed %d candidate(s) — none worth recommending today.",
 	KeyRecCandidatesUnavailable:      "No candidates to analyze today (market movers fetch failed or no strategy hits).",
 	KeySizingLine:                    "💰 Suggested sizing: risk budget %s, stop ref %s (price−2×ATR), ~%d shares\n",
@@ -307,8 +308,11 @@ blocks.
 	KeyRecTaskBlock: `
 ## Task
 
-Every watchlist ticker must get an explicit call, and the action must be exactly one of BUY, SELL, or HOLD;
-from the broad market movers, only list the ones you actually like as buys (at most 3, action BUY) — none is fine.
+Review every ticker above, but output only items that genuinely need the user's attention: every section that
+includes a "Position:" line must get an explicit call, and the action must be exactly one of BUY, SELL, or HOLD;
+keep the full analysis for holdings. A watchlist ticker without a "Position:" line should be output only when you
+believe it is worth buying now (action BUY); otherwise omit the entire block. From the broad market movers, only
+list the ones you actually like as buys (at most 3, action BUY) — none is fine.
 
 When weighing each ticker's news, note whether each headline reads as bullish or bearish and fold that into your reasoning.
 
@@ -333,7 +337,7 @@ that case doesn't hold or matters little; for a SELL, do the reverse — list th
 explain why it isn't enough to justify continuing to hold. This guards against only picking evidence that supports
 the conclusion you already reached and ignoring the counter-argument.
 
-Strictly follow this output structure, one block per ticker, with no extra text:
+Strictly follow this output structure, one block per ticker you choose to output, with no extra text:
 
 [TICKER: AAPL]
 %s BUY

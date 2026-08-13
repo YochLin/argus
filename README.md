@@ -33,9 +33,8 @@ Three things about today's implementation are conveniences, not commitments:
 - **Rule-based alerts** — price-move thresholds, RSI (overbought/oversold), and MACD golden/death
   crosses, checked daily against your watchlist. Alerts are deduplicated: RSI only fires when it
   newly enters an extreme zone, and MACD only on an actual cross, not every day a trend holds
-- **LLM-powered analysis** — ask for an instant read on any ticker, or daily recommendations with an
-  explicit BUY / SELL / HOLD call for every watchlist ticker plus picks from the day's broad market
-  movers
+- **LLM-powered analysis** — ask for an instant read on any ticker, or daily recommendations focused on
+  current holdings and worthwhile BUY opportunities from the watchlist and day's broad market movers
 - **Recommendation tracking** — `/track` reviews past recommendations against today's prices. A BUY/SELL
   only counts as a hit if it beat/underperformed SPY over the same period (falling back to plain
   up/down when no same-period SPY data is on record), alongside average return magnitude and a hit-rate
@@ -147,7 +146,7 @@ Talk to it in Telegram:
 | `/list` | Show your watchlist |
 | `/status [ticker]` | Live quote(s) — all watchlist tickers, or just one |
 | `/check <ticker>` | Instant LLM analysis of one ticker |
-| `/recommend` | LLM gives a BUY/SELL/HOLD call on every watchlist ticker, plus buy ideas from market movers |
+| `/recommend` | LLM reports on current holdings and worthwhile BUY opportunities from the watchlist and market movers |
 | `/track [days]` | Review past recommendations vs. today's prices and the resulting hit rate (default 7 days) |
 | `/buy <ticker> <shares> <price> [fee] [date]` | Record a purchase; folds into the ticker's weighted-average cost and auto-adds it to your watchlist. `date` (YYYY-MM-DD) backdates a historical trade |
 | `/sell <ticker> <shares> <price> [fee] [date]` | Record a sale against an open position and report the realized P&L |

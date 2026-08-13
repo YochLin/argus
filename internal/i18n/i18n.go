@@ -86,9 +86,10 @@ const (
 	// KeyRecommendUsage is Phase 6 PR2's /recommend [tw|us] argument-parsing
 	// error (§5.3) — the pre-Phase-6 form took no argument at all, so this is
 	// new.
-	KeyRecommendUsage            Key = "recommend_usage"
-	KeyRecWatchlistSectionTitle  Key = "rec_watchlist_section_title"
-	KeyRecCandidatesSectionTitle Key = "rec_candidates_section_title"
+	KeyRecommendUsage             Key = "recommend_usage"
+	KeyRecWatchlistSectionTitle   Key = "rec_watchlist_section_title"
+	KeyRecCandidatesSectionTitle  Key = "rec_candidates_section_title"
+	KeyRecWatchlistNoneActionable Key = "rec_watchlist_none_actionable"
 	// KeyRecCandidatesAnalyzedNone/KeyRecCandidatesUnavailable are
 	// sendRecGroup's two distinct candidates-section empty states (PLAN.md's
 	// /recommend empty-result UX item) — both silent before this, which made
