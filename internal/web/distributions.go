@@ -1,11 +1,11 @@
 package web
 
 import (
-	"log"
 	"time"
 
 	"argus/internal/data"
 	"argus/internal/db"
+	"argus/internal/logger"
 	"argus/internal/market"
 )
 
@@ -152,7 +152,7 @@ func buildDistributions(database dbReader, history data.HistoryProvider, m marke
 				var err error
 				candles, err = history.GetHistory(ticker, "max")
 				if err != nil {
-					log.Printf("web: distributions: get history for %s: %v", ticker, err)
+					logger.Errorf("web: distributions: get history for %s: %v", ticker, err)
 					candles = nil
 				}
 				historyCache[ticker] = candles

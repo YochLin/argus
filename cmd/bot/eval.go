@@ -4,19 +4,20 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/joho/godotenv"
+
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
+	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/receval"
-	"github.com/joho/godotenv"
 )
 
 // runEval runs the "eval" subcommand — a manual, offline batch scorer over
@@ -34,27 +35,27 @@ func runEval() {
 
 	horizons, err := parseHorizons(*horizonsFlag)
 	if err != nil {
-		log.Fatalf("eval: %v", err)
+		logger.Fatalf("eval: %v", err)
 	}
 	if *marketFlag != "all" && *marketFlag != string(market.US) && *marketFlag != string(market.TW) {
-		log.Fatalf("eval: -market must be all, us, or tw")
+		logger.Fatalf("eval: -market must be all, us, or tw")
 	}
 
 	if err := godotenv.Load(); err != nil {
-		log.Println("no .env file found, reading env from environment")
+		logger.Info("no .env file found, reading env from environment")
 	}
 	dbPath := envOr("DB_PATH", "data/argus.db")
 	lang := i18n.Parse(envOr("BOT_LANGUAGE", "zh"))
 
 	database, err := db.OpenReadOnly(dbPath)
 	if err != nil {
-		log.Fatalf("eval: open db: %v", err)
+		logger.Fatalf("eval: open db: %v", err)
 	}
 	defer database.Close()
 
 	all, err := database.GetRecommendationsSince("2000-01-01")
 	if err != nil {
-		log.Fatalf("eval: read recommendations: %v", err)
+		logger.Fatalf("eval: read recommendations: %v", err)
 	}
 
 	// HOLD/"" recs aren't scorable (same as /track), same reasoning as
@@ -110,7 +111,7 @@ func runEval() {
 		fmt.Print(i18n.T(lang, i18n.KeyEvalFetching, i+1, len(tickers), t))
 		c, err := yahoo.GetHistory(t, *rangeFlag)
 		if err != nil {
-			log.Printf("eval: fetch %s: %v", t, err)
+			logger.Errorf("eval: fetch %s: %v", t, err)
 			continue // left out of candles -> Score reports "no history data"
 		}
 		candles[t] = c
@@ -125,7 +126,7 @@ func runEval() {
 
 	if *csvFlag != "" {
 		if err := writeEvalCSV(*csvFlag, scored, horizons); err != nil {
-			log.Printf("eval: write csv: %v", err)
+			logger.Errorf("eval: write csv: %v", err)
 		} else {
 			fmt.Print(i18n.T(lang, i18n.KeyEvalCSVSaved, *csvFlag))
 		}

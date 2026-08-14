@@ -3,13 +3,13 @@ package bot
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"unicode/utf8"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"argus/internal/i18n"
+	"argus/internal/logger"
 )
 
 // telegramChannel is the only Channel implementation today — every direct
@@ -36,12 +36,12 @@ func NewTelegramChannel(token, apiEndpoint string, chatID int64, lang i18n.Lang)
 	if err != nil {
 		return nil, fmt.Errorf("telegram: %w", err)
 	}
-	log.Printf("Telegram bot authorized: @%s", api.Self.UserName)
+	logger.Infof("Telegram bot authorized: @%s", api.Self.UserName)
 	if _, err := api.Request(tgbotapi.NewSetMyCommands(botCommands(lang)...)); err != nil {
 		// Cosmetic (populates Telegram's "/" autocomplete menu) — not worth
 		// failing startup over, same log-only-on-error convention as
 		// AnswerCallback below.
-		log.Printf("telegram: set command menu: %v", err)
+		logger.Errorf("telegram: set command menu: %v", err)
 	}
 	return &telegramChannel{api: api, chatID: chatID}, nil
 }
@@ -118,7 +118,7 @@ func (c *telegramChannel) Send(text string) {
 			_, err = c.api.Send(msg)
 		}
 		if err != nil {
-			log.Printf("send error: %v", err)
+			logger.Errorf("send error: %v", err)
 		}
 	}
 }
@@ -165,7 +165,7 @@ func (c *telegramChannel) EditMessage(ref MessageRef, text string) error {
 
 func (c *telegramChannel) AnswerCallback(id string) {
 	if _, err := c.api.Request(tgbotapi.NewCallback(id, "")); err != nil {
-		log.Printf("callback query: answer: %v", err)
+		logger.Errorf("callback query: answer: %v", err)
 	}
 }
 

@@ -282,7 +282,7 @@ func TestFeeFor_TWSellMinFeeAppliesBeforeTax(t *testing.T) {
 	notional := 5000.0
 	discount := 0.6
 	commission := notional * 0.001425 * discount // 4.275, below twMinFee
-	want := twMinFee + notional*0.003             // 20 + 15 = 35
+	want := twMinFee + notional*0.003            // 20 + 15 = 35
 	if got := FeeFor(market.TW, "SELL", notional, discount); !almostEqual(got, want) {
 		t.Errorf("TW sell fee below commission floor: got %v, want %v (commission alone would be %v)", got, want, commission)
 	}

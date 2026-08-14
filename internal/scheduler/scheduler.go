@@ -2,10 +2,11 @@ package scheduler
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"github.com/robfig/cron/v3"
+
+	"argus/internal/logger"
 )
 
 type JobFunc func(ctx context.Context)
@@ -41,13 +42,13 @@ func New() *Scheduler {
 // Cron with seconds: "0 30 23 * * *"
 func (s *Scheduler) AddDailyReport(ctx context.Context, fn JobFunc) {
 	_, err := s.c.AddFunc("0 30 23 * * *", func() {
-		log.Println("scheduler: running daily report")
+		logger.Info("scheduler: running daily report")
 		fn(ctx)
 	})
 	if err != nil {
-		log.Fatalf("scheduler: add daily report: %v", err)
+		logger.Fatalf("scheduler: add daily report: %v", err)
 	}
-	log.Println("scheduler: daily report registered at 23:30 CST")
+	logger.Info("scheduler: daily report registered at 23:30 CST")
 }
 
 // AddClosingSnapshot schedules the post-close snapshot job at 05:30 CST,
@@ -58,13 +59,13 @@ func (s *Scheduler) AddDailyReport(ctx context.Context, fn JobFunc) {
 // quotes itself.
 func (s *Scheduler) AddClosingSnapshot(ctx context.Context, fn JobFunc) {
 	_, err := s.c.AddFunc("0 30 5 * * 2-6", func() {
-		log.Println("scheduler: running closing snapshot")
+		logger.Info("scheduler: running closing snapshot")
 		fn(ctx)
 	})
 	if err != nil {
-		log.Fatalf("scheduler: add closing snapshot: %v", err)
+		logger.Fatalf("scheduler: add closing snapshot: %v", err)
 	}
-	log.Println("scheduler: closing snapshot registered at 05:30 CST (Tue–Sat)")
+	logger.Info("scheduler: closing snapshot registered at 05:30 CST (Tue–Sat)")
 }
 
 // AddTWClosingSnapshot schedules the TW-market post-close snapshot job at
@@ -76,13 +77,13 @@ func (s *Scheduler) AddClosingSnapshot(ctx context.Context, fn JobFunc) {
 // before 14:00 in practice — 14:30 leaves a 30-minute buffer past that.
 func (s *Scheduler) AddTWClosingSnapshot(ctx context.Context, fn JobFunc) {
 	_, err := s.c.AddFunc("0 30 14 * * 1-5", func() {
-		log.Println("scheduler: running TW closing snapshot")
+		logger.Info("scheduler: running TW closing snapshot")
 		fn(ctx)
 	})
 	if err != nil {
-		log.Fatalf("scheduler: add TW closing snapshot: %v", err)
+		logger.Fatalf("scheduler: add TW closing snapshot: %v", err)
 	}
-	log.Println("scheduler: TW closing snapshot registered at 14:30 CST (Mon–Fri)")
+	logger.Info("scheduler: TW closing snapshot registered at 14:30 CST (Mon–Fri)")
 }
 
 // AddUniverseScan schedules Phase 2.6's candidate-pool scan at 05:45 CST,
@@ -96,13 +97,13 @@ func (s *Scheduler) AddTWClosingSnapshot(ctx context.Context, fn JobFunc) {
 // won't contend with the scan's writes).
 func (s *Scheduler) AddUniverseScan(ctx context.Context, fn JobFunc) {
 	_, err := s.c.AddFunc("0 45 5 * * 2-6", func() {
-		log.Println("scheduler: running universe scan")
+		logger.Info("scheduler: running universe scan")
 		fn(ctx)
 	})
 	if err != nil {
-		log.Fatalf("scheduler: add universe scan: %v", err)
+		logger.Fatalf("scheduler: add universe scan: %v", err)
 	}
-	log.Println("scheduler: universe scan registered at 05:45 CST (Tue–Sat)")
+	logger.Info("scheduler: universe scan registered at 05:45 CST (Tue–Sat)")
 }
 
 // AddTWDailyReport schedules the TW-market daily report job at 11:30 CST,
@@ -117,13 +118,13 @@ func (s *Scheduler) AddUniverseScan(ctx context.Context, fn JobFunc) {
 // the prior evening's US universe scan, so no job reordering is needed.
 func (s *Scheduler) AddTWDailyReport(ctx context.Context, fn JobFunc) {
 	_, err := s.c.AddFunc("0 30 11 * * 1-5", func() {
-		log.Println("scheduler: running TW daily report")
+		logger.Info("scheduler: running TW daily report")
 		fn(ctx)
 	})
 	if err != nil {
-		log.Fatalf("scheduler: add TW daily report: %v", err)
+		logger.Fatalf("scheduler: add TW daily report: %v", err)
 	}
-	log.Println("scheduler: TW daily report registered at 11:30 CST (Mon-Fri)")
+	logger.Info("scheduler: TW daily report registered at 11:30 CST (Mon-Fri)")
 }
 
 // AddTWUniverseScan schedules Phase 6 PR2's TW-market universe scan at 14:40
@@ -135,13 +136,13 @@ func (s *Scheduler) AddTWDailyReport(ctx context.Context, fn JobFunc) {
 // session's AddDailyReport.
 func (s *Scheduler) AddTWUniverseScan(ctx context.Context, fn JobFunc) {
 	_, err := s.c.AddFunc("0 40 14 * * 1-5", func() {
-		log.Println("scheduler: running TW universe scan")
+		logger.Info("scheduler: running TW universe scan")
 		fn(ctx)
 	})
 	if err != nil {
-		log.Fatalf("scheduler: add TW universe scan: %v", err)
+		logger.Fatalf("scheduler: add TW universe scan: %v", err)
 	}
-	log.Println("scheduler: TW universe scan registered at 14:40 CST (Mon-Fri)")
+	logger.Info("scheduler: TW universe scan registered at 14:40 CST (Mon-Fri)")
 }
 
 // AddWeeklyReview schedules Phase 3.6 PR2's Sunday portfolio review at 09:00
@@ -152,13 +153,13 @@ func (s *Scheduler) AddTWUniverseScan(ctx context.Context, fn JobFunc) {
 // run), so this job needs no fresher data than what's already on disk.
 func (s *Scheduler) AddWeeklyReview(ctx context.Context, fn JobFunc) {
 	_, err := s.c.AddFunc("0 0 9 * * 0", func() {
-		log.Println("scheduler: running weekly review")
+		logger.Info("scheduler: running weekly review")
 		fn(ctx)
 	})
 	if err != nil {
-		log.Fatalf("scheduler: add weekly review: %v", err)
+		logger.Fatalf("scheduler: add weekly review: %v", err)
 	}
-	log.Println("scheduler: weekly review registered at 09:00 CST (Sun)")
+	logger.Info("scheduler: weekly review registered at 09:00 CST (Sun)")
 }
 
 // AddMonthlyReport schedules Phase 3.6 追加項's net-worth monthly report
@@ -178,13 +179,13 @@ func (s *Scheduler) AddWeeklyReview(ctx context.Context, fn JobFunc) {
 // Cron with seconds: "0 30 9 1 * *"
 func (s *Scheduler) AddMonthlyReport(ctx context.Context, fn JobFunc) {
 	_, err := s.c.AddFunc("0 30 9 1 * *", func() {
-		log.Println("scheduler: running monthly report")
+		logger.Info("scheduler: running monthly report")
 		fn(ctx)
 	})
 	if err != nil {
-		log.Fatalf("scheduler: add monthly report: %v", err)
+		logger.Fatalf("scheduler: add monthly report: %v", err)
 	}
-	log.Println("scheduler: monthly report registered at 09:30 CST (1st of month)")
+	logger.Info("scheduler: monthly report registered at 09:30 CST (1st of month)")
 }
 
 // AddMorningBriefing schedules the US-market morning briefing at 07:00 CST,
@@ -199,13 +200,13 @@ func (s *Scheduler) AddMonthlyReport(ctx context.Context, fn JobFunc) {
 // on disk by 07:00.
 func (s *Scheduler) AddMorningBriefing(ctx context.Context, fn JobFunc) {
 	_, err := s.c.AddFunc("0 0 7 * * 2-6", func() {
-		log.Println("scheduler: running morning briefing")
+		logger.Info("scheduler: running morning briefing")
 		fn(ctx)
 	})
 	if err != nil {
-		log.Fatalf("scheduler: add morning briefing: %v", err)
+		logger.Fatalf("scheduler: add morning briefing: %v", err)
 	}
-	log.Println("scheduler: morning briefing registered at 07:00 CST (Tue–Sat)")
+	logger.Info("scheduler: morning briefing registered at 07:00 CST (Tue–Sat)")
 }
 
 // AddTWMorningBriefing schedules the TW-market pre-open briefing at 08:30
@@ -220,13 +221,13 @@ func (s *Scheduler) AddMorningBriefing(ctx context.Context, fn JobFunc) {
 // folded into either of those later jobs.
 func (s *Scheduler) AddTWMorningBriefing(ctx context.Context, fn JobFunc) {
 	_, err := s.c.AddFunc("0 30 8 * * 1-5", func() {
-		log.Println("scheduler: running tw morning briefing")
+		logger.Info("scheduler: running tw morning briefing")
 		fn(ctx)
 	})
 	if err != nil {
-		log.Fatalf("scheduler: add tw morning briefing: %v", err)
+		logger.Fatalf("scheduler: add tw morning briefing: %v", err)
 	}
-	log.Println("scheduler: tw morning briefing registered at 08:30 CST (Mon–Fri)")
+	logger.Info("scheduler: tw morning briefing registered at 08:30 CST (Mon–Fri)")
 }
 
 // AddLogRotation schedules fn (typically a rotating log writer's Rotate
@@ -235,13 +236,13 @@ func (s *Scheduler) AddTWMorningBriefing(ctx context.Context, fn JobFunc) {
 // MaxBackups on the logger handle pruning old files.
 func (s *Scheduler) AddLogRotation(fn func()) {
 	_, err := s.c.AddFunc("0 0 0 * * *", func() {
-		log.Println("scheduler: rotating log")
+		logger.Info("scheduler: rotating log")
 		fn()
 	})
 	if err != nil {
-		log.Fatalf("scheduler: add log rotation: %v", err)
+		logger.Fatalf("scheduler: add log rotation: %v", err)
 	}
-	log.Println("scheduler: log rotation registered at 00:00 CST")
+	logger.Info("scheduler: log rotation registered at 00:00 CST")
 }
 
 // AddBackup schedules fn (the SQLite backup routine) at 06:00 CST daily,
@@ -249,18 +250,18 @@ func (s *Scheduler) AddLogRotation(fn func()) {
 // day's post-close data.
 func (s *Scheduler) AddBackup(fn func()) {
 	_, err := s.c.AddFunc("0 0 6 * * *", func() {
-		log.Println("scheduler: running backup")
+		logger.Info("scheduler: running backup")
 		fn()
 	})
 	if err != nil {
-		log.Fatalf("scheduler: add backup: %v", err)
+		logger.Fatalf("scheduler: add backup: %v", err)
 	}
-	log.Println("scheduler: backup registered at 06:00 CST")
+	logger.Info("scheduler: backup registered at 06:00 CST")
 }
 
 func (s *Scheduler) Start() {
 	s.c.Start()
-	log.Println("scheduler: started")
+	logger.Info("scheduler: started")
 }
 
 func (s *Scheduler) Stop() {

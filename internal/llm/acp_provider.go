@@ -3,11 +3,11 @@ package llm
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
 	"argus/internal/llm/acp"
+	"argus/internal/logger"
 )
 
 // acpProvider is the Provider implementation that drives Claude through the
@@ -78,8 +78,8 @@ func startClaudeSession(ctx context.Context, systemPrompt, model string, withMCP
 		if err != nil {
 			// Missing tools shouldn't take chat down entirely — degrade to
 			// the tool-less session chat already worked with before this
-			// wiring existed, and let the caller notice via the log.
-			log.Printf("llm: argus MCP server unavailable, starting chat session without tools: %v", err)
+			// wiring existed, and let the caller notice via the logger.
+			logger.Warnf("llm: argus MCP server unavailable, starting chat session without tools: %v", err)
 		} else {
 			mcpServers = []acp.MCPServer{server}
 		}

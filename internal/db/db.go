@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"argus/internal/market"
-
 	_ "modernc.org/sqlite"
+
+	"argus/internal/market"
 )
 
 // ErrNoPosition is returned by RecordSell when there is no open position for

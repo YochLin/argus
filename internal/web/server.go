@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
+	"argus/internal/logger"
 )
 
 // dist holds the built frontend (web/'s Vite project, configured to build
@@ -179,7 +179,7 @@ func spaHandler() http.Handler {
 		// Only possible if the embed directive itself is wrong (a build-time
 		// concern, not a runtime one) — the placeholder/real dist directory
 		// always exists by construction.
-		log.Fatalf("web: embedded dist: %v", err)
+		logger.Fatalf("web: embedded dist: %v", err)
 	}
 	fileServer := http.FileServer(http.FS(sub))
 
@@ -210,7 +210,7 @@ func (s *Server) Run(ctx context.Context, addr string) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Printf("web: dashboard listening on %s", addr)
+		logger.Infof("web: dashboard listening on %s", addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 			return

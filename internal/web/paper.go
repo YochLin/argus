@@ -1,11 +1,11 @@
 package web
 
 import (
-	"log"
 	"sort"
 	"time"
 
 	"argus/internal/db"
+	"argus/internal/logger"
 	"argus/internal/market"
 )
 
@@ -102,11 +102,11 @@ func buildPaper(paperDB dbReader, quotes quoteGetter, m market.MarketID, initial
 
 	cash, err := loadCash(paperDB, m)
 	if err != nil {
-		log.Printf("web: paper: load cash for %s: %v", m, err)
+		logger.Errorf("web: paper: load cash for %s: %v", m, err)
 	}
 	realizedTotal, err := paperDB.GetRealizedPnL(m)
 	if err != nil {
-		log.Printf("web: paper: realized pnl for %s: %v", m, err)
+		logger.Errorf("web: paper: realized pnl for %s: %v", m, err)
 	}
 
 	byTicker := make(map[string][]db.Transaction, len(positions))

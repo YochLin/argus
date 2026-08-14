@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"strconv"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
+	"argus/internal/logger"
 	"argus/internal/option"
 )
 
@@ -120,7 +120,7 @@ func (b *Bot) nakedCallWarning(pos db.OptionPosition) string {
 	}
 	shortCallPositions, err := b.db.GetOptionPositionsByUnderlying(pos.Underlying)
 	if err != nil {
-		log.Printf("naked call check %s: %v", pos.Underlying, err)
+		logger.Errorf("naked call check %s: %v", pos.Underlying, err)
 		return ""
 	}
 	var lockedShares float64
@@ -131,7 +131,7 @@ func (b *Bot) nakedCallWarning(pos db.OptionPosition) string {
 	}
 	stockPos, ok, err := b.db.GetPosition(pos.Underlying)
 	if err != nil {
-		log.Printf("naked call check %s: get stock position: %v", pos.Underlying, err)
+		logger.Errorf("naked call check %s: get stock position: %v", pos.Underlying, err)
 		return ""
 	}
 	held := 0.0
@@ -314,7 +314,7 @@ func decodeOptionExpiryPayload(payload string) (optionExpiryPayload, bool) {
 func (b *Bot) checkOptionExpiry(prices map[string]float64, date string) {
 	positions, err := b.db.GetOptionPositions()
 	if err != nil {
-		log.Printf("option expiry scan: positions: %v", err)
+		logger.Errorf("option expiry scan: positions: %v", err)
 		return
 	}
 	if len(positions) == 0 {
@@ -323,7 +323,7 @@ func (b *Bot) checkOptionExpiry(prices map[string]float64, date string) {
 
 	outstanding, err := b.outstandingOptionExpirySymbols()
 	if err != nil {
-		log.Printf("option expiry scan: outstanding proposals: %v", err)
+		logger.Errorf("option expiry scan: outstanding proposals: %v", err)
 		return
 	}
 
@@ -347,21 +347,21 @@ func (b *Bot) checkOptionExpiry(prices map[string]float64, date string) {
 
 		payload, err := json.Marshal(optionExpiryPayload{Symbol: p.ContractSymbol, ProposedAction: proposedAction, Date: date})
 		if err != nil {
-			log.Printf("option expiry scan: marshal payload %s: %v", p.ContractSymbol, err)
+			logger.Errorf("option expiry scan: marshal payload %s: %v", p.ContractSymbol, err)
 			continue
 		}
 		id, err := b.db.CreatePendingAction(db.PendingActionOptionExpiry, string(payload))
 		if err != nil {
-			log.Printf("option expiry scan: create pending action %s: %v", p.ContractSymbol, err)
+			logger.Errorf("option expiry scan: create pending action %s: %v", p.ContractSymbol, err)
 			continue
 		}
 		text := i18n.T(b.lang, i18n.KeyOptionExpiryConfirm, p.ContractSymbol, spot, p.Strike, proposedAction)
 		if err := b.sendPendingActionConfirmation(id, text); err != nil {
-			log.Printf("option expiry scan: send confirmation %s: %v", p.ContractSymbol, err)
+			logger.Errorf("option expiry scan: send confirmation %s: %v", p.ContractSymbol, err)
 			continue
 		}
 		if _, err := b.db.MarkPendingActionSent(id); err != nil {
-			log.Printf("option expiry scan: mark sent %s: %v", p.ContractSymbol, err)
+			logger.Errorf("option expiry scan: mark sent %s: %v", p.ContractSymbol, err)
 		}
 	}
 }
@@ -434,7 +434,7 @@ func (b *Bot) recordDailyATMIV(tickers []string, prices map[string]float64, date
 		}
 		dte := int(math.Ceil(time.Until(expiry).Hours() / 24))
 		if err := b.db.SaveATMIV(ticker, date, atmIV, dte); err != nil {
-			log.Printf("record ATM IV %s: %v", ticker, err)
+			logger.Errorf("record ATM IV %s: %v", ticker, err)
 		}
 	}
 }
@@ -537,7 +537,7 @@ func (b *Bot) gatherOptionCandidates(ticker string, spot float64, profile option
 		}
 		quotes, err := b.optionChain.GetOptionChain(ticker, expiry)
 		if err != nil {
-			log.Printf("option select %s @ %s: %v", ticker, expiry.Format("2006-01-02"), err)
+			logger.Errorf("option select %s @ %s: %v", ticker, expiry.Format("2006-01-02"), err)
 			continue
 		}
 		chain = append(chain, quotes...)
