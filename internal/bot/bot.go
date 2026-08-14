@@ -10,6 +10,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/llm"
+	"argus/internal/service"
 	"argus/internal/signals"
 )
 
@@ -65,6 +66,7 @@ type Bot struct {
 	optionChain   data.OptionChainProvider        // Phase 12, US-only; always non-nil in real use (Yahoo needs no API key), nil-checked anyway for tests that build a partial Bot
 	history       data.HistoryProvider
 	llm           *llm.Client
+	tradeService  *service.TradeService
 	detector      *signals.Detector
 	lang          i18n.Lang
 
@@ -248,6 +250,7 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		optionChain:            cfg.OptionChain,
 		history:                cfg.History,
 		llm:                    cfg.LLM,
+		tradeService:           service.NewTradeService(cfg.DB, cfg.TWFeeDiscount),
 		detector:               signals.NewDetector(cfg.Lang),
 		lang:                   cfg.Lang,
 		stopLossPct:            cfg.StopLossPct,
@@ -266,6 +269,16 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		dataCache:              newTTLCache(),
 		now:                    time.Now,
 	}
+}
+
+// trading returns the shared application service used by all bot trade entry
+// points. The lazy fallback keeps small hand-built test Bots compatible while
+// production construction goes through NewWithChannel.
+func (b *Bot) trading() *service.TradeService {
+	if b.tradeService == nil && b.db != nil {
+		b.tradeService = service.NewTradeService(b.db, b.twFeeDiscount)
+	}
+	return b.tradeService
 }
 
 func (b *Bot) Send(text string) {

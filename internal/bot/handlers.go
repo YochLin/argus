@@ -17,8 +17,8 @@ import (
 	"argus/internal/llm"
 	"argus/internal/logger"
 	"argus/internal/market"
-	"argus/internal/paper"
 	"argus/internal/render"
+	"argus/internal/service"
 	"argus/internal/webfetch"
 )
 
@@ -776,9 +776,6 @@ func (b *Bot) handleBuy(args string) {
 		date = todayDate()
 	}
 	feeAuto := !feeSet
-	if feeAuto {
-		fee = paper.FeeFor(market.Of(ticker), "BUY", shares*price, b.twFeeDiscount)
-	}
 	msg, _ := b.recordBuy(ticker, shares, price, fee, feeAuto, date)
 	b.Send(msg)
 }
@@ -792,9 +789,12 @@ func (b *Bot) handleBuy(args string) {
 // docs/phase-10-web-trade-input.md §4.2) without re-parsing msg's already
 // i18n-rendered text.
 func (b *Bot) recordBuy(ticker string, shares, price, fee float64, feeAuto bool, date string) (string, error) {
-	// Read any stop price already on the position before the buy — RecordBuy
-	// deliberately doesn't touch it, but buyStopSuggestion's add-on note
-	// needs to know it was there.
+	// Read any stop price already on the position before the buy — the trade
+	// service deliberately doesn't touch it, but buyStopSuggestion's add-on
+	// note needs to know it was there.
+	//
+	// Read this before executing because a buy that tops up an existing
+	// position deliberately keeps its existing stop price.
 	var existingStopPrice float64
 	if prevPos, ok, err := b.db.GetPosition(ticker); err != nil {
 		logger.Errorf("buy %s: get existing position: %v", ticker, err)
@@ -802,20 +802,32 @@ func (b *Bot) recordBuy(ticker string, shares, price, fee float64, feeAuto bool,
 		existingStopPrice = prevPos.StopPrice
 	}
 
-	pos, err := b.db.RecordBuy(ticker, shares, price, fee, date)
+	trades := b.trading()
+	if trades == nil {
+		err := errors.New("trade service unavailable")
+		return i18n.T(b.lang, i18n.KeyBuyFailed, err), err
+	}
+	var feeInput *float64
+	if !feeAuto {
+		feeInput = &fee
+	}
+	result, err := trades.Buy(service.BuyInput{
+		Ticker: ticker,
+		Shares: shares,
+		Price:  price,
+		Fee:    feeInput,
+		Date:   date,
+	})
 	if err != nil {
 		return i18n.T(b.lang, i18n.KeyBuyFailed, err), err
 	}
-	b.adjustCash(ticker, -(shares*price + fee))
-	if err := b.db.AddTicker(ticker); err != nil {
-		logger.Errorf("buy: add %s to watchlist: %v", ticker, err)
-	}
-	msg := i18n.T(b.lang, i18n.KeyBuySuccess, ticker, shares, b.money(ticker, price), b.money(ticker, fee), pos.Shares, b.money(ticker, pos.AvgCost))
+	b.adjustCash(result.Ticker, -(shares*price + result.Fee))
+	msg := i18n.T(b.lang, i18n.KeyBuySuccess, result.Ticker, shares, b.money(result.Ticker, price), b.money(result.Ticker, result.Fee), result.Position.Shares, b.money(result.Ticker, result.Position.AvgCost))
 	if feeAuto {
 		msg += i18n.T(b.lang, i18n.KeyFeeAutoNote)
 	}
-	msg += b.thesisNudge(ticker)
-	return msg + b.buyStopSuggestion(ticker, existingStopPrice), nil
+	msg += b.thesisNudge(result.Ticker)
+	return msg + b.buyStopSuggestion(result.Ticker, existingStopPrice), nil
 }
 
 // ExecuteBuy is ExecuteSell/ExecuteSetStop's sibling: internal/web's POST
@@ -836,9 +848,7 @@ func (b *Bot) ExecuteBuy(ticker string, shares, price float64, fee *float64, dat
 	}
 	feeAuto := fee == nil
 	feeVal := 0.0
-	if feeAuto {
-		feeVal = paper.FeeFor(market.Of(ticker), "BUY", shares*price, b.twFeeDiscount)
-	} else {
+	if !feeAuto {
 		feeVal = *fee
 	}
 	msg, err := b.recordBuy(ticker, shares, price, feeVal, feeAuto, date)
@@ -882,9 +892,6 @@ func (b *Bot) handleSell(ctx context.Context, args string) {
 		date = todayDate()
 	}
 	feeAuto := !feeSet
-	if feeAuto {
-		fee = paper.FeeFor(market.Of(ticker), "SELL", shares*price, b.twFeeDiscount)
-	}
 	msg, closed, stopPrice, _ := b.recordSell(ticker, shares, price, fee, feeAuto, date)
 	b.Send(msg)
 	if closed {
@@ -905,13 +912,22 @@ func (b *Bot) handleSell(ctx context.Context, args string) {
 // is nil on success, same "for a programmatic caller, not for re-parsing
 // msg" purpose as recordBuy's (see ExecuteSell).
 func (b *Bot) recordSell(ticker string, shares, price, fee float64, feeAuto bool, date string) (msg string, closed bool, stopPrice float64, err error) {
-	if prevPos, ok, gerr := b.db.GetPosition(ticker); gerr != nil {
-		logger.Errorf("sell %s: get position for stop price: %v", ticker, gerr)
-	} else if ok {
-		stopPrice = prevPos.StopPrice
+	trades := b.trading()
+	if trades == nil {
+		err = errors.New("trade service unavailable")
+		return i18n.T(b.lang, i18n.KeySellFailed, err), false, 0, err
 	}
-
-	pos, realizedPnL, err := b.db.RecordSell(ticker, shares, price, fee, date)
+	var feeInput *float64
+	if !feeAuto {
+		feeInput = &fee
+	}
+	result, err := trades.Sell(service.SellInput{
+		Ticker: ticker,
+		Shares: shares,
+		Price:  price,
+		Fee:    feeInput,
+		Date:   date,
+	})
 	if err != nil {
 		switch {
 		case errors.Is(err, db.ErrNoPosition):
@@ -922,12 +938,12 @@ func (b *Bot) recordSell(ticker string, shares, price, fee float64, feeAuto bool
 			return i18n.T(b.lang, i18n.KeySellFailed, err), false, 0, err
 		}
 	}
-	b.adjustCash(ticker, shares*price-fee)
-	msg = i18n.T(b.lang, i18n.KeySellSuccess, ticker, shares, b.money(ticker, price), b.money(ticker, fee), realizedPnL, pos.Shares)
+	b.adjustCash(result.Ticker, shares*price-result.Fee)
+	msg = i18n.T(b.lang, i18n.KeySellSuccess, result.Ticker, shares, b.money(result.Ticker, price), b.money(result.Ticker, result.Fee), result.RealizedPnL, result.Position.Shares)
 	if feeAuto {
 		msg += i18n.T(b.lang, i18n.KeyFeeAutoNote)
 	}
-	return msg, pos.Shares == 0, stopPrice, nil
+	return msg, result.Closed, result.StopPrice, nil
 }
 
 // ExecuteSell is ExecuteBuy's sibling for internal/web's POST
@@ -943,9 +959,7 @@ func (b *Bot) ExecuteSell(ctx context.Context, ticker string, shares, price floa
 	}
 	feeAuto := fee == nil
 	feeVal := 0.0
-	if feeAuto {
-		feeVal = paper.FeeFor(market.Of(ticker), "SELL", shares*price, b.twFeeDiscount)
-	} else {
+	if !feeAuto {
 		feeVal = *fee
 	}
 	msg, closed, stopPrice, err := b.recordSell(ticker, shares, price, feeVal, feeAuto, date)
