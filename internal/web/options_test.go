@@ -110,6 +110,12 @@ func TestBuildOptions_TWReturnsEmpty(t *testing.T) {
 	if len(resp.Positions) != 0 || len(resp.Closed) != 0 || len(resp.Calendar) != 0 {
 		t.Errorf("buildOptions(TW) = %+v, want all-empty", resp)
 	}
+	if resp.Collateral.Positions == nil {
+		t.Fatal("Collateral.Positions is nil, want empty slice (would marshal to JSON null)")
+	}
+	if b, _ := json.Marshal(resp.Collateral); string(b) != `{"lockedCash":0,"positions":[]}` {
+		t.Errorf("Collateral JSON = %s, want positions: []", b)
+	}
 }
 
 func TestBuildOptions_ChainFetchFailureDegrades(t *testing.T) {

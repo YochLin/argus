@@ -40,7 +40,7 @@ export function formatValue(value: number, format: KpiFormat, currency: string):
 export function KpiCard({ label, value, format, colorMode = "neutral", currency = "$" }: Props) {
   if (value === null) {
     return (
-      <div className="card">
+      <div className="card kpi-card">
         <div className="eyebrow">{label}</div>
         <div className="kpi-value">—</div>
       </div>
@@ -55,7 +55,7 @@ export function KpiCard({ label, value, format, colorMode = "neutral", currency 
   }
 
   return (
-    <div className="card">
+    <div className="card kpi-card">
       <div className="eyebrow">{label}</div>
       <div className={`kpi-value ${colorClass}`}>{formatValue(value, format, currency)}</div>
     </div>

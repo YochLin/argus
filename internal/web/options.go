@@ -79,9 +79,10 @@ type optionExpiryCalEntry struct {
 // buildOptionCollateral's own m!=US branch.
 func buildOptions(database dbReader, optionChain data.OptionChainProvider, quotes quoteGetter, m market.MarketID) (optionsResponse, error) {
 	resp := optionsResponse{
-		Positions: []optionPositionResponse{},
-		Closed:    []optionClosedResponse{},
-		Calendar:  []optionExpiryCalEntry{},
+		Positions:  []optionPositionResponse{},
+		Closed:     []optionClosedResponse{},
+		Calendar:   []optionExpiryCalEntry{},
+		Collateral: optionCollateralSummary{Positions: []optionCollateralResponse{}},
 	}
 	if m != market.US {
 		return resp, nil

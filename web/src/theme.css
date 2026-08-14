@@ -449,11 +449,22 @@ a {
   margin-bottom: 16px;
 }
 
+/* container-type lets .kpi-value's font-size below query the card's own
+   width (cqw) rather than the viewport's — a wide TWD figure (e.g.
+   "+NT$3,850,000") shrinks to fit its own card instead of overflowing it,
+   without needing JS to measure text. */
+.kpi-card {
+  container-type: inline-size;
+}
+
 .kpi-value {
   font-family: var(--font-mono);
-  font-size: 28px;
+  font-size: clamp(13px, 10cqw, 28px);
   font-variant-numeric: tabular-nums;
   margin-top: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .stat-grid {

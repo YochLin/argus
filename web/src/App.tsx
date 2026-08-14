@@ -14,6 +14,7 @@ import { RiskView } from "./components/RiskView";
 import { RecsView } from "./components/RecsView";
 import { PaperView } from "./components/PaperView";
 import { OptionsView } from "./components/OptionsView";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { TradeModal, type TradeMode } from "./components/TradeModal";
 import { LoginModal } from "./components/LoginModal";
 import { ImportView } from "./components/ImportView";
@@ -289,7 +290,11 @@ export default function App() {
         ) : (
           <div className="status-bar" />
         )}
-        <div className="content">{body}</div>
+        <div className="content">
+          <ErrorBoundary key={`${path}:${market}`} message={dict.error}>
+            {body}
+          </ErrorBoundary>
+        </div>
       </div>
       {tradeModal && (
         <TradeModal
