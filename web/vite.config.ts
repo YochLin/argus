@@ -234,6 +234,31 @@ function getMockData(urlStr: string): any {
       ],
     };
   }
+  if (path === "/api/options") {
+    if (market === "tw") {
+      return { positions: [], closed: [], calendar: [], collateral: { lockedCash: 0, positions: [] } };
+    }
+    const positions = [
+      {
+        contractSymbol: "AAPL260918C00320000", underlying: "AAPL", right: "C", strike: 320,
+        expiry: "2026-09-18", dte: 44, multiplier: 100, contracts: 2, avgPremium: 5.4, stopPremium: 0,
+        mark: 6.85, marketValue: 1370, delta: 0.42, gamma: 0.015, theta: -0.09, vega: 0.31,
+      },
+      {
+        contractSymbol: "MSFT260918P00400000", underlying: "MSFT", right: "P", strike: 400,
+        expiry: "2026-09-18", dte: 44, multiplier: 100, contracts: -1, avgPremium: 8.0, stopPremium: 0,
+        mark: 6.2, marketValue: -620, delta: -0.22, gamma: 0.012, theta: -0.07, vega: 0.28,
+      },
+    ];
+    return {
+      positions,
+      closed: [
+        { contractSymbol: "NVDA260821C00140000", underlying: "NVDA", right: "C", strike: 140, expiry: "2026-08-21", action: "STC", contracts: 1, premium: 9.2, fee: 1, date: "2026-08-01", realizedPnL: 210 },
+      ],
+      calendar: [{ date: "2026-09-18", symbols: positions.map((p) => p.contractSymbol) }],
+      collateral: { lockedCash: 40000, positions: [{ underlying: "MSFT", lockedShares: 0, heldShares: 0, naked: false }] },
+    };
+  }
   if (path === "/api/risk") {
     return {
       accountValue: market === "tw" ? 3850000 : 125400,
