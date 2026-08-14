@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"strings"
@@ -52,11 +53,80 @@ type TriggerRecord struct {
 	BeatBench5d  bool
 	BeatBench10d bool
 	BeatBench20d bool
+
+	// §11.9 full-trade replay (strategy hits only, not baseline — see
+	// simulateTrade doc comment).
+	HasTrade        bool
+	TradeExitRet    float64
+	TradeExitReason string // "stop" | "target" | "timeout"
+	TradeHoldDays   int
+}
+
+// TradeOutcome is one trigger's full-trade replay result.
+type TradeOutcome struct {
+	ExitRet    float64
+	ExitReason string
+	HoldDays   int
+}
+
+// simulateTrade walks candles forward from entryIdx day by day, up to
+// maxHoldDays, exiting on whichever comes first: stop-loss, take-profit, or
+// the hold-day limit (§11.9 — 固定持有 N 天比勝率 measures the wrong thing for
+// right-skewed signals; this measures profit factor on a full trade instead).
+// Stop is checked before target on any bar that touches both (conservative:
+// with only OHLC, not intraday fills, assume the worse fill). ExitRet is the
+// return at the ACTUAL fill price, not the nominal stopPct/targetPct — a
+// gap-down open can breach the stop well past -stopPct, and using the
+// nominal value instead of the real fill would make the profit factor a
+// tautological targetPct/stopPct rather than a measurement. Fill price is
+// the worse of the bar's open and the trigger price (open gaps through the
+// level fill at the open, not the level, since there's no way to fill at a
+// price the stock never traded at that day).
+func simulateTrade(candles []data.Candle, entryIdx int, stopPct, targetPct float64, maxHoldDays int) (TradeOutcome, bool) {
+	entry := candles[entryIdx].Close
+	if entry <= 0 {
+		return TradeOutcome{}, false
+	}
+	stopPrice := entry * (1 - stopPct/100.0)
+	targetPrice := entry * (1 + targetPct/100.0)
+	last := entryIdx
+	for i := 1; i <= maxHoldDays; i++ {
+		idx := entryIdx + i
+		if idx >= len(candles) {
+			break
+		}
+		last = idx
+		c := candles[idx]
+		if c.Low <= stopPrice {
+			fill := stopPrice
+			if c.Open < stopPrice {
+				fill = c.Open // gapped through the stop
+			}
+			exitRet := (fill - entry) / entry * 100.0
+			return TradeOutcome{ExitRet: exitRet, ExitReason: "stop", HoldDays: i}, true
+		}
+		if c.High >= targetPrice {
+			fill := targetPrice
+			if c.Open > targetPrice {
+				fill = c.Open // gapped through the target
+			}
+			exitRet := (fill - entry) / entry * 100.0
+			return TradeOutcome{ExitRet: exitRet, ExitReason: "target", HoldDays: i}, true
+		}
+	}
+	if last == entryIdx {
+		return TradeOutcome{}, false
+	}
+	exitRet := (candles[last].Close - entry) / entry * 100.0
+	return TradeOutcome{ExitRet: exitRet, ExitReason: "timeout", HoldDays: last - entryIdx}, true
 }
 
 func main() {
 	marketFlag := flag.String("market", "us", "market to scan: us|tw")
 	rangeFlag := flag.String("range", "5y", "history range: 1y|2y|5y")
+	stopPctFlag := flag.Float64("stop-pct", 5.0, "full-trade replay: fixed stop-loss %% below entry (§11.9)")
+	targetPctFlag := flag.Float64("target-pct", 10.0, "full-trade replay: fixed take-profit %% above entry (§11.9)")
+	maxHoldDaysFlag := flag.Int("max-hold-days", 20, "full-trade replay: max holding days before a timeout exit")
 	flag.Parse()
 
 	m := market.US
@@ -236,6 +306,12 @@ func main() {
 
 				rec := baseRec
 				rec.Strategy = strat
+				if outcome, ok := simulateTrade(candles, t, *stopPctFlag, *targetPctFlag, *maxHoldDaysFlag); ok {
+					rec.HasTrade = true
+					rec.TradeExitRet = outcome.ExitRet
+					rec.TradeExitReason = outcome.ExitReason
+					rec.TradeHoldDays = outcome.HoldDays
+				}
 				records = append(records, rec)
 			}
 		}
@@ -277,15 +353,21 @@ func main() {
 	}
 
 	// Output summary statistics — baseline first as the reading reference.
-	printSummary(benchTicker, "Baseline（全樣本，未篩選）", filterByStrategy(records, baselineStrategy), nil)
-	baseline10, baseline20 := summaryStats(filterByStrategy(records, baselineStrategy))
-	printSummary(benchTicker, "Squeeze Breakout (網 1)", filterByStrategy(records, "squeeze_breakout"), &baseline10x20{baseline10, baseline20})
-	printSummary(benchTicker, "Box Bottom Rebound (網 2)", filterByStrategy(records, "box_bottom"), &baseline10x20{baseline10, baseline20})
-	printSummary(benchTicker, "Trend Breakout (網 3)", filterByStrategy(records, "trend_breakout"), &baseline10x20{baseline10, baseline20})
-	printSummary(benchTicker, "Trend Pullback (網 4)", filterByStrategy(records, "trend_pullback"), &baseline10x20{baseline10, baseline20})
+	baselineRecs := filterByStrategy(records, baselineStrategy)
+	printSummary(benchTicker, "Baseline（全樣本，未篩選）", baselineRecs, nil)
+	baseline5, baseline10, baseline20 := summaryStats5d10d20d(baselineRecs)
+	base := &baseline5x10x20{baseline5, baseline10, baseline20}
+	printSummary(benchTicker, "Squeeze Breakout (網 1)", filterByStrategy(records, "squeeze_breakout"), base)
+	printSummary(benchTicker, "Box Bottom Rebound (網 2)", filterByStrategy(records, "box_bottom"), base)
+	printSummary(benchTicker, "Trend Breakout (網 3)", filterByStrategy(records, "trend_breakout"), base)
+	printSummary(benchTicker, "Trend Pullback (網 4)", filterByStrategy(records, "trend_pullback"), base)
 	if m == market.TW {
-		printSummary(benchTicker, "Trust Follow (網 5，主力跟單 v2)", filterByStrategy(records, trustStrategy), &baseline10x20{baseline10, baseline20})
+		printSummary(benchTicker, "Trust Follow (網 5，主力跟單 v2)", filterByStrategy(records, trustStrategy), base)
 	}
+
+	// §11.2 point 1: baseline aggregate stats as their own CSV so anyone can
+	// independently re-derive every excess number above.
+	writeBaselineSummaryCSV(fmt.Sprintf("strategyscan_baseline_%s.csv", m), baselineRecs)
 }
 
 func parseTickers(raw string) []string {
@@ -347,17 +429,26 @@ type windowStats struct {
 	medRet  float64
 }
 
-// baseline10x20 carries the baseline's 10d/20d stats so a strategy's summary
-// can print its excess (§10.3 point 4) — the only number that actually says
-// whether a screen beats picking any (ticker, day) at random.
-type baseline10x20 struct {
-	d10, d20 windowStats
+// baseline5x10x20 carries the baseline's 5d/10d/20d stats so a strategy's
+// summary can print its excess (§10.3 point 4) — the only number that
+// actually says whether a screen beats picking any (ticker, day) at random.
+type baseline5x10x20 struct {
+	d5, d10, d20 windowStats
 }
 
-func summaryStats(recs []TriggerRecord) (d10, d20 windowStats) {
-	var ret10s, ret20s []float64
-	var beat10, beat20 int
+// summaryStats5d10d20d returns win rate / mean / median for the 5d/10d/20d
+// forward-return windows (§11.2 point 3 — 5d is the window most relevant to
+// short-horizon screens like 網 4 but wasn't being surfaced anywhere).
+func summaryStats5d10d20d(recs []TriggerRecord) (d5, d10, d20 windowStats) {
+	var ret5s, ret10s, ret20s []float64
+	var beat5, beat10, beat20 int
 	for _, r := range recs {
+		if r.Has5d {
+			ret5s = append(ret5s, r.Ret5d)
+			if r.BeatBench5d {
+				beat5++
+			}
+		}
 		if r.Has10d {
 			ret10s = append(ret10s, r.Ret10d)
 			if r.BeatBench10d {
@@ -371,16 +462,19 @@ func summaryStats(recs []TriggerRecord) (d10, d20 windowStats) {
 			}
 		}
 	}
+	if n := len(ret5s); n > 0 {
+		d5 = windowStats{n, float64(beat5) / float64(n) * 100.0, mean(ret5s), median(ret5s)}
+	}
 	if n := len(ret10s); n > 0 {
 		d10 = windowStats{n, float64(beat10) / float64(n) * 100.0, mean(ret10s), median(ret10s)}
 	}
 	if n := len(ret20s); n > 0 {
 		d20 = windowStats{n, float64(beat20) / float64(n) * 100.0, mean(ret20s), median(ret20s)}
 	}
-	return d10, d20
+	return d5, d10, d20
 }
 
-func printSummary(benchTicker, title string, recs []TriggerRecord, base *baseline10x20) {
+func printSummary(benchTicker, title string, recs []TriggerRecord, base *baseline5x10x20) {
 	isBaseline := base == nil
 	fmt.Printf("\n=======================================================\n")
 	fmt.Printf(" 策略統計：%s\n", title)
@@ -392,7 +486,18 @@ func printSummary(benchTicker, title string, recs []TriggerRecord, base *baselin
 		return
 	}
 
-	d10, d20 := summaryStats(recs)
+	d5, d10, d20 := summaryStats5d10d20d(recs)
+
+	if d5.n > 0 {
+		fmt.Printf("\n[5 日前瞻] (有效樣本: %d 筆)\n", d5.n)
+		fmt.Printf("  • 跑贏 %s 勝率: %.1f%%\n", benchTicker, d5.winRate)
+		fmt.Printf("  • 平均 5d 報酬: %+.2f%%\n", d5.meanRet)
+		fmt.Printf("  • 中位數 5d 報酬: %+.2f%%\n", d5.medRet)
+		if base != nil && base.d5.n > 0 {
+			fmt.Printf("  • 超額 vs baseline: 勝率 %+.1f 個百分點, 平均報酬 %+.2f%%\n",
+				d5.winRate-base.d5.winRate, d5.meanRet-base.d5.meanRet)
+		}
+	}
 
 	if d10.n > 0 {
 		fmt.Printf("\n[10 日前瞻] (有效樣本: %d 筆)\n", d10.n)
@@ -414,6 +519,12 @@ func printSummary(benchTicker, title string, recs []TriggerRecord, base *baselin
 			fmt.Printf("  • 超額 vs baseline: 勝率 %+.1f 個百分點, 平均報酬 %+.2f%%\n",
 				d20.winRate-base.d20.winRate, d20.meanRet-base.d20.meanRet)
 		}
+	}
+
+	// §11.9: full-trade replay stats — not run for baseline (see simulateTrade
+	// call site, main loop only replays strategy hits).
+	if !isBaseline {
+		printTradeStats(recs)
 	}
 
 	// Market Regime breakdown (10d)
@@ -452,6 +563,45 @@ func printSummary(benchTicker, title string, recs []TriggerRecord, base *baselin
 		r := valid10d[i]
 		fmt.Printf("  %d. %s (%s) @ $%.2f -> 10d: %+.2f%% (%s: %+.2f%%) [%s]\n",
 			i+1, r.Ticker, r.Date, r.EntryPrice, r.Ret10d, benchTicker, r.BenchRet10d, r.MarketRegime)
+	}
+}
+
+// printTradeStats reports the §11.9 full-trade replay: exit-reason mix,
+// average outcome, and profit factor (avg win / abs(avg loss)) — the number
+// that actually answers whether a right-skewed signal like 網 4 is worth
+// trading once a stop/target replace "hold N days, count wins".
+func printTradeStats(recs []TriggerRecord) {
+	var stopRets, targetRets, timeoutRets, allRets []float64
+	for _, r := range recs {
+		if !r.HasTrade {
+			continue
+		}
+		allRets = append(allRets, r.TradeExitRet)
+		switch r.TradeExitReason {
+		case "stop":
+			stopRets = append(stopRets, r.TradeExitRet)
+		case "target":
+			targetRets = append(targetRets, r.TradeExitRet)
+		case "timeout":
+			timeoutRets = append(timeoutRets, r.TradeExitRet)
+		}
+	}
+	n := len(allRets)
+	if n == 0 {
+		return
+	}
+	fmt.Printf("\n[完整交易統計（停損/停利/超時，§11.9）] (有效樣本: %d 筆)\n", n)
+	fmt.Printf("  • 出場分布: 停損 %d (%.1f%%) / 停利 %d (%.1f%%) / 超時 %d (%.1f%%)\n",
+		len(stopRets), float64(len(stopRets))/float64(n)*100.0,
+		len(targetRets), float64(len(targetRets))/float64(n)*100.0,
+		len(timeoutRets), float64(len(timeoutRets))/float64(n)*100.0)
+	fmt.Printf("  • 平均報酬（含超時出場）: %+.2f%%\n", mean(allRets))
+	if len(stopRets) > 0 && len(targetRets) > 0 {
+		avgWin := mean(targetRets)
+		avgLoss := mean(stopRets)
+		fmt.Printf("  • 盈虧比 (停利平均 / |停損平均|): %.2f\n", avgWin/math.Abs(avgLoss))
+	} else {
+		fmt.Printf("  • 盈虧比: N/A（缺停損或停利樣本）\n")
 	}
 }
 
@@ -514,14 +664,15 @@ func writeCSV(path string, recs []TriggerRecord) {
 
 	w.Write([]string{
 		"Ticker", "Date", "Strategy", "EntryPrice", "MarketRegime",
-		"Ret5d", "BenchRet5d", "BeatBench5d",
-		"Ret10d", "BenchRet10d", "BeatBench10d",
-		"Ret20d", "BenchRet20d", "BeatBench20d",
+		"Ret5d", "BenchRet5d", "BeatBench5d", "Has5d",
+		"Ret10d", "BenchRet10d", "BeatBench10d", "Has10d",
+		"Ret20d", "BenchRet20d", "BeatBench20d", "Has20d",
+		"TradeExitRet", "TradeExitReason", "TradeHoldDays", "HasTrade",
 	})
 
 	for _, r := range recs {
 		if r.Strategy == baselineStrategy {
-			continue // §10.3: baseline is a few hundred thousand rows; CSV is for manual spot-checks.
+			continue // §10.3: baseline is a few hundred thousand rows; CSV is for manual spot-checks — see writeBaselineSummaryCSV instead.
 		}
 		w.Write([]string{
 			r.Ticker,
@@ -532,13 +683,55 @@ func writeCSV(path string, recs []TriggerRecord) {
 			fmt.Sprintf("%.2f", r.Ret5d),
 			fmt.Sprintf("%.2f", r.BenchRet5d),
 			fmt.Sprintf("%t", r.BeatBench5d),
+			fmt.Sprintf("%t", r.Has5d),
 			fmt.Sprintf("%.2f", r.Ret10d),
 			fmt.Sprintf("%.2f", r.BenchRet10d),
 			fmt.Sprintf("%t", r.BeatBench10d),
+			fmt.Sprintf("%t", r.Has10d),
 			fmt.Sprintf("%.2f", r.Ret20d),
 			fmt.Sprintf("%.2f", r.BenchRet20d),
 			fmt.Sprintf("%t", r.BeatBench20d),
+			fmt.Sprintf("%t", r.Has20d),
+			fmt.Sprintf("%.2f", r.TradeExitRet),
+			r.TradeExitReason,
+			fmt.Sprintf("%d", r.TradeHoldDays),
+			fmt.Sprintf("%t", r.HasTrade),
 		})
 	}
 	fmt.Printf("Saved CSV report to %s\n", path)
+}
+
+// writeBaselineSummaryCSV writes the baseline's aggregate 5d/10d/20d stats
+// (§11.2 point 1) — not the raw few-hundred-thousand-row population, which
+// would defeat the "CSV is for manual spot-checks" purpose (§10.3 point 3).
+// This lets anyone independently re-derive every excess number in §8 without
+// re-fetching a baseline themselves.
+func writeBaselineSummaryCSV(path string, baselineRecs []TriggerRecord) {
+	f, err := os.Create(path)
+	if err != nil {
+		fmt.Printf("Error creating baseline summary CSV: %v\n", err)
+		return
+	}
+	defer f.Close()
+
+	w := csv.NewWriter(f)
+	defer w.Flush()
+
+	w.Write([]string{"Window", "N", "WinRatePct", "MeanRetPct", "MedianRetPct"})
+	d5, d10, d20 := summaryStats5d10d20d(baselineRecs)
+	for _, row := range []struct {
+		window string
+		s      windowStats
+	}{
+		{"5d", d5}, {"10d", d10}, {"20d", d20},
+	} {
+		w.Write([]string{
+			row.window,
+			fmt.Sprintf("%d", row.s.n),
+			fmt.Sprintf("%.2f", row.s.winRate),
+			fmt.Sprintf("%.2f", row.s.meanRet),
+			fmt.Sprintf("%.2f", row.s.medRet),
+		})
+	}
+	fmt.Printf("Saved baseline summary CSV to %s\n", path)
 }
