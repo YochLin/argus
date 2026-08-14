@@ -1,11 +1,11 @@
 package web
 
 import (
-	"log"
 	"sync"
 	"time"
 
 	"argus/internal/data"
+	"argus/internal/logger"
 )
 
 // quoteCacheTTL mirrors internal/mcptools' quoteCacheTTL in spirit (live
@@ -86,7 +86,7 @@ func fetchQuotes(quotes quoteGetter, tickers []string, label string) map[string]
 			defer wg.Done()
 			q, err := quotes.GetQuote(ticker)
 			if err != nil {
-				log.Printf("web: %s: get quote for %s: %v", label, ticker, err)
+				logger.Errorf("web: %s: get quote for %s: %v", label, ticker, err)
 				return
 			}
 			mu.Lock()

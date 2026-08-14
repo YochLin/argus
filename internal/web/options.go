@@ -1,13 +1,13 @@
 package web
 
 import (
-	"log"
 	"math"
 	"sort"
 	"time"
 
 	"argus/internal/data"
 	"argus/internal/db"
+	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/option"
 )
@@ -98,7 +98,7 @@ func buildOptions(database dbReader, optionChain data.OptionChainProvider, quote
 	}
 	lockedCash, collateral, err := buildOptionCollateral(database, stockPositions, m)
 	if err != nil {
-		log.Printf("web: options: collateral: %v", err)
+		logger.Errorf("web: options: collateral: %v", err)
 	}
 	resp.Collateral = optionCollateralSummary{LockedCash: lockedCash, Positions: collateral}
 

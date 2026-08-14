@@ -161,4 +161,3 @@ func TestChat_FallbackWhenSendFailsMidConversation(t *testing.T) {
 		t.Errorf("Turn 2 reply = %q, want %q", reply2, "fallback reply turn 2")
 	}
 }
-

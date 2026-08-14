@@ -95,7 +95,7 @@ const (
 	// /recommend empty-result UX item) — both silent before this, which made
 	// "LLM analyzed candidates but picked none" (normal) indistinguishable
 	// from "no candidates ever reached the LLM" (usually a market-movers
-	// fetch failure — see gatherRecommendationInputs' log.Printf, still not
+	// fetch failure — see gatherRecommendationInputs' log call, still not
 	// surfaced to chat). KeyRecCandidatesAnalyzedNone takes the candidate
 	// count as %d so the message proves the bot actually did work.
 	KeyRecCandidatesAnalyzedNone Key = "rec_candidates_analyzed_none"

@@ -3,7 +3,6 @@ package mcptools
 import (
 	"context"
 	"fmt"
-	"log"
 	"sort"
 	"strings"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
+	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/render"
 )
@@ -138,7 +138,7 @@ func (ts *toolset) writePortfolioSection(sb *strings.Builder, m market.MarketID,
 
 	realizedTotal, err := ts.db.GetRealizedPnL(m)
 	if err != nil {
-		log.Printf("mcptools: get_portfolio realized pnl (%s): %v", m, err)
+		logger.Errorf("mcptools: get_portfolio realized pnl (%s): %v", m, err)
 	}
 
 	sectionTitle := i18n.KeyPortfolioSectionUS
@@ -201,7 +201,7 @@ func (ts *toolset) getRecommendationStats(ctx context.Context, _ *mcp.CallToolRe
 		quotes := make(map[string]*data.Quote)
 		spyQuote, err := ts.provider.GetQuote(benchmarkTicker)
 		if err != nil {
-			log.Printf("mcptools: get_recommendation_stats benchmark %s quote: %v", benchmarkTicker, err)
+			logger.Errorf("mcptools: get_recommendation_stats benchmark %s quote: %v", benchmarkTicker, err)
 			spyQuote = nil
 		}
 
@@ -230,7 +230,7 @@ func (ts *toolset) getRecommendationStats(ctx context.Context, _ *mcp.CallToolRe
 				var err error
 				q, err = ts.provider.GetQuote(r.Ticker)
 				if err != nil {
-					log.Printf("mcptools: get_recommendation_stats quote %s: %v", r.Ticker, err)
+					logger.Errorf("mcptools: get_recommendation_stats quote %s: %v", r.Ticker, err)
 					q = nil
 				}
 				quotes[r.Ticker] = q

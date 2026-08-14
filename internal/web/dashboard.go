@@ -1,10 +1,10 @@
 package web
 
 import (
-	"log"
 	"time"
 
 	"argus/internal/db"
+	"argus/internal/logger"
 	"argus/internal/market"
 )
 
@@ -111,20 +111,20 @@ type dbReader interface {
 func netWorthBaseline(database dbReader, periodStart string, m market.MarketID, today string) (float64, bool) {
 	dayBefore, err := time.Parse("2006-01-02", periodStart)
 	if err != nil {
-		log.Printf("web: dashboard: parse period start %q: %v", periodStart, err)
+		logger.Errorf("web: dashboard: parse period start %q: %v", periodStart, err)
 		return 0, false
 	}
 	dayBeforeStr := dayBefore.AddDate(0, 0, -1).Format("2006-01-02")
 
 	if baseline, ok, err := database.GetNetWorthOnOrBefore(dayBeforeStr, m); err != nil {
-		log.Printf("web: dashboard: get net worth on or before %s: %v", dayBeforeStr, err)
+		logger.Errorf("web: dashboard: get net worth on or before %s: %v", dayBeforeStr, err)
 	} else if ok {
 		return baseline, true
 	}
 
 	points, err := database.GetNetWorthRange(periodStart, today, m)
 	if err != nil {
-		log.Printf("web: dashboard: get net worth range: %v", err)
+		logger.Errorf("web: dashboard: get net worth range: %v", err)
 		return 0, false
 	}
 	if len(points) == 0 {
@@ -153,19 +153,19 @@ func buildStatus(database dbReader, quotes quoteGetter, m market.MarketID) statu
 	var status statusResponse
 	watchlist, err := database.GetWatchlist()
 	if err != nil {
-		log.Printf("web: status: get watchlist: %v", err)
+		logger.Errorf("web: status: get watchlist: %v", err)
 	} else {
 		status.WatchingCount = len(filterByMarket(watchlist, m))
 	}
 	if bench, ok, err := database.GetLatestSnapshot(benchmarkFor(m)); err != nil {
-		log.Printf("web: status: get benchmark snapshot: %v", err)
+		logger.Errorf("web: status: get benchmark snapshot: %v", err)
 	} else if ok {
 		status.SPYChangePct = bench.ChangePercent
 		status.LastCloseDate = bench.Date
 	}
 
 	if positions, err := database.GetPositions(); err != nil {
-		log.Printf("web: status: get positions: %v", err)
+		logger.Errorf("web: status: get positions: %v", err)
 	} else {
 		filtered := filterPositionsByMarket(positions, m)
 		tickers := make([]string, len(filtered))
@@ -182,19 +182,19 @@ func buildStatus(database dbReader, quotes quoteGetter, m market.MarketID) statu
 		}
 		cash, err := loadCash(database, m)
 		if err != nil {
-			log.Printf("web: status: load cash for %s: %v", m, err)
+			logger.Errorf("web: status: load cash for %s: %v", m, err)
 		}
 		status.AccountValue = totalValue + cash
 	}
 
 	if netPnL, err := database.GetRealizedPnL(m); err != nil {
-		log.Printf("web: status: get realized pnl: %v", err)
+		logger.Errorf("web: status: get realized pnl: %v", err)
 	} else {
 		status.NetPnL = netPnL
 	}
 
 	if txs, err := database.GetAllTransactions(); err != nil {
-		log.Printf("web: status: get transactions: %v", err)
+		logger.Errorf("web: status: get transactions: %v", err)
 	} else {
 		sells := FilterSells(filterTransactionsByMarket(txs, m))
 		status.TradeCount = len(sells)

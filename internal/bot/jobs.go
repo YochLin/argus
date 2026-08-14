@@ -3,7 +3,6 @@ package bot
 import (
 	"context"
 	"errors"
-	"log"
 	"sort"
 	"strings"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/llm"
+	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/paper"
 	"argus/internal/signals"
@@ -25,7 +25,7 @@ import (
 // go completely unnoticed. job names the job for the log line and alert.
 func (b *Bot) recoverJobPanic(job string) {
 	if r := recover(); r != nil {
-		log.Printf("%s: panic: %v", job, r)
+		logger.Errorf("%s: panic: %v", job, r)
 		b.Send(i18n.T(b.lang, i18n.KeyJobPanic, job, r))
 	}
 }
@@ -71,7 +71,7 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context, m market.MarketID) {
 
 	tickers, err := b.db.GetWatchlistByMarket(m)
 	if err != nil {
-		log.Printf("closing snapshot: watchlist: %v", err)
+		logger.Errorf("closing snapshot: watchlist: %v", err)
 		b.Send(i18n.T(b.lang, i18n.KeyWatchlistQueryFailed, err))
 		return
 	}
@@ -85,14 +85,14 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context, m market.MarketID) {
 	for _, t := range tickers {
 		q, err := b.provider.GetQuote(t)
 		if err != nil {
-			log.Printf("closing snapshot: quote %s: %v", t, err)
+			logger.Errorf("closing snapshot: quote %s: %v", t, err)
 			continue
 		}
 		// On a market holiday the cron still fires but providers return the
 		// previous session's quote; its timestamp is then a full day old,
 		// and saving it would file old data under the wrong date.
 		if time.Since(q.Timestamp) > 12*time.Hour {
-			log.Printf("closing snapshot: %s quote is stale (%s), skipping (holiday?)", t, q.Timestamp.Format(time.RFC3339))
+			logger.Warnf("closing snapshot: %s quote is stale (%s), skipping (holiday?)", t, q.Timestamp.Format(time.RFC3339))
 			continue
 		}
 		prices[t] = q.Price
@@ -107,10 +107,10 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context, m market.MarketID) {
 			ChangePercent: q.ChangePercent,
 		}
 		if err := b.db.SaveSnapshot(snap); err != nil {
-			log.Printf("closing snapshot: save %s: %v", t, err)
+			logger.Errorf("closing snapshot: save %s: %v", t, err)
 		}
 	}
-	log.Printf("closing snapshot: done for %s market=%s (%d tickers)", date, m, len(tickers))
+	logger.Infof("closing snapshot: done for %s market=%s (%d tickers)", date, m, len(tickers))
 
 	b.snapshotBenchmark(date, m)
 	b.recordNetWorthSnapshot(date, m, prices)
@@ -121,7 +121,7 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context, m market.MarketID) {
 	// yet warrants both of a market's daily checkpoints rather than riding
 	// along with the position-only exit-discipline sweep.
 	if buyAlerts, err := b.db.GetBuyAlertsByMarket(m); err != nil {
-		log.Printf("closing snapshot: buy alerts: %v", err)
+		logger.Errorf("closing snapshot: buy alerts: %v", err)
 	} else {
 		b.checkBuyAlerts(buyAlerts, prices)
 	}
@@ -159,11 +159,11 @@ func (b *Bot) snapshotBenchmarkTo(target *db.DB, date string, m market.MarketID)
 	ticker := benchmarkFor(m)
 	q, err := b.provider.GetQuote(ticker)
 	if err != nil {
-		log.Printf("closing snapshot: benchmark %s: %v", ticker, err)
+		logger.Errorf("closing snapshot: benchmark %s: %v", ticker, err)
 		return
 	}
 	if time.Since(q.Timestamp) > 12*time.Hour {
-		log.Printf("closing snapshot: benchmark %s quote is stale (%s), skipping (holiday?)", ticker, q.Timestamp.Format(time.RFC3339))
+		logger.Warnf("closing snapshot: benchmark %s quote is stale (%s), skipping (holiday?)", ticker, q.Timestamp.Format(time.RFC3339))
 		return
 	}
 	snap := db.DailySnapshot{
@@ -177,7 +177,7 @@ func (b *Bot) snapshotBenchmarkTo(target *db.DB, date string, m market.MarketID)
 		ChangePercent: q.ChangePercent,
 	}
 	if err := target.SaveSnapshot(snap); err != nil {
-		log.Printf("closing snapshot: save benchmark %s: %v", ticker, err)
+		logger.Errorf("closing snapshot: save benchmark %s: %v", ticker, err)
 	}
 }
 
@@ -191,7 +191,7 @@ func (b *Bot) snapshotBenchmarkTo(target *db.DB, date string, m market.MarketID)
 func (b *Bot) recordNetWorthSnapshot(date string, m market.MarketID, prices map[string]float64) {
 	positions, err := b.db.GetPositions()
 	if err != nil {
-		log.Printf("net worth snapshot: positions: %v", err)
+		logger.Errorf("net worth snapshot: positions: %v", err)
 		return
 	}
 
@@ -212,7 +212,7 @@ func (b *Bot) recordNetWorthSnapshot(date string, m market.MarketID, prices map[
 		return
 	}
 	if err := b.db.SaveNetWorthSnapshot(date, m, total); err != nil {
-		log.Printf("net worth snapshot: save: %v", err)
+		logger.Errorf("net worth snapshot: save: %v", err)
 	}
 }
 
@@ -257,7 +257,7 @@ const twMarketClosedStaleness = 12 * time.Hour
 func (b *Bot) isTWMarketClosed() bool {
 	q, err := b.provider.GetQuote(benchmarkFor(market.TW))
 	if err != nil {
-		log.Printf("tw market closed check: quote: %v", err)
+		logger.Errorf("tw market closed check: quote: %v", err)
 		return true
 	}
 	return time.Since(q.Timestamp) > twMarketClosedStaleness
@@ -326,7 +326,7 @@ func (b *Bot) runDailyReport(ctx context.Context, m market.MarketID) {
 	for _, t := range in.watchlistTickers {
 		candles, err := b.history.GetHistory(t, "1y")
 		if err != nil {
-			log.Printf("history %s: %v", t, err)
+			logger.Errorf("history %s: %v", t, err)
 			continue
 		}
 		allSignals = append(allSignals, b.checkStatefulSignals(t, candles, isBear)...)
@@ -355,7 +355,7 @@ func (b *Bot) runDailyReport(ctx context.Context, m market.MarketID) {
 	// positionList — see checkBuyAlerts' own doc comment for why this runs
 	// at both this checkpoint and RunClosingSnapshot's.
 	if buyAlerts, err := b.db.GetBuyAlertsByMarket(m); err != nil {
-		log.Printf("buy alerts: %v", err)
+		logger.Errorf("buy alerts: %v", err)
 	} else {
 		b.checkBuyAlerts(buyAlerts, prices)
 	}
@@ -431,7 +431,7 @@ func (b *Bot) exploreCandidates(ctx context.Context, in *recommendationInputs) m
 
 	noms, err := b.llm.ExploreCandidates(ctx, in.marketNews, exclude)
 	if err != nil {
-		log.Printf("explore candidates: %v", err)
+		logger.Errorf("explore candidates: %v", err)
 		return nil
 	}
 
@@ -439,15 +439,15 @@ func (b *Bot) exploreCandidates(ctx context.Context, in *recommendationInputs) m
 	reasons := make(map[string]string, len(noms))
 	for _, n := range noms {
 		if !data.IsUSEquitySymbol(n.Ticker) {
-			log.Printf("explore candidates: rejecting %q: not a plain US-equity symbol shape", n.Ticker)
+			logger.Infof("explore candidates: rejecting %q: not a plain US-equity symbol shape", n.Ticker)
 			continue
 		}
 		if excludeSet[n.Ticker] {
-			log.Printf("explore candidates: rejecting %s: already on an existing list", n.Ticker)
+			logger.Infof("explore candidates: rejecting %s: already on an existing list", n.Ticker)
 			continue
 		}
 		if _, err := b.provider.GetQuote(n.Ticker); err != nil {
-			log.Printf("explore candidates: rejecting %s: quote failed: %v", n.Ticker, err)
+			logger.Errorf("explore candidates: rejecting %s: quote failed: %v", n.Ticker, err)
 			continue
 		}
 		valid = append(valid, n.Ticker)
@@ -476,7 +476,7 @@ func (b *Bot) checkStatefulSignals(ticker string, candles []data.Candle, isBearR
 
 	prevRSI, err := b.db.GetSignalState(ticker, signals.FamilyRSI)
 	if err != nil {
-		log.Printf("signal state %s/%s: %v", ticker, signals.FamilyRSI, err)
+		logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyRSI, err)
 	}
 	sig, newRSI := b.detector.CheckRSIState(ticker, closes, prevRSI)
 	if sig != nil {
@@ -484,13 +484,13 @@ func (b *Bot) checkStatefulSignals(ticker string, candles []data.Candle, isBearR
 	}
 	if newRSI != prevRSI {
 		if err := b.db.SetSignalState(ticker, signals.FamilyRSI, newRSI); err != nil {
-			log.Printf("signal state %s/%s: %v", ticker, signals.FamilyRSI, err)
+			logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyRSI, err)
 		}
 	}
 
 	prevMACD, err := b.db.GetSignalState(ticker, signals.FamilyMACD)
 	if err != nil {
-		log.Printf("signal state %s/%s: %v", ticker, signals.FamilyMACD, err)
+		logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyMACD, err)
 	}
 	sig, newMACD := b.detector.CheckMACDCross(ticker, closes, prevMACD)
 	if sig != nil {
@@ -498,14 +498,14 @@ func (b *Bot) checkStatefulSignals(ticker string, candles []data.Candle, isBearR
 	}
 	if newMACD != prevMACD {
 		if err := b.db.SetSignalState(ticker, signals.FamilyMACD, newMACD); err != nil {
-			log.Printf("signal state %s/%s: %v", ticker, signals.FamilyMACD, err)
+			logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyMACD, err)
 		}
 	}
 
 	// Strategy 1: Squeeze Breakout
 	prevSqueeze, err := b.db.GetSignalState(ticker, signals.FamilyStrategySqueeze)
 	if err != nil {
-		log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategySqueeze, err)
+		logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategySqueeze, err)
 	}
 	sig, newSqueeze := b.detector.CheckSqueezeBreakout(ticker, candles, prevSqueeze)
 	if sig != nil {
@@ -516,14 +516,14 @@ func (b *Bot) checkStatefulSignals(ticker string, candles []data.Candle, isBearR
 	}
 	if newSqueeze != prevSqueeze {
 		if err := b.db.SetSignalState(ticker, signals.FamilyStrategySqueeze, newSqueeze); err != nil {
-			log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategySqueeze, err)
+			logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategySqueeze, err)
 		}
 	}
 
 	// Strategy 2: Box Bottom Rebound
 	prevBox, err := b.db.GetSignalState(ticker, signals.FamilyStrategyBox)
 	if err != nil {
-		log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategyBox, err)
+		logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategyBox, err)
 	}
 	sig, newBox := b.detector.CheckBoxBottom(ticker, candles, prevBox)
 	if sig != nil {
@@ -534,7 +534,7 @@ func (b *Bot) checkStatefulSignals(ticker string, candles []data.Candle, isBearR
 	}
 	if newBox != prevBox {
 		if err := b.db.SetSignalState(ticker, signals.FamilyStrategyBox, newBox); err != nil {
-			log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategyBox, err)
+			logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategyBox, err)
 		}
 	}
 
@@ -544,7 +544,7 @@ func (b *Bot) checkStatefulSignals(ticker string, candles []data.Candle, isBearR
 	// docs/phase-14-strategy-screens-2.md §4.2c).
 	prevBreakout, err := b.db.GetSignalState(ticker, signals.FamilyStrategyBreakout)
 	if err != nil {
-		log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategyBreakout, err)
+		logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategyBreakout, err)
 	}
 	sig, newBreakout := b.detector.CheckTrendBreakout(ticker, candles, prevBreakout)
 	if sig != nil {
@@ -561,14 +561,14 @@ func (b *Bot) checkStatefulSignals(ticker string, candles []data.Candle, isBearR
 	}
 	if newBreakout != prevBreakout {
 		if err := b.db.SetSignalState(ticker, signals.FamilyStrategyBreakout, newBreakout); err != nil {
-			log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategyBreakout, err)
+			logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategyBreakout, err)
 		}
 	}
 
 	// Strategy 4: Trend Pullback (Phase 14 網 4)
 	prevPullback, err := b.db.GetSignalState(ticker, signals.FamilyStrategyPullback)
 	if err != nil {
-		log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategyPullback, err)
+		logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategyPullback, err)
 	}
 	sig, newPullback := b.detector.CheckTrendPullback(ticker, candles, prevPullback)
 	if sig != nil {
@@ -579,7 +579,7 @@ func (b *Bot) checkStatefulSignals(ticker string, candles []data.Candle, isBearR
 	}
 	if newPullback != prevPullback {
 		if err := b.db.SetSignalState(ticker, signals.FamilyStrategyPullback, newPullback); err != nil {
-			log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategyPullback, err)
+			logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategyPullback, err)
 		}
 	}
 
@@ -593,11 +593,11 @@ func (b *Bot) checkStatefulSignals(ticker string, candles []data.Candle, isBearR
 	if p.RequireTrustData && b.trustNet != nil && signals.TrustFollowTechnicalGate(candles, p) {
 		prevTrust, err := b.db.GetSignalState(ticker, signals.FamilyStrategyTrust)
 		if err != nil {
-			log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategyTrust, err)
+			logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategyTrust, err)
 		}
 		rows, err := b.trustNet.GetTrustNetSeries(ticker, len(candles))
 		if err != nil {
-			log.Printf("trust net %s: %v", ticker, err)
+			logger.Errorf("trust net %s: %v", ticker, err)
 		} else {
 			trustAligned := signals.AlignTrustNet(candles, rows)
 			foreignAligned := signals.AlignForeignNet(candles, rows)
@@ -610,7 +610,7 @@ func (b *Bot) checkStatefulSignals(ticker string, candles []data.Candle, isBearR
 			}
 			if newTrust != prevTrust {
 				if err := b.db.SetSignalState(ticker, signals.FamilyStrategyTrust, newTrust); err != nil {
-					log.Printf("signal state %s/%s: %v", ticker, signals.FamilyStrategyTrust, err)
+					logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategyTrust, err)
 				}
 			}
 		}
@@ -634,7 +634,7 @@ func (b *Bot) revenueGrowthOK(ticker string, minPct float64) bool {
 	}
 	fd, err := b.cachedFundamentals(ticker)
 	if err != nil {
-		log.Printf("revenue growth gate %s: %v", ticker, err)
+		logger.Errorf("revenue growth gate %s: %v", ticker, err)
 		return false
 	}
 	growth := fd.MonthRevenueYoYPct
@@ -739,22 +739,22 @@ func (b *Bot) runUniverseScan(ctx context.Context, m market.MarketID) {
 	// US holiday too.
 	if m == market.US {
 		if !market.IsTradingDay(b.now().In(cst).AddDate(0, 0, -1)) {
-			log.Printf("universe scan: market=%s closed, skipping", m)
+			logger.Infof("universe scan: market=%s closed, skipping", m)
 			return
 		}
 	} else if b.isTWMarketClosed() {
-		log.Printf("universe scan: market=%s closed, skipping", m)
+		logger.Infof("universe scan: market=%s closed, skipping", m)
 		return
 	}
 
 	entries, err := b.db.GetUniverse()
 	if err != nil {
-		log.Printf("universe scan: universe: %v", err)
+		logger.Errorf("universe scan: universe: %v", err)
 		return
 	}
 	watchlist, err := b.db.GetWatchlistByMarket(m)
 	if err != nil {
-		log.Printf("universe scan: watchlist: %v", err)
+		logger.Errorf("universe scan: watchlist: %v", err)
 		return
 	}
 	watchSet := make(map[string]bool, len(watchlist))
@@ -778,19 +778,19 @@ func (b *Bot) runUniverseScan(ctx context.Context, m market.MarketID) {
 	for i, t := range chunk {
 		select {
 		case <-ctx.Done():
-			log.Printf("universe scan: cancelled after %d/%d tickers", i, len(chunk))
+			logger.Warnf("universe scan: cancelled after %d/%d tickers", i, len(chunk))
 			return
 		default:
 		}
 
 		candles, err := b.history.GetHistory(t, "1y")
 		if err != nil {
-			log.Printf("universe scan: history %s: %v", t, err)
+			logger.Errorf("universe scan: history %s: %v", t, err)
 			continue
 		}
 		for _, sig := range b.checkStatefulSignals(t, candles, isBear) {
 			if err := b.db.SaveScanHit(t, date, sig.Message); err != nil {
-				log.Printf("universe scan: save hit %s: %v", t, err)
+				logger.Errorf("universe scan: save hit %s: %v", t, err)
 				continue
 			}
 			hits++
@@ -800,7 +800,7 @@ func (b *Bot) runUniverseScan(ctx context.Context, m market.MarketID) {
 			time.Sleep(universeScanRequestDelay)
 		}
 	}
-	log.Printf("universe scan: market=%s checked %d tickers, %d hits", m, len(chunk), hits)
+	logger.Infof("universe scan: market=%s checked %d tickers, %d hits", m, len(chunk), hits)
 }
 
 // checkEarningsAlerts sends one batched Telegram message warning about
@@ -827,7 +827,7 @@ func (b *Bot) checkEarningsAlerts(tickers []string, earnings map[string]data.Ear
 
 		prev, err := b.db.GetSignalState(t, earningsSignalFamily)
 		if err != nil {
-			log.Printf("earnings alert state %s: %v", t, err)
+			logger.Errorf("earnings alert state %s: %v", t, err)
 		}
 		if prev == e.Date {
 			continue
@@ -839,7 +839,7 @@ func (b *Bot) checkEarningsAlerts(tickers []string, earnings map[string]data.Ear
 		}
 		lines = append(lines, i18n.T(b.lang, key, t, e.Date, days))
 		if err := b.db.SetSignalState(t, earningsSignalFamily, e.Date); err != nil {
-			log.Printf("earnings alert state %s: %v", t, err)
+			logger.Errorf("earnings alert state %s: %v", t, err)
 		}
 	}
 	if len(lines) == 0 {
@@ -875,7 +875,7 @@ func (b *Bot) priceFor(ticker string, prices map[string]float64) (float64, bool)
 	}
 	q, err := b.provider.GetQuote(ticker)
 	if err != nil {
-		log.Printf("quote %s: %v", ticker, err)
+		logger.Errorf("quote %s: %v", ticker, err)
 		return 0, false
 	}
 	return q.Price, true
@@ -974,14 +974,14 @@ func (b *Bot) checkStopLossAlerts(positions []db.Position, prices map[string]flo
 
 		prev, err := b.db.GetSignalState(p.Ticker, stopLossSignalFamily)
 		if err != nil {
-			log.Printf("stop loss state %s: %v", p.Ticker, err)
+			logger.Errorf("stop loss state %s: %v", p.Ticker, err)
 		}
 
 		if p.StopPrice > 0 {
 			_, shouldAlert, newState := stopBreachDecision(price, p.StopPrice, prev)
 			if newState != prev {
 				if err := b.db.SetSignalState(p.Ticker, stopLossSignalFamily, newState); err != nil {
-					log.Printf("stop loss state %s: %v", p.Ticker, err)
+					logger.Errorf("stop loss state %s: %v", p.Ticker, err)
 				}
 			}
 			if !shouldAlert {
@@ -998,7 +998,7 @@ func (b *Bot) checkStopLossAlerts(positions []db.Position, prices map[string]flo
 		_, shouldAlert, newState := breachAlertDecision(lossPct, stopLossPct, prev)
 		if newState != prev {
 			if err := b.db.SetSignalState(p.Ticker, stopLossSignalFamily, newState); err != nil {
-				log.Printf("stop loss state %s: %v", p.Ticker, err)
+				logger.Errorf("stop loss state %s: %v", p.Ticker, err)
 			}
 		}
 		if !shouldAlert {
@@ -1052,7 +1052,7 @@ func (b *Bot) checkTrailingStopAlerts(positions []db.Position, prices map[string
 
 		buyDate, ok, err := b.db.GetEarliestBuyDate(p.Ticker)
 		if err != nil {
-			log.Printf("trailing stop: earliest buy %s: %v", p.Ticker, err)
+			logger.Errorf("trailing stop: earliest buy %s: %v", p.Ticker, err)
 			continue
 		}
 		if !ok {
@@ -1060,7 +1060,7 @@ func (b *Bot) checkTrailingStopAlerts(positions []db.Position, prices map[string
 		}
 		peak, ok, err := b.db.GetPeakClose(p.Ticker, buyDate)
 		if err != nil {
-			log.Printf("trailing stop: peak close %s: %v", p.Ticker, err)
+			logger.Errorf("trailing stop: peak close %s: %v", p.Ticker, err)
 			continue
 		}
 		if !ok || peak <= 0 {
@@ -1080,18 +1080,18 @@ func (b *Bot) checkTrailingStopAlerts(positions []db.Position, prices map[string
 		}
 		thresholdPct, atrBased, ok := paper.TrailingStopThreshold(trailingStopPct, b.trailingStopATRMult, atr, peak)
 		if !ok {
-			log.Printf("trailing stop: no usable threshold for %s (fixed=%.2f atrMult=%.2f atr=%.2f)", p.Ticker, trailingStopPct, b.trailingStopATRMult, atr)
+			logger.Warnf("trailing stop: no usable threshold for %s (fixed=%.2f atrMult=%.2f atr=%.2f)", p.Ticker, trailingStopPct, b.trailingStopATRMult, atr)
 			continue
 		}
 
 		prev, err := b.db.GetSignalState(p.Ticker, trailingStopSignalFamily)
 		if err != nil {
-			log.Printf("trailing stop state %s: %v", p.Ticker, err)
+			logger.Errorf("trailing stop state %s: %v", p.Ticker, err)
 		}
 		_, shouldAlert, newState := breachAlertDecision(drawdownPct, thresholdPct, prev)
 		if newState != prev {
 			if err := b.db.SetSignalState(p.Ticker, trailingStopSignalFamily, newState); err != nil {
-				log.Printf("trailing stop state %s: %v", p.Ticker, err)
+				logger.Errorf("trailing stop state %s: %v", p.Ticker, err)
 			}
 		}
 		if !shouldAlert {
@@ -1180,12 +1180,12 @@ func (b *Bot) checkTargetAlerts(positions []db.Position, prices map[string]float
 
 		prev, err := b.db.GetSignalState(p.Ticker, targetSignalFamily)
 		if err != nil {
-			log.Printf("target state %s: %v", p.Ticker, err)
+			logger.Errorf("target state %s: %v", p.Ticker, err)
 		}
 		_, shouldAlert, newState := targetReachedDecision(price, target, prev)
 		if newState != prev {
 			if err := b.db.SetSignalState(p.Ticker, targetSignalFamily, newState); err != nil {
-				log.Printf("target state %s: %v", p.Ticker, err)
+				logger.Errorf("target state %s: %v", p.Ticker, err)
 			}
 		}
 		if !shouldAlert {
@@ -1244,12 +1244,12 @@ func (b *Bot) checkMA5BreakAlerts(positions []db.Position, prices map[string]flo
 
 		prev, err := b.db.GetSignalState(p.Ticker, ma5TrailSignalFamily)
 		if err != nil {
-			log.Printf("ma5 trail state %s: %v", p.Ticker, err)
+			logger.Errorf("ma5 trail state %s: %v", p.Ticker, err)
 		}
 		_, shouldAlert, newState := stopBreachDecision(price, ma5, prev)
 		if newState != prev {
 			if err := b.db.SetSignalState(p.Ticker, ma5TrailSignalFamily, newState); err != nil {
-				log.Printf("ma5 trail state %s: %v", p.Ticker, err)
+				logger.Errorf("ma5 trail state %s: %v", p.Ticker, err)
 			}
 		}
 		if !shouldAlert {
@@ -1299,7 +1299,7 @@ func (b *Bot) checkBuyAlerts(alerts []db.BuyAlert, prices map[string]float64) {
 			continue
 		}
 		if err := b.db.RemoveBuyAlert(a.ID); err != nil {
-			log.Printf("buy alert remove %s (id=%d): %v", a.Ticker, a.ID, err)
+			logger.Errorf("buy alert remove %s (id=%d): %v", a.Ticker, a.ID, err)
 		}
 		lines = append(lines, i18n.T(b.lang, i18n.KeyBuyAlertHitLine, b.tickerLabel(a.Ticker), b.money(a.Ticker, a.Price), b.money(a.Ticker, price), b.buyAlertDirPhrase(a.Direction)))
 	}
@@ -1403,7 +1403,7 @@ func (b *Bot) RunWeeklyReview(ctx context.Context) {
 	// to throw half the rows away each time. Each market's call filters it.
 	var trackRows []trackRow
 	if rows, _, ok, err := b.computeTrackRows(7); err != nil {
-		log.Printf("weekly review: track rows: %v", err)
+		logger.Errorf("weekly review: track rows: %v", err)
 	} else if ok {
 		trackRows = rows
 	}
@@ -1424,7 +1424,7 @@ func (b *Bot) runWeeklyReviewMarket(ctx context.Context, m market.MarketID, posi
 
 	cash, haveCash, err := b.loadCash(m)
 	if err != nil {
-		log.Printf("weekly review: load cash (%s): %v", m, err)
+		logger.Errorf("weekly review: load cash (%s): %v", m, err)
 	}
 
 	var trackSummary string
@@ -1454,7 +1454,7 @@ func (b *Bot) runWeeklyReviewMarket(ctx context.Context, m market.MarketID, posi
 	// Skipped individually when this market has no snapshot history yet
 	// (weeklyNetWorthLine's own "" = skip contract).
 	if line, err := b.weeklyNetWorthLine(m, cash, haveCash); err != nil {
-		log.Printf("weekly review: net worth line (%s): %v", m, err)
+		logger.Errorf("weekly review: net worth line (%s): %v", m, err)
 	} else if line != "" {
 		sb.WriteString(line)
 		sb.WriteString("\n")
@@ -1484,7 +1484,7 @@ func (b *Bot) RunMonthlyReport(ctx context.Context) {
 	usBlock, usOK := b.buildMonthlyReportBlock(market.US, from, to)
 	twBlock, twOK := b.buildMonthlyReportBlock(market.TW, from, to)
 	if !usOK && !twOK {
-		log.Printf("monthly report: no net worth snapshots for %s..%s in either market, skipping", from, to)
+		logger.Infof("monthly report: no net worth snapshots for %s..%s in either market, skipping", from, to)
 		return
 	}
 
@@ -1521,7 +1521,7 @@ func (b *Bot) RunMonthlyReport(ctx context.Context) {
 func (b *Bot) buildMonthlyReportBlock(m market.MarketID, from, to string) (string, bool) {
 	points, err := b.db.GetNetWorthRange(from, to, m)
 	if err != nil {
-		log.Printf("monthly report: net worth range (%s): %v", m, err)
+		logger.Errorf("monthly report: net worth range (%s): %v", m, err)
 		return "", false
 	}
 	if len(points) == 0 {
@@ -1547,7 +1547,7 @@ func (b *Bot) buildMonthlyReportBlock(m market.MarketID, from, to string) (strin
 	priorMonthEnd := fromDate.AddDate(0, 0, -1).Format("2006-01-02")
 	baseline, haveBaseline, err := b.db.GetNetWorthOnOrBefore(priorMonthEnd, m)
 	if err != nil {
-		log.Printf("monthly report: baseline net worth (%s): %v", m, err)
+		logger.Errorf("monthly report: baseline net worth (%s): %v", m, err)
 	}
 	if !haveBaseline && len(values) > 1 {
 		baseline, haveBaseline = values[0], true
@@ -1559,7 +1559,7 @@ func (b *Bot) buildMonthlyReportBlock(m market.MarketID, from, to string) (strin
 	sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportDrawdownLine, maxDrawdownPct(values)))
 
 	if count, sellCount, realized, err := b.db.GetTransactionStatsByMarket(from, to, m); err != nil {
-		log.Printf("monthly report: transaction stats (%s): %v", m, err)
+		logger.Errorf("monthly report: transaction stats (%s): %v", m, err)
 	} else {
 		if sellCount > 0 {
 			sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportRealizedLine, realized))
@@ -1568,7 +1568,7 @@ func (b *Bot) buildMonthlyReportBlock(m market.MarketID, from, to string) (strin
 	}
 
 	if first, last, ok, err := b.db.GetSnapshotCloseRange(benchmarkFor(m), from, to); err != nil {
-		log.Printf("monthly report: benchmark range (%s): %v", m, err)
+		logger.Errorf("monthly report: benchmark range (%s): %v", m, err)
 	} else if ok && first != 0 {
 		pct := (last - first) / first * 100
 		if m == market.TW {
@@ -1579,7 +1579,7 @@ func (b *Bot) buildMonthlyReportBlock(m market.MarketID, from, to string) (strin
 	}
 
 	if cash, haveCash, err := b.loadCash(m); err != nil {
-		log.Printf("monthly report: load cash (%s): %v", m, err)
+		logger.Errorf("monthly report: load cash (%s): %v", m, err)
 	} else if haveCash {
 		sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportCashLine, latest+cash, cash))
 	}

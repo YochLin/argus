@@ -3,13 +3,13 @@ package web
 import (
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"sort"
 	"time"
 
 	"argus/internal/data"
 	"argus/internal/db"
+	"argus/internal/logger"
 	"argus/internal/market"
 )
 
@@ -253,12 +253,12 @@ func buildRoundDetail(database dbReader, history data.HistoryProvider, ticker, s
 
 	resp.Lessons = []lessonResponse{}
 	if thesis, ok, err := database.GetThesis(ticker); err != nil {
-		log.Printf("web: round detail: get thesis for %s: %v", ticker, err)
+		logger.Errorf("web: round detail: get thesis for %s: %v", ticker, err)
 	} else if ok {
 		resp.Thesis = &thesis
 	}
 	if byTicker, err := database.GetLessonsForTickers([]string{ticker}); err != nil {
-		log.Printf("web: round detail: get lessons for %s: %v", ticker, err)
+		logger.Errorf("web: round detail: get lessons for %s: %v", ticker, err)
 	} else {
 		for _, l := range byTicker[ticker] {
 			resp.Lessons = append(resp.Lessons, lessonResponse{Date: l.Date, Lesson: l.Lesson})

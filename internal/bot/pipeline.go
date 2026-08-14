@@ -2,7 +2,6 @@ package bot
 
 import (
 	"fmt"
-	"log"
 	"sort"
 	"strings"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/llm"
+	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/paper"
 	"argus/internal/signals"
@@ -62,12 +62,12 @@ func (b *Bot) gatherRecommendationInputs(m market.MarketID) (recommendationInput
 	if m == market.US {
 		candidateTickers, err = b.provider.GetMarketMovers()
 		if err != nil {
-			log.Printf("market movers: %v", err)
+			logger.Errorf("market movers: %v", err)
 		}
 	} else if b.twMovers != nil {
 		candidateTickers, err = b.twMovers.GetMarketMovers()
 		if err != nil {
-			log.Printf("tw market movers: %v", err)
+			logger.Errorf("tw market movers: %v", err)
 		}
 	}
 	scanHits := b.loadScanHits(m)
@@ -163,7 +163,7 @@ func (b *Bot) sendAndSaveRecommendations(newsSummary string, recs []llm.Recommen
 		})
 	}
 	if err := b.db.SaveRecommendations(todayDate(), dbRecs); err != nil {
-		log.Printf("save recommendations: %v", err)
+		logger.Errorf("save recommendations: %v", err)
 	}
 
 	b.applyPaperTrades(recs, prices, atrs, m)
@@ -324,7 +324,7 @@ func capScanHitTickers(scanReasons map[string]string, max int) map[string]bool {
 	out := make(map[string]bool, max)
 	for i, t := range tickers {
 		if i >= max {
-			log.Printf("scan-hit fundamentals: skipping %s (over cap of %d)", t, max)
+			logger.Debugf("scan-hit fundamentals: skipping %s (over cap of %d)", t, max)
 			continue
 		}
 		out[t] = true
@@ -418,7 +418,7 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 		}
 		q, err := b.provider.GetQuote(t)
 		if err != nil {
-			log.Printf("quote %s: %v", t, err)
+			logger.Errorf("quote %s: %v", t, err)
 			continue
 		}
 		if market.Of(t) == market.US {
@@ -429,28 +429,32 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 		fetchFundamentals := includeFundamentals || extraFundamentals[t]
 		if fetchFundamentals && b.fundamentals != nil {
 			if fd, err := b.cachedFundamentals(t); err != nil {
-				log.Printf("fundamentals %s: %v", t, err)
+				logger.Errorf("fundamentals %s: %v", t, err)
 			} else {
 				stock.Fundamentals = fd
 			}
 		}
 		if fetchFundamentals && b.analystRating != nil {
 			if ar, err := b.cachedAnalystRating(t); err != nil {
-				log.Printf("analyst rating %s: %v", t, err)
+				logger.Errorf("analyst rating %s: %v", t, err)
 			} else {
 				stock.AnalystRating = ar
 			}
 		}
 		if fetchFundamentals && b.insiderTx != nil {
 			if tx, err := b.cachedInsiderTx(t); err != nil {
-				log.Printf("insider transactions %s: %v", t, err)
+				logger.Errorf("insider transactions %s: %v", t, err)
 			} else {
 				stock.InsiderTx = tx
 			}
 		}
-		if fetchFundamentals && b.institutional != nil {
+		// Institutional flow is a TW-only data source. Guard it here as
+		// well as inside TWSE.GetInstitutionalFlow so US recommendation
+		// batches do not produce an expected-but-noisy "us market not
+		// supported" log for every ticker.
+		if fetchFundamentals && b.institutional != nil && market.Of(t) == market.TW {
 			if fl, err := b.institutional.GetInstitutionalFlow(t); err != nil {
-				log.Printf("institutional flow %s: %v", t, err)
+				logger.Errorf("institutional flow %s: %v", t, err)
 			} else {
 				stock.InstitutionalFlow = fl
 			}
@@ -541,7 +545,7 @@ const (
 func (b *Bot) computeTechnicals(ticker string, spyCloses []float64) (*llm.Technicals, []data.Candle, []llm.StrategyHitInfo) {
 	candles, err := b.history.GetHistory(ticker, "1y")
 	if err != nil {
-		log.Printf("history %s: %v", ticker, err)
+		logger.Errorf("history %s: %v", ticker, err)
 		return nil, nil, nil
 	}
 	closes := data.Closes(candles)
@@ -645,10 +649,10 @@ func (b *Bot) computeStopSuggestion(ticker string) (stopSuggestion, bool) {
 
 	candles, err := b.history.GetHistory(ticker, "1y")
 	if err != nil || len(candles) == 0 {
-		log.Printf("stop suggestion %s: history: %v", ticker, err)
+		logger.Errorf("stop suggestion %s: history: %v", ticker, err)
 		q, qerr := b.provider.GetQuote(ticker)
 		if qerr != nil {
-			log.Printf("stop suggestion %s: quote fallback: %v", ticker, qerr)
+			logger.Errorf("stop suggestion %s: quote fallback: %v", ticker, qerr)
 			return stopSuggestion{}, false
 		}
 		s.LatestClose = q.Price
@@ -680,13 +684,13 @@ func (b *Bot) computeStopSuggestion(ticker string) (stopSuggestion, bool) {
 func (b *Bot) accountValue(m market.MarketID) (float64, bool) {
 	_, total, ok, err := b.db.GetLatestNetWorth(m)
 	if err != nil {
-		log.Printf("account value: net worth: %v", err)
+		logger.Errorf("account value: net worth: %v", err)
 	}
 	if !ok {
 		return 0, false
 	}
 	if cash, cashOK, err := b.loadCash(m); err != nil {
-		log.Printf("account value: cash: %v", err)
+		logger.Errorf("account value: cash: %v", err)
 	} else if cashOK {
 		total += cash
 	}
@@ -717,7 +721,7 @@ func (b *Bot) computeMarketRegime(m market.MarketID) *llm.MarketContext {
 	mc.Bench = bench
 	candles, err := b.history.GetHistory(bench, "1y")
 	if err != nil {
-		log.Printf("market regime: %s history: %v", bench, err)
+		logger.Errorf("market regime: %s history: %v", bench, err)
 	} else if len(candles) > 0 {
 		closes := data.Closes(candles)
 		mc.SPYPrice = closes[len(closes)-1]
@@ -733,7 +737,7 @@ func (b *Bot) computeMarketRegime(m market.MarketID) *llm.MarketContext {
 
 	if m == market.US {
 		if q, err := b.provider.GetQuote(vixTicker); err != nil {
-			log.Printf("market regime: %s quote: %v", vixTicker, err)
+			logger.Errorf("market regime: %s quote: %v", vixTicker, err)
 		} else {
 			mc.VIX = q.Price
 		}
@@ -767,7 +771,7 @@ func isBearRegime(mc *llm.MarketContext) bool {
 func (b *Bot) loadPositions() map[string]db.Position {
 	positions, err := b.db.GetPositions()
 	if err != nil {
-		log.Printf("load positions: %v", err)
+		logger.Errorf("load positions: %v", err)
 		return nil
 	}
 	out := make(map[string]db.Position, len(positions))
@@ -788,7 +792,7 @@ func (b *Bot) loadPrevRecs(tickers []string) map[string]db.Recommendation {
 	}
 	recs, err := b.db.GetLatestRecommendations(tickers)
 	if err != nil {
-		log.Printf("load prev recommendations: %v", err)
+		logger.Errorf("load prev recommendations: %v", err)
 		return nil
 	}
 	return recs
@@ -816,7 +820,7 @@ func (b *Bot) loadPastLessons(tickers []string) map[string][]db.Lesson {
 	}
 	lessons, err := b.db.GetLessonsForTickers(tickers)
 	if err != nil {
-		log.Printf("load past lessons: %v", err)
+		logger.Errorf("load past lessons: %v", err)
 		return nil
 	}
 	return lessons
@@ -830,7 +834,7 @@ func (b *Bot) loadPastLessons(tickers []string) map[string][]db.Lesson {
 func (b *Bot) loadRecentLessons() []llm.PastLesson {
 	rows, err := b.db.GetRecentLessons(maxRecentLessons)
 	if err != nil {
-		log.Printf("load recent lessons: %v", err)
+		logger.Errorf("load recent lessons: %v", err)
 		return nil
 	}
 	out := make([]llm.PastLesson, len(rows))
@@ -898,7 +902,7 @@ func (b *Bot) loadEarnings(tickers []string) map[string]data.EarningsEvent {
 	if b.earnings != nil {
 		events, err := b.earnings.GetUpcomingEarnings(tickers, earningsPromptWindowDays)
 		if err != nil {
-			log.Printf("earnings calendar: %v", err)
+			logger.Errorf("earnings calendar: %v", err)
 		} else if out == nil {
 			out = events
 		} else {
@@ -921,7 +925,7 @@ func (b *Bot) loadTheses(tickers []string) map[string]string {
 	for _, t := range tickers {
 		thesis, ok, err := b.db.GetThesis(t)
 		if err != nil {
-			log.Printf("load thesis %s: %v", t, err)
+			logger.Errorf("load thesis %s: %v", t, err)
 			continue
 		}
 		if ok {
@@ -965,7 +969,7 @@ func (b *Bot) loadVsSPY(stocks []llm.StockData, positions map[string]db.Position
 		ticker := benchmarkFor(m)
 		q, err := b.provider.GetQuote(ticker)
 		if err != nil {
-			log.Printf("vs-spy: benchmark %s quote: %v", ticker, err)
+			logger.Errorf("vs-spy: benchmark %s quote: %v", ticker, err)
 			q = nil
 		}
 		benchQuotes[m] = q
@@ -986,7 +990,7 @@ func (b *Bot) loadVsSPY(stocks []llm.StockData, positions map[string]db.Position
 		}
 		buyDate, ok, err := b.db.GetEarliestBuyDate(ticker)
 		if err != nil {
-			log.Printf("vs-spy: earliest buy %s: %v", ticker, err)
+			logger.Errorf("vs-spy: earliest buy %s: %v", ticker, err)
 			continue
 		}
 		if !ok {
@@ -994,7 +998,7 @@ func (b *Bot) loadVsSPY(stocks []llm.StockData, positions map[string]db.Position
 		}
 		benchEntryClose, ok, err := b.db.GetSnapshotClose(benchmarkFor(m), buyDate)
 		if err != nil {
-			log.Printf("vs-spy: benchmark snapshot %s: %v", ticker, err)
+			logger.Errorf("vs-spy: benchmark snapshot %s: %v", ticker, err)
 			continue
 		}
 		if !ok || benchEntryClose == 0 {
@@ -1022,7 +1026,7 @@ func (b *Bot) loadMarketNews(m market.MarketID) []data.NewsItem {
 	}
 	items, err := provider.GetMarketNews(marketNewsLimit)
 	if err != nil {
-		log.Printf("market news: %v", err)
+		logger.Errorf("market news: %v", err)
 		return nil
 	}
 	return items
@@ -1039,7 +1043,7 @@ func (b *Bot) loadMarketNews(m market.MarketID) []data.NewsItem {
 func (b *Bot) loadScanHits(m market.MarketID) map[string]string {
 	hits, err := b.db.GetScanHits(todayDate())
 	if err != nil {
-		log.Printf("scan hits: %v", err)
+		logger.Errorf("scan hits: %v", err)
 		return nil
 	}
 	out := make(map[string]string, len(hits))
@@ -1085,7 +1089,7 @@ func (b *Bot) computeTrackRows(days int) (rows []trackRow, lines []string, ok bo
 		ticker := benchmarkFor(m)
 		q, err := b.provider.GetQuote(ticker)
 		if err != nil {
-			log.Printf("track: benchmark %s quote: %v", ticker, err)
+			logger.Errorf("track: benchmark %s quote: %v", ticker, err)
 			q = nil
 		}
 		benchQuotes[m] = q
@@ -1114,7 +1118,7 @@ func (b *Bot) computeTrackRows(days int) (rows []trackRow, lines []string, ok bo
 			var err error
 			q, err = b.provider.GetQuote(r.Ticker)
 			if err != nil {
-				log.Printf("track: quote %s: %v", r.Ticker, err)
+				logger.Errorf("track: quote %s: %v", r.Ticker, err)
 				q = nil
 			}
 			quotes[r.Ticker] = q

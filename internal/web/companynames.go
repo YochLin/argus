@@ -1,9 +1,8 @@
 package web
 
 import (
-	"log"
-
 	"argus/internal/data"
+	"argus/internal/logger"
 	"argus/internal/market"
 )
 
@@ -31,21 +30,21 @@ func buildCompanyNames(database dbReader, provider data.CompanyNameProvider) com
 	set := map[string]bool{}
 	watchlist, err := database.GetWatchlist()
 	if err != nil {
-		log.Printf("web: company names: get watchlist: %v", err)
+		logger.Errorf("web: company names: get watchlist: %v", err)
 	}
 	for _, t := range watchlist {
 		set[t] = true
 	}
 	positions, err := database.GetPositions()
 	if err != nil {
-		log.Printf("web: company names: get positions: %v", err)
+		logger.Errorf("web: company names: get positions: %v", err)
 	}
 	for _, p := range positions {
 		set[p.Ticker] = true
 	}
 	txs, err := database.GetAllTransactions()
 	if err != nil {
-		log.Printf("web: company names: get transactions: %v", err)
+		logger.Errorf("web: company names: get transactions: %v", err)
 	}
 	for _, t := range txs {
 		set[t.Ticker] = true
@@ -57,7 +56,7 @@ func buildCompanyNames(database dbReader, provider data.CompanyNameProvider) com
 		}
 		name, err := provider.GetCompanyName(ticker)
 		if err != nil {
-			log.Printf("web: company names: %s: %v", ticker, err)
+			logger.Errorf("web: company names: %s: %v", ticker, err)
 			continue
 		}
 		resp.Names[ticker] = name

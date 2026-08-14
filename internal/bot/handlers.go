@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"regexp"
 	"sort"
@@ -16,6 +15,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/llm"
+	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/paper"
 	"argus/internal/render"
@@ -194,19 +194,19 @@ func (b *Bot) handleCheck(ctx context.Context, ticker string) {
 	stock := llm.StockData{Quote: q, News: news, CompanyName: b.companyName(ticker)}
 	if b.fundamentals != nil {
 		if fd, err := b.fundamentals.GetFundamentals(ticker); err != nil {
-			log.Printf("fundamentals %s: %v", ticker, err)
+			logger.Errorf("fundamentals %s: %v", ticker, err)
 		} else {
 			stock.Fundamentals = fd
 		}
 		if st, err := b.fundamentals.GetFinancialStatements(ticker, "annual"); err != nil {
-			log.Printf("financial statements %s: %v", ticker, err)
+			logger.Errorf("financial statements %s: %v", ticker, err)
 		} else {
 			stock.Statement = st
 		}
 	}
 	if b.analystRating != nil {
 		if ar, err := b.analystRating.GetAnalystRating(ticker); err != nil {
-			log.Printf("analyst rating %s: %v", ticker, err)
+			logger.Errorf("analyst rating %s: %v", ticker, err)
 		} else {
 			stock.AnalystRating = ar
 		}
@@ -797,7 +797,7 @@ func (b *Bot) recordBuy(ticker string, shares, price, fee float64, feeAuto bool,
 	// needs to know it was there.
 	var existingStopPrice float64
 	if prevPos, ok, err := b.db.GetPosition(ticker); err != nil {
-		log.Printf("buy %s: get existing position: %v", ticker, err)
+		logger.Errorf("buy %s: get existing position: %v", ticker, err)
 	} else if ok {
 		existingStopPrice = prevPos.StopPrice
 	}
@@ -808,7 +808,7 @@ func (b *Bot) recordBuy(ticker string, shares, price, fee float64, feeAuto bool,
 	}
 	b.adjustCash(ticker, -(shares*price + fee))
 	if err := b.db.AddTicker(ticker); err != nil {
-		log.Printf("buy: add %s to watchlist: %v", ticker, err)
+		logger.Errorf("buy: add %s to watchlist: %v", ticker, err)
 	}
 	msg := i18n.T(b.lang, i18n.KeyBuySuccess, ticker, shares, b.money(ticker, price), b.money(ticker, fee), pos.Shares, b.money(ticker, pos.AvgCost))
 	if feeAuto {
@@ -854,7 +854,7 @@ func (b *Bot) ExecuteBuy(ticker string, shares, price float64, fee *float64, dat
 func (b *Bot) thesisNudge(ticker string) string {
 	_, ok, err := b.db.GetThesis(ticker)
 	if err != nil {
-		log.Printf("buy: check thesis %s: %v", ticker, err)
+		logger.Errorf("buy: check thesis %s: %v", ticker, err)
 		return ""
 	}
 	if ok {
@@ -906,7 +906,7 @@ func (b *Bot) handleSell(ctx context.Context, args string) {
 // msg" purpose as recordBuy's (see ExecuteSell).
 func (b *Bot) recordSell(ticker string, shares, price, fee float64, feeAuto bool, date string) (msg string, closed bool, stopPrice float64, err error) {
 	if prevPos, ok, gerr := b.db.GetPosition(ticker); gerr != nil {
-		log.Printf("sell %s: get position for stop price: %v", ticker, gerr)
+		logger.Errorf("sell %s: get position for stop price: %v", ticker, gerr)
 	} else if ok {
 		stopPrice = prevPos.StopPrice
 	}
@@ -1097,7 +1097,7 @@ func (b *Bot) buildClosedTradeReview(ticker string, stopPrice float64) (llm.Clos
 	}
 
 	if high, low, ok, err := b.db.GetCloseExtremes(ticker, round.StartDate, round.EndDate); err != nil {
-		log.Printf("review %s: close extremes: %v", ticker, err)
+		logger.Errorf("review %s: close extremes: %v", ticker, err)
 	} else if ok {
 		trade.PeriodHigh = high
 		trade.PeriodLow = low
@@ -1108,7 +1108,7 @@ func (b *Bot) buildClosedTradeReview(ticker string, stopPrice float64) (llm.Clos
 		spyStart, startOK, startErr := b.db.GetSnapshotClose(benchmarkTicker, round.StartDate)
 		spyEnd, endOK, endErr := b.db.GetSnapshotClose(benchmarkTicker, round.EndDate)
 		if startErr != nil || endErr != nil {
-			log.Printf("review %s: spy close: start err=%v end err=%v", ticker, startErr, endErr)
+			logger.Errorf("review %s: spy close: start err=%v end err=%v", ticker, startErr, endErr)
 		} else if startOK && endOK {
 			vs := computeVsSPY(exitPrice, entryPrice, spyEnd, spyStart, benchmarkTicker)
 			trade.VsSPY = &vs
@@ -1116,13 +1116,13 @@ func (b *Bot) buildClosedTradeReview(ticker string, stopPrice float64) (llm.Clos
 	}
 
 	if thesis, ok, err := b.db.GetThesis(ticker); err != nil {
-		log.Printf("review %s: thesis: %v", ticker, err)
+		logger.Errorf("review %s: thesis: %v", ticker, err)
 	} else if ok {
 		trade.Thesis = &thesis
 	}
 
 	if recs, err := b.db.GetRecommendationsForTicker(ticker, round.StartDate, round.EndDate); err != nil {
-		log.Printf("review %s: recommendations: %v", ticker, err)
+		logger.Errorf("review %s: recommendations: %v", ticker, err)
 	} else {
 		for _, r := range recs {
 			trade.Recommendations = append(trade.Recommendations, llm.TradeRecommendation{Date: r.Date, Action: r.Action, Reason: r.Reason})
@@ -1141,16 +1141,16 @@ func (b *Bot) buildClosedTradeReview(ticker string, stopPrice float64) (llm.Clos
 func (b *Bot) reviewClosedTrade(ctx context.Context, ticker string, stopPrice float64) {
 	trade, ok, err := b.buildClosedTradeReview(ticker, stopPrice)
 	if err != nil {
-		log.Printf("review %s: %v", ticker, err)
+		logger.Errorf("review %s: %v", ticker, err)
 		return
 	}
 	if !ok {
-		log.Printf("review %s: no closed round found right after closing (unexpected)", ticker)
+		logger.Errorf("review %s: no closed round found right after closing (unexpected)", ticker)
 		return
 	}
 	result, lesson, err := b.llm.ReviewTrade(ctx, trade)
 	if err != nil {
-		log.Printf("review %s: LLM: %v", ticker, err)
+		logger.Errorf("review %s: LLM: %v", ticker, err)
 		return
 	}
 	b.saveLesson(ticker, lesson)
@@ -1201,7 +1201,7 @@ func (b *Bot) saveLesson(ticker, lesson string) {
 		return
 	}
 	if err := b.db.SaveLesson(ticker, todayDate(), lesson); err != nil {
-		log.Printf("save lesson %s: %v", ticker, err)
+		logger.Errorf("save lesson %s: %v", ticker, err)
 	}
 }
 
@@ -1219,7 +1219,7 @@ func (b *Bot) handlePortfolio() {
 	}
 	optionPositions, err := b.db.GetOptionPositions()
 	if err != nil {
-		log.Printf("portfolio: option positions: %v", err)
+		logger.Errorf("portfolio: option positions: %v", err)
 	}
 	if len(positions) == 0 && len(optionPositions) == 0 {
 		b.Send(i18n.T(b.lang, i18n.KeyPortfolioEmpty))
@@ -1252,7 +1252,7 @@ func (b *Bot) sendPortfolioSection(m market.MarketID, positions []db.Position) {
 
 	realizedTotal, err := b.db.GetRealizedPnL(m)
 	if err != nil {
-		log.Printf("portfolio: realized pnl (%s): %v", m, err)
+		logger.Errorf("portfolio: realized pnl (%s): %v", m, err)
 	}
 
 	b.Send(i18n.T(b.lang, portfolioSectionTitleKey(m)))
@@ -1278,7 +1278,7 @@ func (b *Bot) sendPortfolioSection(m market.MarketID, positions []db.Position) {
 	}
 	cash, haveCash, err := b.loadCash(m)
 	if err != nil {
-		log.Printf("portfolio: load cash (%s): %v", m, err)
+		logger.Errorf("portfolio: load cash (%s): %v", m, err)
 	}
 
 	if m == market.TW {
@@ -1367,7 +1367,7 @@ func (b *Bot) insightMarket(ctx context.Context, m market.MarketID, positions []
 
 	cash, haveCash, err := b.loadCash(m)
 	if err != nil {
-		log.Printf("insight: load cash (%s): %v", m, err)
+		logger.Errorf("insight: load cash (%s): %v", m, err)
 	}
 
 	result, err := b.llm.InsightPortfolio(ctx, stocks, cash, haveCash, m == market.TW)
@@ -1529,14 +1529,14 @@ func (b *Bot) adjustCash(ticker string, delta float64) {
 	m := market.Of(ticker)
 	cash, ok, err := b.loadCash(m)
 	if err != nil {
-		log.Printf("adjust cash for %s: load: %v", ticker, err)
+		logger.Errorf("adjust cash for %s: load: %v", ticker, err)
 		return
 	}
 	if !ok {
 		return
 	}
 	if err := b.db.SetSetting(cashSettingKeyFor(m), strconv.FormatFloat(cash+delta, 'f', 2, 64)); err != nil {
-		log.Printf("adjust cash for %s: save: %v", ticker, err)
+		logger.Errorf("adjust cash for %s: save: %v", ticker, err)
 	}
 }
 
@@ -1656,11 +1656,11 @@ func (b *Bot) sendUniverseSummary() {
 func (b *Bot) SyncUniverse() {
 	added, delisted, err := b.db.SyncSP500()
 	if err != nil {
-		log.Printf("sync universe: %v", err)
+		logger.Errorf("sync universe: %v", err)
 		return
 	}
 	if len(added) > 0 {
-		log.Printf("sync universe: added %d new S&P 500 ticker(s): %s", len(added), strings.Join(added, ", "))
+		logger.Infof("sync universe: added %d new S&P 500 ticker(s): %s", len(added), strings.Join(added, ", "))
 	}
 	if len(delisted) == 0 {
 		return
@@ -1759,7 +1759,7 @@ func (b *Bot) handleChatArticle(ctx context.Context, text, url string) {
 
 	article, err := webfetch.Fetch(ctx, url)
 	if err != nil {
-		log.Printf("chat: article fetch %s: %v", url, err)
+		logger.Errorf("chat: article fetch %s: %v", url, err)
 		b.Send(i18n.T(b.lang, i18n.KeyArticleFetchFailed, err))
 		return
 	}
@@ -1792,11 +1792,11 @@ func (b *Bot) handleChatArticle(ctx context.Context, text, url string) {
 func (b *Bot) buildChatContext() string {
 	watchlist, err := b.db.GetWatchlist()
 	if err != nil {
-		log.Printf("chat context: watchlist: %v", err)
+		logger.Errorf("chat context: watchlist: %v", err)
 	}
 	positions, err := b.db.GetPositions()
 	if err != nil {
-		log.Printf("chat context: positions: %v", err)
+		logger.Errorf("chat context: positions: %v", err)
 	}
 
 	tickerSet := make(map[string]bool, len(watchlist))
@@ -1818,7 +1818,7 @@ func (b *Bot) buildChatContext() string {
 	for _, t := range tickers {
 		snap, ok, err := b.db.GetLatestSnapshot(t)
 		if err != nil {
-			log.Printf("chat context: snapshot %s: %v", t, err)
+			logger.Errorf("chat context: snapshot %s: %v", t, err)
 			continue
 		}
 		if ok {

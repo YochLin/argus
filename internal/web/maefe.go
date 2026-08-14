@@ -1,12 +1,12 @@
 package web
 
 import (
-	"log"
 	"sort"
 	"time"
 
 	"argus/internal/data"
 	"argus/internal/db"
+	"argus/internal/logger"
 )
 
 // dailyCostBasis re-derives, for every date a round's legs touch, the
@@ -191,7 +191,7 @@ func buildMAEMFESummary(txs []db.Transaction, history data.HistoryProvider) MAEM
 				var err error
 				candles, err = history.GetHistory(ticker, "max")
 				if err != nil {
-					log.Printf("web: maemfe: get history for %s: %v", ticker, err)
+					logger.Errorf("web: maemfe: get history for %s: %v", ticker, err)
 					candles = nil
 				}
 				historyCache[ticker] = candles

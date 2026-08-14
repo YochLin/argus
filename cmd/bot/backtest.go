@@ -4,21 +4,22 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
-	"log"
 	"math"
 	"os"
 	"strconv"
 	"time"
 
+	"github.com/joho/godotenv"
+
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
+	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/paper"
 	"argus/internal/receval"
 	"argus/internal/signals"
 	"argus/internal/web"
-	"github.com/joho/godotenv"
 )
 
 // runBacktest runs the "backtest" subcommand: replays the recommendations
@@ -50,7 +51,7 @@ func runBacktest() {
 	case "tw":
 		m = market.TW
 	default:
-		log.Fatalf("backtest: -market must be us or tw")
+		logger.Fatalf("backtest: -market must be us or tw")
 	}
 
 	cash := *cashFlag
@@ -74,20 +75,20 @@ func runBacktest() {
 	}
 
 	if err := godotenv.Load(); err != nil {
-		log.Println("no .env file found, reading env from environment")
+		logger.Info("no .env file found, reading env from environment")
 	}
 	dbPath := envOr("DB_PATH", "data/argus.db")
 	lang := i18n.Parse(envOr("BOT_LANGUAGE", "zh"))
 
 	database, err := db.OpenReadOnly(dbPath)
 	if err != nil {
-		log.Fatalf("backtest: open db: %v", err)
+		logger.Fatalf("backtest: open db: %v", err)
 	}
 	defer database.Close()
 
 	all, err := database.GetRecommendationsSince("2000-01-01")
 	if err != nil {
-		log.Fatalf("backtest: read recommendations: %v", err)
+		logger.Fatalf("backtest: read recommendations: %v", err)
 	}
 
 	var holdCount int
@@ -138,7 +139,7 @@ func runBacktest() {
 		candles, err := yahoo.GetHistory(t, *rangeFlag)
 		if err != nil || len(candles) == 0 {
 			if err != nil {
-				log.Printf("backtest: fetch %s: %v", t, err)
+				logger.Errorf("backtest: fetch %s: %v", t, err)
 			}
 			if t != benchTicker {
 				noHistoryCount++
@@ -149,7 +150,7 @@ func runBacktest() {
 	}
 	benchSeries, ok := seriesByTicker[benchTicker]
 	if !ok || len(benchSeries.dates) == 0 {
-		log.Fatalf("backtest: no benchmark (%s) history — cannot replay", benchTicker)
+		logger.Fatalf("backtest: no benchmark (%s) history — cannot replay", benchTicker)
 	}
 	// Replay only from the first recommendation date onward — the benchmark
 	// axis drives the whole loop and the report, so without this the CAGR/
@@ -215,7 +216,7 @@ func runBacktest() {
 
 	if *csvFlag != "" {
 		if err := writeBacktestCSV(*csvFlag, allTrades); err != nil {
-			log.Printf("backtest: write csv: %v", err)
+			logger.Errorf("backtest: write csv: %v", err)
 		} else {
 			fmt.Print(i18n.T(lang, i18n.KeyEvalCSVSaved, *csvFlag))
 		}

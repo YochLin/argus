@@ -1,13 +1,13 @@
 package web
 
 import (
-	"log"
 	"math"
 	"sort"
 	"strconv"
 
 	"argus/internal/data"
 	"argus/internal/db"
+	"argus/internal/logger"
 	"argus/internal/market"
 )
 
@@ -71,7 +71,7 @@ func buildRisk(database dbReader, quotes quoteGetter, m market.MarketID, heatThr
 
 	cash, err := loadCash(database, m)
 	if err != nil {
-		log.Printf("web: risk: load cash for %s: %v", m, err)
+		logger.Errorf("web: risk: load cash for %s: %v", m, err)
 	}
 
 	type priced struct {
@@ -106,7 +106,7 @@ func buildRisk(database dbReader, quotes quoteGetter, m market.MarketID, heatThr
 
 	optionLockedCash, optionCollateral, err := buildOptionCollateral(database, allPositions, m)
 	if err != nil {
-		log.Printf("web: risk: option collateral for %s: %v", m, err)
+		logger.Errorf("web: risk: option collateral for %s: %v", m, err)
 	}
 
 	resp := riskResponse{

@@ -2,12 +2,12 @@ package bot
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/llm"
+	"argus/internal/logger"
 	"argus/internal/market"
 )
 
@@ -49,7 +49,7 @@ func (b *Bot) fetchIndexQuotes(idx []struct {
 	for _, i := range idx {
 		q, err := b.provider.GetQuote(i.Ticker)
 		if err != nil {
-			log.Printf("morning briefing: %s quote: %v", i.Ticker, err)
+			logger.Errorf("morning briefing: %s quote: %v", i.Ticker, err)
 			continue
 		}
 		out = append(out, llm.IndexQuote{Label: i.Label, Price: q.Price, ChangePercent: q.ChangePercent})
@@ -70,7 +70,7 @@ func (b *Bot) loadQuoteHighlights(tickers []string, positions map[string]db.Posi
 	for _, t := range tickers {
 		q, err := b.provider.GetQuote(t)
 		if err != nil {
-			log.Printf("morning briefing: quote %s: %v", t, err)
+			logger.Errorf("morning briefing: quote %s: %v", t, err)
 			continue
 		}
 		news, _ := b.provider.GetNews(t, 3)
@@ -104,7 +104,7 @@ func (b *Bot) RunUSMorningBriefing(ctx context.Context) {
 	indices := b.fetchIndexQuotes(usIndices)
 	var vix float64
 	if q, err := b.provider.GetQuote(vixTicker); err != nil {
-		log.Printf("morning briefing: %s quote: %v", vixTicker, err)
+		logger.Errorf("morning briefing: %s quote: %v", vixTicker, err)
 	} else {
 		vix = q.Price
 	}
@@ -114,13 +114,13 @@ func (b *Bot) RunUSMorningBriefing(ctx context.Context) {
 
 	watchlistTickers, err := b.db.GetWatchlistByMarket(market.US)
 	if err != nil {
-		log.Printf("morning briefing: watchlist: %v", err)
+		logger.Errorf("morning briefing: watchlist: %v", err)
 	}
 	watchlist := b.loadQuoteHighlights(watchlistTickers, positions)
 
 	moverTickers, err := b.provider.GetMarketMovers()
 	if err != nil {
-		log.Printf("morning briefing: market movers: %v", err)
+		logger.Errorf("morning briefing: market movers: %v", err)
 	}
 	movers := b.loadQuoteHighlights(moverTickers, positions)
 
@@ -158,7 +158,7 @@ func (b *Bot) RunTWMorningBriefing(ctx context.Context) {
 
 	q, err := b.provider.GetQuote(benchmarkFor(market.TW))
 	if err != nil {
-		log.Printf("tw morning briefing: %s quote: %v", benchmarkFor(market.TW), err)
+		logger.Errorf("tw morning briefing: %s quote: %v", benchmarkFor(market.TW), err)
 		b.Send(i18n.T(b.lang, i18n.KeyTWMorningBriefingMarketClosed))
 		return
 	}
@@ -178,7 +178,7 @@ func (b *Bot) RunTWMorningBriefing(ctx context.Context) {
 	indices := append(b.fetchIndexQuotes(twIndices), b.fetchIndexQuotes(usIndices)...)
 	var vix float64
 	if q, err := b.provider.GetQuote(vixTicker); err != nil {
-		log.Printf("tw morning briefing: %s quote: %v", vixTicker, err)
+		logger.Errorf("tw morning briefing: %s quote: %v", vixTicker, err)
 	} else {
 		vix = q.Price
 	}
@@ -188,7 +188,7 @@ func (b *Bot) RunTWMorningBriefing(ctx context.Context) {
 
 	watchlistTickers, err := b.db.GetWatchlistByMarket(market.TW)
 	if err != nil {
-		log.Printf("tw morning briefing: watchlist: %v", err)
+		logger.Errorf("tw morning briefing: watchlist: %v", err)
 	}
 	watchlist := b.loadQuoteHighlights(watchlistTickers, positions)
 
@@ -196,7 +196,7 @@ func (b *Bot) RunTWMorningBriefing(ctx context.Context) {
 	if b.twMovers != nil {
 		moverTickers, err = b.twMovers.GetMarketMovers()
 		if err != nil {
-			log.Printf("tw morning briefing: market movers: %v", err)
+			logger.Errorf("tw morning briefing: market movers: %v", err)
 		}
 	}
 	movers := b.loadQuoteHighlights(moverTickers, positions)

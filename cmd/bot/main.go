@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -12,17 +11,19 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv"
+	"gopkg.in/natefinch/lumberjack.v2"
+
 	"argus/internal/bot"
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/llm"
+	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/mcptools"
 	"argus/internal/scheduler"
 	"argus/internal/web"
-	"github.com/joho/godotenv"
-	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var cst = time.FixedZone("CST", 8*3600)
@@ -55,8 +56,10 @@ func main() {
 		return
 	}
 
-	if err := godotenv.Load(); err != nil {
-		log.Println("no .env file found, reading env from environment")
+	envErr := godotenv.Load()
+	logger.Configure(os.Stderr, logger.ParseLevel(os.Getenv("LOG_LEVEL")))
+	if envErr != nil {
+		logger.Info("no .env file found, reading env from environment")
 	}
 
 	telegramToken := mustEnv("TELEGRAM_BOT_TOKEN")
@@ -131,12 +134,12 @@ func main() {
 
 	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
 	if err != nil {
-		log.Fatalf("invalid TELEGRAM_CHAT_ID: %v", err)
+		logger.Fatalf("invalid TELEGRAM_CHAT_ID: %v", err)
 	}
 
 	// Ensure DB directory exists
 	if err := os.MkdirAll("data", 0o755); err != nil {
-		log.Fatalf("create data dir: %v", err)
+		logger.Fatalf("create data dir: %v", err)
 	}
 
 	// Re-export DB_PATH as an absolute path so llm.argusMCPServer (which
@@ -147,7 +150,7 @@ func main() {
 	// cwd (see acp_provider.go's startClaudeSession) — a relative path here
 	// would resolve against the wrong directory once handed to the child.
 	if absDBPath, err := filepath.Abs(dbPath); err != nil {
-		log.Printf("warning: could not resolve absolute DB_PATH from %q: %v", dbPath, err)
+		logger.Warnf("warning: could not resolve absolute DB_PATH from %q: %v", dbPath, err)
 	} else {
 		os.Setenv("DB_PATH", absDBPath)
 	}
@@ -163,11 +166,11 @@ func main() {
 		MaxAge:     7,
 	}
 	defer logFile.Close()
-	log.SetOutput(io.MultiWriter(os.Stdout, logFile))
+	logger.Configure(io.MultiWriter(os.Stdout, logFile), logger.ParseLevel(os.Getenv("LOG_LEVEL")))
 
 	database, err := db.New(dbPath)
 	if err != nil {
-		log.Fatalf("open database: %v", err)
+		logger.Fatalf("open database: %v", err)
 	}
 	defer database.Close()
 
@@ -180,7 +183,7 @@ func main() {
 	if paperDBPath != "" {
 		paperDatabase, err = db.New(paperDBPath)
 		if err != nil {
-			log.Fatalf("open paper database: %v", err)
+			logger.Fatalf("open paper database: %v", err)
 		}
 		defer paperDatabase.Close()
 	}
@@ -297,7 +300,7 @@ func main() {
 		PaperTakeProfitATRMult: paperTakeProfitATRMult,
 	})
 	if err != nil {
-		log.Fatalf("init bot: %v", err)
+		logger.Fatalf("init bot: %v", err)
 	}
 
 	// Phase 2.6 追加項's S&P 500 refresh (see docs/phase-2.6-universe-refresh.md):
@@ -332,7 +335,7 @@ func main() {
 		})
 		go func() {
 			if err := webServer.Run(ctx, webAddr); err != nil {
-				log.Printf("web: server error: %v", err)
+				logger.Errorf("web: server error: %v", err)
 			}
 		}()
 	}
@@ -370,7 +373,7 @@ func main() {
 	})
 	sched.AddLogRotation(func() {
 		if err := logFile.Rotate(); err != nil {
-			log.Printf("log rotation: %v", err)
+			logger.Errorf("log rotation: %v", err)
 		}
 	})
 	backupDir := envOr("BACKUP_DIR", "data/backups")
@@ -384,9 +387,9 @@ func main() {
 	sched.Start()
 	defer sched.Stop()
 
-	log.Println("stock trader bot started")
+	logger.Info("stock trader bot started")
 	telegramBot.Run(ctx)
-	log.Println("bot stopped")
+	logger.Info("bot stopped")
 }
 
 // runMCPServer runs argus as an MCP server over stdio (see internal/mcptools)
@@ -401,8 +404,10 @@ func main() {
 // goes to log's default stderr, not stdout — stdout is reserved for the MCP
 // JSON-RPC stream (mcp.StdioTransport).
 func runMCPServer() {
-	if err := godotenv.Load(); err != nil {
-		log.Println("no .env file found, reading env from environment")
+	envErr := godotenv.Load()
+	logger.Configure(os.Stderr, logger.ParseLevel(os.Getenv("LOG_LEVEL")))
+	if envErr != nil {
+		logger.Info("no .env file found, reading env from environment")
 	}
 	finnhubKey := os.Getenv("FINNHUB_API_KEY")
 	finmindToken := os.Getenv("FINMIND_TOKEN")
@@ -458,7 +463,7 @@ func runMCPServer() {
 	dbPath := envOr("DB_PATH", "data/argus.db")
 	database, err := db.OpenReadOnly(dbPath)
 	if err != nil {
-		log.Printf("mcp: open read-only db: %v", err)
+		logger.Errorf("mcp: open read-only db: %v", err)
 		database = nil
 	} else {
 		defer database.Close()
@@ -471,7 +476,7 @@ func runMCPServer() {
 	// nil-degrade contract: a failure here only takes down these two tools.
 	writeDatabase, err := db.OpenForWrites(dbPath)
 	if err != nil {
-		log.Printf("mcp: open writable db: %v", err)
+		logger.Errorf("mcp: open writable db: %v", err)
 		writeDatabase = nil
 	} else {
 		defer writeDatabase.Close()
@@ -480,14 +485,14 @@ func runMCPServer() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	if err := mcptools.Run(ctx, lang, provider, yahoo, fundamentalsProvider, earningsProvider, insiderTxProvider, twInstitutional, database, writeDatabase); err != nil {
-		log.Fatalf("mcp server: %v", err)
+		logger.Fatalf("mcp server: %v", err)
 	}
 }
 
 func mustEnv(key string) string {
 	v := os.Getenv(key)
 	if v == "" {
-		log.Fatalf("required env var %s is not set", key)
+		logger.Fatalf("required env var %s is not set", key)
 	}
 	return v
 }
@@ -506,7 +511,7 @@ func envOrFloat(key string, fallback float64) float64 {
 	}
 	n, err := strconv.ParseFloat(v, 64)
 	if err != nil {
-		log.Printf("invalid %s=%q, using default %v", key, v, fallback)
+		logger.Warnf("invalid %s=%q, using default %v", key, v, fallback)
 		return fallback
 	}
 	return n
@@ -519,7 +524,7 @@ func envOrInt(key string, fallback int) int {
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil {
-		log.Printf("invalid %s=%q, using default %d", key, v, fallback)
+		logger.Warnf("invalid %s=%q, using default %d", key, v, fallback)
 		return fallback
 	}
 	return n
@@ -535,16 +540,16 @@ func envOrInt(key string, fallback int) int {
 // twice, which is harmless at once-a-day cron frequency.
 func runBackup(database *db.DB, dir string, retentionDays int, prefix string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		log.Printf("backup: create dir: %v", err)
+		logger.Errorf("backup: create dir: %v", err)
 		return
 	}
 
 	dest := filepath.Join(dir, fmt.Sprintf("%s-%s.db", prefix, time.Now().In(cst).Format("2006-01-02")))
 	if err := database.Backup(dest); err != nil {
-		log.Printf("backup: %v", err)
+		logger.Errorf("backup: %v", err)
 		return
 	}
-	log.Printf("backup: wrote %s", dest)
+	logger.Infof("backup: wrote %s", dest)
 
 	pruneOldBackups(dir, retentionDays)
 }
@@ -552,21 +557,21 @@ func runBackup(database *db.DB, dir string, retentionDays int, prefix string) {
 func pruneOldBackups(dir string, retentionDays int) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		log.Printf("backup: prune: read dir: %v", err)
+		logger.Errorf("backup: prune: read dir: %v", err)
 		return
 	}
 	cutoff := time.Now().AddDate(0, 0, -retentionDays)
 	for _, e := range entries {
 		info, err := e.Info()
 		if err != nil {
-			log.Printf("backup: prune: stat %s: %v", e.Name(), err)
+			logger.Errorf("backup: prune: stat %s: %v", e.Name(), err)
 			continue
 		}
 		if info.ModTime().After(cutoff) {
 			continue
 		}
 		if err := os.Remove(filepath.Join(dir, e.Name())); err != nil {
-			log.Printf("backup: prune: remove %s: %v", e.Name(), err)
+			logger.Errorf("backup: prune: remove %s: %v", e.Name(), err)
 		}
 	}
 }

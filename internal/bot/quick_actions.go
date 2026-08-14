@@ -1,9 +1,8 @@
 package bot
 
 import (
-	"log"
-
 	"argus/internal/i18n"
+	"argus/internal/logger"
 )
 
 // callbackCheckPrefix/callbackBuyPrefix/callbackSellPrefix identify a
@@ -38,6 +37,6 @@ func tickerActionButtons(lang i18n.Lang, ticker string) []Button {
 // Send's chunking.
 func (b *Bot) sendWithTickerActions(ticker, text string) {
 	if err := b.channel.SendWithButtons(text, tickerActionButtons(b.lang, ticker)); err != nil {
-		log.Printf("send with ticker actions: %v", err)
+		logger.Errorf("send with ticker actions: %v", err)
 	}
 }

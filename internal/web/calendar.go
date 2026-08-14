@@ -1,11 +1,11 @@
 package web
 
 import (
-	"log"
 	"time"
 
 	"argus/internal/data"
 	"argus/internal/db"
+	"argus/internal/logger"
 	"argus/internal/market"
 )
 
@@ -168,7 +168,7 @@ func attachCalendarEvents(resp *calendarResponse, database dbReader, earnings da
 	} else if earnings != nil {
 		events, err = earnings.GetEarningsInRange(tickers, from, to)
 		if err != nil {
-			log.Printf("web: calendar earnings: %v", err)
+			logger.Errorf("web: calendar earnings: %v", err)
 			events = nil
 		}
 	}

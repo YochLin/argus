@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 
 	"argus/internal/db"
 	"argus/internal/i18n"
+	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/paper"
 )
@@ -68,21 +68,21 @@ func (b *Bot) resolvePendingFee(p tradePayload, side string) float64 {
 func (b *Bot) sendPendingActionPrompts() {
 	actions, err := b.db.GetPendingActionsByStatus(db.PendingActionStatusPending)
 	if err != nil {
-		log.Printf("pending actions: query pending: %v", err)
+		logger.Errorf("pending actions: query pending: %v", err)
 		return
 	}
 	for _, a := range actions {
 		text, ok := b.describePendingAction(a)
 		if !ok {
-			log.Printf("pending actions: could not describe action id %d (type %q)", a.ID, a.ActionType)
+			logger.Errorf("pending actions: could not describe action id %d (type %q)", a.ID, a.ActionType)
 			continue
 		}
 		if err := b.sendPendingActionConfirmation(a.ID, text); err != nil {
-			log.Printf("pending actions: send confirmation for id %d: %v", a.ID, err)
+			logger.Errorf("pending actions: send confirmation for id %d: %v", a.ID, err)
 			continue
 		}
 		if _, err := b.db.MarkPendingActionSent(a.ID); err != nil {
-			log.Printf("pending actions: mark sent id %d: %v", a.ID, err)
+			logger.Errorf("pending actions: mark sent id %d: %v", a.ID, err)
 		}
 	}
 }
@@ -158,7 +158,7 @@ func (b *Bot) handleCallbackQuery(ctx context.Context, cb InCallback) {
 
 	resultText := b.resolvePendingAction(ctx, id, confirm)
 	if err := b.channel.EditMessage(cb.MsgRef, resultText); err != nil {
-		log.Printf("pending actions: edit confirmation message: %v", err)
+		logger.Errorf("pending actions: edit confirmation message: %v", err)
 	}
 }
 

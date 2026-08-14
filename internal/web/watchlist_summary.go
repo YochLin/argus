@@ -1,10 +1,10 @@
 package web
 
 import (
-	"log"
 	"sync"
 
 	"argus/internal/data"
+	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/signals"
 )
@@ -112,7 +112,7 @@ func fetchHistories(history data.HistoryProvider, tickers []string) map[string][
 			defer wg.Done()
 			candles, err := history.GetHistory(ticker, "3mo")
 			if err != nil {
-				log.Printf("web: watchlist-summary: get history for %s: %v", ticker, err)
+				logger.Errorf("web: watchlist-summary: get history for %s: %v", ticker, err)
 				return
 			}
 			mu.Lock()

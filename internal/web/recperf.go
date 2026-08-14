@@ -1,12 +1,12 @@
 package web
 
 import (
-	"log"
 	"sort"
 	"sync"
 	"time"
 
 	"argus/internal/data"
+	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/receval"
 )
@@ -220,7 +220,7 @@ func buildRecPerformance(database dbReader, history data.HistoryProvider, m mark
 	for ticker := range fetchSet {
 		c, err := history.GetHistory(ticker, "max")
 		if err != nil {
-			log.Printf("web: rec-performance: get history for %s: %v", ticker, err)
+			logger.Errorf("web: rec-performance: get history for %s: %v", ticker, err)
 			continue // left out of candles -> Score reports "no history data"
 		}
 		candles[ticker] = c

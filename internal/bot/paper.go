@@ -1,7 +1,6 @@
 package bot
 
 import (
-	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -9,6 +8,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/llm"
+	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/paper"
 )
@@ -117,7 +117,7 @@ func (b *Bot) loadOrSeedPaperCash(m market.MarketID) (float64, error) {
 		if err := b.paperDB.SetSetting(cashSettingKeyFor(m), strconv.FormatFloat(cash, 'f', 2, 64)); err != nil {
 			return 0, err
 		}
-		log.Printf("paper account: seeded %s cash %.2f", m, cash)
+		logger.Infof("paper account: seeded %s cash %.2f", m, cash)
 		return cash, nil
 	}
 	return strconv.ParseFloat(raw, 64)
@@ -164,7 +164,7 @@ func (b *Bot) applyPaperTrades(recs []llm.Recommendation, prices, atrs map[strin
 
 	acct, err := b.loadPaperAccount(m)
 	if err != nil {
-		log.Printf("paper: load account (%s): %v", m, err)
+		logger.Errorf("paper: load account (%s): %v", m, err)
 		return
 	}
 	cfg := b.paperConfig(m)
@@ -183,7 +183,7 @@ func (b *Bot) applyPaperTrades(recs []llm.Recommendation, prices, atrs map[strin
 			continue
 		}
 		if err := b.persistPaperTrade(acct, trade); err != nil {
-			log.Printf("paper: persist %s %s: %v", trade.Side, trade.Ticker, err)
+			logger.Errorf("paper: persist %s %s: %v", trade.Side, trade.Ticker, err)
 			continue
 		}
 		b.sendPaperTradeAlert(trade, acct.Cash)
@@ -209,7 +209,7 @@ func (b *Bot) runPaperClose(m market.MarketID, date string, prices map[string]fl
 
 	acct, err := b.loadPaperAccount(m)
 	if err != nil {
-		log.Printf("paper close: load account (%s): %v", m, err)
+		logger.Errorf("paper close: load account (%s): %v", m, err)
 		return
 	}
 	if len(acct.Holdings) == 0 {
@@ -230,7 +230,7 @@ func (b *Bot) runPaperClose(m market.MarketID, date string, prices map[string]fl
 		// other fields being flat doesn't affect anything today. Thread real
 		// OHLC through if a future feature reads them.
 		if err := b.paperDB.SaveSnapshot(db.DailySnapshot{Ticker: ticker, Date: date, Open: price, Close: price, High: price, Low: price}); err != nil {
-			log.Printf("paper close: save snapshot %s: %v", ticker, err)
+			logger.Errorf("paper close: save snapshot %s: %v", ticker, err)
 		}
 		if t, _, _ := b.computeTechnicals(ticker, nil); t != nil {
 			atrs[ticker] = t.ATR14
@@ -241,7 +241,7 @@ func (b *Bot) runPaperClose(m market.MarketID, date string, prices map[string]fl
 	cfg := b.paperConfig(m)
 	for _, t := range acct.MarkClose(date, closes, atrs, cfg) {
 		if err := b.persistPaperTrade(acct, t); err != nil {
-			log.Printf("paper close: persist %s %s: %v", t.Side, t.Ticker, err)
+			logger.Errorf("paper close: persist %s %s: %v", t.Side, t.Ticker, err)
 			continue
 		}
 		b.sendPaperTradeAlert(t, acct.Cash)
@@ -254,7 +254,7 @@ func (b *Bot) runPaperClose(m market.MarketID, date string, prices map[string]fl
 		}
 	}
 	if err := b.paperDB.SaveNetWorthSnapshot(date, m, total); err != nil {
-		log.Printf("paper close: net worth snapshot: %v", err)
+		logger.Errorf("paper close: net worth snapshot: %v", err)
 	}
 }
 
@@ -309,12 +309,12 @@ func (b *Bot) handlePaperReset() {
 func (b *Bot) sendPaperSection(m market.MarketID) {
 	acct, err := b.loadPaperAccount(m)
 	if err != nil {
-		log.Printf("paper: load account (%s): %v", m, err)
+		logger.Errorf("paper: load account (%s): %v", m, err)
 		return
 	}
 	realizedTotal, err := b.paperDB.GetRealizedPnL(m)
 	if err != nil {
-		log.Printf("paper: realized pnl (%s): %v", m, err)
+		logger.Errorf("paper: realized pnl (%s): %v", m, err)
 	}
 	if len(acct.Holdings) == 0 && realizedTotal == 0 {
 		return
