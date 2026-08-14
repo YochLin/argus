@@ -10,6 +10,7 @@
 package logger
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -56,16 +57,32 @@ func Error(msg string, args ...any) { slog.Error(msg, args...) }
 
 // Debugf is the compatibility form for messages that still use printf-style
 // formatting while callers are migrated to structured fields incrementally.
-func Debugf(format string, args ...any) { Debug(fmt.Sprintf(format, args...)) }
+func Debugf(format string, args ...any) {
+	if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+		Debug(fmt.Sprintf(format, args...))
+	}
+}
 
 // Infof is the compatibility form for printf-style informational messages.
-func Infof(format string, args ...any) { Info(fmt.Sprintf(format, args...)) }
+func Infof(format string, args ...any) {
+	if slog.Default().Enabled(context.Background(), slog.LevelInfo) {
+		Info(fmt.Sprintf(format, args...))
+	}
+}
 
 // Warnf is the compatibility form for printf-style warnings.
-func Warnf(format string, args ...any) { Warn(fmt.Sprintf(format, args...)) }
+func Warnf(format string, args ...any) {
+	if slog.Default().Enabled(context.Background(), slog.LevelWarn) {
+		Warn(fmt.Sprintf(format, args...))
+	}
+}
 
 // Errorf is the compatibility form for printf-style errors.
-func Errorf(format string, args ...any) { Error(fmt.Sprintf(format, args...)) }
+func Errorf(format string, args ...any) {
+	if slog.Default().Enabled(context.Background(), slog.LevelError) {
+		Error(fmt.Sprintf(format, args...))
+	}
+}
 
 // Fatalf logs an error and terminates the process. It retains the behavior of
 // the standard logger.Fatalf calls used by startup and scheduler registration.

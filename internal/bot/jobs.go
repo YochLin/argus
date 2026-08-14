@@ -439,11 +439,11 @@ func (b *Bot) exploreCandidates(ctx context.Context, in *recommendationInputs) m
 	reasons := make(map[string]string, len(noms))
 	for _, n := range noms {
 		if !data.IsUSEquitySymbol(n.Ticker) {
-			logger.Debugf("explore candidates: rejecting %q: not a plain US-equity symbol shape", n.Ticker)
+			logger.Infof("explore candidates: rejecting %q: not a plain US-equity symbol shape", n.Ticker)
 			continue
 		}
 		if excludeSet[n.Ticker] {
-			logger.Debugf("explore candidates: rejecting %s: already on an existing list", n.Ticker)
+			logger.Infof("explore candidates: rejecting %s: already on an existing list", n.Ticker)
 			continue
 		}
 		if _, err := b.provider.GetQuote(n.Ticker); err != nil {
