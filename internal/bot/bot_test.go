@@ -506,6 +506,31 @@ func TestBreachAlertDecision(t *testing.T) {
 	}
 }
 
+func TestRestrictedAlertDecision(t *testing.T) {
+	tests := []struct {
+		name         string
+		reason       string
+		prevState    string
+		wantAlert    bool
+		wantNewState string
+	}{
+		{"not restricted, never was", "", "", false, ""},
+		{"newly restricted alerts", "處置", "", true, "處置"},
+		{"same reason does not re-alert", "處置", "處置", false, "處置"},
+		{"reason changed re-alerts", "注意", "處置", true, "注意"},
+		{"restriction cleared resets state", "", "處置", false, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			alert, newState := restrictedAlertDecision(tt.reason, tt.prevState)
+			if alert != tt.wantAlert || newState != tt.wantNewState {
+				t.Errorf("restrictedAlertDecision(%q, %q) = %v, %q; want %v, %q",
+					tt.reason, tt.prevState, alert, newState, tt.wantAlert, tt.wantNewState)
+			}
+		})
+	}
+}
+
 func TestStopBreachDecision(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -1131,7 +1156,7 @@ func TestRecordSellClosedFlag(t *testing.T) {
 		t.Fatalf("SetStopPrice() error = %v", err)
 	}
 
-	msg, closed, stopPrice, err := b.recordSell("AAPL", 4, 220, 0, false, "2026-06-10")
+	msg, closed, stopPrice, err := b.recordSell("AAPL", 4, 220, 0, false, "2026-06-10", "")
 	if err != nil {
 		t.Errorf("recordSell() error = %v, want nil for a valid partial sell", err)
 	}
@@ -1142,7 +1167,7 @@ func TestRecordSellClosedFlag(t *testing.T) {
 		t.Errorf("recordSell() stopPrice = %v, want 180 (read before the sell)", stopPrice)
 	}
 
-	msg, closed, stopPrice, err = b.recordSell("AAPL", 6, 230, 0, false, "2026-06-20")
+	msg, closed, stopPrice, err = b.recordSell("AAPL", 6, 230, 0, false, "2026-06-20", "")
 	if err != nil {
 		t.Errorf("recordSell() error = %v, want nil for a valid closing sell", err)
 	}
@@ -1153,7 +1178,7 @@ func TestRecordSellClosedFlag(t *testing.T) {
 		t.Errorf("recordSell() stopPrice = %v, want 180 for the sell that fully closed the position", stopPrice)
 	}
 
-	msg, closed, stopPrice, err = b.recordSell("AAPL", 1, 200, 0, false, "2026-06-21")
+	msg, closed, stopPrice, err = b.recordSell("AAPL", 1, 200, 0, false, "2026-06-21", "")
 	if err == nil {
 		t.Errorf("recordSell() error = nil, want ErrNoPosition (no position left)")
 	}

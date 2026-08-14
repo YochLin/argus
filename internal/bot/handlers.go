@@ -779,7 +779,7 @@ func (b *Bot) handleBuy(args string) {
 	if feeAuto {
 		fee = paper.FeeFor(market.Of(ticker), "BUY", shares*price, b.twFeeDiscount)
 	}
-	msg, _ := b.recordBuy(ticker, shares, price, fee, feeAuto, date)
+	msg, _ := b.recordBuy(ticker, shares, price, fee, feeAuto, date, "")
 	b.Send(msg)
 }
 
@@ -790,8 +790,9 @@ func (b *Bot) handleBuy(args string) {
 // executePendingAction. err is nil on success, purely for a caller that
 // needs to distinguish success/failure programmatically (ExecuteBuy, see
 // docs/phase-10-web-trade-input.md §4.2) without re-parsing msg's already
-// i18n-rendered text.
-func (b *Bot) recordBuy(ticker string, shares, price, fee float64, feeAuto bool, date string) (string, error) {
+// i18n-rendered text. extID is "" for every caller except Phase 16's
+// Shioaji-synced pending actions — see db.RecordBuyExt.
+func (b *Bot) recordBuy(ticker string, shares, price, fee float64, feeAuto bool, date, extID string) (string, error) {
 	// Read any stop price already on the position before the buy — RecordBuy
 	// deliberately doesn't touch it, but buyStopSuggestion's add-on note
 	// needs to know it was there.
@@ -802,7 +803,7 @@ func (b *Bot) recordBuy(ticker string, shares, price, fee float64, feeAuto bool,
 		existingStopPrice = prevPos.StopPrice
 	}
 
-	pos, err := b.db.RecordBuy(ticker, shares, price, fee, date)
+	pos, err := b.db.RecordBuyExt(ticker, shares, price, fee, date, extID)
 	if err != nil {
 		return i18n.T(b.lang, i18n.KeyBuyFailed, err), err
 	}
@@ -841,7 +842,7 @@ func (b *Bot) ExecuteBuy(ticker string, shares, price float64, fee *float64, dat
 	} else {
 		feeVal = *fee
 	}
-	msg, err := b.recordBuy(ticker, shares, price, feeVal, feeAuto, date)
+	msg, err := b.recordBuy(ticker, shares, price, feeVal, feeAuto, date, "")
 	b.Send(msg)
 	return msg, err
 }
@@ -885,7 +886,7 @@ func (b *Bot) handleSell(ctx context.Context, args string) {
 	if feeAuto {
 		fee = paper.FeeFor(market.Of(ticker), "SELL", shares*price, b.twFeeDiscount)
 	}
-	msg, closed, stopPrice, _ := b.recordSell(ticker, shares, price, fee, feeAuto, date)
+	msg, closed, stopPrice, _ := b.recordSell(ticker, shares, price, fee, feeAuto, date, "")
 	b.Send(msg)
 	if closed {
 		go b.reviewClosedTrade(ctx, ticker, stopPrice)
@@ -903,15 +904,16 @@ func (b *Bot) handleSell(ctx context.Context, args string) {
 // since a full close deletes the positions row and takes the stop price
 // with it; always 0 on an error path or when no stop had ever been set. err
 // is nil on success, same "for a programmatic caller, not for re-parsing
-// msg" purpose as recordBuy's (see ExecuteSell).
-func (b *Bot) recordSell(ticker string, shares, price, fee float64, feeAuto bool, date string) (msg string, closed bool, stopPrice float64, err error) {
+// msg" purpose as recordBuy's (see ExecuteSell). extID is "" for every
+// caller except Phase 16's Shioaji-synced pending actions.
+func (b *Bot) recordSell(ticker string, shares, price, fee float64, feeAuto bool, date, extID string) (msg string, closed bool, stopPrice float64, err error) {
 	if prevPos, ok, gerr := b.db.GetPosition(ticker); gerr != nil {
 		logger.Errorf("sell %s: get position for stop price: %v", ticker, gerr)
 	} else if ok {
 		stopPrice = prevPos.StopPrice
 	}
 
-	pos, realizedPnL, err := b.db.RecordSell(ticker, shares, price, fee, date)
+	pos, realizedPnL, err := b.db.RecordSellExt(ticker, shares, price, fee, date, extID)
 	if err != nil {
 		switch {
 		case errors.Is(err, db.ErrNoPosition):
@@ -948,7 +950,7 @@ func (b *Bot) ExecuteSell(ctx context.Context, ticker string, shares, price floa
 	} else {
 		feeVal = *fee
 	}
-	msg, closed, stopPrice, err := b.recordSell(ticker, shares, price, feeVal, feeAuto, date)
+	msg, closed, stopPrice, err := b.recordSell(ticker, shares, price, feeVal, feeAuto, date, "")
 	b.Send(msg)
 	if closed {
 		go b.reviewClosedTrade(ctx, ticker, stopPrice)

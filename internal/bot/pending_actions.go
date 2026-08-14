@@ -33,6 +33,7 @@ type tradePayload struct {
 	Price  float64  `json:"price"`
 	Fee    *float64 `json:"fee"`
 	Date   string   `json:"date"`
+	ExtID  string   `json:"ext_id,omitempty"`
 }
 
 func decodeTradePayload(payload string) (tradePayload, bool) {
@@ -98,16 +99,28 @@ func (b *Bot) describePendingAction(a db.PendingAction) (string, bool) {
 		if !ok {
 			return "", false
 		}
-		return i18n.T(b.lang, i18n.KeyPendingBuyConfirm, p.Ticker, p.Shares, b.money(p.Ticker, p.Price), b.money(p.Ticker, b.resolvePendingFee(p, "BUY")), p.Date), true
+		text := i18n.T(b.lang, i18n.KeyPendingBuyConfirm, p.Ticker, p.Shares, b.money(p.Ticker, p.Price), b.money(p.Ticker, b.resolvePendingFee(p, "BUY")), p.Date)
+		return text + sinopacSourceNote(b.lang, p.ExtID), true
 	case db.PendingActionRecordSell:
 		p, ok := decodeTradePayload(a.Payload)
 		if !ok {
 			return "", false
 		}
-		return i18n.T(b.lang, i18n.KeyPendingSellConfirm, p.Ticker, p.Shares, b.money(p.Ticker, p.Price), b.money(p.Ticker, b.resolvePendingFee(p, "SELL")), p.Date), true
+		text := i18n.T(b.lang, i18n.KeyPendingSellConfirm, p.Ticker, p.Shares, b.money(p.Ticker, p.Price), b.money(p.Ticker, b.resolvePendingFee(p, "SELL")), p.Date)
+		return text + sinopacSourceNote(b.lang, p.ExtID), true
 	default:
 		return "", false
 	}
+}
+
+// sinopacSourceNote annotates a pending action's confirmation text when it
+// came from Phase 16's Shioaji sync (extID set) rather than an LLM tool
+// call, so the user knows it's a broker-observed trade, not a proposal.
+func sinopacSourceNote(lang i18n.Lang, extID string) string {
+	if extID == "" {
+		return ""
+	}
+	return i18n.T(lang, i18n.KeyPendingActionFromSinopac)
 }
 
 // sendPendingActionConfirmation sends text with a Confirm/Reject inline
@@ -227,14 +240,14 @@ func (b *Bot) executePendingAction(ctx context.Context, action db.PendingAction)
 		if !ok {
 			return i18n.T(b.lang, i18n.KeyPendingActionExecFailed)
 		}
-		msg, _ := b.recordBuy(p.Ticker, p.Shares, p.Price, b.resolvePendingFee(p, "BUY"), p.Fee == nil, p.Date)
+		msg, _ := b.recordBuy(p.Ticker, p.Shares, p.Price, b.resolvePendingFee(p, "BUY"), p.Fee == nil, p.Date, p.ExtID)
 		return msg
 	case db.PendingActionRecordSell:
 		p, ok := decodeTradePayload(action.Payload)
 		if !ok {
 			return i18n.T(b.lang, i18n.KeyPendingActionExecFailed)
 		}
-		msg, closed, stopPrice, _ := b.recordSell(p.Ticker, p.Shares, p.Price, b.resolvePendingFee(p, "SELL"), p.Fee == nil, p.Date)
+		msg, closed, stopPrice, _ := b.recordSell(p.Ticker, p.Shares, p.Price, b.resolvePendingFee(p, "SELL"), p.Fee == nil, p.Date, p.ExtID)
 		if closed {
 			go b.reviewClosedTrade(ctx, p.Ticker, stopPrice)
 		}

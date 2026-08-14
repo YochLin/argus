@@ -11,6 +11,7 @@ import (
 	"argus/internal/i18n"
 	"argus/internal/llm"
 	"argus/internal/signals"
+	"argus/internal/sinopac"
 )
 
 var cst = time.FixedZone("CST", 8*3600)
@@ -64,6 +65,19 @@ type Bot struct {
 	trustNet      data.TrustNetProvider           // Phase 15 網 5【主力跟單】, TW only; nil if FINMIND_TOKEN isn't set
 	optionChain   data.OptionChainProvider        // Phase 12, US-only; always non-nil in real use (Yahoo needs no API key), nil-checked anyway for tests that build a partial Bot
 	history       data.HistoryProvider
+	sinopac       *sinopac.Client // Phase 16, TW only; nil unless SHIOAJI_ADDR is set
+	// sinopacSkip (SINOPAC_SKIP_TICKERS env, comma-separated, Phase 16) is
+	// periodic/定期定額 investment tickers the sync job should never propose
+	// — the user knows which ones those are; RunSinopacSync deliberately
+	// doesn't try to infer it from trade shape (see internal/sinopac.Trades).
+	sinopacSkip map[string]bool
+	// sinopacSyncLive (SINOPAC_SYNC_LIVE env, Phase 16) gates whether the
+	// *scheduled* sync job creates real pending actions or only dry-run
+	// lists them — off by default until PositionDetail/ProfitLoss's price
+	// semantics are reconciled against a real statement (see the Phase 16
+	// plan's risk section). /sinopac sync (typed by the user, an explicit
+	// per-call confirmation) ignores this and always runs live.
+	sinopacSyncLive bool
 	llm           *llm.Client
 	detector      *signals.Detector
 	lang          i18n.Lang
@@ -172,6 +186,9 @@ type Config struct {
 	TrustNet        data.TrustNetProvider           // Phase 15 網 5【主力跟單】, TW only; nil if FINMIND_TOKEN isn't set
 	OptionChain     data.OptionChainProvider        // Phase 12, US-only; always non-nil in real use
 	History         data.HistoryProvider
+	Sinopac         *sinopac.Client // Phase 16, TW only; nil unless SHIOAJI_ADDR is set
+	SinopacSkip     map[string]bool // Phase 16; from SINOPAC_SKIP_TICKERS
+	SinopacSyncLive bool            // Phase 16; from SINOPAC_SYNC_LIVE
 	LLM             *llm.Client
 	Lang            i18n.Lang
 	StopLossPct     float64 // STOP_LOSS_PCT env; 0 disables the check
@@ -247,6 +264,9 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		trustNet:               cfg.TrustNet,
 		optionChain:            cfg.OptionChain,
 		history:                cfg.History,
+		sinopac:                cfg.Sinopac,
+		sinopacSkip:            cfg.SinopacSkip,
+		sinopacSyncLive:        cfg.SinopacSyncLive,
 		llm:                    cfg.LLM,
 		detector:               signals.NewDetector(cfg.Lang),
 		lang:                   cfg.Lang,
@@ -403,6 +423,8 @@ func (b *Bot) handleMessage(ctx context.Context, cmd, args string) {
 		b.handleReset()
 	case "paper":
 		b.handlePaper(args)
+	case "sinopac":
+		b.handleSinopac(ctx, args)
 	default:
 		b.Send(i18n.T(b.lang, i18n.KeyUnknownCommand))
 	}

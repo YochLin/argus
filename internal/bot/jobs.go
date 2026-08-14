@@ -349,6 +349,9 @@ func (b *Bot) runDailyReport(ctx context.Context, m market.MarketID) {
 	b.checkTrailingStopAlerts(positionList, prices, atrs)
 	b.checkTargetAlerts(positionList, prices)
 	b.checkMA5BreakAlerts(positionList, prices, ma5s)
+	if m == market.TW {
+		b.checkRestrictedAlerts(positionList, b.restrictedTickers(ctx, m))
+	}
 
 	// Buy alerts (unlike the exit-discipline checks above) watch tickers the
 	// user may not hold yet, so they're checked here too, not folded into
@@ -772,6 +775,13 @@ func (b *Bot) runUniverseScan(ctx context.Context, m market.MarketID) {
 	mc := b.computeMarketRegime(m)
 	isBear := isBearRegime(mc)
 
+	// Phase 16: skip TWSE/TPEx disposition (處置) or attention (注意)
+	// tickers — the bot would otherwise happily recommend a stock currently
+	// in split-auction trading with no idea anything's wrong. Fetched once
+	// per scan (not per ticker), nil when SHIOAJI_ADDR isn't set (no-op,
+	// same nil-degrade convention as every other optional provider).
+	restricted := b.restrictedTickers(ctx, m)
+
 	chunk := universeScanChunk(tickers, scanChunkCount, time.Now().In(cst).YearDay())
 	date := todayDate()
 	hits := 0
@@ -781,6 +791,11 @@ func (b *Bot) runUniverseScan(ctx context.Context, m market.MarketID) {
 			logger.Warnf("universe scan: cancelled after %d/%d tickers", i, len(chunk))
 			return
 		default:
+		}
+
+		if reason, ok := restricted[t]; ok {
+			logger.Infof("universe scan: skipping %s: %s", t, reason)
+			continue
 		}
 
 		candles, err := b.history.GetHistory(t, "1y")
@@ -801,6 +816,38 @@ func (b *Bot) runUniverseScan(ctx context.Context, m market.MarketID) {
 		}
 	}
 	logger.Infof("universe scan: market=%s checked %d tickers, %d hits", m, len(chunk), hits)
+}
+
+// restrictedTickers returns TW disposition (處置)/attention (注意) tickers
+// mapped to a human-readable reason, for runUniverseScan and
+// checkRestrictedAlerts to skip/warn about — nil for US (no such
+// classification exists there) or when b.sinopac is unset (SHIOAJI_ADDR
+// not configured), same nil-degrade convention as every other optional
+// provider. Not cached across calls: RegulatoryPunish/RegulatoryNotice are
+// each one free GET request, and this is called at most twice a day (once
+// per job).
+func (b *Bot) restrictedTickers(ctx context.Context, m market.MarketID) map[string]string {
+	if m != market.TW || b.sinopac == nil {
+		return nil
+	}
+	out := make(map[string]string)
+	if punish, err := b.sinopac.RegulatoryPunish(ctx); err != nil {
+		logger.Errorf("restricted tickers: regulatory punish: %v", err)
+	} else {
+		for code, reason := range punish {
+			out[code] = reason
+		}
+	}
+	if notice, err := b.sinopac.RegulatoryNotice(ctx); err != nil {
+		logger.Errorf("restricted tickers: regulatory notice: %v", err)
+	} else {
+		for code, reason := range notice {
+			if _, ok := out[code]; !ok {
+				out[code] = reason
+			}
+		}
+	}
+	return out
 }
 
 // checkEarningsAlerts sends one batched Telegram message warning about
@@ -854,9 +901,65 @@ func (b *Bot) checkEarningsAlerts(tickers []string, earnings map[string]data.Ear
 	b.Send(sb.String())
 }
 
+// checkRestrictedAlerts (Phase 16, TW only) warns once per held position
+// that enters TWSE/TPEx disposition/attention status. Same batched-title-
+// plus-lines/signal_states-dedup shape as checkStopLossAlerts above: state
+// holds the last-alerted reason string, so a changed reason re-alerts and
+// clearing the restriction resets state (a future re-entry alerts again).
+// restricted is nil (no-op) for US or when Shioaji isn't configured — see
+// restrictedTickers.
+func (b *Bot) checkRestrictedAlerts(positions []db.Position, restricted map[string]string) {
+	var lines []string
+	for _, p := range positions {
+		reason := restricted[p.Ticker]
+		prev, err := b.db.GetSignalState(p.Ticker, restrictedStockSignalFamily)
+		if err != nil {
+			logger.Errorf("restricted state %s: %v", p.Ticker, err)
+		}
+		shouldAlert, newState := restrictedAlertDecision(reason, prev)
+		if newState != prev {
+			if err := b.db.SetSignalState(p.Ticker, restrictedStockSignalFamily, newState); err != nil {
+				logger.Errorf("restricted state %s: %v", p.Ticker, err)
+			}
+		}
+		if !shouldAlert {
+			continue
+		}
+		lines = append(lines, i18n.T(b.lang, i18n.KeyRestrictedStockAlertLine, b.tickerLabel(p.Ticker), reason))
+	}
+	if len(lines) == 0 {
+		return
+	}
+	var sb strings.Builder
+	sb.WriteString(i18n.T(b.lang, i18n.KeyRestrictedStockAlertTitle))
+	for _, l := range lines {
+		sb.WriteString(l)
+	}
+	b.Send(sb.String())
+}
+
+// restrictedAlertDecision is checkRestrictedAlerts's pure dedup core,
+// mirroring breachAlertDecision/stopBreachDecision's state-machine shape:
+// reason == "" means the ticker isn't currently restricted (resets state so
+// a future re-entry alerts again); a non-empty reason alerts once per
+// distinct reason string (so punish -> notice or a renewed period with a
+// different end_date each re-alert), staying silent while it repeats.
+func restrictedAlertDecision(reason, prevState string) (shouldAlert bool, newState string) {
+	if reason == "" {
+		return false, ""
+	}
+	if reason == prevState {
+		return false, prevState
+	}
+	return true, reason
+}
+
 const (
 	stopLossSignalFamily     = "stop_loss"
 	trailingStopSignalFamily = "trailing_stop"
+	// restrictedStockSignalFamily (Phase 16, TW only) dedupes
+	// checkRestrictedAlerts the same way — see that function.
+	restrictedStockSignalFamily = "restricted_stock"
 	// breachedState is the signal_states value recorded while a stop-loss/
 	// trailing-stop threshold stays breached; any other value (including "",
 	// the unset default) means "not currently breached".

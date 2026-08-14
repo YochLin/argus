@@ -22,12 +22,16 @@ import (
 // Fee is a *float64 (nil when the model omits it) so internal/bot's
 // executePendingAction can tell "not specified, auto-calculate" apart from
 // an explicit 0 — same feeSet distinction as parseTradeArgs (Phase 13 §3.2).
+// ExtID is only ever set by Phase 16's Shioaji sync (internal/bot/sinopac.go
+// builds a pending_actions row directly, bypassing this package's tools
+// entirely) — always "" for an LLM-proposed trade.
 type tradePayload struct {
 	Ticker string   `json:"ticker"`
 	Shares float64  `json:"shares"`
 	Price  float64  `json:"price"`
 	Fee    *float64 `json:"fee"`
 	Date   string   `json:"date"`
+	ExtID  string   `json:"ext_id,omitempty"`
 }
 
 type tradeInput struct {

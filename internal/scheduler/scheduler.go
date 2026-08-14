@@ -259,6 +259,23 @@ func (s *Scheduler) AddBackup(fn func()) {
 	logger.Info("scheduler: backup registered at 06:00 CST")
 }
 
+// AddSinopacSync schedules Phase 16's Shioaji auto-bookkeeping sync at
+// 14:00 CST, Monday-Friday — after the 13:30 TW close, before
+// AddTWClosingSnapshot (14:30) so the sync's cash-balance write (see
+// internal/bot/sinopac.go) lands ahead of that day's other post-close
+// bookkeeping. A no-op (SHIOAJI_ADDR unset) when Sinopac isn't configured —
+// fn handles that internally, same as every other job here.
+func (s *Scheduler) AddSinopacSync(ctx context.Context, fn JobFunc) {
+	_, err := s.c.AddFunc("0 0 14 * * 1-5", func() {
+		logger.Info("scheduler: running sinopac sync")
+		fn(ctx)
+	})
+	if err != nil {
+		logger.Fatalf("scheduler: add sinopac sync: %v", err)
+	}
+	logger.Info("scheduler: sinopac sync registered at 14:00 CST (Mon-Fri)")
+}
+
 func (s *Scheduler) Start() {
 	s.c.Start()
 	logger.Info("scheduler: started")

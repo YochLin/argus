@@ -225,13 +225,13 @@ func (b *Bot) resolveOption(symbol, date, action string) string {
 	var stockMsg string
 	switch {
 	case action == db.OptionActionAssigned && pos.Right == "P": // short put assigned -> buy the stock
-		stockMsg, _ = b.recordBuy(pos.Underlying, shares, pos.Strike, 0, false, date)
+		stockMsg, _ = b.recordBuy(pos.Underlying, shares, pos.Strike, 0, false, date, "")
 	case action == db.OptionActionAssigned && pos.Right == "C": // short call assigned -> sell the stock
-		stockMsg, _, _, _ = b.recordSell(pos.Underlying, shares, pos.Strike, 0, false, date)
+		stockMsg, _, _, _ = b.recordSell(pos.Underlying, shares, pos.Strike, 0, false, date, "")
 	case action == db.OptionActionExercised && pos.Right == "C": // long call exercised -> buy the stock at strike
-		stockMsg, _ = b.recordBuy(pos.Underlying, shares, pos.Strike, 0, false, date)
+		stockMsg, _ = b.recordBuy(pos.Underlying, shares, pos.Strike, 0, false, date, "")
 	case action == db.OptionActionExercised && pos.Right == "P": // long put exercised -> sell the stock at strike
-		stockMsg, _, _, _ = b.recordSell(pos.Underlying, shares, pos.Strike, 0, false, date)
+		stockMsg, _, _, _ = b.recordSell(pos.Underlying, shares, pos.Strike, 0, false, date, "")
 	}
 	if stockMsg != "" {
 		msg += "\n" + stockMsg
