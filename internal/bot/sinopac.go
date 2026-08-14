@@ -92,10 +92,6 @@ func (b *Bot) RunSinopacSync(ctx context.Context, dryRun bool) (msg string, foun
 		created++
 	}
 
-	if !dryRun {
-		b.syncSinopacCashBalance(ctx)
-	}
-
 	if len(lines) == 0 {
 		return i18n.T(b.lang, i18n.KeySinopacSyncNone), false
 	}
@@ -201,9 +197,13 @@ func (b *Bot) createSinopacPendingAction(t sinopac.Trade) error {
 // syncSinopacCashBalance overwrites the TWD cash-balance setting with
 // Shioaji's own account_balance — more accurate than adjustCash's
 // buy/sell-only bookkeeping, since it reflects dividends/deposits/
-// withdrawals too. Log-only on failure: cash balance is a reference value
-// (see cashSettingKeyFor's doc comment), not worth failing the whole sync
-// reply over.
+// withdrawals too. Only called from executePendingAction after the user has
+// actually confirmed a Sinopac-sourced trade (ExtID != "") — never from
+// RunSinopacSync itself, so a dry-run or an as-yet-unconfirmed pending
+// action can never overwrite this value, matching the same "never write
+// without confirmation" rule Phase 16 applies to trades. Log-only on
+// failure: cash balance is a reference value (see cashSettingKeyFor's doc
+// comment), not worth failing the whole confirmation over.
 func (b *Bot) syncSinopacCashBalance(ctx context.Context) {
 	bal, err := b.sinopac.AccountBalance(ctx)
 	if err != nil {

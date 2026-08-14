@@ -241,6 +241,9 @@ func (b *Bot) executePendingAction(ctx context.Context, action db.PendingAction)
 			return i18n.T(b.lang, i18n.KeyPendingActionExecFailed)
 		}
 		msg, _ := b.recordBuy(p.Ticker, p.Shares, p.Price, b.resolvePendingFee(p, "BUY"), p.Fee == nil, p.Date, p.ExtID)
+		if p.ExtID != "" && b.sinopac != nil {
+			b.syncSinopacCashBalance(ctx)
+		}
 		return msg
 	case db.PendingActionRecordSell:
 		p, ok := decodeTradePayload(action.Payload)
@@ -248,6 +251,9 @@ func (b *Bot) executePendingAction(ctx context.Context, action db.PendingAction)
 			return i18n.T(b.lang, i18n.KeyPendingActionExecFailed)
 		}
 		msg, closed, stopPrice, _ := b.recordSell(p.Ticker, p.Shares, p.Price, b.resolvePendingFee(p, "SELL"), p.Fee == nil, p.Date, p.ExtID)
+		if p.ExtID != "" && b.sinopac != nil {
+			b.syncSinopacCashBalance(ctx)
+		}
 		if closed {
 			go b.reviewClosedTrade(ctx, p.Ticker, stopPrice)
 		}
