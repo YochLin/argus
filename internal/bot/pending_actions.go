@@ -227,14 +227,22 @@ func (b *Bot) executePendingAction(ctx context.Context, action db.PendingAction)
 		if !ok {
 			return i18n.T(b.lang, i18n.KeyPendingActionExecFailed)
 		}
-		msg, _ := b.recordBuy(p.Ticker, p.Shares, p.Price, b.resolvePendingFee(p, "BUY"), p.Fee == nil, p.Date)
+		fee := 0.0
+		if p.Fee != nil {
+			fee = *p.Fee
+		}
+		msg, _ := b.recordBuy(p.Ticker, p.Shares, p.Price, fee, p.Fee == nil, p.Date)
 		return msg
 	case db.PendingActionRecordSell:
 		p, ok := decodeTradePayload(action.Payload)
 		if !ok {
 			return i18n.T(b.lang, i18n.KeyPendingActionExecFailed)
 		}
-		msg, closed, stopPrice, _ := b.recordSell(p.Ticker, p.Shares, p.Price, b.resolvePendingFee(p, "SELL"), p.Fee == nil, p.Date)
+		fee := 0.0
+		if p.Fee != nil {
+			fee = *p.Fee
+		}
+		msg, closed, stopPrice, _ := b.recordSell(p.Ticker, p.Shares, p.Price, fee, p.Fee == nil, p.Date)
 		if closed {
 			go b.reviewClosedTrade(ctx, p.Ticker, stopPrice)
 		}
