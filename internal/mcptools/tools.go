@@ -12,6 +12,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/render"
+	"argus/internal/service"
 )
 
 // cst mirrors internal/llm and internal/bot's fixed Taiwan-time zone (see
@@ -58,8 +59,16 @@ type toolset struct {
 	institutional data.InstitutionalFlowProvider
 	db            *db.DB
 	writeDB       *db.DB
+	watchlist     *service.WatchlistService
 	cache         *ttlCache
 	limiter       *tokenBucket
+}
+
+func (ts *toolset) watchlists() *service.WatchlistService {
+	if ts.watchlist == nil && ts.writeDB != nil {
+		ts.watchlist = service.NewWatchlistService(ts.writeDB)
+	}
+	return ts.watchlist
 }
 
 // withCache is the single choke point every provider-hitting tool handler

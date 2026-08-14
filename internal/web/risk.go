@@ -9,6 +9,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/logger"
 	"argus/internal/market"
+	"argus/internal/service"
 )
 
 // cashSettingKey/cashSettingKeyTWD mirror internal/bot/handlers.go's own
@@ -23,9 +24,9 @@ const (
 
 func cashSettingKeyFor(m market.MarketID) string {
 	if m == market.TW {
-		return cashSettingKeyTWD
+		return service.CashSettingKeyTWD
 	}
-	return cashSettingKey
+	return service.CashSettingKeyUSD
 }
 
 // loadCash returns m's declared cash balance (0 if /cash has never set it) —
@@ -63,15 +64,17 @@ func loadCash(database dbReader, m market.MarketID) (float64, error) {
 // frontend flags this case separately via price vs. stopPrice, not via a
 // zero openRisk (which is ambiguous with "stop is exactly at price").
 func buildRisk(database dbReader, quotes quoteGetter, m market.MarketID, heatThresholdPct float64) (riskResponse, error) {
+	return buildRiskWithPortfolio(database, service.NewPortfolioService(database, quotes), m, heatThresholdPct)
+}
+
+func buildRiskWithPortfolio(database dbReader, portfolio *service.PortfolioService, m market.MarketID, heatThresholdPct float64) (riskResponse, error) {
 	allPositions, err := database.GetPositions()
 	if err != nil {
 		return riskResponse{}, err
 	}
-	positions := filterPositionsByMarket(allPositions, m)
-
-	cash, err := loadCash(database, m)
+	snapshot, err := portfolio.Snapshot(m)
 	if err != nil {
-		logger.Errorf("web: risk: load cash for %s: %v", m, err)
+		return riskResponse{}, err
 	}
 
 	type priced struct {
@@ -79,30 +82,24 @@ func buildRisk(database dbReader, quotes quoteGetter, m market.MarketID, heatThr
 		value float64
 		ok    bool
 	}
-	tickers := make([]string, len(positions))
-	for i, p := range positions {
-		tickers[i] = p.Ticker
-	}
-	quoteMap := fetchQuotes(quotes, tickers, "risk")
-
-	priceds := make([]priced, 0, len(positions))
-	var totalValue float64
-	for _, p := range positions {
-		q, ok := quoteMap[p.Ticker]
-		if !ok {
+	priceds := make([]priced, 0, len(snapshot.Positions))
+	for _, valuation := range snapshot.Positions {
+		p := valuation.Position
+		if valuation.Quote == nil {
+			if valuation.QuoteErr != nil {
+				logger.Errorf("web: risk: get quote for %s: %v", p.Ticker, valuation.QuoteErr)
+			}
 			priceds = append(priceds, priced{pos: pricedPosition{Ticker: p.Ticker, Shares: p.Shares, AvgCost: p.AvgCost, StopPrice: p.StopPrice}})
 			continue
 		}
-		value := q.Price * p.Shares
-		totalValue += value
 		priceds = append(priceds, priced{
-			pos:   pricedPosition{Ticker: p.Ticker, Shares: p.Shares, AvgCost: p.AvgCost, StopPrice: p.StopPrice, Price: q.Price},
-			value: value,
+			pos:   pricedPosition{Ticker: p.Ticker, Shares: p.Shares, AvgCost: p.AvgCost, StopPrice: p.StopPrice, Price: valuation.Quote.Price},
+			value: valuation.MarketValue,
 			ok:    true,
 		})
 	}
 
-	accountValue := totalValue + cash
+	accountValue := snapshot.AccountValue
 
 	optionLockedCash, optionCollateral, err := buildOptionCollateral(database, allPositions, m)
 	if err != nil {
@@ -111,7 +108,7 @@ func buildRisk(database dbReader, quotes quoteGetter, m market.MarketID, heatThr
 
 	resp := riskResponse{
 		AccountValue:     accountValue,
-		Cash:             cash,
+		Cash:             snapshot.Cash,
 		HeatThresholdPct: heatThresholdPct,
 		Positions:        make([]riskPositionResponse, 0, len(priceds)),
 		OptionLockedCash: optionLockedCash,
