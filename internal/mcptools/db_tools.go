@@ -3,26 +3,17 @@ package mcptools
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"argus/internal/data"
 	"argus/internal/i18n"
 	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/render"
 	"argus/internal/service"
 )
-
-// benchmarkTicker mirrors internal/bot's own benchmarkTicker (SPY) —
-// duplicated rather than imported for the same package-boundary reason as
-// formatFundamentals/commaf in tools.go. Never written to any DB table
-// itself; only used to look up same-period daily_snapshots closes that
-// RunClosingSnapshot's snapshotBenchmark already records there.
-const benchmarkTicker = "SPY"
 
 const (
 	// trackDefaultDays/trackMaxDays mirror /track's own defaults
@@ -162,16 +153,11 @@ func (ts *toolset) writePortfolioSection(sb *strings.Builder, snapshot service.P
 	sb.WriteString("\n\n")
 }
 
-// getRecommendationStats mirrors internal/bot's handleTrack (core logic
-// only) — same relative-to-SPY hit rule, same per-source breakdown. The
-// scoring helpers below (trackHit/trackRow/trackSourceStats/summarizeTrack/
-// accumulateTrackRow/displaySource/sortedSourceKeys) are duplicated from
-// bot.go rather than imported, for the same package-boundary reason as
-// formatFundamentals — they're unexported there and this package can't
-// import internal/bot anyway. days is clamped rather than rejected on an
-// out-of-range value (unlike /track's usage-error reply) since a tool
-// caller has no natural way to "retype the command" — the closest sane
-// value is more useful than a hard failure.
+// getRecommendationStats uses the same recommendation tracking service as
+// the Telegram /track command. days is clamped rather than rejected on an
+// out-of-range value (unlike /track's usage-error reply) since a tool caller
+// has no natural way to "retype the command" — the closest sane value is more
+// useful than a hard failure.
 func (ts *toolset) getRecommendationStats(ctx context.Context, _ *mcp.CallToolRequest, in recommendationStatsInput) (*mcp.CallToolResult, any, error) {
 	days := in.Days
 	if days <= 0 {
@@ -183,98 +169,62 @@ func (ts *toolset) getRecommendationStats(ctx context.Context, _ *mcp.CallToolRe
 
 	key := fmt.Sprintf("get_recommendation_stats:%d", days)
 	result, err := ts.withCache(ctx, key, shortCacheTTL, func() (*mcp.CallToolResult, error) {
-		fromDate := time.Now().In(cst).AddDate(0, 0, -days).Format("2006-01-02")
-		recs, err := ts.db.GetRecommendationsSince(fromDate)
+		tracker := ts.recommendations()
+		if tracker == nil {
+			return nil, ts.mcpErr(i18n.KeyQueryFailed, fmt.Errorf("recommendation service unavailable"))
+		}
+		report, err := tracker.Track(days)
 		if err != nil {
 			return nil, ts.mcpErr(i18n.KeyQueryFailed, err)
 		}
-		if len(recs) == 0 {
+		if !report.HasRecommendations {
 			return nil, ts.mcpErr(i18n.KeyTrackEmpty, days)
-		}
-
-		quotes := make(map[string]*data.Quote)
-		spyQuote, err := ts.provider.GetQuote(benchmarkTicker)
-		if err != nil {
-			logger.Errorf("mcptools: get_recommendation_stats benchmark %s quote: %v", benchmarkTicker, err)
-			spyQuote = nil
 		}
 
 		var sb strings.Builder
 		sb.WriteString(i18n.T(ts.lang, i18n.KeyTrackTitle, days))
-		var rows []trackRow
-		for _, r := range recs {
-			action := r.Action
-			if action == "" {
-				action = "—"
-			}
-
-			base := r.Price
-			if base == 0 {
-				if c, ok, err := ts.db.GetSnapshotClose(r.Ticker, r.Date); err == nil && ok {
-					base = c
-				}
-			}
-			if base == 0 {
-				sb.WriteString(i18n.T(ts.lang, i18n.KeyTrackLineNoPrice, r.Date, r.Ticker, action))
+		loggedBenchmarkErrors := make(map[string]bool)
+		for _, detail := range report.Details {
+			if !detail.HasBasePrice {
+				sb.WriteString(i18n.T(ts.lang, i18n.KeyTrackLineNoPrice, detail.Date, detail.Ticker, detail.Action))
 				continue
 			}
-
-			q, seen := quotes[r.Ticker]
-			if !seen {
-				var err error
-				q, err = ts.provider.GetQuote(r.Ticker)
-				if err != nil {
-					logger.Errorf("mcptools: get_recommendation_stats quote %s: %v", r.Ticker, err)
-					q = nil
+			if !detail.HasQuote {
+				if detail.QuoteErr != nil {
+					logger.Errorf("mcptools: get_recommendation_stats quote %s: %v", detail.Ticker, detail.QuoteErr)
 				}
-				quotes[r.Ticker] = q
-			}
-			if q == nil {
-				sb.WriteString(i18n.T(ts.lang, i18n.KeyQuoteUnavailable, r.Ticker))
+				sb.WriteString(i18n.T(ts.lang, i18n.KeyQuoteUnavailable, detail.Ticker))
 				continue
 			}
-
-			changePct := (q.Price - base) / base * 100
-
-			var spyChangePct float64
-			haveSPY := false
-			if spyQuote != nil {
-				if spyBase, ok, err := ts.db.GetSnapshotClose(benchmarkTicker, r.Date); err == nil && ok && spyBase != 0 {
-					spyChangePct = (spyQuote.Price - spyBase) / spyBase * 100
-					haveSPY = true
-				}
+			if detail.BenchmarkErr != nil && !loggedBenchmarkErrors[detail.BenchmarkTicker] {
+				logger.Errorf("mcptools: get_recommendation_stats benchmark %s: %v", detail.BenchmarkTicker, detail.BenchmarkErr)
+				loggedBenchmarkErrors[detail.BenchmarkTicker] = true
 			}
 
 			verdict := ""
-			if r.Action == "BUY" || r.Action == "SELL" {
-				hit := trackHit(r.Action, changePct, spyChangePct, haveSPY)
+			if detail.Action == "BUY" || detail.Action == "SELL" {
 				verdict = "❌"
-				if hit {
+				if detail.Hit {
 					verdict = "✅"
 				}
-				rows = append(rows, trackRow{
-					Action:    r.Action,
-					Source:    displaySource(r.Source),
-					ChangePct: changePct,
-					Hit:       hit,
-				})
 			}
 
-			if haveSPY {
-				sb.WriteString(i18n.T(ts.lang, i18n.KeyTrackLineVsSPY, r.Date, r.Ticker, action, render.Money(r.Ticker, base), render.Money(r.Ticker, q.Price), changePct, benchmarkTicker, spyChangePct, verdict))
+			if detail.HasBenchmark {
+				sb.WriteString(i18n.T(ts.lang, i18n.KeyTrackLineVsSPY, detail.Date, detail.Ticker, detail.Action, render.Money(detail.Ticker, detail.BasePrice), render.Money(detail.Ticker, detail.CurrentPrice), detail.ChangePct, detail.BenchmarkTicker, detail.BenchmarkChangePct, verdict))
 			} else {
-				sb.WriteString(i18n.T(ts.lang, i18n.KeyTrackLine, r.Date, r.Ticker, action, render.Money(r.Ticker, base), render.Money(r.Ticker, q.Price), changePct, verdict))
+				sb.WriteString(i18n.T(ts.lang, i18n.KeyTrackLine, detail.Date, detail.Ticker, detail.Action, render.Money(detail.Ticker, detail.BasePrice), render.Money(detail.Ticker, detail.CurrentPrice), detail.ChangePct, verdict))
 			}
 		}
 
-		overall, bySource := summarizeTrack(rows)
+		overall := report.Summary.Overall
+		bySource := report.Summary.BySource
 		if overall.Evaluated > 0 {
 			sb.WriteString(i18n.T(ts.lang, i18n.KeyTrackSummary, overall.Hits, overall.Evaluated, overall.HitRate()))
 			sb.WriteString(i18n.T(ts.lang, i18n.KeyTrackAvgReturnLine, overall.AvgBuyPct(), overall.BuyCount, overall.AvgSellPct(), overall.SellCount))
 
 			if len(bySource) > 1 {
 				sb.WriteString(i18n.T(ts.lang, i18n.KeyTrackBySourceHeader))
-				for _, source := range sortedSourceKeys(bySource) {
+				for _, source := range service.SortedSourceKeys(bySource) {
 					s := bySource[source]
 					sb.WriteString(i18n.T(ts.lang, i18n.KeyTrackBySourceLine, source, s.Hits, s.Evaluated, s.HitRate()))
 				}
@@ -352,9 +302,9 @@ func (ts *toolset) getRecentRecommendations(ctx context.Context, _ *mcp.CallTool
 				action = "—"
 			}
 			if r.Price != 0 {
-				sb.WriteString(i18n.T(ts.lang, i18n.KeyMCPRecentRecLine, r.Date, r.Ticker, action, r.Price, displaySource(r.Source), r.Reason))
+				sb.WriteString(i18n.T(ts.lang, i18n.KeyMCPRecentRecLine, r.Date, r.Ticker, action, r.Price, service.DisplaySource(r.Source), r.Reason))
 			} else {
-				sb.WriteString(i18n.T(ts.lang, i18n.KeyMCPRecentRecLineNoPrice, r.Date, r.Ticker, action, displaySource(r.Source), r.Reason))
+				sb.WriteString(i18n.T(ts.lang, i18n.KeyMCPRecentRecLineNoPrice, r.Date, r.Ticker, action, service.DisplaySource(r.Source), r.Reason))
 			}
 		}
 		return textResult(sb.String()), nil
@@ -384,117 +334,4 @@ func (ts *toolset) getUniverseSummary(ctx context.Context, _ *mcp.CallToolReques
 		return textResult(sb.String()), nil
 	})
 	return result, nil, err
-}
-
-// --- /track scoring, duplicated from internal/bot/bot.go (unexported
-// there, and this package can't import internal/bot — see this file's and
-// tools.go's package-boundary doc comments) ---
-
-// trackHit implements /track's relative-to-SPY hit rule: when a same-period
-// SPY change is available, BUY only counts as a hit if the ticker beat it
-// and SELL only if it underperformed it; otherwise it falls back to the
-// pre-Phase-3.8 absolute-direction rule (BUY counts if price rose, SELL if
-// it fell).
-func trackHit(action string, tickerChangePct, spyChangePct float64, haveSPY bool) bool {
-	switch action {
-	case "BUY":
-		if haveSPY {
-			return tickerChangePct > spyChangePct
-		}
-		return tickerChangePct > 0
-	case "SELL":
-		if haveSPY {
-			return tickerChangePct < spyChangePct
-		}
-		return tickerChangePct < 0
-	default:
-		return false
-	}
-}
-
-// trackRow is one BUY/SELL recommendation reduced to what the summary
-// needs.
-type trackRow struct {
-	Action    string // "BUY" or "SELL" only
-	Source    string // already normalized via displaySource
-	ChangePct float64
-	Hit       bool
-}
-
-// trackSourceStats accumulates hit-rate and average-magnitude stats for one
-// group of trackRows (either every row, or one source's rows).
-type trackSourceStats struct {
-	Hits, Evaluated int
-	BuySum          float64
-	BuyCount        int
-	SellSum         float64
-	SellCount       int
-}
-
-func (s trackSourceStats) HitRate() float64 {
-	if s.Evaluated == 0 {
-		return 0
-	}
-	return float64(s.Hits) / float64(s.Evaluated) * 100
-}
-
-func (s trackSourceStats) AvgBuyPct() float64 {
-	if s.BuyCount == 0 {
-		return 0
-	}
-	return s.BuySum / float64(s.BuyCount)
-}
-
-func (s trackSourceStats) AvgSellPct() float64 {
-	if s.SellCount == 0 {
-		return 0
-	}
-	return s.SellSum / float64(s.SellCount)
-}
-
-func summarizeTrack(rows []trackRow) (overall trackSourceStats, bySource map[string]trackSourceStats) {
-	bySource = make(map[string]trackSourceStats)
-	for _, r := range rows {
-		accumulateTrackRow(&overall, r)
-		s := bySource[r.Source]
-		accumulateTrackRow(&s, r)
-		bySource[r.Source] = s
-	}
-	return overall, bySource
-}
-
-func accumulateTrackRow(s *trackSourceStats, r trackRow) {
-	s.Evaluated++
-	if r.Hit {
-		s.Hits++
-	}
-	switch r.Action {
-	case "BUY":
-		s.BuySum += r.ChangePct
-		s.BuyCount++
-	case "SELL":
-		s.SellSum += r.ChangePct
-		s.SellCount++
-	}
-}
-
-// displaySource normalizes a stored db.Recommendation.Source for display:
-// rows saved before the source column existed have "" and read as
-// "watchlist".
-func displaySource(source string) string {
-	if source == "" {
-		return "watchlist"
-	}
-	return source
-}
-
-// sortedSourceKeys returns bySource's keys in alphabetical order for
-// deterministic output instead of Go's randomized map iteration.
-func sortedSourceKeys(bySource map[string]trackSourceStats) []string {
-	keys := make([]string, 0, len(bySource))
-	for k := range bySource {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }

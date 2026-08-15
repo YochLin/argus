@@ -10,9 +10,8 @@
 // fundamentals/financial-statement formatting, which has the same
 // data+i18n-only dependency shape this package requires) so this stays a
 // thin, provider-neutral adapter rather than pulling in internal/llm or
-// internal/bot — see db_tools.go's duplicated track-scoring helpers for what
-// that narrower boundary still costs where no shared package exists yet
-// (small, deliberate duplication instead of importing internal/bot).
+// internal/bot. Shared application workflows are injected from
+// internal/service instead.
 package mcptools
 
 import (
@@ -79,18 +78,19 @@ func NewServer(lang i18n.Lang, provider data.Provider, history data.HistoryProvi
 		Version: Version,
 	}, nil)
 	registerTools(server, &toolset{
-		lang:          lang,
-		provider:      provider,
-		history:       history,
-		fundamentals:  fundamentals,
-		earnings:      earnings,
-		insiderTx:     insiderTx,
-		institutional: institutional,
-		db:            database,
-		writeDB:       writeDatabase,
-		portfolio:     service.NewPortfolioService(database, provider),
-		cache:         newTTLCache(),
-		limiter:       newTokenBucket(rateLimiterCapacity, rateLimiterRefillPerSecond),
+		lang:           lang,
+		provider:       provider,
+		history:        history,
+		fundamentals:   fundamentals,
+		earnings:       earnings,
+		insiderTx:      insiderTx,
+		institutional:  institutional,
+		db:             database,
+		writeDB:        writeDatabase,
+		portfolio:      service.NewPortfolioService(database, provider),
+		recommendation: service.NewRecommendationTrackingService(database, provider),
+		cache:          newTTLCache(),
+		limiter:        newTokenBucket(rateLimiterCapacity, rateLimiterRefillPerSecond),
 	})
 	return server
 }

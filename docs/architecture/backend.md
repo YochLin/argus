@@ -34,6 +34,13 @@ cash, realized P&L, and account value. Bot portfolio output, the web
 status/dashboard/risk views, and MCP's `get_portfolio` tool render that snapshot
 instead of each repeating the same position valuation loop.
 
+`RecommendationTrackingService` now owns the shared `/track` workflow used by
+the Telegram bot and MCP's `get_recommendation_stats` tool. It resolves stored
+entry prices, fetches current prices, selects the correct market benchmark
+(`SPY` for US and `0050` for TW), applies the relative hit rule with an
+absolute-direction fallback, and aggregates by source and market. Adapters
+still own localized lines, summaries, caching, and tool/command validation.
+
 Future extraction should follow the same vertical-slice pattern:
 
 1. Define a narrow service input/result and persistence interface.

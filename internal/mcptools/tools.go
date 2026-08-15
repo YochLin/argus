@@ -50,19 +50,20 @@ const (
 // nil cache/limiter as "disabled") so unit tests can construct a bare
 // toolset{...} without wiring either up — see tools_test.go.
 type toolset struct {
-	lang          i18n.Lang
-	provider      data.Provider
-	history       data.HistoryProvider
-	fundamentals  data.FundamentalsProvider
-	earnings      data.EarningsProvider
-	insiderTx     data.InsiderTransactionProvider
-	institutional data.InstitutionalFlowProvider
-	db            *db.DB
-	writeDB       *db.DB
-	watchlist     *service.WatchlistService
-	portfolio     *service.PortfolioService
-	cache         *ttlCache
-	limiter       *tokenBucket
+	lang           i18n.Lang
+	provider       data.Provider
+	history        data.HistoryProvider
+	fundamentals   data.FundamentalsProvider
+	earnings       data.EarningsProvider
+	insiderTx      data.InsiderTransactionProvider
+	institutional  data.InstitutionalFlowProvider
+	db             *db.DB
+	writeDB        *db.DB
+	watchlist      *service.WatchlistService
+	portfolio      *service.PortfolioService
+	recommendation *service.RecommendationTrackingService
+	cache          *ttlCache
+	limiter        *tokenBucket
 }
 
 func (ts *toolset) watchlists() *service.WatchlistService {
@@ -80,6 +81,13 @@ func (ts *toolset) portfolios() *service.PortfolioService {
 		ts.portfolio = service.NewPortfolioService(ts.db, ts.provider)
 	}
 	return ts.portfolio
+}
+
+func (ts *toolset) recommendations() *service.RecommendationTrackingService {
+	if ts.recommendation == nil && ts.db != nil {
+		ts.recommendation = service.NewRecommendationTrackingService(ts.db, ts.provider)
+	}
+	return ts.recommendation
 }
 
 // withCache is the single choke point every provider-hitting tool handler
