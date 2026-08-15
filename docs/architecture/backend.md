@@ -30,9 +30,9 @@ The next shared use cases are `WatchlistService` and `PortfolioService`.
 web write routes, and MCP write tools; TradeService's intentional "buy implies
 watchlist" side effect remains inside the trade use case. `PortfolioService` produces a
 market-scoped open-position snapshot with parallel best-effort quote valuation,
-cash, realized P&L, and account value. Bot portfolio output and the web
-status/dashboard/risk views render that snapshot instead of each repeating the
-same position valuation loop.
+cash, realized P&L, and account value. Bot portfolio output, the web
+status/dashboard/risk views, and MCP's `get_portfolio` tool render that snapshot
+instead of each repeating the same position valuation loop.
 
 Future extraction should follow the same vertical-slice pattern:
 

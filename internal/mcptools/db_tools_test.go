@@ -2,6 +2,7 @@ package mcptools
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -136,6 +137,29 @@ func TestGetPortfolioEmpty(t *testing.T) {
 	_, isError := callText(t, session, "get_portfolio", map[string]any{})
 	if !isError {
 		t.Fatal("get_portfolio with no positions should return IsError, not a silent empty success")
+	}
+}
+
+func TestGetPortfolioQuoteFailureDegradesPosition(t *testing.T) {
+	d := newTestDB(t)
+	if _, err := d.RecordBuy("AAPL", 10, 150, 0, "2026-01-01"); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := &toolset{
+		lang:     i18n.EN,
+		provider: &fakeProvider{quoteErr: fmt.Errorf("quote unavailable")},
+		history:  &fakeHistory{},
+		db:       d,
+	}
+	session := connectTool(t, ts)
+
+	text, isError := callText(t, session, "get_portfolio", map[string]any{})
+	if isError {
+		t.Fatalf("get_portfolio should degrade a quote failure, got error: %s", text)
+	}
+	if !strings.Contains(text, "AAPL") || !strings.Contains(text, "quote unavailable") {
+		t.Errorf("get_portfolio should retain the ticker with an unavailable quote, got:\n%s", text)
 	}
 }
 
