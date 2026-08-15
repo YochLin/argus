@@ -1058,7 +1058,7 @@ func (b *Bot) loadScanHits(m market.MarketID) map[string]string {
 // computeTrackRows re-runs /track's core computation for the given lookback
 // window: for each recommendation since then, look up the price at
 // recommendation time and now, score BUY/SELL hits against the same-period
-// SPY move (trackHit), and render each into a display line. Shared by
+// market benchmark (TrackHit), and render each into a display line. Shared by
 // handleTrack (its own full display) and RunWeeklyReview's strategy-feedback
 // block (which only needs rows, to summarize via summarizeTrack — lines
 // go unused there, same "compute once, let callers use what they need"
@@ -1066,107 +1066,51 @@ func (b *Bot) loadScanHits(m market.MarketID) map[string]string {
 // the window at all (not an error) — callers render that as "nothing to
 // report" rather than an empty summary.
 func (b *Bot) computeTrackRows(days int) (rows []trackRow, lines []string, ok bool, err error) {
-	fromDate := time.Now().In(cst).AddDate(0, 0, -days).Format("2006-01-02")
-	recs, err := b.db.GetRecommendationsSince(fromDate)
+	tracker := b.recommendations()
+	if tracker == nil {
+		return nil, nil, false, fmt.Errorf("recommendation service unavailable")
+	}
+	report, err := tracker.Track(days)
 	if err != nil {
 		return nil, nil, false, err
 	}
-	if len(recs) == 0 {
+	if !report.HasRecommendations {
 		return nil, nil, false, nil
 	}
 
-	// One quote per distinct ticker, however often it was recommended.
-	quotes := make(map[string]*data.Quote)
-	// benchQuotes lazily fetches and caches each market's current benchmark
-	// quote (SPY for US, 0050 for TW) — Phase 6 PR2: recs here can span both
-	// markets, so a single shared SPY quote is no longer correct (see
-	// trackHit's own per-row benchmark selection below).
-	benchQuotes := make(map[market.MarketID]*data.Quote)
-	loadBenchQuote := func(m market.MarketID) *data.Quote {
-		if q, ok := benchQuotes[m]; ok {
-			return q
-		}
-		ticker := benchmarkFor(m)
-		q, err := b.provider.GetQuote(ticker)
-		if err != nil {
-			logger.Errorf("track: benchmark %s quote: %v", ticker, err)
-			q = nil
-		}
-		benchQuotes[m] = q
-		return q
-	}
-
-	for _, r := range recs {
-		action := r.Action
-		if action == "" {
-			action = "—"
-		}
-
-		base := r.Price
-		if base == 0 {
-			if c, ok, err := b.db.GetSnapshotClose(r.Ticker, r.Date); err == nil && ok {
-				base = c
-			}
-		}
-		if base == 0 {
-			lines = append(lines, i18n.T(b.lang, i18n.KeyTrackLineNoPrice, r.Date, r.Ticker, action))
+	loggedBenchmarkErrors := make(map[string]bool)
+	for _, detail := range report.Details {
+		if !detail.HasBasePrice {
+			lines = append(lines, i18n.T(b.lang, i18n.KeyTrackLineNoPrice, detail.Date, detail.Ticker, detail.Action))
 			continue
 		}
-
-		q, seen := quotes[r.Ticker]
-		if !seen {
-			var err error
-			q, err = b.provider.GetQuote(r.Ticker)
-			if err != nil {
-				logger.Errorf("track: quote %s: %v", r.Ticker, err)
-				q = nil
+		if !detail.HasQuote {
+			if detail.QuoteErr != nil {
+				logger.Errorf("track: quote %s: %v", detail.Ticker, detail.QuoteErr)
 			}
-			quotes[r.Ticker] = q
-		}
-		if q == nil {
-			lines = append(lines, i18n.T(b.lang, i18n.KeyQuoteUnavailable, r.Ticker))
+			lines = append(lines, i18n.T(b.lang, i18n.KeyQuoteUnavailable, detail.Ticker))
 			continue
 		}
-
-		changePct := (q.Price - base) / base * 100
-
-		recMarket := market.Of(r.Ticker)
-		benchTicker := benchmarkFor(recMarket)
-		benchQuote := loadBenchQuote(recMarket)
-
-		var benchChangePct float64
-		haveBench := false
-		if benchQuote != nil {
-			if benchBase, ok, err := b.db.GetSnapshotClose(benchTicker, r.Date); err == nil && ok && benchBase != 0 {
-				benchChangePct = (benchQuote.Price - benchBase) / benchBase * 100
-				haveBench = true
-			}
+		if detail.BenchmarkErr != nil && !loggedBenchmarkErrors[detail.BenchmarkTicker] {
+			logger.Errorf("track: benchmark %s: %v", detail.BenchmarkTicker, detail.BenchmarkErr)
+			loggedBenchmarkErrors[detail.BenchmarkTicker] = true
 		}
 
 		verdict := ""
-		if r.Action == "BUY" || r.Action == "SELL" {
-			hit := trackHit(r.Action, changePct, benchChangePct, haveBench)
+		if detail.Action == "BUY" || detail.Action == "SELL" {
 			verdict = "❌"
-			if hit {
+			if detail.Hit {
 				verdict = "✅"
 			}
-			rows = append(rows, trackRow{
-				Action:    r.Action,
-				Source:    displaySource(r.Source),
-				Market:    recMarket,
-				ChangePct: changePct,
-				Hit:       hit,
-			})
 		}
-
-		if haveBench {
-			lines = append(lines, i18n.T(b.lang, i18n.KeyTrackLineVsSPY, r.Date, r.Ticker, action, b.money(r.Ticker, base), b.money(r.Ticker, q.Price), changePct, benchTicker, benchChangePct, verdict))
+		if detail.HasBenchmark {
+			lines = append(lines, i18n.T(b.lang, i18n.KeyTrackLineVsSPY, detail.Date, detail.Ticker, detail.Action, b.money(detail.Ticker, detail.BasePrice), b.money(detail.Ticker, detail.CurrentPrice), detail.ChangePct, detail.BenchmarkTicker, detail.BenchmarkChangePct, verdict))
 		} else {
-			lines = append(lines, i18n.T(b.lang, i18n.KeyTrackLine, r.Date, r.Ticker, action, b.money(r.Ticker, base), b.money(r.Ticker, q.Price), changePct, verdict))
+			lines = append(lines, i18n.T(b.lang, i18n.KeyTrackLine, detail.Date, detail.Ticker, detail.Action, b.money(detail.Ticker, detail.BasePrice), b.money(detail.Ticker, detail.CurrentPrice), detail.ChangePct, verdict))
 		}
 	}
 
-	return rows, lines, true, nil
+	return report.Rows, lines, true, nil
 }
 
 // renderEarningsPreview formats a consolidated "upcoming earnings" list from

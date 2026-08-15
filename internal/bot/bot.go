@@ -50,27 +50,28 @@ const (
 )
 
 type Bot struct {
-	channel       Channel
-	db            *db.DB
-	provider      data.Provider
-	fundamentals  data.FundamentalsProvider       // nil if FINNHUB_API_KEY isn't set
-	analystRating data.AnalystRatingProvider      // nil if FINNHUB_API_KEY isn't set
-	insiderTx     data.InsiderTransactionProvider // nil if FINNHUB_API_KEY isn't set
-	institutional data.InstitutionalFlowProvider  // TW's 三大法人 counterpart (TWSE T86), always non-nil — no API key required
-	earnings      data.EarningsProvider           // nil if FINNHUB_API_KEY isn't set
-	marketNews    data.MarketNewsProvider         // nil if FINNHUB_API_KEY isn't set
-	twMarketNews  data.MarketNewsProvider         // TW's marketNews counterpart (cnyes), always non-nil — no API key required
-	twMovers      data.TWMarketMoversProvider     // TW's GetMarketMovers counterpart (TWSE OpenAPI), always non-nil — no API key required
-	companyNames  data.CompanyNameProvider        // nil if FINMIND_TOKEN isn't set
-	trustNet      data.TrustNetProvider           // Phase 15 網 5【主力跟單】, TW only; nil if FINMIND_TOKEN isn't set
-	optionChain   data.OptionChainProvider        // Phase 12, US-only; always non-nil in real use (Yahoo needs no API key), nil-checked anyway for tests that build a partial Bot
-	history       data.HistoryProvider
-	llm           *llm.Client
-	tradeService  *service.TradeService
-	watchlist     *service.WatchlistService
-	portfolio     *service.PortfolioService
-	detector      *signals.Detector
-	lang          i18n.Lang
+	channel        Channel
+	db             *db.DB
+	provider       data.Provider
+	fundamentals   data.FundamentalsProvider       // nil if FINNHUB_API_KEY isn't set
+	analystRating  data.AnalystRatingProvider      // nil if FINNHUB_API_KEY isn't set
+	insiderTx      data.InsiderTransactionProvider // nil if FINNHUB_API_KEY isn't set
+	institutional  data.InstitutionalFlowProvider  // TW's 三大法人 counterpart (TWSE T86), always non-nil — no API key required
+	earnings       data.EarningsProvider           // nil if FINNHUB_API_KEY isn't set
+	marketNews     data.MarketNewsProvider         // nil if FINNHUB_API_KEY isn't set
+	twMarketNews   data.MarketNewsProvider         // TW's marketNews counterpart (cnyes), always non-nil — no API key required
+	twMovers       data.TWMarketMoversProvider     // TW's GetMarketMovers counterpart (TWSE OpenAPI), always non-nil — no API key required
+	companyNames   data.CompanyNameProvider        // nil if FINMIND_TOKEN isn't set
+	trustNet       data.TrustNetProvider           // Phase 15 網 5【主力跟單】, TW only; nil if FINMIND_TOKEN isn't set
+	optionChain    data.OptionChainProvider        // Phase 12, US-only; always non-nil in real use (Yahoo needs no API key), nil-checked anyway for tests that build a partial Bot
+	history        data.HistoryProvider
+	llm            *llm.Client
+	tradeService   *service.TradeService
+	watchlist      *service.WatchlistService
+	portfolio      *service.PortfolioService
+	recommendation *service.RecommendationTrackingService
+	detector       *signals.Detector
+	lang           i18n.Lang
 
 	// dataCache holds fundamentals/analyst-rating/insider-tx results, keyed
 	// by ticker (see slowDataCacheTTL in pipeline.go) — these change slowly
@@ -255,6 +256,7 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		tradeService:           service.NewTradeService(cfg.DB, cfg.TWFeeDiscount),
 		watchlist:              service.NewWatchlistService(cfg.DB),
 		portfolio:              service.NewPortfolioService(cfg.DB, cfg.Provider),
+		recommendation:         service.NewRecommendationTrackingService(cfg.DB, cfg.Provider),
 		detector:               signals.NewDetector(cfg.Lang),
 		lang:                   cfg.Lang,
 		stopLossPct:            cfg.StopLossPct,
@@ -297,6 +299,13 @@ func (b *Bot) portfolios() *service.PortfolioService {
 		b.portfolio = service.NewPortfolioService(b.db, b.provider)
 	}
 	return b.portfolio
+}
+
+func (b *Bot) recommendations() *service.RecommendationTrackingService {
+	if b.recommendation == nil && b.db != nil {
+		b.recommendation = service.NewRecommendationTrackingService(b.db, b.provider)
+	}
+	return b.recommendation
 }
 
 func (b *Bot) Send(text string) {

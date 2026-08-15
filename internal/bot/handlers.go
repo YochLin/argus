@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -252,12 +251,12 @@ func (b *Bot) handleCheck(ctx context.Context, ticker string) {
 
 // handleTrack reviews recommendations from the past N days (default 7)
 // against today's prices, so recommendation quality is verifiable instead of
-// write-only. Hit criteria (Phase 3.8): when a same-period benchmarkTicker
-// (SPY) close is on record (see snapshotBenchmark), BUY only counts as a hit
-// if the ticker beat SPY's move over the same window and SELL only if it
-// underperformed SPY — "up in a broad rally" no longer counts as a good BUY
-// call on its own (see trackHit). Recommendations predating the SPY
-// snapshot job (or any date SPY has no snapshot for) fall back to the
+// write-only. Hit criteria (Phase 3.8): when a same-period market benchmark
+// close is on record (see snapshotBenchmark), BUY only counts as a hit if the
+// ticker beat its market benchmark's move over the same window and SELL only
+// if it underperformed — "up in a broad rally" no longer counts as a good BUY
+// call on its own (see service.TrackHit). Recommendations predating the
+// benchmark snapshot job (or any date the benchmark has no snapshot for) fall back to the
 // absolute-direction rule: BUY hits if price rose, SELL if it fell. The
 // baseline price is the one stored at recommendation time; rows from before
 // that column existed fall back to the ticker's daily_snapshots close on
@@ -297,128 +296,26 @@ func (b *Bot) handleTrack(daysArg string) {
 	b.Send(sb.String())
 }
 
-// trackHit implements Phase 3.8's relative-to-SPY hit rule: when a
-// same-period SPY change is available, BUY only counts as a hit if the
-// ticker beat it and SELL only if it underperformed it; otherwise it falls
-// back to the pre-Phase-3.8 absolute-direction rule (BUY counts if price
-// rose, SELL if it fell). Only meaningful for action == "BUY"/"SELL" —
-// anything else (HOLD, "") always returns false, since handleTrack never
-// scores those.
+// These aliases and wrappers keep the Telegram adapter's formatting helpers
+// compact while the tracking rule and aggregation live in internal/service.
+type trackRow = service.RecommendationTrackRow
+type trackSourceStats = service.RecommendationTrackStats
+
 func trackHit(action string, tickerChangePct, spyChangePct float64, haveSPY bool) bool {
-	switch action {
-	case "BUY":
-		if haveSPY {
-			return tickerChangePct > spyChangePct
-		}
-		return tickerChangePct > 0
-	case "SELL":
-		if haveSPY {
-			return tickerChangePct < spyChangePct
-		}
-		return tickerChangePct < 0
-	default:
-		return false
-	}
+	return service.TrackHit(action, tickerChangePct, spyChangePct, haveSPY)
 }
 
-// trackRow is one BUY/SELL recommendation reduced to what /track's summary
-// needs, computed by computeTrackRows (which has the live quotes/SPY data)
-// so the aggregation below stays a pure pass over plain values.
-type trackRow struct {
-	Action    string // "BUY" or "SELL" only
-	Source    string // already normalized via displaySource
-	Market    market.MarketID
-	ChangePct float64
-	Hit       bool
-}
-
-// trackSourceStats accumulates hit-rate and average-magnitude stats for one
-// group of trackRows (either every row, or one source's rows).
-type trackSourceStats struct {
-	Hits, Evaluated int
-	BuySum          float64
-	BuyCount        int
-	SellSum         float64
-	SellCount       int
-}
-
-func (s trackSourceStats) HitRate() float64 {
-	if s.Evaluated == 0 {
-		return 0
-	}
-	return float64(s.Hits) / float64(s.Evaluated) * 100
-}
-
-func (s trackSourceStats) AvgBuyPct() float64 {
-	if s.BuyCount == 0 {
-		return 0
-	}
-	return s.BuySum / float64(s.BuyCount)
-}
-
-func (s trackSourceStats) AvgSellPct() float64 {
-	if s.SellCount == 0 {
-		return 0
-	}
-	return s.SellSum / float64(s.SellCount)
-}
-
-// summarizeTrack aggregates trackRows into overall stats, a per-source
-// breakdown (see trackSourceStats), and a per-market breakdown (Phase 6 PR2
-// §5.3) — for /track's summary footer: hit rate, average BUY/SELL
-// magnitude, and — when more than one source/market is present — the same
-// broken down by candidate-sourcing path (Phase 2.6's deferred-until-
-// Phase-3.8 "成效對照") or by market.
 func summarizeTrack(rows []trackRow) (overall trackSourceStats, bySource map[string]trackSourceStats, byMarket map[market.MarketID]trackSourceStats) {
-	bySource = make(map[string]trackSourceStats)
-	byMarket = make(map[market.MarketID]trackSourceStats)
-	for _, r := range rows {
-		accumulateTrackRow(&overall, r)
-		s := bySource[r.Source]
-		accumulateTrackRow(&s, r)
-		bySource[r.Source] = s
-		mstat := byMarket[r.Market]
-		accumulateTrackRow(&mstat, r)
-		byMarket[r.Market] = mstat
-	}
-	return overall, bySource, byMarket
+	summary := service.SummarizeTrack(rows)
+	return summary.Overall, summary.BySource, summary.ByMarket
 }
 
-func accumulateTrackRow(s *trackSourceStats, r trackRow) {
-	s.Evaluated++
-	if r.Hit {
-		s.Hits++
-	}
-	switch r.Action {
-	case "BUY":
-		s.BuySum += r.ChangePct
-		s.BuyCount++
-	case "SELL":
-		s.SellSum += r.ChangePct
-		s.SellCount++
-	}
-}
-
-// displaySource normalizes a stored db.Recommendation.Source for display:
-// rows saved before the source column existed have "" and read as
-// "watchlist" (see the migration's doc comment in internal/db).
 func displaySource(source string) string {
-	if source == "" {
-		return "watchlist"
-	}
-	return source
+	return service.DisplaySource(source)
 }
 
-// sortedSourceKeys returns bySource's keys in alphabetical order, so
-// /track's per-source breakdown renders in a stable order instead of Go's
-// randomized map iteration.
 func sortedSourceKeys(bySource map[string]trackSourceStats) []string {
-	keys := make([]string, 0, len(bySource))
-	for k := range bySource {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
+	return service.SortedSourceKeys(bySource)
 }
 
 // tradeDateRe matches an optional trailing YYYY-MM-DD date argument to
