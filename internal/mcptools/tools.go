@@ -60,6 +60,7 @@ type toolset struct {
 	db            *db.DB
 	writeDB       *db.DB
 	watchlist     *service.WatchlistService
+	portfolio     *service.PortfolioService
 	cache         *ttlCache
 	limiter       *tokenBucket
 }
@@ -69,6 +70,16 @@ func (ts *toolset) watchlists() *service.WatchlistService {
 		ts.watchlist = service.NewWatchlistService(ts.writeDB)
 	}
 	return ts.watchlist
+}
+
+// portfolios returns the shared portfolio application service. The lazy
+// fallback keeps small hand-built toolsets in tests compatible while the
+// production MCP server injects the service during construction.
+func (ts *toolset) portfolios() *service.PortfolioService {
+	if ts.portfolio == nil && ts.db != nil {
+		ts.portfolio = service.NewPortfolioService(ts.db, ts.provider)
+	}
+	return ts.portfolio
 }
 
 // withCache is the single choke point every provider-hitting tool handler

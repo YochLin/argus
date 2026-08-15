@@ -23,6 +23,7 @@ import (
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
+	"argus/internal/service"
 )
 
 // Version is the MCP server's reported implementation version. Argus has no
@@ -87,6 +88,7 @@ func NewServer(lang i18n.Lang, provider data.Provider, history data.HistoryProvi
 		institutional: institutional,
 		db:            database,
 		writeDB:       writeDatabase,
+		portfolio:     service.NewPortfolioService(database, provider),
 		cache:         newTTLCache(),
 		limiter:       newTokenBucket(rateLimiterCapacity, rateLimiterRefillPerSecond),
 	})
