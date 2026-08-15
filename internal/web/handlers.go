@@ -347,7 +347,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	resp := buildStatus(s.db, s.quotes, marketParam(r))
+	resp := buildStatusWithPortfolio(s.db, s.portfolios(), marketParam(r))
 	resp.Writable = s.password != ""
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -360,7 +360,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	resp, err := buildDashboard(s.db, s.quotes, marketParam(r))
+	resp, err := buildDashboardWithPortfolio(s.db, s.portfolios(), marketParam(r))
 	if err != nil {
 		logger.Errorf("web: build dashboard: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to build dashboard")
@@ -547,7 +547,7 @@ func (s *Server) handleRisk(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	resp, err := buildRisk(s.db, s.quotes, marketParam(r), s.heatThresholdPct)
+	resp, err := buildRiskWithPortfolio(s.db, s.portfolios(), marketParam(r), s.heatThresholdPct)
 	if err != nil {
 		logger.Errorf("web: build risk: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to build risk")

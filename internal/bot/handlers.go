@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -17,39 +16,54 @@ import (
 	"argus/internal/llm"
 	"argus/internal/logger"
 	"argus/internal/market"
-	"argus/internal/paper"
 	"argus/internal/render"
+	"argus/internal/service"
 	"argus/internal/webfetch"
 )
 
 func (b *Bot) handleAdd(ticker string) {
-	ticker = strings.ToUpper(strings.TrimSpace(ticker))
-	if ticker == "" {
+	watchlist := b.watchlists()
+	if watchlist == nil {
+		b.Send(i18n.T(b.lang, i18n.KeyAddFailed, errors.New("watchlist service unavailable")))
+		return
+	}
+	normalized, err := watchlist.Add(ticker)
+	if errors.Is(err, service.ErrInvalidTicker) {
 		b.Send(i18n.T(b.lang, i18n.KeyAddUsage))
 		return
 	}
-	if err := b.db.AddTicker(ticker); err != nil {
+	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyAddFailed, err))
 		return
 	}
-	b.Send(i18n.T(b.lang, i18n.KeyAddSuccess, b.tickerLabel(ticker)))
+	b.Send(i18n.T(b.lang, i18n.KeyAddSuccess, b.tickerLabel(normalized)))
 }
 
 func (b *Bot) handleRemove(ticker string) {
-	ticker = strings.ToUpper(strings.TrimSpace(ticker))
-	if ticker == "" {
+	watchlist := b.watchlists()
+	if watchlist == nil {
+		b.Send(i18n.T(b.lang, i18n.KeyRemoveFailed, errors.New("watchlist service unavailable")))
+		return
+	}
+	normalized, err := watchlist.Remove(ticker)
+	if errors.Is(err, service.ErrInvalidTicker) {
 		b.Send(i18n.T(b.lang, i18n.KeyRemoveUsage))
 		return
 	}
-	if err := b.db.RemoveTicker(ticker); err != nil {
+	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyRemoveFailed, err))
 		return
 	}
-	b.Send(i18n.T(b.lang, i18n.KeyRemoveSuccess, b.tickerLabel(ticker)))
+	b.Send(i18n.T(b.lang, i18n.KeyRemoveSuccess, b.tickerLabel(normalized)))
 }
 
 func (b *Bot) handleList() {
-	tickers, err := b.db.GetWatchlist()
+	watchlist := b.watchlists()
+	if watchlist == nil {
+		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, errors.New("watchlist service unavailable")))
+		return
+	}
+	tickers, err := watchlist.GetWatchlist()
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
 		return
@@ -68,7 +82,12 @@ func (b *Bot) handleList() {
 func (b *Bot) handleStatus(ticker string) {
 	ticker = strings.ToUpper(strings.TrimSpace(ticker))
 	if ticker == "" {
-		tickers, err := b.db.GetWatchlist()
+		watchlist := b.watchlists()
+		if watchlist == nil {
+			b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, errors.New("watchlist service unavailable")))
+			return
+		}
+		tickers, err := watchlist.GetWatchlist()
 		if err != nil {
 			b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
 			return
@@ -232,12 +251,12 @@ func (b *Bot) handleCheck(ctx context.Context, ticker string) {
 
 // handleTrack reviews recommendations from the past N days (default 7)
 // against today's prices, so recommendation quality is verifiable instead of
-// write-only. Hit criteria (Phase 3.8): when a same-period benchmarkTicker
-// (SPY) close is on record (see snapshotBenchmark), BUY only counts as a hit
-// if the ticker beat SPY's move over the same window and SELL only if it
-// underperformed SPY — "up in a broad rally" no longer counts as a good BUY
-// call on its own (see trackHit). Recommendations predating the SPY
-// snapshot job (or any date SPY has no snapshot for) fall back to the
+// write-only. Hit criteria (Phase 3.8): when a same-period market benchmark
+// close is on record (see snapshotBenchmark), BUY only counts as a hit if the
+// ticker beat its market benchmark's move over the same window and SELL only
+// if it underperformed — "up in a broad rally" no longer counts as a good BUY
+// call on its own (see service.TrackHit). Recommendations predating the
+// benchmark snapshot job (or any date the benchmark has no snapshot for) fall back to the
 // absolute-direction rule: BUY hits if price rose, SELL if it fell. The
 // baseline price is the one stored at recommendation time; rows from before
 // that column existed fall back to the ticker's daily_snapshots close on
@@ -277,128 +296,26 @@ func (b *Bot) handleTrack(daysArg string) {
 	b.Send(sb.String())
 }
 
-// trackHit implements Phase 3.8's relative-to-SPY hit rule: when a
-// same-period SPY change is available, BUY only counts as a hit if the
-// ticker beat it and SELL only if it underperformed it; otherwise it falls
-// back to the pre-Phase-3.8 absolute-direction rule (BUY counts if price
-// rose, SELL if it fell). Only meaningful for action == "BUY"/"SELL" —
-// anything else (HOLD, "") always returns false, since handleTrack never
-// scores those.
+// These aliases and wrappers keep the Telegram adapter's formatting helpers
+// compact while the tracking rule and aggregation live in internal/service.
+type trackRow = service.RecommendationTrackRow
+type trackSourceStats = service.RecommendationTrackStats
+
 func trackHit(action string, tickerChangePct, spyChangePct float64, haveSPY bool) bool {
-	switch action {
-	case "BUY":
-		if haveSPY {
-			return tickerChangePct > spyChangePct
-		}
-		return tickerChangePct > 0
-	case "SELL":
-		if haveSPY {
-			return tickerChangePct < spyChangePct
-		}
-		return tickerChangePct < 0
-	default:
-		return false
-	}
+	return service.TrackHit(action, tickerChangePct, spyChangePct, haveSPY)
 }
 
-// trackRow is one BUY/SELL recommendation reduced to what /track's summary
-// needs, computed by computeTrackRows (which has the live quotes/SPY data)
-// so the aggregation below stays a pure pass over plain values.
-type trackRow struct {
-	Action    string // "BUY" or "SELL" only
-	Source    string // already normalized via displaySource
-	Market    market.MarketID
-	ChangePct float64
-	Hit       bool
-}
-
-// trackSourceStats accumulates hit-rate and average-magnitude stats for one
-// group of trackRows (either every row, or one source's rows).
-type trackSourceStats struct {
-	Hits, Evaluated int
-	BuySum          float64
-	BuyCount        int
-	SellSum         float64
-	SellCount       int
-}
-
-func (s trackSourceStats) HitRate() float64 {
-	if s.Evaluated == 0 {
-		return 0
-	}
-	return float64(s.Hits) / float64(s.Evaluated) * 100
-}
-
-func (s trackSourceStats) AvgBuyPct() float64 {
-	if s.BuyCount == 0 {
-		return 0
-	}
-	return s.BuySum / float64(s.BuyCount)
-}
-
-func (s trackSourceStats) AvgSellPct() float64 {
-	if s.SellCount == 0 {
-		return 0
-	}
-	return s.SellSum / float64(s.SellCount)
-}
-
-// summarizeTrack aggregates trackRows into overall stats, a per-source
-// breakdown (see trackSourceStats), and a per-market breakdown (Phase 6 PR2
-// §5.3) — for /track's summary footer: hit rate, average BUY/SELL
-// magnitude, and — when more than one source/market is present — the same
-// broken down by candidate-sourcing path (Phase 2.6's deferred-until-
-// Phase-3.8 "成效對照") or by market.
 func summarizeTrack(rows []trackRow) (overall trackSourceStats, bySource map[string]trackSourceStats, byMarket map[market.MarketID]trackSourceStats) {
-	bySource = make(map[string]trackSourceStats)
-	byMarket = make(map[market.MarketID]trackSourceStats)
-	for _, r := range rows {
-		accumulateTrackRow(&overall, r)
-		s := bySource[r.Source]
-		accumulateTrackRow(&s, r)
-		bySource[r.Source] = s
-		mstat := byMarket[r.Market]
-		accumulateTrackRow(&mstat, r)
-		byMarket[r.Market] = mstat
-	}
-	return overall, bySource, byMarket
+	summary := service.SummarizeTrack(rows)
+	return summary.Overall, summary.BySource, summary.ByMarket
 }
 
-func accumulateTrackRow(s *trackSourceStats, r trackRow) {
-	s.Evaluated++
-	if r.Hit {
-		s.Hits++
-	}
-	switch r.Action {
-	case "BUY":
-		s.BuySum += r.ChangePct
-		s.BuyCount++
-	case "SELL":
-		s.SellSum += r.ChangePct
-		s.SellCount++
-	}
-}
-
-// displaySource normalizes a stored db.Recommendation.Source for display:
-// rows saved before the source column existed have "" and read as
-// "watchlist" (see the migration's doc comment in internal/db).
 func displaySource(source string) string {
-	if source == "" {
-		return "watchlist"
-	}
-	return source
+	return service.DisplaySource(source)
 }
 
-// sortedSourceKeys returns bySource's keys in alphabetical order, so
-// /track's per-source breakdown renders in a stable order instead of Go's
-// randomized map iteration.
 func sortedSourceKeys(bySource map[string]trackSourceStats) []string {
-	keys := make([]string, 0, len(bySource))
-	for k := range bySource {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
+	return service.SortedSourceKeys(bySource)
 }
 
 // tradeDateRe matches an optional trailing YYYY-MM-DD date argument to
@@ -776,9 +693,6 @@ func (b *Bot) handleBuy(args string) {
 		date = todayDate()
 	}
 	feeAuto := !feeSet
-	if feeAuto {
-		fee = paper.FeeFor(market.Of(ticker), "BUY", shares*price, b.twFeeDiscount)
-	}
 	msg, _ := b.recordBuy(ticker, shares, price, fee, feeAuto, date, "")
 	b.Send(msg)
 }
@@ -793,9 +707,12 @@ func (b *Bot) handleBuy(args string) {
 // i18n-rendered text. extID is "" for every caller except Phase 16's
 // Shioaji-synced pending actions — see db.RecordBuyExt.
 func (b *Bot) recordBuy(ticker string, shares, price, fee float64, feeAuto bool, date, extID string) (string, error) {
-	// Read any stop price already on the position before the buy — RecordBuy
-	// deliberately doesn't touch it, but buyStopSuggestion's add-on note
-	// needs to know it was there.
+	// Read any stop price already on the position before the buy — the trade
+	// service deliberately doesn't touch it, but buyStopSuggestion's add-on
+	// note needs to know it was there.
+	//
+	// Read this before executing because a buy that tops up an existing
+	// position deliberately keeps its existing stop price.
 	var existingStopPrice float64
 	if prevPos, ok, err := b.db.GetPosition(ticker); err != nil {
 		logger.Errorf("buy %s: get existing position: %v", ticker, err)
@@ -803,20 +720,33 @@ func (b *Bot) recordBuy(ticker string, shares, price, fee float64, feeAuto bool,
 		existingStopPrice = prevPos.StopPrice
 	}
 
-	pos, err := b.db.RecordBuyExt(ticker, shares, price, fee, date, extID)
+	trades := b.trading()
+	if trades == nil {
+		err := errors.New("trade service unavailable")
+		return i18n.T(b.lang, i18n.KeyBuyFailed, err), err
+	}
+	var feeInput *float64
+	if !feeAuto {
+		feeInput = &fee
+	}
+	result, err := trades.Buy(service.BuyInput{
+		Ticker: ticker,
+		Shares: shares,
+		Price:  price,
+		Fee:    feeInput,
+		Date:   date,
+		ExtID:  extID,
+	})
 	if err != nil {
 		return i18n.T(b.lang, i18n.KeyBuyFailed, err), err
 	}
-	b.adjustCash(ticker, -(shares*price + fee))
-	if err := b.db.AddTicker(ticker); err != nil {
-		logger.Errorf("buy: add %s to watchlist: %v", ticker, err)
-	}
-	msg := i18n.T(b.lang, i18n.KeyBuySuccess, ticker, shares, b.money(ticker, price), b.money(ticker, fee), pos.Shares, b.money(ticker, pos.AvgCost))
+	b.adjustCash(result.Ticker, -(shares*price + result.Fee))
+	msg := i18n.T(b.lang, i18n.KeyBuySuccess, result.Ticker, shares, b.money(result.Ticker, price), b.money(result.Ticker, result.Fee), result.Position.Shares, b.money(result.Ticker, result.Position.AvgCost))
 	if feeAuto {
 		msg += i18n.T(b.lang, i18n.KeyFeeAutoNote)
 	}
-	msg += b.thesisNudge(ticker)
-	return msg + b.buyStopSuggestion(ticker, existingStopPrice), nil
+	msg += b.thesisNudge(result.Ticker)
+	return msg + b.buyStopSuggestion(result.Ticker, existingStopPrice), nil
 }
 
 // ExecuteBuy is ExecuteSell/ExecuteSetStop's sibling: internal/web's POST
@@ -837,9 +767,7 @@ func (b *Bot) ExecuteBuy(ticker string, shares, price float64, fee *float64, dat
 	}
 	feeAuto := fee == nil
 	feeVal := 0.0
-	if feeAuto {
-		feeVal = paper.FeeFor(market.Of(ticker), "BUY", shares*price, b.twFeeDiscount)
-	} else {
+	if !feeAuto {
 		feeVal = *fee
 	}
 	msg, err := b.recordBuy(ticker, shares, price, feeVal, feeAuto, date, "")
@@ -883,9 +811,6 @@ func (b *Bot) handleSell(ctx context.Context, args string) {
 		date = todayDate()
 	}
 	feeAuto := !feeSet
-	if feeAuto {
-		fee = paper.FeeFor(market.Of(ticker), "SELL", shares*price, b.twFeeDiscount)
-	}
 	msg, closed, stopPrice, _ := b.recordSell(ticker, shares, price, fee, feeAuto, date, "")
 	b.Send(msg)
 	if closed {
@@ -913,7 +838,23 @@ func (b *Bot) recordSell(ticker string, shares, price, fee float64, feeAuto bool
 		stopPrice = prevPos.StopPrice
 	}
 
-	pos, realizedPnL, err := b.db.RecordSellExt(ticker, shares, price, fee, date, extID)
+	trades := b.trading()
+	if trades == nil {
+		err = errors.New("trade service unavailable")
+		return i18n.T(b.lang, i18n.KeySellFailed, err), false, 0, err
+	}
+	var feeInput *float64
+	if !feeAuto {
+		feeInput = &fee
+	}
+	result, err := trades.Sell(service.SellInput{
+		Ticker: ticker,
+		Shares: shares,
+		Price:  price,
+		Fee:    feeInput,
+		Date:   date,
+		ExtID:  extID,
+	})
 	if err != nil {
 		switch {
 		case errors.Is(err, db.ErrNoPosition):
@@ -924,12 +865,12 @@ func (b *Bot) recordSell(ticker string, shares, price, fee float64, feeAuto bool
 			return i18n.T(b.lang, i18n.KeySellFailed, err), false, 0, err
 		}
 	}
-	b.adjustCash(ticker, shares*price-fee)
-	msg = i18n.T(b.lang, i18n.KeySellSuccess, ticker, shares, b.money(ticker, price), b.money(ticker, fee), realizedPnL, pos.Shares)
+	b.adjustCash(result.Ticker, shares*price-result.Fee)
+	msg = i18n.T(b.lang, i18n.KeySellSuccess, result.Ticker, shares, b.money(result.Ticker, price), b.money(result.Ticker, result.Fee), result.RealizedPnL, result.Position.Shares)
 	if feeAuto {
 		msg += i18n.T(b.lang, i18n.KeyFeeAutoNote)
 	}
-	return msg, pos.Shares == 0, stopPrice, nil
+	return msg, result.Closed, result.StopPrice, nil
 }
 
 // ExecuteSell is ExecuteBuy's sibling for internal/web's POST
@@ -945,9 +886,7 @@ func (b *Bot) ExecuteSell(ctx context.Context, ticker string, shares, price floa
 	}
 	feeAuto := fee == nil
 	feeVal := 0.0
-	if feeAuto {
-		feeVal = paper.FeeFor(market.Of(ticker), "SELL", shares*price, b.twFeeDiscount)
-	} else {
+	if !feeAuto {
 		feeVal = *fee
 	}
 	msg, closed, stopPrice, err := b.recordSell(ticker, shares, price, feeVal, feeAuto, date, "")
@@ -1214,7 +1153,17 @@ func (b *Bot) saveLesson(ticker, lesson string) {
 // [Check]/[Buy]/[Sell] quick-action row (quick_actions.go) attaches to that
 // ticker specifically.
 func (b *Bot) handlePortfolio() {
-	positions, err := b.db.GetPositions()
+	portfolio := b.portfolios()
+	if portfolio == nil {
+		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, errors.New("portfolio service unavailable")))
+		return
+	}
+	usSnapshot, err := portfolio.Snapshot(market.US)
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
+		return
+	}
+	twSnapshot, err := portfolio.Snapshot(market.TW)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
 		return
@@ -1223,14 +1172,14 @@ func (b *Bot) handlePortfolio() {
 	if err != nil {
 		logger.Errorf("portfolio: option positions: %v", err)
 	}
-	if len(positions) == 0 && len(optionPositions) == 0 {
+	if len(usSnapshot.Positions) == 0 && len(twSnapshot.Positions) == 0 && len(optionPositions) == 0 {
 		b.Send(i18n.T(b.lang, i18n.KeyPortfolioEmpty))
 		return
 	}
 
 	b.Send(i18n.T(b.lang, i18n.KeyPortfolioTitle))
-	b.sendPortfolioSection(market.US, positions)
-	b.sendPortfolioSection(market.TW, positions)
+	b.sendPortfolioSection(usSnapshot)
+	b.sendPortfolioSection(twSnapshot)
 	b.sendPortfolioOptionsSection(optionPositions)
 }
 
@@ -1241,35 +1190,27 @@ func (b *Bot) handlePortfolio() {
 // nothing at all — not even the section title — when m has no open
 // positions, so a single-market portfolio doesn't show a dangling empty
 // block for the other market.
-func (b *Bot) sendPortfolioSection(m market.MarketID, positions []db.Position) {
-	var marketPositions []db.Position
-	for _, p := range positions {
-		if market.Of(p.Ticker) == m {
-			marketPositions = append(marketPositions, p)
-		}
-	}
-	if len(marketPositions) == 0 {
+func (b *Bot) sendPortfolioSection(snapshot service.PortfolioSnapshot) {
+	if len(snapshot.Positions) == 0 {
 		return
 	}
 
-	realizedTotal, err := b.db.GetRealizedPnL(m)
-	if err != nil {
-		logger.Errorf("portfolio: realized pnl (%s): %v", m, err)
+	m := snapshot.Market
+	if snapshot.RealizedPnLErr != nil {
+		logger.Errorf("portfolio: realized pnl (%s): %v", m, snapshot.RealizedPnLErr)
 	}
 
 	b.Send(i18n.T(b.lang, portfolioSectionTitleKey(m)))
-	var totalValue float64
-	for _, p := range marketPositions {
-		q, err := b.provider.GetQuote(p.Ticker)
-		if err != nil {
+	for _, valuation := range snapshot.Positions {
+		p := valuation.Position
+		if valuation.QuoteErr != nil || valuation.Quote == nil {
+			if valuation.QuoteErr != nil {
+				logger.Errorf("portfolio: quote %s: %v", p.Ticker, valuation.QuoteErr)
+			}
 			b.sendWithTickerActions(p.Ticker, i18n.T(b.lang, i18n.KeyQuoteUnavailable, b.tickerLabel(p.Ticker)))
 			continue
 		}
-		marketValue := p.Shares * q.Price
-		unrealized := (q.Price - p.AvgCost) * p.Shares
-		unrealizedPct := (q.Price - p.AvgCost) / p.AvgCost * 100
-		totalValue += marketValue
-		line := i18n.T(b.lang, i18n.KeyPortfolioLine, b.tickerLabel(p.Ticker), p.Shares, b.money(p.Ticker, p.AvgCost), b.money(p.Ticker, q.Price), b.money(p.Ticker, marketValue), unrealized, unrealizedPct)
+		line := i18n.T(b.lang, i18n.KeyPortfolioLine, b.tickerLabel(p.Ticker), p.Shares, b.money(p.Ticker, p.AvgCost), b.money(p.Ticker, valuation.Quote.Price), b.money(p.Ticker, valuation.MarketValue), valuation.UnrealizedPnL, valuation.UnrealizedPnLPct)
 		if note := lotSuffix(b.lang, m, p.Shares); note != "" {
 			// KeyPortfolioLine ends "...%%)\n\n" — splice the note onto that
 			// last content line rather than appending after the trailing
@@ -1278,10 +1219,12 @@ func (b *Bot) sendPortfolioSection(m market.MarketID, positions []db.Position) {
 		}
 		b.sendWithTickerActions(p.Ticker, line)
 	}
-	cash, haveCash, err := b.loadCash(m)
-	if err != nil {
-		logger.Errorf("portfolio: load cash (%s): %v", m, err)
+	if snapshot.CashErr != nil {
+		logger.Errorf("portfolio: load cash (%s): %v", m, snapshot.CashErr)
 	}
+	cash, haveCash := snapshot.Cash, snapshot.HasCash
+	realizedTotal := snapshot.RealizedPnL
+	totalValue := snapshot.TotalMarketValue
 
 	if m == market.TW {
 		if haveCash {
@@ -1393,16 +1336,13 @@ func (b *Bot) insightMarket(ctx context.Context, m market.MarketID, positions []
 // so this is a second independent value, not a currency-converted view of
 // the first).
 const (
-	cashSettingKey    = "cash_balance"
-	cashSettingKeyTWD = "cash_balance_twd"
+	cashSettingKey    = service.CashSettingKeyUSD
+	cashSettingKeyTWD = service.CashSettingKeyTWD
 )
 
 // cashSettingKeyFor returns the settings key backing m's cash balance.
 func cashSettingKeyFor(m market.MarketID) string {
-	if m == market.TW {
-		return cashSettingKeyTWD
-	}
-	return cashSettingKey
+	return service.CashSettingKey(m)
 }
 
 // handleCash manages the user's manually-declared cash balance, one per

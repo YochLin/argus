@@ -6,6 +6,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"argus/internal/i18n"
+	"argus/internal/service"
 )
 
 // registerWriteTools adds the Phase 3.5 "watchlist 寫入工具（最低風險試點）"
@@ -37,11 +38,15 @@ func registerWriteTools(s *mcp.Server, ts *toolset) {
 }
 
 func (ts *toolset) addToWatchlist(ctx context.Context, _ *mcp.CallToolRequest, in tickerInput) (*mcp.CallToolResult, any, error) {
-	ticker := normalizeTicker(in.Ticker)
-	if ticker == "" {
+	watchlist := ts.watchlists()
+	if watchlist == nil {
+		return nil, nil, ts.mcpErr(i18n.KeyAddFailed, service.ErrInvalidTicker)
+	}
+	ticker, err := service.NormalizeTicker(in.Ticker)
+	if err != nil {
 		return nil, nil, ts.mcpErr(i18n.KeyAddUsage)
 	}
-	if err := ts.writeDB.AddTicker(ticker); err != nil {
+	if err := watchlist.AddTicker(ticker); err != nil {
 		return nil, nil, ts.mcpErr(i18n.KeyAddFailed, err)
 	}
 	ts.invalidateWatchlistCache()
@@ -49,11 +54,15 @@ func (ts *toolset) addToWatchlist(ctx context.Context, _ *mcp.CallToolRequest, i
 }
 
 func (ts *toolset) removeFromWatchlist(ctx context.Context, _ *mcp.CallToolRequest, in tickerInput) (*mcp.CallToolResult, any, error) {
-	ticker := normalizeTicker(in.Ticker)
-	if ticker == "" {
+	watchlist := ts.watchlists()
+	if watchlist == nil {
+		return nil, nil, ts.mcpErr(i18n.KeyRemoveFailed, service.ErrInvalidTicker)
+	}
+	ticker, err := service.NormalizeTicker(in.Ticker)
+	if err != nil {
 		return nil, nil, ts.mcpErr(i18n.KeyRemoveUsage)
 	}
-	if err := ts.writeDB.RemoveTicker(ticker); err != nil {
+	if err := watchlist.RemoveTicker(ticker); err != nil {
 		return nil, nil, ts.mcpErr(i18n.KeyRemoveFailed, err)
 	}
 	ts.invalidateWatchlistCache()

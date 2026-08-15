@@ -10,6 +10,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/llm"
+	"argus/internal/service"
 	"argus/internal/signals"
 	"argus/internal/sinopac"
 )
@@ -78,9 +79,13 @@ type Bot struct {
 	// plan's risk section). /sinopac sync (typed by the user, an explicit
 	// per-call confirmation) ignores this and always runs live.
 	sinopacSyncLive bool
-	llm           *llm.Client
-	detector      *signals.Detector
-	lang          i18n.Lang
+	llm             *llm.Client
+	tradeService    *service.TradeService
+	watchlist       *service.WatchlistService
+	portfolio       *service.PortfolioService
+	recommendation  *service.RecommendationTrackingService
+	detector        *signals.Detector
+	lang            i18n.Lang
 
 	// dataCache holds fundamentals/analyst-rating/insider-tx results, keyed
 	// by ticker (see slowDataCacheTTL in pipeline.go) — these change slowly
@@ -268,6 +273,10 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		sinopacSkip:            cfg.SinopacSkip,
 		sinopacSyncLive:        cfg.SinopacSyncLive,
 		llm:                    cfg.LLM,
+		tradeService:           service.NewTradeService(cfg.DB, cfg.TWFeeDiscount),
+		watchlist:              service.NewWatchlistService(cfg.DB),
+		portfolio:              service.NewPortfolioService(cfg.DB, cfg.Provider),
+		recommendation:         service.NewRecommendationTrackingService(cfg.DB, cfg.Provider),
 		detector:               signals.NewDetector(cfg.Lang),
 		lang:                   cfg.Lang,
 		stopLossPct:            cfg.StopLossPct,
@@ -286,6 +295,37 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		dataCache:              newTTLCache(),
 		now:                    time.Now,
 	}
+}
+
+// trading returns the shared application service used by all bot trade entry
+// points. The lazy fallback keeps small hand-built test Bots compatible while
+// production construction goes through NewWithChannel.
+func (b *Bot) trading() *service.TradeService {
+	if b.tradeService == nil && b.db != nil {
+		b.tradeService = service.NewTradeService(b.db, b.twFeeDiscount)
+	}
+	return b.tradeService
+}
+
+func (b *Bot) watchlists() *service.WatchlistService {
+	if b.watchlist == nil && b.db != nil {
+		b.watchlist = service.NewWatchlistService(b.db)
+	}
+	return b.watchlist
+}
+
+func (b *Bot) portfolios() *service.PortfolioService {
+	if b.portfolio == nil && b.db != nil {
+		b.portfolio = service.NewPortfolioService(b.db, b.provider)
+	}
+	return b.portfolio
+}
+
+func (b *Bot) recommendations() *service.RecommendationTrackingService {
+	if b.recommendation == nil && b.db != nil {
+		b.recommendation = service.NewRecommendationTrackingService(b.db, b.provider)
+	}
+	return b.recommendation
 }
 
 func (b *Bot) Send(text string) {

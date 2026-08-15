@@ -7,8 +7,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -58,89 +56,7 @@ func main() {
 		return
 	}
 
-	envErr := godotenv.Load()
-	logger.Configure(os.Stderr, logger.ParseLevel(os.Getenv("LOG_LEVEL")))
-	if envErr != nil {
-		logger.Info("no .env file found, reading env from environment")
-	}
-
-	telegramToken := mustEnv("TELEGRAM_BOT_TOKEN")
-	chatIDStr := mustEnv("TELEGRAM_CHAT_ID")
-	finnhubKey := os.Getenv("FINNHUB_API_KEY")
-	finmindToken := os.Getenv("FINMIND_TOKEN")
-	shioajiAddr := os.Getenv("SHIOAJI_ADDR")
-	sinopacSkip := parseSinopacSkip(os.Getenv("SINOPAC_SKIP_TICKERS"))
-	sinopacSyncLive := os.Getenv("SINOPAC_SYNC_LIVE") == "true"
-	recommendModel := envOr("CLAUDE_RECOMMEND_MODEL", "opus")
-	checkModel := envOr("CLAUDE_CHECK_MODEL", "sonnet")
-	chatModel := envOr("CLAUDE_CHAT_MODEL", "sonnet")
-	dbPath := envOr("DB_PATH", "data/argus.db")
-	lang := i18n.Parse(envOr("BOT_LANGUAGE", "zh"))
-	// WEB_ADDR gates the read-only dashboard (Phase 5 PR1, see
-	// docs/phase-5-web-dashboard.md) — empty means off, same
-	// presence-of-config convention as FINNHUB_API_KEY, not envOr's
-	// give-a-default shape, since binding a port at all is the thing that
-	// needs to be opted into.
-	webAddr := os.Getenv("WEB_ADDR")
-	// WEB_PASSWORD (Phase 10, docs/phase-10-web-trade-input.md §4.1) gates
-	// the dashboard's write endpoints — empty disables writes entirely, same
-	// presence-of-config convention as WEB_ADDR itself. Meaningless without
-	// WEB_ADDR also set, but no extra validation beyond that: an unreachable
-	// server's password setting is simply inert.
-	webPassword := os.Getenv("WEB_PASSWORD")
-	// Phase 3.8 exit-discipline thresholds: positive percentages, 0 disables
-	// the corresponding daily-report check entirely. Defaults are a starting
-	// point, not backed by any backtest yet — see PLAN.md's Phase 3.8 note
-	// that /track is the intended feedback loop for tuning these later.
-	stopLossPct := envOrFloat("STOP_LOSS_PCT", 10)
-	trailingStopPct := envOrFloat("TRAILING_STOP_PCT", 15)
-	// STOP_LOSS_PCT_TW/TRAILING_STOP_PCT_TW (Phase 13 §7) default to TW's
-	// wider calibration (a single ±10% daily-limit move shouldn't itself
-	// trigger the US-calibrated 10%/15% thresholds above) — 0 is reserved as
-	// "not set" (bot.NewWithChannel falls back to stopLossPct/
-	// trailingStopPct when 0), so an operator who explicitly wants TW's
-	// check disabled must still go through stopLossPct/trailingStopPct's own
-	// STOP_LOSS_PCT=0 today; disabling only TW independently isn't
-	// supported yet.
-	stopLossPctTW := envOrFloat("STOP_LOSS_PCT_TW", 12)
-	trailingStopPctTW := envOrFloat("TRAILING_STOP_PCT_TW", 18)
-	// TRAILING_STOP_ATR_MULT defaults to 0 (disabled): opt-in, not
-	// presence-gated, since it changes when a real-money alert fires — see
-	// docs/phase-3.8-atr-trailing-stop.md.
-	trailingStopATRMult := envOrFloat("TRAILING_STOP_ATR_MULT", 0)
-	// RISK_PCT_PER_TRADE (Phase 3.11 PR1) defaults to 0 (disabled): sizing
-	// suggestions change what a BUY recommendation tells the user to do
-	// with real money, so — same reasoning as TRAILING_STOP_ATR_MULT above —
-	// it's opt-in rather than shipped with a default like stopLossPct/
-	// trailingStopPct's 10/15.
-	riskPctPerTrade := envOrFloat("RISK_PCT_PER_TRADE", 0)
-	// TW_BROKER_FEE_DISCOUNT (Phase 13 §3) defaults to 1.0 (no discount) so
-	// an unconfigured deployment's TW fee auto-calc matches the statutory
-	// rate; common e-brokerage plans are 0.6/0.28.
-	twFeeDiscount := envOrFloat("TW_BROKER_FEE_DISCOUNT", 1.0)
-	// RISK_HEAT_PCT (Phase 8 PR1) is the /risk page's portfolio-heat warning
-	// threshold — defaults to 6.0 (a textbook-common figure, not backtested)
-	// when unset; <=0 disables the frontend's warning line entirely, same
-	// "<=0 means disabled" convention as STOP_LOSS_PCT/TRAILING_STOP_PCT.
-	riskHeatPct := envOrFloat("RISK_HEAT_PCT", 6.0)
-	// PAPER_DB_PATH (Phase 11 PR3, docs/phase-11-paper-account.md §6.6) gates
-	// the live paper account — empty disables it entirely, same
-	// presence-of-config convention as WEB_ADDR/FINNHUB_API_KEY. The other
-	// three PAPER_* vars are meaningless without it and simply inert if set
-	// alone.
-	paperDBPath := os.Getenv("PAPER_DB_PATH")
-	paperInitialCashUSD := envOrFloat("PAPER_INITIAL_CASH_USD", 100000)
-	paperInitialCashTWD := envOrFloat("PAPER_INITIAL_CASH_TWD", 1000000)
-	paperMaxPositionPct := envOrFloat("PAPER_MAX_POSITION_PCT", 25)
-	// PAPER_TAKE_PROFIT_ATR_MULT (2026-08-08 strategy tuning,
-	// docs/phase-11-paper-strategy-tuning.md §3) — <=0 (the default) disables
-	// take-profit entirely, same convention as TRAILING_STOP_ATR_MULT.
-	paperTakeProfitATRMult := envOrFloat("PAPER_TAKE_PROFIT_ATR_MULT", 0)
-
-	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
-	if err != nil {
-		logger.Fatalf("invalid TELEGRAM_CHAT_ID: %v", err)
-	}
+	cfg := loadConfig()
 
 	// Ensure DB directory exists
 	if err := os.MkdirAll("data", 0o755); err != nil {
@@ -154,8 +70,8 @@ func main() {
 	// launched by claude-agent-acp from os.TempDir(), not this process's
 	// cwd (see acp_provider.go's startClaudeSession) — a relative path here
 	// would resolve against the wrong directory once handed to the child.
-	if absDBPath, err := filepath.Abs(dbPath); err != nil {
-		logger.Warnf("warning: could not resolve absolute DB_PATH from %q: %v", dbPath, err)
+	if absDBPath, err := filepath.Abs(cfg.DBPath); err != nil {
+		logger.Warnf("warning: could not resolve absolute DB_PATH from %q: %v", cfg.DBPath, err)
 	} else {
 		os.Setenv("DB_PATH", absDBPath)
 	}
@@ -166,14 +82,14 @@ func main() {
 	// rotates on size by itself; MaxAge+MaxBackups here cap it at roughly a
 	// week of history so the log can't slowly fill the disk.
 	logFile := &lumberjack.Logger{
-		Filename:   envOr("LOG_PATH", "data/argus.log"),
+		Filename:   cfg.LogPath,
 		MaxBackups: 7,
 		MaxAge:     7,
 	}
 	defer logFile.Close()
 	logger.Configure(io.MultiWriter(os.Stdout, logFile), logger.ParseLevel(os.Getenv("LOG_LEVEL")))
 
-	database, err := db.New(dbPath)
+	database, err := db.New(cfg.DBPath)
 	if err != nil {
 		logger.Fatalf("open database: %v", err)
 	}
@@ -185,8 +101,8 @@ func main() {
 	// PAPER_DB_PATH is unset, which bot.Config's PaperDB field treats as
 	// "feature off" (see internal/bot/paper.go).
 	var paperDatabase *db.DB
-	if paperDBPath != "" {
-		paperDatabase, err = db.New(paperDBPath)
+	if cfg.PaperDBPath != "" {
+		paperDatabase, err = db.New(cfg.PaperDBPath)
 		if err != nil {
 			logger.Fatalf("open paper database: %v", err)
 		}
@@ -209,8 +125,8 @@ func main() {
 	var companyNameProvider data.CompanyNameProvider
 	var trustNetProvider data.TrustNetProvider
 	fundamentalsRouter := &data.FundamentalsRouter{}
-	if finnhubKey != "" {
-		finnhub := data.NewFinnhub(finnhubKey)
+	if cfg.FinnhubKey != "" {
+		finnhub := data.NewFinnhub(cfg.FinnhubKey)
 		providers = append(providers, finnhub)
 		fundamentalsRouter.US = finnhub
 		analystRatingProvider = finnhub
@@ -225,8 +141,8 @@ func main() {
 	// TaiwanStockInfo lookup, see finmind.go's GetCompanyName) — same client,
 	// not a second one, since there's nothing FinMind-specific about that
 	// call that would justify a separate instance.
-	if finmindToken != "" {
-		finmind := data.NewFinMind(finmindToken)
+	if cfg.FinMindToken != "" {
+		finmind := data.NewFinMind(cfg.FinMindToken)
 		fundamentalsRouter.TW = finmind
 		companyNameProvider = finmind
 		trustNetProvider = finmind
@@ -246,8 +162,8 @@ func main() {
 	// error/session drop falls straight through to GoogleNews/Yahoo since
 	// Multi tries providers in order until one succeeds.
 	var sinopacClient *sinopac.Client
-	if shioajiAddr != "" {
-		sinopacClient = sinopac.New(shioajiAddr)
+	if cfg.ShioajiAddr != "" {
+		sinopacClient = sinopac.New(cfg.ShioajiAddr)
 		providers = append(providers, data.NewShioaji(sinopacClient))
 	}
 	// Google News sits between Finnhub and Yahoo so TW tickers get
@@ -278,7 +194,7 @@ func main() {
 		twMoversProvider = data.NewShioajiMovers(sinopacClient, twMovers)
 	}
 
-	llmClient := llm.NewClient(recommendModel, checkModel, chatModel, lang)
+	llmClient := llm.NewClient(cfg.RecommendModel, cfg.CheckModel, cfg.ChatModel, cfg.Lang)
 	// Antigravity fallback is opt-in, not presence-of-config-gated like
 	// Finnhub above: agy has no read-only mode for non-interactive calls (see
 	// AntigravityProvider's doc comment and PLAN.md's architecture-debt
@@ -292,8 +208,8 @@ func main() {
 	defer llmClient.Close() // kills any still-open persistent chat session's subprocess
 
 	telegramBot, err := bot.New(bot.Config{
-		Token:                  telegramToken,
-		ChatID:                 chatID,
+		Token:                  cfg.TelegramToken,
+		ChatID:                 cfg.ChatID,
 		DB:                     database,
 		Provider:               provider,
 		Fundamentals:           fundamentalsProvider,
@@ -309,22 +225,22 @@ func main() {
 		OptionChain:            yahoo,
 		History:                yahoo,
 		Sinopac:                sinopacClient,
-		SinopacSkip:            sinopacSkip,
-		SinopacSyncLive:        sinopacSyncLive,
+		SinopacSkip:            cfg.SinopacSkip,
+		SinopacSyncLive:        cfg.SinopacSyncLive,
 		LLM:                    llmClient,
-		Lang:                   lang,
-		StopLossPct:            stopLossPct,
-		TrailingStopPct:        trailingStopPct,
-		StopLossPctTW:          stopLossPctTW,
-		TrailingStopPctTW:      trailingStopPctTW,
-		TrailingStopATRMult:    trailingStopATRMult,
-		RiskPctPerTrade:        riskPctPerTrade,
-		TWFeeDiscount:          twFeeDiscount,
+		Lang:                   cfg.Lang,
+		StopLossPct:            cfg.StopLossPct,
+		TrailingStopPct:        cfg.TrailingStopPct,
+		StopLossPctTW:          cfg.StopLossPctTW,
+		TrailingStopPctTW:      cfg.TrailingStopPctTW,
+		TrailingStopATRMult:    cfg.TrailingStopATRMult,
+		RiskPctPerTrade:        cfg.RiskPctPerTrade,
+		TWFeeDiscount:          cfg.TWFeeDiscount,
 		PaperDB:                paperDatabase,
-		PaperInitialCashUSD:    paperInitialCashUSD,
-		PaperInitialCashTWD:    paperInitialCashTWD,
-		PaperMaxPositionPct:    paperMaxPositionPct,
-		PaperTakeProfitATRMult: paperTakeProfitATRMult,
+		PaperInitialCashUSD:    cfg.PaperInitialCashUSD,
+		PaperInitialCashTWD:    cfg.PaperInitialCashTWD,
+		PaperMaxPositionPct:    cfg.PaperMaxPositionPct,
+		PaperTakeProfitATRMult: cfg.PaperTakeProfitATRMult,
 	})
 	if err != nil {
 		logger.Fatalf("init bot: %v", err)
@@ -338,7 +254,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	if webAddr != "" {
+	if cfg.WebAddr != "" {
 		// In-process, not a subcommand like "mcp": the dashboard needs live
 		// quotes (data.Provider) alongside DB reads, and shares this
 		// process's *db.DB connection directly rather than opening a
@@ -350,18 +266,18 @@ func main() {
 			Provider:            provider,
 			History:             yahoo,
 			Earnings:            earningsProvider,
-			Lang:                lang,
+			Lang:                cfg.Lang,
 			CompanyNames:        companyNameProvider,
 			OptionChain:         yahoo,
-			RiskHeatPct:         riskHeatPct,
-			Password:            webPassword,
+			RiskHeatPct:         cfg.RiskHeatPct,
+			Password:            cfg.WebPassword,
 			Trade:               telegramBot,
 			PaperDB:             paperDatabase,
-			PaperInitialCashUSD: paperInitialCashUSD,
-			PaperInitialCashTWD: paperInitialCashTWD,
+			PaperInitialCashUSD: cfg.PaperInitialCashUSD,
+			PaperInitialCashTWD: cfg.PaperInitialCashTWD,
 		})
 		go func() {
-			if err := webServer.Run(ctx, webAddr); err != nil {
+			if err := webServer.Run(ctx, cfg.WebAddr); err != nil {
 				logger.Errorf("web: server error: %v", err)
 			}
 		}()
@@ -399,7 +315,7 @@ func main() {
 		if sinopacClient == nil {
 			return
 		}
-		if msg, found := telegramBot.RunSinopacSync(ctx, !sinopacSyncLive); found {
+		if msg, found := telegramBot.RunSinopacSync(ctx, !cfg.SinopacSyncLive); found {
 			telegramBot.Send(msg)
 		}
 	})
@@ -411,12 +327,10 @@ func main() {
 			logger.Errorf("log rotation: %v", err)
 		}
 	})
-	backupDir := envOr("BACKUP_DIR", "data/backups")
-	backupRetentionDays := envOrInt("BACKUP_RETENTION_DAYS", 14)
 	sched.AddBackup(func() {
-		runBackup(database, backupDir, backupRetentionDays, "argus")
+		runBackup(database, cfg.BackupDir, cfg.BackupRetentionDays, "argus")
 		if paperDatabase != nil {
-			runBackup(paperDatabase, backupDir, backupRetentionDays, "argus-paper")
+			runBackup(paperDatabase, cfg.BackupDir, cfg.BackupRetentionDays, "argus-paper")
 		}
 	})
 	sched.Start()
@@ -529,65 +443,6 @@ func runMCPServer() {
 	if err := mcptools.Run(ctx, lang, provider, yahoo, fundamentalsProvider, earningsProvider, insiderTxProvider, twInstitutional, database, writeDatabase); err != nil {
 		logger.Fatalf("mcp server: %v", err)
 	}
-}
-
-func mustEnv(key string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		logger.Fatalf("required env var %s is not set", key)
-	}
-	return v
-}
-
-func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
-
-func envOrFloat(key string, fallback float64) float64 {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback
-	}
-	n, err := strconv.ParseFloat(v, 64)
-	if err != nil {
-		logger.Warnf("invalid %s=%q, using default %v", key, v, fallback)
-		return fallback
-	}
-	return n
-}
-
-func envOrInt(key string, fallback int) int {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		logger.Warnf("invalid %s=%q, using default %d", key, v, fallback)
-		return fallback
-	}
-	return n
-}
-
-// parseSinopacSkip splits SINOPAC_SKIP_TICKERS (comma-separated, e.g.
-// "0050,006208") into a lookup set for internal/sinopac.Trades — periodic
-// investment tickers the Shioaji sync should never propose. nil (not an
-// empty map) when unset, same "absent means nothing to check" shape as
-// every other optional bot.Config field.
-func parseSinopacSkip(raw string) map[string]bool {
-	if raw == "" {
-		return nil
-	}
-	out := make(map[string]bool)
-	for _, t := range strings.Split(raw, ",") {
-		if t = strings.TrimSpace(t); t != "" {
-			out[t] = true
-		}
-	}
-	return out
 }
 
 // runBackup writes a dated SQLite backup (via db.Backup's VACUUM INTO) into

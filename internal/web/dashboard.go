@@ -6,6 +6,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/logger"
 	"argus/internal/market"
+	"argus/internal/service"
 )
 
 // spyTicker/twBenchmarkTicker mirror internal/bot's own benchmarkTicker/
@@ -150,6 +151,10 @@ func netWorthBaseline(database dbReader, periodStart string, m market.MarketID, 
 // win-rate/trade-count pair — no new "what counts as account value" logic
 // gets invented here.
 func buildStatus(database dbReader, quotes quoteGetter, m market.MarketID) statusResponse {
+	return buildStatusWithPortfolio(database, service.NewPortfolioService(database, quotes), m)
+}
+
+func buildStatusWithPortfolio(database dbReader, portfolio *service.PortfolioService, m market.MarketID) statusResponse {
 	var status statusResponse
 	watchlist, err := database.GetWatchlist()
 	if err != nil {
@@ -164,27 +169,14 @@ func buildStatus(database dbReader, quotes quoteGetter, m market.MarketID) statu
 		status.LastCloseDate = bench.Date
 	}
 
-	if positions, err := database.GetPositions(); err != nil {
+	snapshot, err := portfolio.Snapshot(m)
+	if err != nil {
 		logger.Errorf("web: status: get positions: %v", err)
 	} else {
-		filtered := filterPositionsByMarket(positions, m)
-		tickers := make([]string, len(filtered))
-		for i, p := range filtered {
-			tickers[i] = p.Ticker
+		if snapshot.CashErr != nil {
+			logger.Errorf("web: status: load cash for %s: %v", m, snapshot.CashErr)
 		}
-		quoteMap := fetchQuotes(quotes, tickers, "status")
-
-		var totalValue float64
-		for _, p := range filtered {
-			if q, ok := quoteMap[p.Ticker]; ok {
-				totalValue += q.Price * p.Shares
-			}
-		}
-		cash, err := loadCash(database, m)
-		if err != nil {
-			logger.Errorf("web: status: load cash for %s: %v", m, err)
-		}
-		status.AccountValue = totalValue + cash
+		status.AccountValue = snapshot.AccountValue
 	}
 
 	if netPnL, err := database.GetRealizedPnL(m); err != nil {
@@ -217,11 +209,14 @@ func buildStatus(database dbReader, quotes quoteGetter, m market.MarketID) statu
 // price fields at 0 (logged), same "attach what's available" degrade
 // convention internal/bot's fetchStockData uses for optional prompt fields.
 func buildDashboard(database dbReader, quotes quoteGetter, m market.MarketID) (dashboardResponse, error) {
-	allPositions, err := database.GetPositions()
+	return buildDashboardWithPortfolio(database, service.NewPortfolioService(database, quotes), m)
+}
+
+func buildDashboardWithPortfolio(database dbReader, portfolio *service.PortfolioService, m market.MarketID) (dashboardResponse, error) {
+	snapshot, err := portfolio.Snapshot(m)
 	if err != nil {
 		return dashboardResponse{}, err
 	}
-	positions := filterPositionsByMarket(allPositions, m)
 
 	allTxs, err := database.GetAllTransactions()
 	if err != nil {
@@ -318,26 +313,22 @@ func buildDashboard(database dbReader, quotes quoteGetter, m market.MarketID) (d
 		}
 	}
 
-	posTickers := make([]string, len(positions))
-	for i, p := range positions {
-		posTickers[i] = p.Ticker
-	}
-	quoteMap := fetchQuotes(quotes, posTickers, "dashboard")
-
-	resp.Positions = make([]positionResponse, 0, len(positions))
-	for _, p := range positions {
+	resp.Positions = make([]positionResponse, 0, len(snapshot.Positions))
+	for _, valuation := range snapshot.Positions {
+		p := valuation.Position
 		pr := positionResponse{Ticker: p.Ticker, Shares: p.Shares, AvgCost: p.AvgCost, StopPrice: p.StopPrice}
-		q, ok := quoteMap[p.Ticker]
-		if !ok {
+		if valuation.QuoteErr != nil {
+			logger.Errorf("web: dashboard: get quote for %s: %v", p.Ticker, valuation.QuoteErr)
+		}
+		q := valuation.Quote
+		if q == nil {
 			resp.Positions = append(resp.Positions, pr)
 			continue
 		}
 		pr.Price = q.Price
-		pr.MarketValue = q.Price * p.Shares
-		pr.UnrealizedPnL = (q.Price - p.AvgCost) * p.Shares
-		if p.AvgCost != 0 {
-			pr.UnrealizedPnLPct = (q.Price - p.AvgCost) / p.AvgCost * 100
-		}
+		pr.MarketValue = valuation.MarketValue
+		pr.UnrealizedPnL = valuation.UnrealizedPnL
+		pr.UnrealizedPnLPct = valuation.UnrealizedPnLPct
 		resp.Positions = append(resp.Positions, pr)
 	}
 
