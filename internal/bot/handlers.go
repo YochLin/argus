@@ -23,33 +23,48 @@ import (
 )
 
 func (b *Bot) handleAdd(ticker string) {
-	ticker = strings.ToUpper(strings.TrimSpace(ticker))
-	if ticker == "" {
+	watchlist := b.watchlists()
+	if watchlist == nil {
+		b.Send(i18n.T(b.lang, i18n.KeyAddFailed, errors.New("watchlist service unavailable")))
+		return
+	}
+	normalized, err := watchlist.Add(ticker)
+	if errors.Is(err, service.ErrInvalidTicker) {
 		b.Send(i18n.T(b.lang, i18n.KeyAddUsage))
 		return
 	}
-	if err := b.db.AddTicker(ticker); err != nil {
+	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyAddFailed, err))
 		return
 	}
-	b.Send(i18n.T(b.lang, i18n.KeyAddSuccess, b.tickerLabel(ticker)))
+	b.Send(i18n.T(b.lang, i18n.KeyAddSuccess, b.tickerLabel(normalized)))
 }
 
 func (b *Bot) handleRemove(ticker string) {
-	ticker = strings.ToUpper(strings.TrimSpace(ticker))
-	if ticker == "" {
+	watchlist := b.watchlists()
+	if watchlist == nil {
+		b.Send(i18n.T(b.lang, i18n.KeyRemoveFailed, errors.New("watchlist service unavailable")))
+		return
+	}
+	normalized, err := watchlist.Remove(ticker)
+	if errors.Is(err, service.ErrInvalidTicker) {
 		b.Send(i18n.T(b.lang, i18n.KeyRemoveUsage))
 		return
 	}
-	if err := b.db.RemoveTicker(ticker); err != nil {
+	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyRemoveFailed, err))
 		return
 	}
-	b.Send(i18n.T(b.lang, i18n.KeyRemoveSuccess, b.tickerLabel(ticker)))
+	b.Send(i18n.T(b.lang, i18n.KeyRemoveSuccess, b.tickerLabel(normalized)))
 }
 
 func (b *Bot) handleList() {
-	tickers, err := b.db.GetWatchlist()
+	watchlist := b.watchlists()
+	if watchlist == nil {
+		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, errors.New("watchlist service unavailable")))
+		return
+	}
+	tickers, err := watchlist.GetWatchlist()
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
 		return
@@ -68,7 +83,12 @@ func (b *Bot) handleList() {
 func (b *Bot) handleStatus(ticker string) {
 	ticker = strings.ToUpper(strings.TrimSpace(ticker))
 	if ticker == "" {
-		tickers, err := b.db.GetWatchlist()
+		watchlist := b.watchlists()
+		if watchlist == nil {
+			b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, errors.New("watchlist service unavailable")))
+			return
+		}
+		tickers, err := watchlist.GetWatchlist()
 		if err != nil {
 			b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
 			return
@@ -1226,7 +1246,17 @@ func (b *Bot) saveLesson(ticker, lesson string) {
 // [Check]/[Buy]/[Sell] quick-action row (quick_actions.go) attaches to that
 // ticker specifically.
 func (b *Bot) handlePortfolio() {
-	positions, err := b.db.GetPositions()
+	portfolio := b.portfolios()
+	if portfolio == nil {
+		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, errors.New("portfolio service unavailable")))
+		return
+	}
+	usSnapshot, err := portfolio.Snapshot(market.US)
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
+		return
+	}
+	twSnapshot, err := portfolio.Snapshot(market.TW)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
 		return
@@ -1235,14 +1265,14 @@ func (b *Bot) handlePortfolio() {
 	if err != nil {
 		logger.Errorf("portfolio: option positions: %v", err)
 	}
-	if len(positions) == 0 && len(optionPositions) == 0 {
+	if len(usSnapshot.Positions) == 0 && len(twSnapshot.Positions) == 0 && len(optionPositions) == 0 {
 		b.Send(i18n.T(b.lang, i18n.KeyPortfolioEmpty))
 		return
 	}
 
 	b.Send(i18n.T(b.lang, i18n.KeyPortfolioTitle))
-	b.sendPortfolioSection(market.US, positions)
-	b.sendPortfolioSection(market.TW, positions)
+	b.sendPortfolioSection(usSnapshot)
+	b.sendPortfolioSection(twSnapshot)
 	b.sendPortfolioOptionsSection(optionPositions)
 }
 
@@ -1253,35 +1283,27 @@ func (b *Bot) handlePortfolio() {
 // nothing at all — not even the section title — when m has no open
 // positions, so a single-market portfolio doesn't show a dangling empty
 // block for the other market.
-func (b *Bot) sendPortfolioSection(m market.MarketID, positions []db.Position) {
-	var marketPositions []db.Position
-	for _, p := range positions {
-		if market.Of(p.Ticker) == m {
-			marketPositions = append(marketPositions, p)
-		}
-	}
-	if len(marketPositions) == 0 {
+func (b *Bot) sendPortfolioSection(snapshot service.PortfolioSnapshot) {
+	if len(snapshot.Positions) == 0 {
 		return
 	}
 
-	realizedTotal, err := b.db.GetRealizedPnL(m)
-	if err != nil {
-		logger.Errorf("portfolio: realized pnl (%s): %v", m, err)
+	m := snapshot.Market
+	if snapshot.RealizedPnLErr != nil {
+		logger.Errorf("portfolio: realized pnl (%s): %v", m, snapshot.RealizedPnLErr)
 	}
 
 	b.Send(i18n.T(b.lang, portfolioSectionTitleKey(m)))
-	var totalValue float64
-	for _, p := range marketPositions {
-		q, err := b.provider.GetQuote(p.Ticker)
-		if err != nil {
+	for _, valuation := range snapshot.Positions {
+		p := valuation.Position
+		if valuation.QuoteErr != nil || valuation.Quote == nil {
+			if valuation.QuoteErr != nil {
+				logger.Errorf("portfolio: quote %s: %v", p.Ticker, valuation.QuoteErr)
+			}
 			b.sendWithTickerActions(p.Ticker, i18n.T(b.lang, i18n.KeyQuoteUnavailable, b.tickerLabel(p.Ticker)))
 			continue
 		}
-		marketValue := p.Shares * q.Price
-		unrealized := (q.Price - p.AvgCost) * p.Shares
-		unrealizedPct := (q.Price - p.AvgCost) / p.AvgCost * 100
-		totalValue += marketValue
-		line := i18n.T(b.lang, i18n.KeyPortfolioLine, b.tickerLabel(p.Ticker), p.Shares, b.money(p.Ticker, p.AvgCost), b.money(p.Ticker, q.Price), b.money(p.Ticker, marketValue), unrealized, unrealizedPct)
+		line := i18n.T(b.lang, i18n.KeyPortfolioLine, b.tickerLabel(p.Ticker), p.Shares, b.money(p.Ticker, p.AvgCost), b.money(p.Ticker, valuation.Quote.Price), b.money(p.Ticker, valuation.MarketValue), valuation.UnrealizedPnL, valuation.UnrealizedPnLPct)
 		if note := lotSuffix(b.lang, m, p.Shares); note != "" {
 			// KeyPortfolioLine ends "...%%)\n\n" — splice the note onto that
 			// last content line rather than appending after the trailing
@@ -1290,10 +1312,12 @@ func (b *Bot) sendPortfolioSection(m market.MarketID, positions []db.Position) {
 		}
 		b.sendWithTickerActions(p.Ticker, line)
 	}
-	cash, haveCash, err := b.loadCash(m)
-	if err != nil {
-		logger.Errorf("portfolio: load cash (%s): %v", m, err)
+	if snapshot.CashErr != nil {
+		logger.Errorf("portfolio: load cash (%s): %v", m, snapshot.CashErr)
 	}
+	cash, haveCash := snapshot.Cash, snapshot.HasCash
+	realizedTotal := snapshot.RealizedPnL
+	totalValue := snapshot.TotalMarketValue
 
 	if m == market.TW {
 		if haveCash {
@@ -1405,16 +1429,13 @@ func (b *Bot) insightMarket(ctx context.Context, m market.MarketID, positions []
 // so this is a second independent value, not a currency-converted view of
 // the first).
 const (
-	cashSettingKey    = "cash_balance"
-	cashSettingKeyTWD = "cash_balance_twd"
+	cashSettingKey    = service.CashSettingKeyUSD
+	cashSettingKeyTWD = service.CashSettingKeyTWD
 )
 
 // cashSettingKeyFor returns the settings key backing m's cash balance.
 func cashSettingKeyFor(m market.MarketID) string {
-	if m == market.TW {
-		return cashSettingKeyTWD
-	}
-	return cashSettingKey
+	return service.CashSettingKey(m)
 }
 
 // handleCash manages the user's manually-declared cash balance, one per

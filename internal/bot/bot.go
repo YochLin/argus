@@ -67,6 +67,8 @@ type Bot struct {
 	history       data.HistoryProvider
 	llm           *llm.Client
 	tradeService  *service.TradeService
+	watchlist     *service.WatchlistService
+	portfolio     *service.PortfolioService
 	detector      *signals.Detector
 	lang          i18n.Lang
 
@@ -251,6 +253,8 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		history:                cfg.History,
 		llm:                    cfg.LLM,
 		tradeService:           service.NewTradeService(cfg.DB, cfg.TWFeeDiscount),
+		watchlist:              service.NewWatchlistService(cfg.DB),
+		portfolio:              service.NewPortfolioService(cfg.DB, cfg.Provider),
 		detector:               signals.NewDetector(cfg.Lang),
 		lang:                   cfg.Lang,
 		stopLossPct:            cfg.StopLossPct,
@@ -279,6 +283,20 @@ func (b *Bot) trading() *service.TradeService {
 		b.tradeService = service.NewTradeService(b.db, b.twFeeDiscount)
 	}
 	return b.tradeService
+}
+
+func (b *Bot) watchlists() *service.WatchlistService {
+	if b.watchlist == nil && b.db != nil {
+		b.watchlist = service.NewWatchlistService(b.db)
+	}
+	return b.watchlist
+}
+
+func (b *Bot) portfolios() *service.PortfolioService {
+	if b.portfolio == nil && b.db != nil {
+		b.portfolio = service.NewPortfolioService(b.db, b.provider)
+	}
+	return b.portfolio
 }
 
 func (b *Bot) Send(text string) {

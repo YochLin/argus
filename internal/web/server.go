@@ -14,6 +14,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/logger"
+	"argus/internal/service"
 )
 
 // dist holds the built frontend (web/'s Vite project, configured to build
@@ -89,6 +90,7 @@ type Server struct {
 	watchlistDB      watchlistWriter
 	buyAlertDB       buyAlertWriter
 	quotes           quoteGetter
+	portfolio        *service.PortfolioService
 	history          data.HistoryProvider
 	earnings         data.EarningsProvider
 	lang             i18n.Lang
@@ -110,11 +112,13 @@ type Server struct {
 }
 
 func New(cfg Config) *Server {
+	quotes := newQuoteCache(cfg.Provider)
 	s := &Server{
 		db:                  cfg.DB,
-		watchlistDB:         cfg.DB,
+		watchlistDB:         service.NewWatchlistService(cfg.DB),
 		buyAlertDB:          cfg.DB,
-		quotes:              newQuoteCache(cfg.Provider),
+		quotes:              quotes,
+		portfolio:           service.NewPortfolioService(cfg.DB, quotes),
 		history:             cfg.History,
 		earnings:            cfg.Earnings,
 		lang:                cfg.Lang,
@@ -167,6 +171,15 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("POST /api/import", s.requireWritable(s.requireAuth(s.handleImport)))
 	s.mux.Handle("/", spaHandler())
 	return s
+}
+
+// portfolios lazily preserves compatibility with small hand-built Server
+// values in tests while production construction injects the shared service.
+func (s *Server) portfolios() *service.PortfolioService {
+	if s.portfolio == nil && s.db != nil {
+		s.portfolio = service.NewPortfolioService(s.db, s.quotes)
+	}
+	return s.portfolio
 }
 
 // spaHandler serves the embedded SPA build, falling back to index.html for
