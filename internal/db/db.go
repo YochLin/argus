@@ -519,6 +519,17 @@ var migrations = []string{
 	// non-pure-SQL migration in this codebase, since FIFO replay needs
 	// per-ticker running state a single SQL statement can't carry.
 	`ALTER TABLE transactions ADD COLUMN remaining_shares REAL NOT NULL DEFAULT 0;`,
+
+	// 17: transactions gains ext_id, an idempotency key for trades synced
+	// in from an external source (Phase 16's Shioaji auto-bookkeeping) —
+	// the brokerage's own per-deal dseq. Empty string (manual/CSV/paper
+	// trades, the vast majority of rows) is excluded from the unique
+	// index rather than given a NOT NULL UNIQUE constraint, since '' isn't
+	// a real identity and would collide with itself past the first row.
+	`
+	ALTER TABLE transactions ADD COLUMN ext_id TEXT NOT NULL DEFAULT '';
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_ext_id ON transactions(ext_id) WHERE ext_id != '';
+	`,
 }
 
 func (d *DB) migrate() error {
@@ -866,6 +877,17 @@ func lotAvgCost(tx *sql.Tx, ticker string) (shares, avgCost float64, err error) 
 // every open lot via lotAvgCost. It returns the position as it stands after
 // the buy.
 func (d *DB) RecordBuy(ticker string, shares, price, fee float64, date string) (Position, error) {
+	return d.RecordBuyExt(ticker, shares, price, fee, date, "")
+}
+
+// RecordBuyExt is RecordBuy plus extID, an idempotency key from an external
+// trade source (Phase 16's Shioaji sync) — "" (RecordBuy's behavior) for
+// every other caller (web/paper/CSV import). A non-empty extID that's
+// already on record fails with a unique-constraint error from the
+// migration-17 partial index; callers that sync from an external source
+// are expected to pre-filter against that, not rely on this as their only
+// dedup check.
+func (d *DB) RecordBuyExt(ticker string, shares, price, fee float64, date, extID string) (Position, error) {
 	tx, err := d.conn.Begin()
 	if err != nil {
 		return Position{}, err
@@ -875,9 +897,9 @@ func (d *DB) RecordBuy(ticker string, shares, price, fee float64, date string) (
 	m := string(market.Of(ticker))
 
 	if _, err := tx.Exec(`
-		INSERT INTO transactions (ticker, side, shares, price, fee, date, remaining_shares, market)
-		VALUES (?, 'BUY', ?, ?, ?, ?, ?, ?)`,
-		ticker, shares, price, fee, date, shares, m,
+		INSERT INTO transactions (ticker, side, shares, price, fee, date, remaining_shares, market, ext_id)
+		VALUES (?, 'BUY', ?, ?, ?, ?, ?, ?, ?)`,
+		ticker, shares, price, fee, date, shares, m, extID,
 	); err != nil {
 		return Position{}, err
 	}
@@ -915,6 +937,11 @@ func (d *DB) RecordBuy(ticker string, shares, price, fee float64, date string) (
 // full position deletes the positions row rather than leaving a zero-share
 // one behind.
 func (d *DB) RecordSell(ticker string, shares, price, fee float64, date string) (Position, float64, error) {
+	return d.RecordSellExt(ticker, shares, price, fee, date, "")
+}
+
+// RecordSellExt is RecordSell plus extID — see RecordBuyExt's doc comment.
+func (d *DB) RecordSellExt(ticker string, shares, price, fee float64, date, extID string) (Position, float64, error) {
 	tx, err := d.conn.Begin()
 	if err != nil {
 		return Position{}, 0, err
@@ -1003,9 +1030,9 @@ func (d *DB) RecordSell(ticker string, shares, price, fee float64, date string) 
 	}
 
 	if _, err := tx.Exec(`
-		INSERT INTO transactions (ticker, side, shares, price, fee, date, realized_pnl, stop_price, market)
-		VALUES (?, 'SELL', ?, ?, ?, ?, ?, ?, ?)`,
-		ticker, shares, price, fee, date, realizedPnL, stopPrice, string(market.Of(ticker)),
+		INSERT INTO transactions (ticker, side, shares, price, fee, date, realized_pnl, stop_price, market, ext_id)
+		VALUES (?, 'SELL', ?, ?, ?, ?, ?, ?, ?, ?)`,
+		ticker, shares, price, fee, date, realizedPnL, stopPrice, string(market.Of(ticker)), extID,
 	); err != nil {
 		return Position{}, 0, err
 	}
@@ -1014,6 +1041,18 @@ func (d *DB) RecordSell(ticker string, shares, price, fee float64, date string) 
 		return Position{}, 0, err
 	}
 	return Position{Ticker: ticker, Shares: remainingShares, AvgCost: avgCost, Market: string(market.Of(ticker))}, realizedPnL, nil
+}
+
+// TransactionExtIDExists reports whether a transactions row with this
+// ext_id has already been recorded (Phase 16's Shioaji sync dedup key —
+// see migration 17). Always false for "" since that's not a real identity.
+func (d *DB) TransactionExtIDExists(extID string) (bool, error) {
+	if extID == "" {
+		return false, nil
+	}
+	var exists bool
+	err := d.conn.QueryRow(`SELECT EXISTS(SELECT 1 FROM transactions WHERE ext_id = ?)`, extID).Scan(&exists)
+	return exists, err
 }
 
 // GetPosition returns the current position for ticker, or ok=false if

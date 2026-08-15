@@ -194,6 +194,13 @@ var enMessages = map[Key]string{
 	KeyRejectButton:                 "❌ Reject",
 	KeyPendingBuyConfirm:            "📝 *Trade proposal awaiting confirmation*\nBUY *%s* %g shares @ %s (fee %s, date %s)\nTap a button below to confirm or reject:",
 	KeyPendingSellConfirm:           "📝 *Trade proposal awaiting confirmation*\nSELL *%s* %g shares @ %s (fee %s, date %s)\nTap a button below to confirm or reject:",
+	KeyPendingActionFromSinopac:     "\n(source: synced from Sinopac Securities)",
+	KeySinopacNotConfigured:         "Sinopac Shioaji isn't configured (SHIOAJI_ADDR is unset).",
+	KeySinopacSyncFailed:            "Sinopac sync failed: %v",
+	KeySinopacSyncNone:              "Sinopac sync: no new manual trades in the last 7 days.",
+	KeySinopacSyncDryRunTitle:       "🔍 *Sinopac sync (dry run — nothing proposed)*",
+	KeySinopacSyncTitle:             "✅ *Sinopac sync: %d trade proposal(s) created*",
+	KeySinopacSyncNoDseq:            "(no dseq, deduped via a synthesized key)",
 	KeyPendingActionRejected:        "Rejected — nothing was recorded.",
 	KeyPendingActionAlreadyResolved: "This proposal has already been resolved and won't be executed again.",
 	KeyPendingActionExecFailed:      "Couldn't parse this proposal, so nothing was executed — use /buy or /sell to record it manually.",
@@ -665,4 +672,7 @@ Write only from the data actually provided above — omit any section you have n
 	KeyStrategyBreakoutName:  "Trend Breakout",
 	KeyStrategyPullbackName:  "Trend Pullback",
 	KeyStrategyTrustFollow:   "🐳 %s triggered [Trust Follow] (%s): %d-day trust buying at %.1f%% of volume + above rising MA60",
+
+	KeyRestrictedStockAlertTitle: "⚠️ *Disposition/Attention Stock Alert*\n\n",
+	KeyRestrictedStockAlertLine:  "• *%s* is now under disposition/attention trading: %s\n",
 }

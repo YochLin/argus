@@ -1,0 +1,23 @@
+# systemd user unit — 放到 VPS 的 ~/.config/systemd/user/shioaji.service
+#
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now shioaji
+#
+# 跟 argus.service 一樣需要 linger（見該檔開頭註解），這樣 bot 啟動時
+# daemon 才保證已經在跑。這個 unit 只負責啟動 shioaji server，本身是
+# bot-only 的唯讀查詢金鑰，沒有下單權限；VPS 上不需要放 CA 憑證。
+# token 解密仍需要你本機登入過一次（見 SHIOAJI_ADDR 在 .env.example 的說明）。
+
+[Unit]
+Description=Shioaji API server
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/apps/argus
+EnvironmentFile=%h/apps/argus/.env
+ExecStart=%h/.local/bin/shioaji server start --no-open
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -20,14 +20,14 @@ func (f *fakeTradeStore) GetPosition(string) (db.Position, bool, error) {
 	return f.position, f.positionOK, nil
 }
 
-func (f *fakeTradeStore) RecordBuy(ticker string, shares, price, fee float64, date string) (db.Position, error) {
+func (f *fakeTradeStore) RecordBuyExt(ticker string, shares, price, fee float64, date, extID string) (db.Position, error) {
 	f.buys++
 	f.position = db.Position{Ticker: ticker, Shares: shares, AvgCost: price + fee/shares}
 	f.positionOK = true
 	return f.position, nil
 }
 
-func (f *fakeTradeStore) RecordSell(ticker string, shares, price, fee float64, date string) (db.Position, float64, error) {
+func (f *fakeTradeStore) RecordSellExt(ticker string, shares, price, fee float64, date, extID string) (db.Position, float64, error) {
 	f.sells++
 	f.position.Ticker = ticker
 	f.position.Shares -= shares

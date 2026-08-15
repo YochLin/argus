@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 
@@ -20,6 +21,16 @@ type Config struct {
 	ChatID        int64
 	FinnhubKey    string
 	FinMindToken  string
+	// ShioajiAddr (Phase 16, internal/sinopac) points at the local Shioaji
+	// gRPC daemon — empty disables the Sinopac provider/sync entirely, same
+	// presence-of-config convention as FinnhubKey.
+	ShioajiAddr string
+	// SinopacSkip (SINOPAC_SKIP_TICKERS) lists periodic-investment tickers
+	// the Shioaji sync should never propose — see parseSinopacSkip.
+	SinopacSkip map[string]bool
+	// SinopacSyncLive (SINOPAC_SYNC_LIVE) opts the daily sync into writing
+	// trades directly instead of going through pending_actions confirmation.
+	SinopacSyncLive bool
 
 	RecommendModel string
 	CheckModel     string
@@ -117,6 +128,10 @@ func loadConfig() Config {
 		FinnhubKey:    os.Getenv("FINNHUB_API_KEY"),
 		FinMindToken:  os.Getenv("FINMIND_TOKEN"),
 
+		ShioajiAddr:     os.Getenv("SHIOAJI_ADDR"),
+		SinopacSkip:     parseSinopacSkip(os.Getenv("SINOPAC_SKIP_TICKERS")),
+		SinopacSyncLive: os.Getenv("SINOPAC_SYNC_LIVE") == "true",
+
 		RecommendModel: envOr("CLAUDE_RECOMMEND_MODEL", "opus"),
 		CheckModel:     envOr("CLAUDE_CHECK_MODEL", "sonnet"),
 		ChatModel:      envOr("CLAUDE_CHAT_MODEL", "sonnet"),
@@ -187,4 +202,22 @@ func envOrInt(key string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+// parseSinopacSkip splits SINOPAC_SKIP_TICKERS (comma-separated, e.g.
+// "0050,006208") into a lookup set for internal/sinopac.Trades — periodic
+// investment tickers the Shioaji sync should never propose. nil (not an
+// empty map) when unset, same "absent means nothing to check" shape as
+// every other optional bot.Config field.
+func parseSinopacSkip(raw string) map[string]bool {
+	if raw == "" {
+		return nil
+	}
+	out := make(map[string]bool)
+	for _, t := range strings.Split(raw, ",") {
+		if t = strings.TrimSpace(t); t != "" {
+			out[t] = true
+		}
+	}
+	return out
 }

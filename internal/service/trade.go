@@ -23,29 +23,35 @@ var ErrInvalidTrade = errors.New("invalid trade")
 // unit test without opening SQLite.
 type TradeStore interface {
 	GetPosition(ticker string) (db.Position, bool, error)
-	RecordBuy(ticker string, shares, price, fee float64, date string) (db.Position, error)
-	RecordSell(ticker string, shares, price, fee float64, date string) (db.Position, float64, error)
+	RecordBuyExt(ticker string, shares, price, fee float64, date, extID string) (db.Position, error)
+	RecordSellExt(ticker string, shares, price, fee float64, date, extID string) (db.Position, float64, error)
 	AddTicker(ticker string) error
 }
 
 // BuyInput describes a buy request after the transport has parsed its input.
 // A nil Fee means that the service should calculate the market-specific fee.
+// ExtID is "" for every caller except Phase 16's Shioaji-synced pending
+// actions — see db.RecordBuyExt.
 type BuyInput struct {
 	Ticker string
 	Shares float64
 	Price  float64
 	Fee    *float64
 	Date   string
+	ExtID  string
 }
 
 // SellInput describes a sell request after the transport has parsed its input.
 // A nil Fee means that the service should calculate the market-specific fee.
+// ExtID is "" for every caller except Phase 16's Shioaji-synced pending
+// actions — see db.RecordSellExt.
 type SellInput struct {
 	Ticker string
 	Shares float64
 	Price  float64
 	Fee    *float64
 	Date   string
+	ExtID  string
 }
 
 // TradeResult is the transport-neutral result of a completed trade.
@@ -80,7 +86,7 @@ func (s *TradeService) Buy(in BuyInput) (TradeResult, error) {
 		return TradeResult{}, err
 	}
 
-	pos, err := s.store.RecordBuy(ticker, in.Shares, in.Price, fee, in.Date)
+	pos, err := s.store.RecordBuyExt(ticker, in.Shares, in.Price, fee, in.Date, in.ExtID)
 	if err != nil {
 		return TradeResult{}, err
 	}
@@ -108,7 +114,7 @@ func (s *TradeService) Sell(in SellInput) (TradeResult, error) {
 		stopPrice = pos.StopPrice
 	}
 
-	pos, realizedPnL, err := s.store.RecordSell(ticker, in.Shares, in.Price, fee, in.Date)
+	pos, realizedPnL, err := s.store.RecordSellExt(ticker, in.Shares, in.Price, fee, in.Date, in.ExtID)
 	if err != nil {
 		return TradeResult{}, err
 	}

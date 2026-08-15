@@ -22,6 +22,7 @@ import (
 	"argus/internal/market"
 	"argus/internal/mcptools"
 	"argus/internal/scheduler"
+	"argus/internal/sinopac"
 	"argus/internal/web"
 )
 
@@ -153,6 +154,18 @@ func main() {
 	if fundamentalsRouter.US != nil || fundamentalsRouter.TW != nil {
 		fundamentalsProvider = fundamentalsRouter
 	}
+	// Shioaji sits between Finnhub and GoogleNews when SHIOAJI_ADDR is
+	// configured — broker-grade TW quotes ahead of Yahoo's unofficial,
+	// suffix-guessing chart API (see internal/data/shioaji.go). Left nil
+	// (no reference anywhere else) when unset, matching the presence-gated
+	// convention every other optional provider here follows; any daemon
+	// error/session drop falls straight through to GoogleNews/Yahoo since
+	// Multi tries providers in order until one succeeds.
+	var sinopacClient *sinopac.Client
+	if cfg.ShioajiAddr != "" {
+		sinopacClient = sinopac.New(cfg.ShioajiAddr)
+		providers = append(providers, data.NewShioaji(sinopacClient))
+	}
 	// Google News sits between Finnhub and Yahoo so TW tickers get
 	// Chinese-language per-ticker news: Finnhub's /company-news is US-only,
 	// and Yahoo's search API answers a .TW symbol with mostly English wire
@@ -173,6 +186,13 @@ func main() {
 	// unconditionally, same as yahoo/History.
 	twMovers := data.NewTWSE()
 	twMarketNews := data.NewCnyes()
+	var twMoversProvider data.TWMarketMoversProvider = twMovers
+	if sinopacClient != nil {
+		// Scanner's AmountRank covers TPEx-listed movers too, which
+		// TWSE.GetMarketMovers (TWSE-exchange-only) never could — falls
+		// back to twMovers on any daemon error.
+		twMoversProvider = data.NewShioajiMovers(sinopacClient, twMovers)
+	}
 
 	llmClient := llm.NewClient(cfg.RecommendModel, cfg.CheckModel, cfg.ChatModel, cfg.Lang)
 	// Antigravity fallback is opt-in, not presence-of-config-gated like
@@ -199,11 +219,14 @@ func main() {
 		Earnings:               earningsProvider,
 		MarketNews:             marketNewsProvider,
 		TWMarketNews:           twMarketNews,
-		TWMovers:               twMovers,
+		TWMovers:               twMoversProvider,
 		CompanyNames:           companyNameProvider,
 		TrustNet:               trustNetProvider,
 		OptionChain:            yahoo,
 		History:                yahoo,
+		Sinopac:                sinopacClient,
+		SinopacSkip:            cfg.SinopacSkip,
+		SinopacSyncLive:        cfg.SinopacSyncLive,
 		LLM:                    llmClient,
 		Lang:                   cfg.Lang,
 		StopLossPct:            cfg.StopLossPct,
@@ -288,6 +311,14 @@ func main() {
 	sched.AddWeeklyReview(ctx, func(ctx context.Context) {
 		telegramBot.RunWeeklyReview(ctx)
 	})
+	sched.AddSinopacSync(ctx, func(ctx context.Context) {
+		if sinopacClient == nil {
+			return
+		}
+		if msg, found := telegramBot.RunSinopacSync(ctx, !cfg.SinopacSyncLive); found {
+			telegramBot.Send(msg)
+		}
+	})
 	sched.AddMonthlyReport(ctx, func(ctx context.Context) {
 		telegramBot.RunMonthlyReport(ctx)
 	})
@@ -329,6 +360,7 @@ func runMCPServer() {
 	}
 	finnhubKey := os.Getenv("FINNHUB_API_KEY")
 	finmindToken := os.Getenv("FINMIND_TOKEN")
+	shioajiAddr := os.Getenv("SHIOAJI_ADDR")
 	lang := i18n.Parse(envOr("BOT_LANGUAGE", "zh"))
 
 	// Same provider construction as main(): Finnhub-only tools
@@ -357,6 +389,12 @@ func runMCPServer() {
 	var fundamentalsProvider data.FundamentalsProvider
 	if fundamentalsRouter.US != nil || fundamentalsRouter.TW != nil {
 		fundamentalsProvider = fundamentalsRouter
+	}
+	// Same Shioaji-before-GoogleNews ordering as main(), for the same
+	// reason: get_quote on a TW ticker should reach broker-grade data
+	// rather than Yahoo's suffix-guessing chart API.
+	if shioajiAddr != "" {
+		providers = append(providers, data.NewShioaji(sinopac.New(shioajiAddr)))
 	}
 	// Same Google-News-before-Yahoo ordering as main(), for the same reason:
 	// get_news on a TW ticker should reach Chinese coverage rather than

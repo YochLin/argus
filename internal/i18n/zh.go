@@ -197,6 +197,13 @@ var zhMessages = map[Key]string{
 	KeyRejectButton:                 "❌ 取消",
 	KeyPendingBuyConfirm:            "📝 *交易提案待確認*\n買入 *%s* %g 股 @ %s（手續費 %s，日期 %s）\n請按下方按鈕確認或取消：",
 	KeyPendingSellConfirm:           "📝 *交易提案待確認*\n賣出 *%s* %g 股 @ %s（手續費 %s，日期 %s）\n請按下方按鈕確認或取消：",
+	KeyPendingActionFromSinopac:     "\n（來源：永豐證券同步）",
+	KeySinopacNotConfigured:         "永豐 Shioaji 尚未設定（SHIOAJI_ADDR 未設定）。",
+	KeySinopacSyncFailed:            "永豐同步失敗：%v",
+	KeySinopacSyncNone:              "永豐同步：近 7 天沒有新的手動交易。",
+	KeySinopacSyncDryRunTitle:       "🔍 *永豐同步（僅列出，未建立提案）*",
+	KeySinopacSyncTitle:             "✅ *永豐同步：已建立 %d 筆交易提案*",
+	KeySinopacSyncNoDseq:            "（無 dseq，以合成鍵去重）",
 	KeyPendingActionRejected:        "已取消，未記錄任何交易。",
 	KeyPendingActionAlreadyResolved: "這筆提案已經處理過了，不會重複執行。",
 	KeyPendingActionExecFailed:      "提案內容解析失敗，未執行任何動作，請改用 /buy 或 /sell 手動記錄。",
@@ -653,4 +660,7 @@ var zhMessages = map[Key]string{
 	KeyStrategyBreakoutName:  "趨勢突破",
 	KeyStrategyPullbackName:  "趨勢回檔",
 	KeyStrategyTrustFollow:   "🐳 %s 觸發【主力跟單】(%s)：投信近 %d 日買超佔量 %.1f%% + 站上季線且上彎",
+
+	KeyRestrictedStockAlertTitle: "⚠️ *處置/注意股提醒*\n\n",
+	KeyRestrictedStockAlertLine:  "• *%s* 已列入處置/注意股：%s\n",
 }

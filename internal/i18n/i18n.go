@@ -326,10 +326,22 @@ const (
 	// Phase 4 write-gating (db.PendingAction): a chat tool call (record_buy/
 	// record_sell) only creates a proposal; these render the Telegram
 	// confirm/reject message and the outcome once the user taps a button.
-	KeyConfirmButton                Key = "confirm_button"
-	KeyRejectButton                 Key = "reject_button"
-	KeyPendingBuyConfirm            Key = "pending_buy_confirm"
-	KeyPendingSellConfirm           Key = "pending_sell_confirm"
+	KeyConfirmButton      Key = "confirm_button"
+	KeyRejectButton       Key = "reject_button"
+	KeyPendingBuyConfirm  Key = "pending_buy_confirm"
+	KeyPendingSellConfirm Key = "pending_sell_confirm"
+	// KeyPendingActionFromSinopac (Phase 16, TW only) appends a source note
+	// to a pending buy/sell confirmation when it was synced in from Shioaji
+	// (tradePayload.ExtID set) rather than proposed by the LLM.
+	KeyPendingActionFromSinopac Key = "pending_action_from_sinopac"
+
+	// Phase 16 (TW only) /sinopac + /sinopac sync — see internal/bot/sinopac.go.
+	KeySinopacNotConfigured         Key = "sinopac_not_configured"
+	KeySinopacSyncFailed            Key = "sinopac_sync_failed"
+	KeySinopacSyncNone              Key = "sinopac_sync_none"
+	KeySinopacSyncDryRunTitle       Key = "sinopac_sync_dry_run_title"
+	KeySinopacSyncTitle             Key = "sinopac_sync_title"
+	KeySinopacSyncNoDseq            Key = "sinopac_sync_no_dseq"
 	KeyPendingActionRejected        Key = "pending_action_rejected"
 	KeyPendingActionAlreadyResolved Key = "pending_action_already_resolved"
 	KeyPendingActionExecFailed      Key = "pending_action_exec_failed"
@@ -741,4 +753,13 @@ const (
 	// alert-message shape as the four screens above.
 	KeyStrategyTrustFollow  Key = "strategy_trust_follow"
 	KeyStrategyPullbackName Key = "strategy_pullback_name"
+
+	// KeyRestrictedStockAlertTitle/Line (Phase 16, TW only) fire once per
+	// held position that enters TWSE/TPEx disposition (處置) or attention
+	// (注意) status, same batched-title-plus-lines/signal_states-dedup shape
+	// as KeyStopLossAlertTitle/Line above. The reason substituted into Line
+	// is TWSE/TPEx's own Chinese-only wording (no English source exists),
+	// same "untranslated source text" precedent as cnyes news headlines.
+	KeyRestrictedStockAlertTitle Key = "restricted_stock_alert_title"
+	KeyRestrictedStockAlertLine  Key = "restricted_stock_alert_line"
 )
