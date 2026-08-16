@@ -554,7 +554,7 @@ export function ChartView({
                   </ul>
                 )}
                 {writable && roundDetail.editable && (
-                  <div style={{ marginTop: roundDetail.theses.length > 0 ? 8 : 0 }}>
+                  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
                     <label className="form-field">
                       <textarea
                         className="mono"
@@ -570,6 +570,7 @@ export function ChartView({
                       className="btn-sm"
                       disabled={!thesisDraft.trim() || thesisSubmitting}
                       onClick={submitThesis}
+                      style={{ alignSelf: "flex-start" }}
                     >
                       {dict.thesisEditToggle}
                     </button>

@@ -1841,7 +1841,8 @@ th {
   color: var(--ink-2);
 }
 
-.form-field input {
+.form-field input,
+.form-field textarea {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -1850,7 +1851,12 @@ th {
   font-size: 13px;
 }
 
-.form-field input:focus-visible {
+.form-field textarea {
+  resize: vertical;
+}
+
+.form-field input:focus-visible,
+.form-field textarea:focus-visible {
   border-color: var(--accent);
 }
 
