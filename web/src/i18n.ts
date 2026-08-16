@@ -312,6 +312,27 @@ export interface Dictionary {
   noOptionPositions: string;
   noClosedOptions: string;
   noOptionCollateral: string;
+  // Phase 18: the sector money-flow treemap page.
+  navFlow: string;
+  sectorFlowSubtitle: string;
+  sectorFlowHeldHint: string;
+  sectorFlowNotReady: string;
+  sectorFlowSizeBy: string;
+  sectorFlowSizeByCap: string;
+  sectorFlowSizeByFlow: string;
+  sectorFlowHeld: string;
+  sectorFlowNetFlow: string;
+  sectorFlowChange: string;
+  sectorFlowTickerCount: string;
+  sectorFlowRanking: string;
+  sectorFlowTWCapNote: string;
+  sectorFlowTotalNetFlow: string;
+  sectorFlowBreadth: string;
+  sectorFlowStrongest: string;
+  sectorFlowWeakest: string;
+  sectorFlowRefresh: string;
+  sectorFlowRefreshing: string;
+  sectorFlowRefreshError: string;
 }
 
 const en: Dictionary = {
@@ -595,6 +616,26 @@ const en: Dictionary = {
   noOptionPositions: "No open option positions.",
   noClosedOptions: "No closed option trades yet.",
   noOptionCollateral: "No collateral obligations.",
+  navFlow: "Money Flow",
+  sectorFlowSubtitle: "Sector × market-cap money-flow heatmap — block size is market cap, color is change.",
+  sectorFlowHeldHint: "Outlined blocks = your positions. Click a block to view its chart.",
+  sectorFlowNotReady: "Sector data isn't ready yet — check back after the next scan.",
+  sectorFlowSizeBy: "Size by",
+  sectorFlowSizeByCap: "Market Cap",
+  sectorFlowSizeByFlow: "Money Flow",
+  sectorFlowHeld: "Held",
+  sectorFlowNetFlow: "Net Flow",
+  sectorFlowChange: "Change",
+  sectorFlowTickerCount: "Tickers",
+  sectorFlowRanking: "Sector Money Flow Ranking",
+  sectorFlowTWCapNote: "TW block size uses trading value (no free market-cap source), not real market cap.",
+  sectorFlowTotalNetFlow: "Total Net Flow",
+  sectorFlowBreadth: "Advancers / Decliners",
+  sectorFlowStrongest: "Strongest Sector",
+  sectorFlowWeakest: "Weakest Sector",
+  sectorFlowRefresh: "Trigger Scan Now",
+  sectorFlowRefreshing: "Scan started — this can take several minutes for US (~500 tickers). Reload this page to check.",
+  sectorFlowRefreshError: "Failed to start the scan.",
 };
 
 const zh: Dictionary = {
@@ -873,6 +914,26 @@ const zh: Dictionary = {
   noOptionPositions: "目前沒有期權部位。",
   noClosedOptions: "尚無已平倉期權交易。",
   noOptionCollateral: "沒有擔保品義務。",
+  navFlow: "資金流向",
+  sectorFlowSubtitle: "資金流向產業 × 市值熱力圖，方格大小為市值，顏色為漲跌。",
+  sectorFlowHeldHint: "外框標示 = 我的持倉，點方格可看個股圖。",
+  sectorFlowNotReady: "類股資料尚未就緒，請等待下次排程掃描後再查看。",
+  sectorFlowSizeBy: "方塊大小",
+  sectorFlowSizeByCap: "市值",
+  sectorFlowSizeByFlow: "資金流",
+  sectorFlowHeld: "持有",
+  sectorFlowNetFlow: "淨資金流",
+  sectorFlowChange: "漲跌",
+  sectorFlowTickerCount: "檔數",
+  sectorFlowRanking: "類股資金流排行",
+  sectorFlowTWCapNote: "台股方塊大小以成交金額計算（無免費市值資料源），非實際市值。",
+  sectorFlowTotalNetFlow: "全市場淨資金流",
+  sectorFlowBreadth: "上漲／下跌家數",
+  sectorFlowStrongest: "資金流最強類股",
+  sectorFlowWeakest: "資金流最弱類股",
+  sectorFlowRefresh: "立即觸發掃描",
+  sectorFlowRefreshing: "掃描已開始，美股約 500 檔可能需要數分鐘，稍後重新整理本頁查看結果。",
+  sectorFlowRefreshError: "觸發掃描失敗。",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };
@@ -889,4 +950,82 @@ export function getDictionary(lang: string): Dictionary {
 // e.g. highlighting the active button in Sidebar's language toggle.
 export function normalizeLang(lang: string | null): Lang {
   return lang === "en" ? "en" : "zh";
+}
+
+// sectorNamesZh translates Finnhub's US finnhubIndustry classification (an
+// open-ended English string, e.g. "Technology", "Semiconductors") for the
+// Money Flow page's sector groups. TW's own classification (FinMind's
+// industry_category) already comes back in Chinese, so this only matters
+// for the US market. Falls back to the original English string when
+// unmapped — same "data-sourced proper noun that can't always translate"
+// exception the app already makes for ticker company names.
+const sectorNamesZh: Record<string, string> = {
+  Technology: "科技",
+  "Information Technology": "資訊科技",
+  Semiconductors: "半導體",
+  "Semiconductor Equipment & Materials": "半導體設備與材料",
+  Software: "軟體",
+  "Software - Infrastructure": "基礎軟體",
+  "Software - Application": "應用軟體",
+  Hardware: "硬體",
+  "Computer Hardware": "電腦硬體",
+  "Consumer Electronics": "消費性電子",
+  "Electronic Equipment": "電子設備",
+  Internet: "網路服務",
+  "Internet Content & Information": "網路內容與資訊",
+  "Health Care": "醫療保健",
+  Healthcare: "醫療保健",
+  "Health Care Providers": "醫療服務",
+  "Medical Devices": "醫療器材",
+  Biotechnology: "生技",
+  Pharmaceuticals: "製藥",
+  "Life Sciences Tools & Services": "生命科學工具與服務",
+  "Financial Services": "金融服務",
+  Financials: "金融",
+  Banks: "銀行",
+  "Diversified Financial Services": "多元化金融",
+  "Consumer Finance": "消費金融",
+  Insurance: "保險",
+  "Capital Markets": "資本市場",
+  "Consumer Cyclical": "非必需消費",
+  "Consumer Defensive": "必需消費",
+  Retail: "零售",
+  "Internet Retail": "網路零售",
+  "Specialty Retail": "專業零售",
+  "Auto Manufacturers": "汽車製造",
+  Automobiles: "汽車",
+  "Auto Parts": "汽車零件",
+  Apparel: "服飾",
+  Beverages: "飲料",
+  "Food Products": "食品",
+  "Household Products": "家用產品",
+  "Packaging & Containers": "包裝",
+  Communication: "通訊",
+  "Communication Services": "通訊服務",
+  Telecommunication: "電信",
+  Media: "媒體",
+  Entertainment: "娛樂",
+  "Hotels, Restaurants & Leisure": "飯店餐飲休閒",
+  Airlines: "航空",
+  Industrials: "工業",
+  "Aerospace & Defense": "航太國防",
+  Machinery: "機械",
+  Transportation: "運輸",
+  "Building Materials": "建材",
+  Homebuilding: "營建",
+  Chemicals: "化學",
+  "Basic Materials": "原物料",
+  "Metals & Mining": "金屬與礦業",
+  Energy: "能源",
+  "Oil & Gas": "石油天然氣",
+  Utilities: "公用事業",
+  "Real Estate": "不動產",
+  REIT: "不動產投資信託",
+};
+
+// sectorLabel returns name translated for the given language, falling back
+// to the original (English) string when no translation is known.
+export function sectorLabel(name: string, lang: Lang): string {
+  if (lang !== "zh") return name;
+  return sectorNamesZh[name] ?? name;
 }

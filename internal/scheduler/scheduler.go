@@ -276,6 +276,39 @@ func (s *Scheduler) AddSinopacSync(ctx context.Context, fn JobFunc) {
 	logger.Info("scheduler: sinopac sync registered at 14:00 CST (Mon-Fri)")
 }
 
+// AddSectorFlowScan schedules Phase 18's US sector money-flow scan at 06:10
+// CST, Tuesday–Saturday — after the 06:00 backup (this job makes no DB
+// writes, so it can't corrupt that VACUUM INTO read, but starting after it
+// keeps the two off each other's back regardless) and well clear of the
+// 05:45 universe scan's own ~10-minute run. A no-op (fn checks its own
+// Sector/IndustryMap providers) when FINNHUB_API_KEY isn't configured.
+func (s *Scheduler) AddSectorFlowScan(ctx context.Context, fn JobFunc) {
+	_, err := s.c.AddFunc("0 10 6 * * 2-6", func() {
+		logger.Info("scheduler: running sector flow scan (us)")
+		fn(ctx)
+	})
+	if err != nil {
+		logger.Fatalf("scheduler: add sector flow scan: %v", err)
+	}
+	logger.Info("scheduler: sector flow scan (us) registered at 06:10 CST (Tue–Sat)")
+}
+
+// AddTWSectorFlowScan is AddSectorFlowScan's TW counterpart, at 14:55 CST
+// Monday–Friday — 15 minutes after AddTWUniverseScan (14:40), comfortable
+// clearance for the tw150 pool's much shorter scan (~150 tickers vs. the US
+// scan's ~500, and a single FinMind call for classification instead of one
+// per ticker).
+func (s *Scheduler) AddTWSectorFlowScan(ctx context.Context, fn JobFunc) {
+	_, err := s.c.AddFunc("0 55 14 * * 1-5", func() {
+		logger.Info("scheduler: running sector flow scan (tw)")
+		fn(ctx)
+	})
+	if err != nil {
+		logger.Fatalf("scheduler: add TW sector flow scan: %v", err)
+	}
+	logger.Info("scheduler: sector flow scan (tw) registered at 14:55 CST (Mon–Fri)")
+}
+
 func (s *Scheduler) Start() {
 	s.c.Start()
 	logger.Info("scheduler: started")

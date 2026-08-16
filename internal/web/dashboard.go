@@ -99,6 +99,10 @@ type dbReader interface {
 	// GetAllOptionTransactions backs options.go's Phase 12 PR4 closed-
 	// position list (/api/options).
 	GetAllOptionTransactions() ([]db.OptionTransaction, error)
+	// GetUniverse backs sectorflow.go's Phase 18 scan — the same market-wide
+	// candidate pool RunUniverseScan/RunTWUniverseScan already scan, not a
+	// new ticker set.
+	GetUniverse() ([]db.UniverseEntry, error)
 }
 
 // netWorthBaseline resolves the capital base for a period starting at

@@ -31,9 +31,10 @@ interface Props {
 const links: Array<{ path: string; label: (dict: Dictionary) => string; icon: ReactNode }> = [
   { path: "/", label: (d) => d.navDashboard, icon: <DashboardIcon /> },
   { path: "/risk", label: (d) => d.navRisk, icon: <RiskIcon /> },
-  { path: "/options", label: (d) => d.navOptions, icon: <OptionsIcon /> },
   { path: "/calendar", label: (d) => d.navCalendar, icon: <CalendarIcon /> },
+  { path: "/options", label: (d) => d.navOptions, icon: <OptionsIcon /> },
   { path: "/rounds", label: (d) => d.navRounds, icon: <RoundsIcon /> },
+  { path: "/flow", label: (d) => d.navFlow, icon: <FlowIcon /> },
   { path: "/chart", label: (d) => d.navChart, icon: <ChartIcon /> },
   { path: "/reports", label: (d) => d.navReports, icon: <ReportsIcon /> },
   { path: "/recs", label: (d) => d.navRecs, icon: <RecsIcon /> },
@@ -108,6 +109,16 @@ function DashboardIcon() {
       <rect x="9" y="2" width="5" height="5" rx="1" />
       <rect x="2" y="9" width="5" height="5" rx="1" />
       <rect x="9" y="9" width="5" height="5" rx="1" />
+    </svg>
+  );
+}
+
+function FlowIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <rect x="2" y="8" width="4" height="6" rx="0.5" />
+      <rect x="7" y="4" width="4" height="10" rx="0.5" />
+      <rect x="12" y="6" width="2" height="8" rx="0.5" />
     </svg>
   );
 }

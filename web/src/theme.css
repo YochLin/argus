@@ -86,6 +86,10 @@ a {
   color: inherit;
 }
 
+input {
+  font-family: var(--font-mono);
+}
+
 .mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -2039,4 +2043,211 @@ th {
 
 .rec-source-cell {
   color: var(--ink-2);
+}
+
+/* Phase 18 sector money-flow treemap (SectorFlowView.tsx). .flow-treemap's
+   fixed aspect-ratio matches the component's virtual 1000x560 squarify
+   canvas, so percentage-based child positions always line up regardless of
+   the card's real rendered width — no ResizeObserver needed. */
+.flow-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.flow-controls-title {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.flow-controls-subtitle {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+/* Pushes the timeframe toggle to the right of the title, matching the
+   reference layout (title far left, tf + size-by grouped on the right). */
+.flow-controls-tf {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.flow-controls-sizeby {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Segmented pill switch (timeframe + size-by) — a bordered box per option
+   with the whole box tinted/outlined on the active one, not the topbar's
+   underline-tab treatment (that's reserved for the page-level nav). */
+.flow-pill {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+}
+
+.flow-pill.active {
+  border-color: var(--accent);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+.flow-controls-sizeby-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+.flow-stats-grid {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.flow-stat-name {
+  font-size: 16px;
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+.flow-stat-val {
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.flow-treemap-card {
+  margin-bottom: 16px;
+}
+
+.flow-treemap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1000 / 560;
+}
+
+/* No border/background of its own — the reference design separates sectors
+   with whitespace (the padding below), not grid lines, so the card's own
+   surface shows through as the gutter between adjacent sectors. */
+.flow-sector {
+  position: absolute;
+  box-sizing: border-box;
+  padding: 3px;
+  overflow: hidden;
+}
+
+.flow-sector-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px;
+  height: 22px;
+  overflow: hidden;
+}
+
+.flow-sector-name {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.flow-sector-chg {
+  font-size: 10.5px;
+  flex-shrink: 0;
+}
+
+.flow-sector-body {
+  position: relative;
+  width: 100%;
+  height: calc(100% - 22px);
+}
+
+/* Anchor only positions/sizes the tile and insets it via padding — the
+   colored box lives in .flow-block-box so the gap between adjacent tiles is
+   real whitespace, not just a border line. */
+.flow-block {
+  position: absolute;
+  box-sizing: border-box;
+  padding: 1px;
+  cursor: pointer;
+}
+
+.flow-block-box {
+  width: 100%;
+  height: 100%;
+  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  overflow: hidden;
+  outline: 1px solid rgba(148, 163, 184, 0.14);
+  outline-offset: -1px;
+}
+
+.flow-block-box.held {
+  outline: 1.5px solid var(--accent);
+  outline-offset: -1.5px;
+}
+
+.flow-block-held-dot {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* Always the neutral ink tone (not profit/loss red-green) — the tile's own
+   background already carries the red/green signal, and colored text on a
+   same-hue background is what made these numbers unreadable. */
+.flow-block-ticker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.flow-block-change {
+  font-size: 10px;
+  color: var(--ink-2);
+  line-height: 1.1;
+}
+
+.flow-held-hint {
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.flow-rank-bar {
+  height: 6px;
+  border-radius: 3px;
+  opacity: 0.7;
+}
+
+.flow-rank-bar.profit-bar {
+  background: var(--profit);
+}
+
+.flow-rank-bar.loss-bar {
+  background: var(--loss);
 }

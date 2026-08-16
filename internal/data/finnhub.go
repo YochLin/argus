@@ -11,8 +11,9 @@ import (
 )
 
 type Finnhub struct {
-	apiKey string
-	client *http.Client
+	apiKey  string
+	client  *http.Client
+	baseURL string // overridable in tests, defaults to the real API
 }
 
 // errTWNotSupported is returned by every per-ticker Finnhub method for a TW
@@ -27,15 +28,16 @@ var errTWNotSupported = errors.New("finnhub: taiwan market not supported")
 
 func NewFinnhub(apiKey string) *Finnhub {
 	return &Finnhub{
-		apiKey: apiKey,
-		client: &http.Client{Timeout: 10 * time.Second},
+		apiKey:  apiKey,
+		client:  &http.Client{Timeout: 10 * time.Second},
+		baseURL: "https://finnhub.io/api/v1",
 	}
 }
 
 func (f *Finnhub) Name() string { return "finnhub" }
 
 func (f *Finnhub) get(path string, out any) error {
-	url := "https://finnhub.io/api/v1" + path
+	url := f.baseURL + path
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err
@@ -123,6 +125,37 @@ func (f *Finnhub) GetNews(ticker string, limit int) ([]NewsItem, error) {
 		})
 	}
 	return items, nil
+}
+
+// SectorInfo is a ticker's industry classification plus market cap — both
+// come back on the same /stock/profile2 response, so GetSector fetches them
+// together rather than costing callers a second /stock/metric request just
+// for MarketCapMillion (which GetFundamentals already exposes, but at the
+// price of a whole extra Finnhub call per ticker — not worth it for
+// Phase 18's ~500-ticker nightly sector scan).
+type SectorInfo struct {
+	Industry         string
+	MarketCapMillion float64
+}
+
+// GetSector returns ticker's finnhubIndustry classification (e.g.
+// "Technology", "Semiconductors") and marketCapitalization via
+// /stock/profile2 — live-verified 2026-08-16 against a real API key.
+func (f *Finnhub) GetSector(ticker string) (SectorInfo, error) {
+	if market.Of(ticker) == market.TW {
+		return SectorInfo{}, errTWNotSupported
+	}
+	var result struct {
+		FinnhubIndustry      string  `json:"finnhubIndustry"`
+		MarketCapitalization float64 `json:"marketCapitalization"`
+	}
+	if err := f.get(fmt.Sprintf("/stock/profile2?symbol=%s", ticker), &result); err != nil {
+		return SectorInfo{}, err
+	}
+	if result.FinnhubIndustry == "" {
+		return SectorInfo{}, fmt.Errorf("finnhub: no industry for %s", ticker)
+	}
+	return SectorInfo{Industry: result.FinnhubIndustry, MarketCapMillion: result.MarketCapitalization}, nil
 }
 
 func (f *Finnhub) GetMarketMovers() ([]string, error) {

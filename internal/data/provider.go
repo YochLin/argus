@@ -98,6 +98,20 @@ type HistoryProvider interface {
 	GetHistory(ticker, rangeParam string) ([]Candle, error)
 }
 
+// SectorProvider supplies a ticker's broad industry classification, used by
+// Phase 18's sector money-flow treemap to group universe constituents into
+// sectors. US-only (Finnhub's /stock/profile2 finnhubIndustry field,
+// live-verified 2026-08-16); TW classification comes from FinMind's
+// GetIndustryMap instead (a single whole-market fetch, not a per-ticker
+// call) — Shioaji's contract data was live-verified the same day to carry
+// only a bare numeric TWSE category code with no name attached, decoding
+// which would mean maintaining our own code→name table, the exact manual
+// mapping this feature was scoped to avoid, for a source that already has a
+// free, already-named alternative. See docs/phase-18-sector-money-flow.md.
+type SectorProvider interface {
+	GetSector(ticker string) (SectorInfo, error)
+}
+
 // Multi is a provider that tries each provider in order, falling back on error.
 type Multi struct {
 	providers []Provider

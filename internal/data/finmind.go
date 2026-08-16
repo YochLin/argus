@@ -295,6 +295,64 @@ func (f *FinMind) GetCompanyName(ticker string) (string, error) {
 	return name, nil
 }
 
+// IndustryMapProvider is TW's SectorProvider counterpart (see that
+// interface's doc comment for why TW doesn't implement SectorProvider
+// itself) — a single whole-market fetch rather than a per-ticker call,
+// implemented only by FinMind.
+type IndustryMapProvider interface {
+	GetIndustryMap() (map[string]string, error)
+}
+
+// electronicsUmbrellaCategory is TWSE's old catch-all "電子工業" bucket —
+// live-verified 2026-08-16: an electronics-sector ticker (e.g. 2330, 2317,
+// 2454) carries *two* TaiwanStockInfo rows dated the same day, one under
+// this umbrella and one under a finer modern sub-category (半導體業/其他電子業/
+// etc.); a non-electronics ticker only ever has one row. GetIndustryMap
+// prefers the finer category when both share the latest date, since the
+// umbrella label would otherwise lump most of the TW tech sector into one
+// treemap block, defeating the point of a sector breakdown.
+const electronicsUmbrellaCategory = "電子工業"
+
+// GetIndustryMap fetches TaiwanStockInfo's whole-market listing in one
+// unauthenticated call (no data_id — live-verified 2026-08-16 that omitting
+// it, unlike every other dataset here, returns every listed ticker rather
+// than erroring) and returns ticker -> industry_category (e.g. "半導體業"),
+// Phase 18's sector money-flow treemap's TW classification source. A ticker
+// can carry more than one row (a listing-type change over time, plus the
+// same-day electronics dual-row quirk above) — the latest date wins, and a
+// same-date tie prefers whichever row isn't electronicsUmbrellaCategory.
+func (f *FinMind) GetIndustryMap() (map[string]string, error) {
+	var rows []struct {
+		StockID  string `json:"stock_id"`
+		Industry string `json:"industry_category"`
+		Date     string `json:"date"`
+	}
+	if err := f.get("TaiwanStockInfo", "", "", "", &rows); err != nil {
+		return nil, err
+	}
+
+	type chosen struct {
+		date     string
+		industry string
+	}
+	best := make(map[string]chosen)
+	for _, r := range rows {
+		cur, ok := best[r.StockID]
+		switch {
+		case !ok || r.Date > cur.date:
+			best[r.StockID] = chosen{date: r.Date, industry: r.Industry}
+		case r.Date == cur.date && cur.industry == electronicsUmbrellaCategory && r.Industry != electronicsUmbrellaCategory:
+			best[r.StockID] = chosen{date: r.Date, industry: r.Industry}
+		}
+	}
+
+	out := make(map[string]string, len(best))
+	for stockID, c := range best {
+		out[stockID] = c.industry
+	}
+	return out, nil
+}
+
 // TrustNetDay is one trading day's Investment Trust (投信) and Foreign
 // Investor (外資) net buy in shares, 網 5【主力跟單】's input. ForeignNet
 // rides along on the same row/request as Net (both columns are in the same

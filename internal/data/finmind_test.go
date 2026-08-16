@@ -207,6 +207,51 @@ func TestFinMindGetTrustNetSeries(t *testing.T) {
 	}
 }
 
+// TestFinMindGetIndustryMap confirms the same-date electronics dual-row
+// quirk (see electronicsUmbrellaCategory's doc comment) resolves to the
+// finer category, not the "電子工業" umbrella — finmindServer's TaiwanStockInfo
+// fixture carries exactly that shape for 2330.
+func TestFinMindGetIndustryMap(t *testing.T) {
+	srv := finmindServer(t)
+	defer srv.Close()
+
+	f := NewFinMind("")
+	f.baseURL = srv.URL
+
+	m, err := f.GetIndustryMap()
+	if err != nil {
+		t.Fatalf("GetIndustryMap: %v", err)
+	}
+	if got := m["2330"]; got != "半導體業" {
+		t.Errorf(`GetIndustryMap()["2330"] = %q, want 半導體業 (finer category over the 電子工業 umbrella)`, got)
+	}
+}
+
+// TestFinMindGetIndustryMapDateTiebreak confirms a genuinely later date wins
+// outright even when it's the umbrella category — the same-date preference
+// in TestFinMindGetIndustryMap must not become "always avoid 電子工業."
+func TestFinMindGetIndustryMapDateTiebreak(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"msg":"success","status":200,"data":[
+			{"industry_category":"半導體業","stock_id":"2330","stock_name":"台積電","type":"twse","date":"2020-01-01"},
+			{"industry_category":"電子工業","stock_id":"2330","stock_name":"台積電","type":"twse","date":"2026-08-16"}
+		]}`))
+	}))
+	defer srv.Close()
+
+	f := NewFinMind("")
+	f.baseURL = srv.URL
+
+	m, err := f.GetIndustryMap()
+	if err != nil {
+		t.Fatalf("GetIndustryMap: %v", err)
+	}
+	if got := m["2330"]; got != "電子工業" {
+		t.Errorf(`GetIndustryMap()["2330"] = %q, want 電子工業 (the later date, even though it's the umbrella)`, got)
+	}
+}
+
 func TestQuarterLabel(t *testing.T) {
 	tests := []struct {
 		in   string

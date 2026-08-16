@@ -79,6 +79,14 @@ type Config struct {
 	PaperDB             *db.DB
 	PaperInitialCashUSD float64
 	PaperInitialCashTWD float64
+	// Sector backs Phase 18's /api/sectorflow US classification (Finnhub's
+	// finnhubIndustry, see internal/data/finnhub.go's GetSector). nil when
+	// FINNHUB_API_KEY isn't set — RunSectorFlowScan then skips the US scan
+	// entirely, same presence-of-config convention as Earnings/CompanyNames.
+	Sector data.SectorProvider
+	// IndustryMap backs /api/sectorflow's TW classification (FinMind's
+	// whole-market GetIndustryMap) — nil when FINMIND_TOKEN isn't set.
+	IndustryMap data.IndustryMapProvider
 }
 
 // Server is Argus's read-only web dashboard (Phase 5 PR1 — see
@@ -108,6 +116,9 @@ type Server struct {
 	paperDB             *db.DB
 	paperInitialCashUSD float64
 	paperInitialCashTWD float64
+	sector              data.SectorProvider
+	industryMap         data.IndustryMapProvider
+	sectorFlow          *sectorFlowCache
 	mux                 *http.ServeMux
 }
 
@@ -131,6 +142,9 @@ func New(cfg Config) *Server {
 		paperDB:             cfg.PaperDB,
 		paperInitialCashUSD: cfg.PaperInitialCashUSD,
 		paperInitialCashTWD: cfg.PaperInitialCashTWD,
+		sector:              cfg.Sector,
+		industryMap:         cfg.IndustryMap,
+		sectorFlow:          newSectorFlowCache(),
 	}
 	s.recPerf = newRecPerfStore(s.db, s.history)
 	s.mux = http.NewServeMux()
@@ -151,6 +165,8 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /api/rec-performance", s.handleRecPerformance)
 	s.mux.HandleFunc("GET /api/paper", s.handlePaper)
 	s.mux.HandleFunc("GET /api/options", s.handleOptions)
+	s.mux.HandleFunc("GET /api/sectorflow", s.handleSectorFlow)
+	s.mux.HandleFunc("POST /api/sectorflow/refresh", s.handleSectorFlowRefresh)
 	// Write routes (Phase 10) are always registered, but requireWritable
 	// 404s every one of them when no password is configured (see Config.
 	// Password's doc comment) — registering unconditionally, rather than
