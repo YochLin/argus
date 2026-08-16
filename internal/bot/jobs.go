@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"errors"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -82,6 +83,8 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context, m market.MarketID) {
 		date = now.AddDate(0, 0, -1).Format("2006-01-02")
 	}
 	prices := make(map[string]float64, len(tickers))
+	eventThresholds := signals.DefaultEventThresholds(m)
+	var priceEventHits []signals.PriceEvent
 	for _, t := range tickers {
 		q, err := b.provider.GetQuote(t)
 		if err != nil {
@@ -96,6 +99,12 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context, m market.MarketID) {
 			continue
 		}
 		prices[t] = q.Price
+		// Phase 20: collected here, not acted on until after the loop —
+		// see recordPriceEvents' doc comment for why the LLM call can't
+		// live inside this already-sequential per-ticker fetch loop.
+		if ev := signals.CheckPriceEvent(q, eventThresholds); ev != nil {
+			priceEventHits = append(priceEventHits, *ev)
+		}
 		snap := db.DailySnapshot{
 			Ticker:        t,
 			Date:          date,
@@ -111,6 +120,8 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context, m market.MarketID) {
 		}
 	}
 	logger.Infof("closing snapshot: done for %s market=%s (%d tickers)", date, m, len(tickers))
+
+	b.recordPriceEvents(ctx, priceEventHits, m, date)
 
 	b.snapshotBenchmark(date, m)
 	b.recordNetWorthSnapshot(date, m, prices)
@@ -134,6 +145,83 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context, m market.MarketID) {
 		b.checkOptionExpiry(prices, date)
 		b.recordDailyATMIV(tickers, prices, date)
 	}
+}
+
+// priceEventWriteupCap caps how many of a single RunClosingSnapshot run's
+// triggered price events get an LLM writeup + Telegram push, chosen by move
+// size descending (docs/phase-20-price-event-log.md §2 "單次觸發上限"). A
+// starting-point constant per that doc's §6 risk note, not calibrated
+// against real trigger frequency yet — revisit if it's routinely maxed out.
+const priceEventWriteupCap = 3
+
+// recordPriceEvents is RunClosingSnapshot's Phase 20 tail step (see
+// docs/phase-20-price-event-log.md §4.4): dedup hits against price_events'
+// (ticker, date) uniqueness (HasPriceEvent — guards a rerun from
+// re-triggering the same day), rank the rest by move size, LLM-writeup and
+// push the top priceEventWriteupCap, and store everything past that cap with
+// no summary plus one overflow notice. Called after every watchlist
+// ticker's quote is already saved to daily_snapshots, so an LLM call's
+// latency or failure never delays that write — same reasoning
+// RunClosingSnapshot's own doc comment gives for keeping this out of the
+// per-ticker fetch loop. A single ticker's LLM/save failure only logs and
+// moves on, same "one bad ticker doesn't block the rest" convention as the
+// snapshot loop above it.
+func (b *Bot) recordPriceEvents(ctx context.Context, hits []signals.PriceEvent, m market.MarketID, date string) {
+	if len(hits) == 0 {
+		return
+	}
+
+	var pending []signals.PriceEvent
+	for _, ev := range hits {
+		has, err := b.db.HasPriceEvent(ev.Ticker, date)
+		if err != nil {
+			logger.Errorf("price events: dedup check %s: %v", ev.Ticker, err)
+			continue
+		}
+		if has {
+			continue
+		}
+		pending = append(pending, ev)
+	}
+	if len(pending) == 0 {
+		return
+	}
+	sort.Slice(pending, func(i, j int) bool {
+		return math.Max(math.Abs(pending[i].GapPct), math.Abs(pending[i].ChangePct)) >
+			math.Max(math.Abs(pending[j].GapPct), math.Abs(pending[j].ChangePct))
+	})
+
+	writeup, overflow := pending, []signals.PriceEvent(nil)
+	if len(pending) > priceEventWriteupCap {
+		writeup, overflow = pending[:priceEventWriteupCap], pending[priceEventWriteupCap:]
+	}
+
+	for _, ev := range writeup {
+		news, _ := b.provider.GetNews(ev.Ticker, 5)
+		summary, err := b.llm.ExplainPriceEvent(ctx, ev.Ticker, ev.GapPct, ev.ChangePct, news)
+		if err != nil {
+			logger.Errorf("price events: LLM %s: %v", ev.Ticker, err)
+			continue
+		}
+		if err := b.db.SavePriceEvent(db.PriceEvent{Ticker: ev.Ticker, Market: string(m), Date: date, GapPct: ev.GapPct, ChangePct: ev.ChangePct, Summary: summary}); err != nil {
+			logger.Errorf("price events: save %s: %v", ev.Ticker, err)
+			continue
+		}
+		b.Send(i18n.T(b.lang, i18n.KeyPriceEventResultTitle, ev.Ticker, summary))
+	}
+
+	if len(overflow) == 0 {
+		return
+	}
+	var sb strings.Builder
+	for _, ev := range overflow {
+		if err := b.db.SavePriceEvent(db.PriceEvent{Ticker: ev.Ticker, Market: string(m), Date: date, GapPct: ev.GapPct, ChangePct: ev.ChangePct}); err != nil {
+			logger.Errorf("price events: save %s: %v", ev.Ticker, err)
+			continue
+		}
+		sb.WriteString(i18n.T(b.lang, i18n.KeyPriceEventOverflowTickerLine, ev.Ticker, ev.GapPct, ev.ChangePct))
+	}
+	b.Send(i18n.T(b.lang, i18n.KeyPriceEventOverflowLine, sb.String()))
 }
 
 // snapshotBenchmark records benchmarkFor(m)'s (SPY/0050) closing price into

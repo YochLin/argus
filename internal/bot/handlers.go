@@ -1146,6 +1146,62 @@ func (b *Bot) saveLesson(ticker, lesson string) {
 	}
 }
 
+// eventsListLimit/eventsTickerLimit cap /events' two forms — starting-point
+// constants per docs/phase-20-price-event-log.md §6, same "not calibrated,
+// revisit if it matters" caveat as priceEventWriteupCap (jobs.go).
+const (
+	eventsListLimit   = 20
+	eventsTickerLimit = 20
+)
+
+// handleEvents is Phase 20's /events [TICKER] — with no argument, the most
+// recent price events across every ticker; with one, that ticker's full
+// history. Both forms must reply even when the result is empty (same UX
+// lesson as /recommend's empty-result fix, see docs/phase-20-price-event-log.md
+// §4.4) rather than going silent.
+func (b *Bot) handleEvents(args string) {
+	ticker := strings.ToUpper(strings.TrimSpace(args))
+
+	var events []db.PriceEvent
+	var err error
+	var title string
+	fullSummary := ticker != ""
+	if ticker == "" {
+		events, err = b.db.GetRecentPriceEvents(eventsListLimit)
+		title = i18n.T(b.lang, i18n.KeyEventsListTitle)
+	} else {
+		events, err = b.db.GetPriceEventsForTicker(ticker, eventsTickerLimit)
+		title = i18n.T(b.lang, i18n.KeyEventsTickerTitle, ticker)
+	}
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
+		return
+	}
+	if len(events) == 0 {
+		b.Send(i18n.T(b.lang, i18n.KeyEventsEmpty))
+		return
+	}
+
+	var sb strings.Builder
+	sb.WriteString(title)
+	for _, ev := range events {
+		summary := ev.Summary
+		switch {
+		case summary == "":
+			summary = i18n.T(b.lang, i18n.KeyEventsNoSummary)
+		case !fullSummary:
+			// The no-argument form is a cross-ticker digest — show only the
+			// summary's first line/sentence so one event doesn't push the
+			// rest off the message (see handleEvents' doc comment).
+			if i := strings.IndexByte(summary, '\n'); i >= 0 {
+				summary = summary[:i]
+			}
+		}
+		sb.WriteString(i18n.T(b.lang, i18n.KeyEventsLine, ev.Date, ev.Ticker, ev.GapPct, ev.ChangePct, summary))
+	}
+	b.Send(sb.String())
+}
+
 // handlePortfolio shows every open position's current market value and
 // unrealized P&L against a live quote, plus cumulative realized P&L across
 // all past sells. Each position goes out as its own message (same reasoning
