@@ -616,7 +616,7 @@ const en: Dictionary = {
   noOptionPositions: "No open option positions.",
   noClosedOptions: "No closed option trades yet.",
   noOptionCollateral: "No collateral obligations.",
-  navFlow: "Flow",
+  navFlow: "Money Flow",
   sectorFlowSubtitle: "Sector × market-cap money-flow heatmap — block size is market cap, color is change.",
   sectorFlowHeldHint: "Outlined blocks = your positions. Click a block to view its chart.",
   sectorFlowNotReady: "Sector data isn't ready yet — check back after the next scan.",

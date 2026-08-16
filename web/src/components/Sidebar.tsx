@@ -30,11 +30,11 @@ interface Props {
 // three links un-highlighted on the round detail page.
 const links: Array<{ path: string; label: (dict: Dictionary) => string; icon: ReactNode }> = [
   { path: "/", label: (d) => d.navDashboard, icon: <DashboardIcon /> },
-  { path: "/flow", label: (d) => d.navFlow, icon: <FlowIcon /> },
   { path: "/risk", label: (d) => d.navRisk, icon: <RiskIcon /> },
-  { path: "/options", label: (d) => d.navOptions, icon: <OptionsIcon /> },
   { path: "/calendar", label: (d) => d.navCalendar, icon: <CalendarIcon /> },
+  { path: "/options", label: (d) => d.navOptions, icon: <OptionsIcon /> },
   { path: "/rounds", label: (d) => d.navRounds, icon: <RoundsIcon /> },
+  { path: "/flow", label: (d) => d.navFlow, icon: <FlowIcon /> },
   { path: "/chart", label: (d) => d.navChart, icon: <ChartIcon /> },
   { path: "/reports", label: (d) => d.navReports, icon: <ReportsIcon /> },
   { path: "/recs", label: (d) => d.navRecs, icon: <RecsIcon /> },
