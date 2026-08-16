@@ -459,6 +459,8 @@ func (b *Bot) handleMessage(ctx context.Context, cmd, args string) {
 		b.handleThesis(args)
 	case "review":
 		b.handleReview(ctx, args)
+	case "events":
+		b.handleEvents(args)
 	case "reset":
 		b.handleReset()
 	case "paper":

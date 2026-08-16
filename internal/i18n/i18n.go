@@ -513,6 +513,29 @@ const (
 	KeyTradeReviewPromptTask Key = "trade_review_prompt_task"
 	KeyLessonMarker          Key = "lesson_marker"
 
+	// Phase 20's gap/big-move event log (see
+	// docs/phase-20-price-event-log.md) — buildPriceEventPrompt/
+	// ExplainPriceEvent's prompt keys, RunClosingSnapshot's push/overflow
+	// messages, and /events' listing keys.
+	KeyPriceEventPromptIntro Key = "price_event_prompt_intro"
+	KeyPriceEventGapLine     Key = "price_event_gap_line"
+	KeyPriceEventChangeLine  Key = "price_event_change_line"
+	KeyPriceEventPromptTask  Key = "price_event_prompt_task"
+	KeyPriceEventResultTitle Key = "price_event_result_title"
+	// KeyPriceEventOverflowLine wraps the whole overflow-notice message
+	// (%s = the joined per-ticker list); KeyPriceEventOverflowTickerLine
+	// formats each of that list's lines individually.
+	KeyPriceEventOverflowLine       Key = "price_event_overflow_line"
+	KeyPriceEventOverflowTickerLine Key = "price_event_overflow_ticker_line"
+	KeyEventsListTitle              Key = "events_list_title"
+	KeyEventsTickerTitle            Key = "events_ticker_title"
+	KeyEventsLine                   Key = "events_line"
+	// KeyEventsNoSummary is /events' placeholder for a price_events row whose
+	// summary is "" (over the per-run LLM-writeup cap — see migration 19's
+	// doc comment).
+	KeyEventsNoSummary Key = "events_no_summary"
+	KeyEventsEmpty     Key = "events_empty"
+
 	KeyMorningBriefingPromptIntro     Key = "morning_briefing_prompt_intro"
 	KeyMorningBriefingIndicesHeader   Key = "morning_briefing_indices_header"
 	KeyMorningBriefingIndexLine       Key = "morning_briefing_index_line"

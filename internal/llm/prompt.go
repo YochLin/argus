@@ -934,6 +934,38 @@ func tradeEntryPrice(legs []TradeLeg) (price, shares float64) {
 	return totalCost / totalShares, totalShares
 }
 
+// buildPriceEventPrompt is Phase 20's gap/big-move event-summary prompt (see
+// docs/phase-20-price-event-log.md §4.3): the day's triggered gap%/change%
+// numbers plus ticker-only news (reusing KeyNewsItem/KeyNewsSummaryLine, same
+// convention as buildExplorePrompt) — no market-wide news, per §2's "LLM
+// 素材" decision. gapPct/changePct are 0 when that particular threshold
+// didn't fire (see signals.PriceEvent), so only the ones that are non-zero
+// get rendered rather than always naming both.
+func buildPriceEventPrompt(lang i18n.Lang, ticker string, gapPct, changePct float64, news []data.NewsItem) string {
+	var sb strings.Builder
+	sb.WriteString(i18n.T(lang, i18n.KeyPriceEventPromptIntro, ticker))
+
+	if gapPct != 0 {
+		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyPriceEventGapLine, gapPct))
+	}
+	if changePct != 0 {
+		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyPriceEventChangeLine, changePct))
+	}
+
+	if len(news) > 0 {
+		sb.WriteString(i18n.T(lang, i18n.KeyNewsHeader))
+		for i, n := range news {
+			fmt.Fprint(&sb, i18n.T(lang, i18n.KeyNewsItem, i+1, n.Source, n.Headline))
+			if n.Summary != "" {
+				fmt.Fprint(&sb, i18n.T(lang, i18n.KeyNewsSummaryLine, n.Summary))
+			}
+		}
+	}
+
+	sb.WriteString(i18n.T(lang, i18n.KeyPriceEventPromptTask))
+	return sb.String()
+}
+
 // maLabel renders whether price sits above or below a moving average as an
 // already-localized string, so writeStockSection never builds display text
 // outside of internal/i18n.

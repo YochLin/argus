@@ -229,6 +229,19 @@ func (c *Client) ReviewTrade(ctx context.Context, trade ClosedTrade) (result str
 	return result, parseLesson(c.lang, result), nil
 }
 
+// ExplainPriceEvent is Phase 20's gap/big-move event summary (see
+// docs/phase-20-price-event-log.md §4.3): a one-shot call reading the day's
+// gap%/change% numbers plus ticker-only news, asked to state the facts and
+// (only if there's news to point to) a likely cause — never a BUY/SELL
+// framing, unlike GenerateRecommendations/ReviewTrade. Reuses checkModel,
+// same reasoning as ReviewTrade/InsightPortfolio. Returns the model's reply
+// verbatim (no marker parsing, same convention as MorningBriefing) — the
+// caller (bot.RunClosingSnapshot) stores it as-is via db.SavePriceEvent.
+func (c *Client) ExplainPriceEvent(ctx context.Context, ticker string, gapPct, changePct float64, news []data.NewsItem) (string, error) {
+	prompt := buildPriceEventPrompt(c.lang, ticker, gapPct, changePct, news)
+	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+}
+
 // ExploreNomination is one candidate proposed by Phase 2.6 解凍's two-stage
 // LLM exploration (see docs/phase-2.6-two-stage-llm-exploration.md): a
 // ticker not on any existing list that the model nominated based on market

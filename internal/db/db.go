@@ -552,6 +552,29 @@ var migrations = []string{
 		SELECT ticker, thesis, updated_at FROM thesis;
 	DROP TABLE thesis;
 	`,
+
+	// 19: price_events backs Phase 20's gap/big-move event log (see
+	// docs/phase-20-price-event-log.md) — one row per (ticker, date), written
+	// by RunClosingSnapshot when signals.CheckPriceEvent fires. summary is
+	// left '' when the per-run LLM writeup cap (top 3 by move size) was
+	// exceeded — no separate has_writeup flag, an empty string already means
+	// "recorded but not written up." The unique index is this table's
+	// dedup mechanism (HasPriceEvent checks it before writing) rather than
+	// signal_states/Detector-style stateful tracking, since RunClosingSnapshot
+	// already only runs once per market per day.
+	`
+	CREATE TABLE IF NOT EXISTS price_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		ticker TEXT NOT NULL,
+		market TEXT NOT NULL,
+		date TEXT NOT NULL,
+		gap_pct REAL NOT NULL DEFAULT 0,
+		change_pct REAL NOT NULL DEFAULT 0,
+		summary TEXT NOT NULL DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_price_events_ticker_date ON price_events(ticker, date);
+	`,
 }
 
 func (d *DB) migrate() error {

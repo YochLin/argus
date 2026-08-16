@@ -6,7 +6,7 @@ package i18n
 // sites pass positional args once and reuse them for whichever table T
 // picks.
 var zhMessages = map[Key]string{
-	KeyUnknownCommand:                "未知指令。可用指令：\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [天數]\n/buy <ticker> <股數> <價格> [手續費]\n/sell <ticker> <股數> <價格> [手續費]\n/stop <ticker> [價格]\n/buyalert <ticker> [價格|remove 價格]\n/portfolio\n/obuy /osell /oassign /oexercise\n/option <ticker> [call|put|csp|cc]\n/insight\n/cash [金額]\n/thesis <ticker> [論點文字]\n/review <ticker>\n/dailyreport\n/morningreport\n/monthlyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n/paper [reset]\n\n直接傳一般訊息（不加 / 開頭）則會跟我自由對話。",
+	KeyUnknownCommand:                "未知指令。可用指令：\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [天數]\n/buy <ticker> <股數> <價格> [手續費]\n/sell <ticker> <股數> <價格> [手續費]\n/stop <ticker> [價格]\n/buyalert <ticker> [價格|remove 價格]\n/portfolio\n/obuy /osell /oassign /oexercise\n/option <ticker> [call|put|csp|cc]\n/insight\n/cash [金額]\n/thesis <ticker> [論點文字]\n/review <ticker>\n/events [ticker]\n/dailyreport\n/morningreport\n/monthlyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n/paper [reset]\n\n直接傳一般訊息（不加 / 開頭）則會跟我自由對話。",
 	KeyAddUsage:                      "用法：/add <ticker>，例如 /add AAPL",
 	KeyAddFailed:                     "新增失敗：%v",
 	KeyAddSuccess:                    "已將 *%s* 加入自選股。",
@@ -441,6 +441,24 @@ var zhMessages = map[Key]string{
 回覆請簡潔，總字數控制在 300 字以內。
 `,
 	KeyLessonMarker: "教訓:",
+
+	KeyPriceEventPromptIntro: "你是一位股票分析師，*%s* 今天觸發了值得記錄的價格事件，請根據以下資料整理這次事件的情況說明。\n\n",
+	KeyPriceEventGapLine:     "開盤跳空：%+.1f%%（相對前收）\n",
+	KeyPriceEventChangeLine:  "當日漲跌：%+.1f%%（收盤相對前收）\n",
+	KeyPriceEventPromptTask: `
+請用繁體中文，依下列要求寫 3–5 句話：
+1. 先陳述上方跳空／漲跌的事實數字
+2. 若上方附有相關新聞，依新聞推測可能原因；若沒有附上任何新聞，請直接說「無對應新聞，原因不明」，不要憑空臆測
+3. 這是事實性描述，不要給任何買賣操作建議或語氣
+`,
+	KeyPriceEventResultTitle:        "📊 *價格事件：%s*\n\n%s",
+	KeyPriceEventOverflowLine:       "另有以下標的今日也觸發價格事件（超過本次上限，未附摘要）：\n%s完整記錄請見 /events",
+	KeyPriceEventOverflowTickerLine: "  • %s：跳空 %+.1f%% ／ 漲跌 %+.1f%%\n",
+	KeyEventsListTitle:              "📊 *近期價格事件*\n",
+	KeyEventsTickerTitle:            "📊 *%s 價格事件紀錄*\n",
+	KeyEventsLine:                   "%s │ %s │ 跳空 %+.1f%% ／ 漲跌 %+.1f%% │ %s\n",
+	KeyEventsNoSummary:              "（無摘要）",
+	KeyEventsEmpty:                  "目前沒有價格事件紀錄。",
 
 	KeyMorningBriefingPromptIntro:     "你是一位美股分析師，請根據以下資料撰寫一篇風格類似晨間簡報的美股日報，以自然流暢的敘事語氣呈現，而非條列式的操作建議。\n\n",
 	KeyMorningBriefingIndicesHeader:   "## 大盤收盤\n\n",
