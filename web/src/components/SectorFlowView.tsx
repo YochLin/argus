@@ -8,11 +8,13 @@ import {
   type SectorFlow,
   type SectorFlowTimeframe,
 } from "../api";
-import type { Dictionary } from "../i18n";
+import type { Dictionary, Lang } from "../i18n";
+import { sectorLabel } from "../i18n";
 import { InfoTip } from "./InfoTip";
 
 interface Props {
   dict: Dictionary;
+  lang: Lang;
   market: Market;
   names?: Record<string, string>;
   onTickerClick?: (ticker: string) => void;
@@ -108,18 +110,18 @@ function worstRatio(areas: number[], sum: number, side: number): number {
   return Math.max((side * side * maxA) / (sum * sum), (sum * sum) / (side * side * minA));
 }
 
-// tintFor mirrors the reference design's tint(chg): neutral gray under a
-// 0.06% deadband, otherwise red/green with opacity scaled by |chg| relative
-// to a per-timeframe expected-volatility band — 1d/1w/1m carry naturally
-// different %-move magnitudes, so a longer window uses a wider band or the
-// whole treemap saturates to the darkest color.
-const bandByTf: Record<SectorFlowTimeframe, number> = { "1d": 3, "1w": 6, "1m": 12 };
+// tintFor mirrors the reference design's tint(chg) exactly: neutral gray
+// under a 0.06% deadband, otherwise red/green with opacity scaled by |chg|
+// relative to a per-timeframe expected-volatility band — 1d/1w/1m carry
+// naturally different %-move magnitudes, so a longer window uses a wider
+// band or the whole treemap saturates to the darkest color.
+const tfkByTf: Record<SectorFlowTimeframe, number> = { "1d": 1, "1w": 2.3, "1m": 4.2 };
 
 function tintFor(changePct: number, tf: SectorFlowTimeframe): string {
-  if (Math.abs(changePct) < 0.06) return "rgba(148, 163, 184, 0.16)";
-  const ratio = Math.min(1, Math.abs(changePct) / bandByTf[tf]);
-  const opacity = 0.14 + ratio * 0.55;
-  return changePct > 0 ? `rgba(16, 185, 129, ${opacity.toFixed(2)})` : `rgba(239, 68, 68, ${opacity.toFixed(2)})`;
+  if (Math.abs(changePct) < 0.06) return "rgba(130, 132, 145, 0.16)";
+  const ratio = Math.min(1, Math.abs(changePct) / (2.6 * tfkByTf[tf]));
+  const opacity = 0.12 + ratio * 0.46;
+  return changePct >= 0 ? `rgba(16, 185, 129, ${opacity.toFixed(2)})` : `rgba(239, 68, 68, ${opacity.toFixed(2)})`;
 }
 
 function fmtFlow(v: number, currency: string): string {
@@ -141,7 +143,7 @@ function fmtPct(v: number): string {
   return `${sign}${v.toFixed(1)}%`;
 }
 
-export function SectorFlowView({ dict, market, names = {}, onTickerClick }: Props) {
+export function SectorFlowView({ dict, lang, market, names = {}, onTickerClick }: Props) {
   const [data, setData] = useState<SectorFlow | null>(null);
   const [error, setError] = useState(false);
   const [tf, setTf] = useState<SectorFlowTimeframe>("1d");
@@ -206,18 +208,18 @@ export function SectorFlowView({ dict, market, names = {}, onTickerClick }: Prop
           <span className="eyebrow">{dict.navFlow}</span>
           <span className="flow-controls-subtitle">{dict.sectorFlowSubtitle}</span>
         </div>
-        <div className="topbar-tabs flow-controls-tf" role="group" aria-label="timeframe">
+        <div className="flow-controls-tf" role="group" aria-label="timeframe">
           {(["1d", "1w", "1m"] as SectorFlowTimeframe[]).map((v) => (
-            <button key={v} className={`topbar-tab${tf === v ? " active" : ""}`} onClick={() => setTf(v)}>
+            <button key={v} className={`flow-pill${tf === v ? " active" : ""}`} onClick={() => setTf(v)}>
               {v.toUpperCase()}
             </button>
           ))}
         </div>
         <div className="flow-controls-sizeby">
           <span className="flow-controls-sizeby-label">{dict.sectorFlowSizeBy}</span>
-          <div className="topbar-tabs" role="group" aria-label="size by">
+          <div role="group" aria-label="size by" style={{ display: "flex", gap: 6 }}>
             {(["cap", "flow"] as SizeBy[]).map((v) => (
-              <button key={v} className={`topbar-tab${sizeBy === v ? " active" : ""}`} onClick={() => setSizeBy(v)}>
+              <button key={v} className={`flow-pill${sizeBy === v ? " active" : ""}`} onClick={() => setSizeBy(v)}>
                 {v === "cap" ? dict.sectorFlowSizeByCap : dict.sectorFlowSizeByFlow}
               </button>
             ))}
@@ -228,22 +230,24 @@ export function SectorFlowView({ dict, market, names = {}, onTickerClick }: Prop
 
       <div className="kpi-grid flow-stats-grid">
         <div className="card">
-          <div className="eyebrow">{dict.sectorFlowTotalNetFlow}</div>
-          <div className={`kpi-value ${totalNetFlow >= 0 ? "profit" : "loss"}`}>{fmtFlow(totalNetFlow, currency)}</div>
-        </div>
-        <div className="card">
           <div className="eyebrow">{dict.sectorFlowBreadth}</div>
           <div className="kpi-value">
             <span className="profit">{up}</span> / <span className="loss">{down}</span>
           </div>
         </div>
         <div className="card">
+          <div className="eyebrow">{dict.sectorFlowTotalNetFlow}</div>
+          <div className={`kpi-value ${totalNetFlow >= 0 ? "profit" : "loss"}`}>{fmtFlow(totalNetFlow, currency)}</div>
+        </div>
+        <div className="card">
           <div className="eyebrow">{dict.sectorFlowStrongest}</div>
-          <div className="kpi-value">{strongest?.name ?? "—"}</div>
+          <div className="flow-stat-name">{strongest ? sectorLabel(strongest.name, lang) : "—"}</div>
+          {strongest && <div className="flow-stat-val profit mono">{fmtFlow(strongest.netFlow, currency)}</div>}
         </div>
         <div className="card">
           <div className="eyebrow">{dict.sectorFlowWeakest}</div>
-          <div className="kpi-value">{weakest?.name ?? "—"}</div>
+          <div className="flow-stat-name">{weakest ? sectorLabel(weakest.name, lang) : "—"}</div>
+          {weakest && <div className="flow-stat-val loss mono">{fmtFlow(weakest.netFlow, currency)}</div>}
         </div>
       </div>
 
@@ -260,9 +264,11 @@ export function SectorFlowView({ dict, market, names = {}, onTickerClick }: Prop
                 height: `${(rect.h / CANVAS_H) * 100}%`,
               }}
             >
-              <div className="flow-sector-header mono">
-                <span>{sector.name}</span>
-                <span className={sector.netFlow >= 0 ? "profit" : "loss"}>{fmtFlow(sector.netFlow, currency)}</span>
+              <div className="flow-sector-header">
+                <span className="flow-sector-name">{sectorLabel(sector.name, lang)}</span>
+                <span className={`flow-sector-chg mono ${sector.changePct >= 0 ? "profit" : "loss"}`}>
+                  {fmtPct(sector.changePct)}
+                </span>
               </div>
               <div className="flow-sector-body">
                 {items.map(({ item, rect: r }) => {
@@ -316,7 +322,7 @@ export function SectorFlowView({ dict, market, names = {}, onTickerClick }: Prop
           <tbody>
             {bySectorFlow.map((s) => (
               <tr key={s.name}>
-                <td>{s.name}</td>
+                <td>{sectorLabel(s.name, lang)}</td>
                 <td className={s.changePct >= 0 ? "profit" : "loss"}>{fmtPct(s.changePct)}</td>
                 <td className={s.netFlow >= 0 ? "profit" : "loss"}>{fmtFlow(s.netFlow, currency)}</td>
                 <td>

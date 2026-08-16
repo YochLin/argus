@@ -221,6 +221,7 @@ export default function App() {
     body = (
       <SectorFlowView
         dict={dict}
+        lang={lang}
         market={market}
         names={names}
         onTickerClick={(t) => navigate(`/chart?ticker=${encodeURIComponent(t)}`)}

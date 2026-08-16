@@ -2072,6 +2072,8 @@ th {
 /* Pushes the timeframe toggle to the right of the title, matching the
    reference layout (title far left, tf + size-by grouped on the right). */
 .flow-controls-tf {
+  display: flex;
+  gap: 6px;
   margin-left: auto;
 }
 
@@ -2079,6 +2081,26 @@ th {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/* Segmented pill switch (timeframe + size-by) — a bordered box per option
+   with the whole box tinted/outlined on the active one, not the topbar's
+   underline-tab treatment (that's reserved for the page-level nav). */
+.flow-pill {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+}
+
+.flow-pill.active {
+  border-color: var(--accent);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
 }
 
 .flow-controls-sizeby-label {
@@ -2090,6 +2112,17 @@ th {
 
 .flow-stats-grid {
   grid-template-columns: repeat(4, 1fr);
+}
+
+.flow-stat-name {
+  font-size: 16px;
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+.flow-stat-val {
+  font-size: 12px;
+  margin-top: 2px;
 }
 
 .flow-treemap-card {
@@ -2114,11 +2147,26 @@ th {
 
 .flow-sector-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 8px;
   padding: 0 2px;
   height: 22px;
+  overflow: hidden;
+}
+
+.flow-sector-name {
   font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.flow-sector-chg {
+  font-size: 10.5px;
+  flex-shrink: 0;
 }
 
 .flow-sector-body {
