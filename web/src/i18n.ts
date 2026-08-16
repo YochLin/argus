@@ -328,6 +328,9 @@ export interface Dictionary {
   sectorFlowBreadth: string;
   sectorFlowStrongest: string;
   sectorFlowWeakest: string;
+  sectorFlowRefresh: string;
+  sectorFlowRefreshing: string;
+  sectorFlowRefreshError: string;
 }
 
 const en: Dictionary = {
@@ -626,6 +629,9 @@ const en: Dictionary = {
   sectorFlowBreadth: "Advancers / Decliners",
   sectorFlowStrongest: "Strongest Sector",
   sectorFlowWeakest: "Weakest Sector",
+  sectorFlowRefresh: "Trigger Scan Now",
+  sectorFlowRefreshing: "Scan started — this can take several minutes for US (~500 tickers). Reload this page to check.",
+  sectorFlowRefreshError: "Failed to start the scan.",
 };
 
 const zh: Dictionary = {
@@ -919,6 +925,9 @@ const zh: Dictionary = {
   sectorFlowBreadth: "上漲／下跌家數",
   sectorFlowStrongest: "資金流最強類股",
   sectorFlowWeakest: "資金流最弱類股",
+  sectorFlowRefresh: "立即觸發掃描",
+  sectorFlowRefreshing: "掃描已開始，美股約 500 檔可能需要數分鐘，稍後重新整理本頁查看結果。",
+  sectorFlowRefreshError: "觸發掃描失敗。",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

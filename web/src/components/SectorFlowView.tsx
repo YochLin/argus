@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   currencySymbol,
   fetchSectorFlow,
+  refreshSectorFlow,
   tickerLabel,
   type Market,
   type SectorFlow,
@@ -182,7 +183,7 @@ export function SectorFlowView({ dict, market, names = {}, onTickerClick }: Prop
     return <div className="loading">{dict.loading}</div>;
   }
   if (!data.ready) {
-    return <div className="empty-message">{dict.sectorFlowNotReady}</div>;
+    return <NotReady dict={dict} market={market} />;
   }
 
   const totalNetFlow = data.sectors.reduce((s, sec) => s + sec.netFlow, 0);
@@ -322,5 +323,37 @@ export function SectorFlowView({ dict, market, names = {}, onTickerClick }: Prop
         </table>
       </div>
     </>
+  );
+}
+
+// NotReady is Ready:false's UI — the cache is empty until the nightly cron
+// job (06:10 CST US / 14:55 CST TW) runs once, or an operator triggers
+// POST /api/sectorflow/refresh manually (docs/phase-18-sector-money-flow.md
+// §8's acceptance criteria calls for exactly this manual-trigger path).
+// Doesn't auto-poll after triggering — a full US scan takes several
+// minutes, so a reload-to-check flow beats a background poll loop that
+// would just sit there running for that whole window.
+function NotReady({ dict, market }: { dict: Dictionary; market: Market }) {
+  const [status, setStatus] = useState<"idle" | "started" | "error">("idle");
+
+  return (
+    <div className="empty-message">
+      <div>{dict.sectorFlowNotReady}</div>
+      {status === "idle" && (
+        <button
+          className="theme-toggle"
+          style={{ marginTop: 12 }}
+          onClick={() => {
+            refreshSectorFlow(market)
+              .then(() => setStatus("started"))
+              .catch(() => setStatus("error"));
+          }}
+        >
+          {dict.sectorFlowRefresh}
+        </button>
+      )}
+      {status === "started" && <div style={{ marginTop: 12 }}>{dict.sectorFlowRefreshing}</div>}
+      {status === "error" && <div className="loss" style={{ marginTop: 12 }}>{dict.sectorFlowRefreshError}</div>}
+    </div>
   );
 }

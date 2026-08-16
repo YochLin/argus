@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"argus/internal/data"
 	"argus/internal/db"
@@ -136,5 +137,54 @@ func TestHandleSectorFlow(t *testing.T) {
 	}
 	if !resp.Ready || len(resp.Sectors) != 1 || resp.Sectors[0].NetFlow != 42 {
 		t.Errorf("resp = %+v, want the cached 1d snapshot (invalid tf should default to 1d)", resp)
+	}
+}
+
+// TestHandleSectorFlowRefreshNoProvider confirms the manual-trigger endpoint
+// reports a clear 503 instead of silently accepting a scan that would just
+// no-op, for a market with no classification source configured.
+func TestHandleSectorFlowRefreshNoProvider(t *testing.T) {
+	s := &Server{sectorFlow: newSectorFlowCache()}
+	s.mux = http.NewServeMux()
+	s.mux.HandleFunc("POST /api/sectorflow/refresh", s.handleSectorFlowRefresh)
+
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/sectorflow/refresh?market=us", nil))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+}
+
+// TestHandleSectorFlowRefreshStartsScan confirms a configured market
+// accepts the trigger (202) and the cache is populated once the background
+// scan completes — the same tryStart/finish guard the scheduler's own runs
+// go through, exercised here via the HTTP entry point instead.
+func TestHandleSectorFlowRefreshStartsScan(t *testing.T) {
+	orig := sectorFlowRequestDelay
+	sectorFlowRequestDelay = 0
+	defer func() { sectorFlowRequestDelay = orig }()
+
+	s := &Server{
+		db:         &fakeDB{universe: []db.UniverseEntry{{Ticker: "AAPL"}}},
+		sector:     &fakeSector{info: map[string]data.SectorInfo{"AAPL": {Industry: "Tech", MarketCapMillion: 100}}},
+		history:    &fakeHistory{candles: map[string][]data.Candle{"AAPL": {flowCandle(100, 10), flowCandle(110, 20)}}},
+		sectorFlow: newSectorFlowCache(),
+	}
+	s.mux = http.NewServeMux()
+	s.mux.HandleFunc("POST /api/sectorflow/refresh", s.handleSectorFlowRefresh)
+
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/sectorflow/refresh?market=us", nil))
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusAccepted)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for !s.sectorFlow.get(market.US, "1d").Ready {
+		if time.Now().After(deadline) {
+			t.Fatal("scan did not populate the cache within 2s")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

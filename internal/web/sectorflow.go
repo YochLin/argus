@@ -81,12 +81,36 @@ type SectorFlowResponse struct {
 // several-hundred-ticker recompute that would otherwise make a dashboard
 // page load take minutes.
 type sectorFlowCache struct {
-	mu   sync.RWMutex
-	data map[market.MarketID]map[string]SectorFlowResponse // market -> tf -> response
+	mu       sync.RWMutex
+	data     map[market.MarketID]map[string]SectorFlowResponse // market -> tf -> response
+	scanning map[market.MarketID]bool                          // guards handleSectorFlowRefresh against overlapping manual triggers
 }
 
 func newSectorFlowCache() *sectorFlowCache {
-	return &sectorFlowCache{data: make(map[market.MarketID]map[string]SectorFlowResponse)}
+	return &sectorFlowCache{
+		data:     make(map[market.MarketID]map[string]SectorFlowResponse),
+		scanning: make(map[market.MarketID]bool),
+	}
+}
+
+// tryStart claims market m for a scan, returning false if one is already in
+// flight (either the nightly cron job or a prior manual trigger) — a second
+// concurrent scan would double the external-API request rate for no benefit,
+// since it'd just overwrite the same cache slot when it finishes.
+func (c *sectorFlowCache) tryStart(m market.MarketID) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.scanning[m] {
+		return false
+	}
+	c.scanning[m] = true
+	return true
+}
+
+func (c *sectorFlowCache) finish(m market.MarketID) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.scanning[m] = false
 }
 
 func (c *sectorFlowCache) get(m market.MarketID, tf string) SectorFlowResponse {
@@ -144,6 +168,11 @@ type sectorFlowBuilder struct {
 // all (s.sector nil for US, s.industryMap nil for TW), matching every other
 // optional-provider nil-check's "feature quietly absent" convention.
 func (s *Server) RunSectorFlowScan(ctx context.Context, m market.MarketID) {
+	if !s.sectorFlow.tryStart(m) {
+		logger.Infof("web: sector flow scan (%s): already running, skipping this trigger", m)
+		return
+	}
+	defer s.sectorFlow.finish(m)
 	defer func() {
 		if p := recover(); p != nil {
 			logger.Errorf("web: panic in sector flow scan (%s): %v", m, p)
@@ -297,4 +326,37 @@ func (s *Server) handleSectorFlow(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := s.sectorFlow.get(marketParam(r), tf)
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleSectorFlowRefresh serves POST /api/sectorflow/refresh?market=us|tw —
+// a manual trigger for RunSectorFlowScan, since the cache is process-only
+// and otherwise only fills on its 06:10/14:55 CST cron schedule (see
+// docs/phase-18-sector-money-flow.md §8's acceptance criteria, which calls
+// for this manually-triggerable path explicitly). Not gated behind
+// requireWritable/requireAuth like the trade endpoints — this touches no
+// persisted financial state, just kicks off the same read-heavy external-API
+// scan the cron job runs, so it stays available even when WEB_PASSWORD isn't
+// configured (a local/dev deployment with no password set is exactly the
+// case this exists to unblock). Runs in the background and returns
+// immediately — a full US scan takes several minutes (~500 tickers at
+// sectorFlowRequestDelay each) — the client should poll GET /api/sectorflow
+// and watch computedAt for completion, not wait on this response.
+func (s *Server) handleSectorFlowRefresh(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if p := recover(); p != nil {
+			logger.Errorf("web: panic in handleSectorFlowRefresh: %v", p)
+			writeError(w, http.StatusInternalServerError, "internal error")
+		}
+	}()
+	m := marketParam(r)
+	if m == market.TW && s.industryMap == nil {
+		writeError(w, http.StatusServiceUnavailable, "no TW industry classification source configured (set FINMIND_TOKEN)")
+		return
+	}
+	if m == market.US && s.sector == nil {
+		writeError(w, http.StatusServiceUnavailable, "no US sector provider configured (set FINNHUB_API_KEY)")
+		return
+	}
+	go s.RunSectorFlowScan(context.Background(), m)
+	writeJSON(w, http.StatusAccepted, map[string]string{"message": "sector flow scan started for " + string(m)})
 }

@@ -166,6 +166,7 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /api/paper", s.handlePaper)
 	s.mux.HandleFunc("GET /api/options", s.handleOptions)
 	s.mux.HandleFunc("GET /api/sectorflow", s.handleSectorFlow)
+	s.mux.HandleFunc("POST /api/sectorflow/refresh", s.handleSectorFlowRefresh)
 	// Write routes (Phase 10) are always registered, but requireWritable
 	// 404s every one of them when no password is configured (see Config.
 	// Password's doc comment) — registering unconditionally, rather than

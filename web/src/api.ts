@@ -1221,6 +1221,21 @@ export function fetchSectorFlow(market: Market = "us", tf: SectorFlowTimeframe =
   return getJSON<SectorFlow>(`/api/sectorflow?market=${market}&tf=${tf}`);
 }
 
+// refreshSectorFlow mirrors internal/web/sectorflow.go's
+// POST /api/sectorflow/refresh — a manual trigger for the same scan the
+// nightly cron job runs, since the cache is process-only and otherwise only
+// fills on its 06:10/14:55 CST schedule. Unlike the Phase 10 write
+// endpoints below, this needs no auth (see that handler's doc comment), so
+// it doesn't go through postJSON's ApiError/401-retry handling.
+export async function refreshSectorFlow(market: Market = "us"): Promise<{ message: string }> {
+  const res = await fetch(`/api/sectorflow/refresh?market=${market}`, { method: "POST" });
+  if (!res.ok) {
+    const data: unknown = await res.json().catch(() => ({}));
+    throw new Error((data as { error?: string })?.error ?? `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 // --- Phase 10 write endpoints (docs/phase-10-web-trade-input.md) ---
 // Mirrors internal/web/trade.go/auth.go's request/response shapes. Every
 // write endpoint is same-origin POST + JSON, gated server-side on the
