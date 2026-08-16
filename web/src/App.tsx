@@ -247,6 +247,7 @@ export default function App() {
         names={names}
         writable={status?.writable ?? false}
         onTrade={status?.writable ? openTrade : undefined}
+        onUnauthorized={(retry) => setAuthRetry(() => retry)}
         onBack={() => navigate("/chart")}
       />
     ) : (

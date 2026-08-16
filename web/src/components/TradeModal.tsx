@@ -1,6 +1,6 @@
 import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { addBuyAlert, ApiError, executeBuy, executeSell, setStopPrice } from "../api";
+import { addBuyAlert, ApiError, executeBuy, executeSell, setStopPrice, setThesis } from "../api";
 import type { Dictionary } from "../i18n";
 
 export type TradeMode = "buy" | "sell" | "stop" | "buyalert";
@@ -58,9 +58,12 @@ export function TradeModal({
   const [fee, setFee] = useState("");
   const [date, setDate] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showThesis, setShowThesis] = useState(false);
+  const [thesisText, setThesisText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [thesisWarning, setThesisWarning] = useState<string | null>(null);
 
   async function submit() {
     setSubmitting(true);
@@ -80,6 +83,16 @@ export function TradeModal({
                 date: date || undefined,
               });
       setSuccessMsg(res.message);
+      // The thesis note is a second, independent write — a failure here
+      // must not make the (already-succeeded) buy look like it failed too,
+      // see docs Phase 21 §PR1's "two requests" decision.
+      if (mode === "buy" && thesisText.trim()) {
+        try {
+          await setThesis(cleanTicker, thesisText.trim());
+        } catch (e) {
+          setThesisWarning(e instanceof ApiError ? e.message : dict.error);
+        }
+      }
       onSuccess();
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
@@ -116,6 +129,11 @@ export function TradeModal({
             {successMsg ? (
               <div className="modal-body">
                 <div className="success-message">{successMsg}</div>
+                {thesisWarning && (
+                  <div className="error-message">
+                    {dict.thesisSaveFailedNote}: {thesisWarning}
+                  </div>
+                )}
                 <div className="modal-actions">
                   <button className="btn-primary" onClick={onClose}>
                     {dict.close}
@@ -185,6 +203,28 @@ export function TradeModal({
                           />
                         </label>
                       </>
+                    )}
+                  </>
+                )}
+                {mode === "buy" && (
+                  <>
+                    <button
+                      type="button"
+                      className="advanced-toggle"
+                      onClick={() => setShowThesis((v) => !v)}
+                    >
+                      {showThesis ? "▾" : "▸"} {dict.thesisAddToggle}
+                    </button>
+                    {showThesis && (
+                      <label className="form-field">
+                        <textarea
+                          className="mono"
+                          rows={3}
+                          value={thesisText}
+                          placeholder={dict.thesisFieldPlaceholder}
+                          onChange={(e) => setThesisText(e.target.value)}
+                        />
+                      </label>
                     )}
                   </>
                 )}

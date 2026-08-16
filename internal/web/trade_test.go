@@ -71,6 +71,17 @@ func (f *fakeBuyAlertDB) RemoveBuyAlert(id int64) error {
 	return f.err
 }
 
+// fakeThesisDB is a thesisWriter stub.
+type fakeThesisDB struct {
+	lastTicker, lastText string
+	err                  error
+}
+
+func (f *fakeThesisDB) SetThesis(ticker, text string) error {
+	f.lastTicker, f.lastText = ticker, text
+	return f.err
+}
+
 // newTradeTestServer builds a Server with the write routes registered
 // (mirroring New's own registration for password != "") over fakes, so
 // tests don't need a real *db.DB — see testServer's own reasoning above.
@@ -79,6 +90,7 @@ func newTradeTestServer(password string, trade TradeExecutor, wl watchlistWriter
 		db:          &fakeDB{},
 		watchlistDB: wl,
 		buyAlertDB:  &fakeBuyAlertDB{},
+		thesisDB:    &fakeThesisDB{},
 		quotes:      &fakeQuotes{},
 		history:     &fakeHistory{},
 		lang:        i18n.EN,
@@ -94,6 +106,7 @@ func newTradeTestServer(password string, trade TradeExecutor, wl watchlistWriter
 	s.mux.HandleFunc("POST /api/watchlist/remove", s.requireWritable(s.requireAuth(s.handleWatchlistRemove)))
 	s.mux.HandleFunc("POST /api/buy-alerts/add", s.requireWritable(s.requireAuth(s.handleBuyAlertAdd)))
 	s.mux.HandleFunc("POST /api/buy-alerts/remove", s.requireWritable(s.requireAuth(s.handleBuyAlertRemove)))
+	s.mux.HandleFunc("POST /api/thesis", s.requireWritable(s.requireAuth(s.handleThesisSet)))
 	return s
 }
 
@@ -276,6 +289,54 @@ func TestHandleWatchlistAddRemove(t *testing.T) {
 	if rec := add(""); rec.Code != http.StatusBadRequest {
 		t.Errorf("add(\"\") status = %d, want 400", rec.Code)
 	}
+}
+
+func TestHandleThesisSet(t *testing.T) {
+	s := newTradeTestServer("secret", &fakeTrade{}, &fakeWatchlistDB{})
+	ftd := s.thesisDB.(*fakeThesisDB)
+	cookie := loginAndGetCookie(t, s, "secret")
+
+	post := func(req thesisRequest) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(req)
+		r := httptest.NewRequest(http.MethodPost, "/api/thesis", bytes.NewReader(body))
+		r.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, r)
+		return rec
+	}
+
+	t.Run("saves and uppercases the ticker", func(t *testing.T) {
+		rec := post(thesisRequest{Ticker: "aapl", Text: "  entering on the breakout  "})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+		}
+		if ftd.lastTicker != "AAPL" || ftd.lastText != "entering on the breakout" {
+			t.Errorf("SetThesis(%q, %q), want (AAPL, trimmed text)", ftd.lastTicker, ftd.lastText)
+		}
+	})
+
+	t.Run("rejects blank text", func(t *testing.T) {
+		rec := post(thesisRequest{Ticker: "AAPL", Text: "   "})
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400", rec.Code)
+		}
+	})
+
+	t.Run("rejects blank ticker", func(t *testing.T) {
+		rec := post(thesisRequest{Ticker: "", Text: "some thesis"})
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400", rec.Code)
+		}
+	})
+
+	t.Run("requires auth", func(t *testing.T) {
+		body, _ := json.Marshal(thesisRequest{Ticker: "AAPL", Text: "x"})
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/thesis", bytes.NewReader(body)))
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("status = %d, want 401", rec.Code)
+		}
+	})
 }
 
 func TestNew_WriteRoutesGatedByPassword(t *testing.T) {

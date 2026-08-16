@@ -161,6 +161,11 @@ export interface Lesson {
   lesson: string;
 }
 
+export interface ThesisEntry {
+  date: string;
+  text: string;
+}
+
 export interface RoundDetail {
   ticker: string;
   start: string;
@@ -170,12 +175,13 @@ export interface RoundDetail {
   maePct: number;
   mfePct: number;
   hasMaeMfe: boolean;
-  // thesis/lessons (Phase 8 PR4) are read-only attachments. thesis is the
-  // *current* thesis on record (db.GetThesis), not necessarily what it was
-  // when this round was open — there's no thesis history table. null means
-  // neither exists nor loaded successfully; the frontend renders no block
-  // either way.
-  thesis: string | null;
+  // theses/lessons (Phase 8 PR4, thesis expanded to a full history in Phase
+  // 21) are attachments — theses is every thesis entry recorded while this
+  // round was open, oldest first (empty when none). editable is true only
+  // for a still-open round; that's the only case the frontend shows an edit
+  // form for (see internal/web/handlers.go's roundDetailResponse doc).
+  theses: ThesisEntry[];
+  editable: boolean;
   lessons: Lesson[];
 }
 
@@ -806,7 +812,10 @@ function getMockData(url: string): any {
       maePct: -3.4,
       mfePct: 14.2,
       hasMaeMfe: true,
-      thesis: "Base breakout on rising volume; holding while the 20d holds and the earnings guide stays intact. Trim half into the prior high.",
+      theses: [
+        { date: start, text: "Base breakout on rising volume; holding while the 20d holds and the earnings guide stays intact. Trim half into the prior high." },
+      ],
+      editable: false,
       lessons: [
         { date: "2026-06-02", lesson: "Stop was too tight relative to ATR — shaken out before the real move." },
         { date: "2026-06-19", lesson: "Adding on strength worked; adding on weakness did not." },
@@ -1309,6 +1318,12 @@ export function addBuyAlert(req: BuyAlertRequest): Promise<TradeResponse> {
 
 export function removeBuyAlert(id: number): Promise<TradeResponse> {
   return postJSON("/api/buy-alerts/remove", { id });
+}
+
+// setThesis backs Phase 21's two thesis-writing entry points: TradeModal's
+// buy-form textarea and ChartView's round-detail edit (open rounds only).
+export function setThesis(ticker: string, text: string): Promise<TradeResponse> {
+  return postJSON("/api/thesis", { ticker, text });
 }
 
 // --- Phase 5 §B CSV import (optional, docs/phase-5-web-dashboard.md) ---

@@ -530,6 +530,28 @@ var migrations = []string{
 	ALTER TABLE transactions ADD COLUMN ext_id TEXT NOT NULL DEFAULT '';
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_ext_id ON transactions(ext_id) WHERE ext_id != '';
 	`,
+	// 18: Phase 21's "論點日誌" turns thesis from one overwritable row per
+	// ticker into an append-only journal — thesis_entries(ticker, text,
+	// created_at), "current" thesis is just its latest row. See
+	// GetThesis/SetThesis/GetThesisEntriesInRange (internal/db/thesis.go) for
+	// the read/write rationale. Existing rows carry over as each ticker's
+	// first entry (dated at their old updated_at) so no history is lost,
+	// then the old thesis table is dropped — GetThesis/SetThesis were its
+	// only callers and both now point at thesis_entries. The unique index on
+	// (ticker, date(created_at)) is what SetThesis's ON CONFLICT upsert
+	// targets for its "one edit per ticker per day" rule.
+	`
+	CREATE TABLE IF NOT EXISTS thesis_entries (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		ticker TEXT NOT NULL,
+		text TEXT NOT NULL,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_thesis_entries_ticker_day ON thesis_entries(ticker, date(created_at));
+	INSERT INTO thesis_entries (ticker, text, created_at)
+		SELECT ticker, thesis, updated_at FROM thesis;
+	DROP TABLE thesis;
+	`,
 }
 
 func (d *DB) migrate() error {
@@ -1563,35 +1585,6 @@ func (d *DB) ResetTradingData() error {
 		}
 	}
 	return tx.Commit()
-}
-
-// GetThesis returns the user's holding rationale for ticker, or ok=false if
-// /thesis has never been run for it.
-func (d *DB) GetThesis(ticker string) (string, bool, error) {
-	var thesis string
-	err := d.conn.QueryRow(`SELECT thesis FROM thesis WHERE ticker = ?`, ticker).Scan(&thesis)
-	if err == sql.ErrNoRows {
-		return "", false, nil
-	}
-	if err != nil {
-		return "", false, err
-	}
-	return thesis, true, nil
-}
-
-// SetThesis upserts ticker's holding rationale, replacing whatever was there
-// before — see the thesis table's migration-7 doc comment for why this is a
-// single overwritable field rather than a journaled history.
-func (d *DB) SetThesis(ticker, thesis string) error {
-	_, err := d.conn.Exec(`
-		INSERT INTO thesis (ticker, thesis, updated_at)
-		VALUES (?, ?, CURRENT_TIMESTAMP)
-		ON CONFLICT(ticker) DO UPDATE SET
-			thesis = excluded.thesis,
-			updated_at = excluded.updated_at`,
-		ticker, thesis,
-	)
-	return err
 }
 
 // Backup writes a consistent point-in-time copy of the database to destPath

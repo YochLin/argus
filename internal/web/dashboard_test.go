@@ -35,10 +35,11 @@ type fakeDB struct {
 
 	// recs backs GetRecommendationsSince for recperf_test.go.
 	recs []db.Recommendation
-	// thesis/lessons back GetThesis/GetLessonsForTickers for rounds_test.go's
-	// thesis/lessons attachment tests (Phase 8 PR4).
-	thesis  map[string]string
-	lessons map[string][]db.Lesson
+	// thesisEntries/lessons back GetThesisEntriesInRange/GetLessonsForTickers
+	// for rounds_test.go's thesis/lessons attachment tests (Phase 8 PR4,
+	// thesis expanded to a full history in Phase 21).
+	thesisEntries map[string][]db.ThesisEntry
+	lessons       map[string][]db.Lesson
 
 	// realizedPnL backs GetRealizedPnL for the sidebar account-overview
 	// status tests below — nil (zero value) behaves as "no closed trades."
@@ -91,9 +92,15 @@ func (f *fakeDB) GetSetting(key string) (string, bool, error) {
 func (f *fakeDB) GetRecommendationsSince(fromDate string) ([]db.Recommendation, error) {
 	return f.recs, nil
 }
-func (f *fakeDB) GetThesis(ticker string) (string, bool, error) {
-	v, ok := f.thesis[ticker]
-	return v, ok, nil
+func (f *fakeDB) GetThesisEntriesInRange(ticker, from, to string) ([]db.ThesisEntry, error) {
+	var out []db.ThesisEntry
+	for _, e := range f.thesisEntries[ticker] {
+		if e.CreatedAt < from || (to != "" && e.CreatedAt > to) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out, nil
 }
 func (f *fakeDB) GetLessonsForTickers(tickers []string) (map[string][]db.Lesson, error) {
 	out := make(map[string][]db.Lesson)

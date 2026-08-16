@@ -8,10 +8,12 @@ import {
   type Time,
 } from "lightweight-charts";
 import {
+  ApiError,
   currencySymbol,
   fetchChart,
   fetchRoundDetail,
   marketOf,
+  setThesis,
   tickerLabel,
   type Candle,
   type Chart,
@@ -31,6 +33,10 @@ interface Props {
   names?: Record<string, string>;
   writable?: boolean;
   onTrade?: (mode: TradeMode, ticker: string, prefillPrice?: number) => void;
+  // onUnauthorized backs the round-detail thesis edit form's 401 handling —
+  // same retry-after-login convention as TradeModal/ChartListView, needed
+  // here since that edit is an inline write, not routed through TradeModal.
+  onUnauthorized?: (retry: () => void) => void;
 }
 
 const maxPlottedPerSide = 3;
@@ -153,11 +159,15 @@ export function ChartView({
   names = {},
   writable = false,
   onTrade,
+  onUnauthorized,
 }: Props) {
   const [chart, setChart] = useState<Chart | null>(null);
   const [error, setError] = useState(false);
   const [selectedRoundStart, setSelectedRoundStart] = useState<string | null>(initialRoundStart ?? null);
   const [roundDetail, setRoundDetail] = useState<RoundDetail | null>(null);
+  const [thesisDraft, setThesisDraft] = useState("");
+  const [thesisSubmitting, setThesisSubmitting] = useState(false);
+  const [thesisError, setThesisError] = useState<string | null>(null);
 
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -179,6 +189,8 @@ export function ChartView({
   }, [ticker, initialRoundStart]);
 
   useEffect(() => {
+    setThesisDraft("");
+    setThesisError(null);
     if (!selectedRoundStart || !ticker) {
       setRoundDetail(null);
       return;
@@ -187,6 +199,25 @@ export function ChartView({
       .then(setRoundDetail)
       .catch(() => setRoundDetail(null));
   }, [ticker, selectedRoundStart]);
+
+  async function submitThesis() {
+    if (!ticker || !selectedRoundStart || !thesisDraft.trim()) return;
+    setThesisSubmitting(true);
+    setThesisError(null);
+    try {
+      await setThesis(ticker, thesisDraft.trim());
+      setThesisDraft("");
+      setRoundDetail(await fetchRoundDetail(ticker, selectedRoundStart));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401 && onUnauthorized) {
+        onUnauthorized(submitThesis);
+      } else {
+        setThesisError(e instanceof ApiError ? e.message : dict.error);
+      }
+    } finally {
+      setThesisSubmitting(false);
+    }
+  }
 
   const containerRef = useCallback((node: HTMLDivElement | null) => {
     if (chartRef.current) {
@@ -510,16 +541,45 @@ export function ChartView({
             />
           </div>
           <div className="card">
-            {roundDetail.thesis && (
+            {(roundDetail.theses.length > 0 || (writable && roundDetail.editable)) && (
               <>
                 <div className="eyebrow">{dict.thesisLabel}</div>
-                <div className="stat-note">{dict.currentThesisNote}</div>
-                <p>{roundDetail.thesis}</p>
+                {roundDetail.theses.length > 0 && (
+                  <ul className="lessons-list">
+                    {roundDetail.theses.map((t, i) => (
+                      <li key={i}>
+                        <span className="stat-note">{t.date}</span> {t.text}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {writable && roundDetail.editable && (
+                  <div style={{ marginTop: roundDetail.theses.length > 0 ? 8 : 0 }}>
+                    <label className="form-field">
+                      <textarea
+                        className="mono"
+                        rows={2}
+                        value={thesisDraft}
+                        placeholder={dict.thesisFieldPlaceholder}
+                        onChange={(e) => setThesisDraft(e.target.value)}
+                      />
+                    </label>
+                    {thesisError && <div className="error-message">{thesisError}</div>}
+                    <button
+                      type="button"
+                      className="btn-sm"
+                      disabled={!thesisDraft.trim() || thesisSubmitting}
+                      onClick={submitThesis}
+                    >
+                      {dict.thesisEditToggle}
+                    </button>
+                  </div>
+                )}
               </>
             )}
             {roundDetail.lessons.length > 0 && (
               <>
-                <div className="eyebrow" style={{ marginTop: roundDetail.thesis ? 16 : 0 }}>
+                <div className="eyebrow" style={{ marginTop: roundDetail.theses.length > 0 || roundDetail.editable ? 16 : 0 }}>
                   {dict.lessonsLabel}
                 </div>
                 <ul className="lessons-list">
