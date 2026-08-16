@@ -158,7 +158,10 @@ export interface Dictionary {
   recNarrativeFollowBetterPrefix: string;
   recNarrativeFollowBetterSuffix: string;
   thesisLabel: string;
-  currentThesisNote: string;
+  thesisAddToggle: string;
+  thesisEditToggle: string;
+  thesisFieldPlaceholder: string;
+  thesisSaveFailedNote: string;
   lessonsLabel: string;
   rMultipleHistogram: string;
   rMultipleNote: string;
@@ -478,7 +481,10 @@ const en: Dictionary = {
   recNarrativeFollowBetterSuffix:
     " more than the ones you skipped — your filtering is working.",
   thesisLabel: "THESIS",
-  currentThesisNote: "current thesis on record — may have changed since this round closed",
+  thesisAddToggle: "Record entry thesis (optional)",
+  thesisEditToggle: "Add thesis entry",
+  thesisFieldPlaceholder: "Your reasoning right now",
+  thesisSaveFailedNote: "Trade went through, but the thesis note failed to save",
   lessonsLabel: "TRADE LESSONS",
   rMultipleHistogram: "R-MULTIPLE DISTRIBUTION",
   rMultipleNote: "R data accumulating since",
@@ -779,7 +785,10 @@ const zh: Dictionary = {
   recNarrativeFollowBetterPrefix: "你跟進的訊號比你略過的多賺 ",
   recNarrativeFollowBetterSuffix: " ——你的篩選確實有效。",
   thesisLabel: "持有論點",
-  currentThesisNote: "目前記錄的論點——回合平倉後論點可能已改寫",
+  thesisAddToggle: "記錄進場論點（選填）",
+  thesisEditToggle: "新增論點",
+  thesisFieldPlaceholder: "現在的判斷是什麼",
+  thesisSaveFailedNote: "買單已成立，但論點寫入失敗",
   lessonsLabel: "交易教訓",
   rMultipleHistogram: "R-MULTIPLE 分布",
   rMultipleNote: "R 資料自",

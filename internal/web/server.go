@@ -109,6 +109,7 @@ type Server struct {
 	password         string
 	trade            TradeExecutor
 	csvDB            csvWriter
+	thesisDB         thesisWriter
 	// paperDB stays *db.DB (not dbReader) so nil-checking it in
 	// handlePaper can't fall into the classic "non-nil interface wrapping
 	// a nil pointer" trap — it's passed into buildPaper's dbReader
@@ -139,6 +140,7 @@ func New(cfg Config) *Server {
 		password:            cfg.Password,
 		trade:               cfg.Trade,
 		csvDB:               cfg.DB,
+		thesisDB:            cfg.DB,
 		paperDB:             cfg.PaperDB,
 		paperInitialCashUSD: cfg.PaperInitialCashUSD,
 		paperInitialCashTWD: cfg.PaperInitialCashTWD,
@@ -181,6 +183,9 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("POST /api/watchlist/remove", s.requireWritable(s.requireAuth(s.handleWatchlistRemove)))
 	s.mux.HandleFunc("POST /api/buy-alerts/add", s.requireWritable(s.requireAuth(s.handleBuyAlertAdd)))
 	s.mux.HandleFunc("POST /api/buy-alerts/remove", s.requireWritable(s.requireAuth(s.handleBuyAlertRemove)))
+	// /api/thesis (Phase 21) is a DB write like any other above — no reason
+	// to give it a looser gate than /api/trade/*.
+	s.mux.HandleFunc("POST /api/thesis", s.requireWritable(s.requireAuth(s.handleThesisSet)))
 	// /api/import (Phase 5 §B, optional CSV backfill) reuses the same
 	// requireWritable/requireAuth gate as every other write route — a bulk
 	// transaction write is no less a write than a single /buy.

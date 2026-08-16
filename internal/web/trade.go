@@ -43,6 +43,12 @@ type buyAlertWriter interface {
 	RemoveBuyAlert(id int64) error
 }
 
+// thesisWriter backs POST /api/thesis (Phase 21) — like watchlistWriter, a
+// direct DB write with no bot-layer behavior beyond db.SetThesis itself.
+type thesisWriter interface {
+	SetThesis(ticker, text string) error
+}
+
 // Fee is a *float64 so an omitted JSON field (nil) can be told apart from an
 // explicit 0 — nil triggers ExecuteBuy/ExecuteSell's TW fee auto-calc
 // (Phase 13 §3.2), matching parseTradeArgs' feeSet distinction.
@@ -70,6 +76,11 @@ type buyAlertRequest struct {
 
 type buyAlertRemoveRequest struct {
 	ID int64 `json:"id"`
+}
+
+type thesisRequest struct {
+	Ticker string `json:"ticker"`
+	Text   string `json:"text"`
 }
 
 // tradeResponse's Message is the exact same i18n-rendered confirmation (or
@@ -174,6 +185,30 @@ func (s *Server) handleBuyAlertRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, tradeResponse{Message: "removed"})
+}
+
+// handleThesisSet backs POST /api/thesis (Phase 21) — the write endpoint
+// shared by both frontend entry points (ChartView's round-detail edit and
+// TradeModal's buy-form textarea). Same requireWritable/requireAuth gate as
+// every other write route (see server.go); ticker/text are both required
+// server-side even though the buy form only ever sends a non-empty text
+// (skip-if-blank is a frontend convenience, not something to trust).
+func (s *Server) handleThesisSet(w http.ResponseWriter, r *http.Request) {
+	var req thesisRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	ticker := strings.ToUpper(strings.TrimSpace(req.Ticker))
+	text := strings.TrimSpace(req.Text)
+	if ticker == "" || text == "" {
+		writeError(w, http.StatusBadRequest, "ticker and text are required")
+		return
+	}
+	if err := s.thesisDB.SetThesis(ticker, text); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save thesis")
+		return
+	}
+	writeJSON(w, http.StatusOK, tradeResponse{Message: "saved"})
 }
 
 func (s *Server) handleWatchlistAdd(w http.ResponseWriter, r *http.Request) {

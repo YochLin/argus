@@ -85,9 +85,10 @@ type dbReader interface {
 	// 8 PR3) — the same whole-history read argus eval's CLI uses, so the two
 	// reports are guaranteed to score identically off the same database.
 	GetRecommendationsSince(fromDate string) ([]db.Recommendation, error)
-	// GetThesis/GetLessonsForTickers back rounds.go's round-detail thesis/
-	// lessons attachment (Phase 8 PR4).
-	GetThesis(ticker string) (string, bool, error)
+	// GetThesisEntriesInRange/GetLessonsForTickers back rounds.go's
+	// round-detail thesis/lessons attachment (Phase 8 PR4, thesis journal
+	// expanded to a full per-round history in Phase 21).
+	GetThesisEntriesInRange(ticker, from, to string) ([]db.ThesisEntry, error)
 	GetLessonsForTickers(tickers []string) (map[string][]db.Lesson, error)
 	// GetRealizedPnL backs buildStatus's sidebar account-overview card — the
 	// same all-time-SELL-total definition internal/bot's /portfolio uses.
