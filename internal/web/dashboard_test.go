@@ -50,6 +50,8 @@ type fakeDB struct {
 	// optionTransactions backs GetAllOptionTransactions for options_test.go's
 	// Phase 12 PR4 closed-position list tests.
 	optionTransactions []db.OptionTransaction
+	// universe backs GetUniverse for sectorflow_test.go's Phase 18 scan tests.
+	universe []db.UniverseEntry
 }
 
 func (f *fakeDB) GetPositions() ([]db.Position, error)          { return f.positions, nil }
@@ -107,6 +109,7 @@ func (f *fakeDB) GetOptionPositions() ([]db.OptionPosition, error)  { return f.o
 func (f *fakeDB) GetAllOptionTransactions() ([]db.OptionTransaction, error) {
 	return f.optionTransactions, nil
 }
+func (f *fakeDB) GetUniverse() ([]db.UniverseEntry, error) { return f.universe, nil }
 
 // fakeQuotes implements quoteGetter for tests.
 type fakeQuotes struct {

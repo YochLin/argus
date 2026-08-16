@@ -124,6 +124,13 @@ func main() {
 	var marketNewsProvider data.MarketNewsProvider
 	var companyNameProvider data.CompanyNameProvider
 	var trustNetProvider data.TrustNetProvider
+	// sectorProvider/industryMapProvider back Phase 18's /api/sectorflow —
+	// US via Finnhub (per-ticker), TW via FinMind's whole-market map (see
+	// internal/web/sectorflow.go). Only web.Config reads these; the bot
+	// itself has no sector-flow surface (web-only, see PLAN.md's Phase 18
+	// entry).
+	var sectorProvider data.SectorProvider
+	var industryMapProvider data.IndustryMapProvider
 	fundamentalsRouter := &data.FundamentalsRouter{}
 	if cfg.FinnhubKey != "" {
 		finnhub := data.NewFinnhub(cfg.FinnhubKey)
@@ -133,6 +140,7 @@ func main() {
 		insiderTxProvider = finnhub
 		earningsProvider = finnhub
 		marketNewsProvider = finnhub
+		sectorProvider = finnhub
 	}
 	// FINMIND_TOKEN gates TW fundamentals the same way FINNHUB_API_KEY gates
 	// US (Phase 6 PR3) — FinMind has no Yahoo-style Multi fallback to sit
@@ -146,6 +154,7 @@ func main() {
 		fundamentalsRouter.TW = finmind
 		companyNameProvider = finmind
 		trustNetProvider = finmind
+		industryMapProvider = finmind
 	}
 	// fundamentalsProvider stays nil (not a router wrapping two nil fields)
 	// when neither key is set, preserving every existing `if b.fundamentals
@@ -254,6 +263,13 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
+	// Constructed here (not at its original spot below) so the Phase 18
+	// sector-flow jobs can be registered on it from inside the WebAddr block
+	// right below, right alongside webServer's own construction — cron
+	// registration order doesn't matter to robfig/cron, so moving this up
+	// changes nothing about the jobs registered further down.
+	sched := scheduler.New()
+
 	if cfg.WebAddr != "" {
 		// In-process, not a subcommand like "mcp": the dashboard needs live
 		// quotes (data.Provider) alongside DB reads, and shares this
@@ -275,15 +291,25 @@ func main() {
 			PaperDB:             paperDatabase,
 			PaperInitialCashUSD: cfg.PaperInitialCashUSD,
 			PaperInitialCashTWD: cfg.PaperInitialCashTWD,
+			Sector:              sectorProvider,
+			IndustryMap:         industryMapProvider,
 		})
 		go func() {
 			if err := webServer.Run(ctx, cfg.WebAddr); err != nil {
 				logger.Errorf("web: server error: %v", err)
 			}
 		}()
+		// Phase 18's sector money-flow scan only has a consumer when the
+		// dashboard is running, so it's registered here rather than
+		// unconditionally alongside the other jobs below.
+		sched.AddSectorFlowScan(ctx, func(ctx context.Context) {
+			webServer.RunSectorFlowScan(ctx, market.US)
+		})
+		sched.AddTWSectorFlowScan(ctx, func(ctx context.Context) {
+			webServer.RunSectorFlowScan(ctx, market.TW)
+		})
 	}
 
-	sched := scheduler.New()
 	sched.AddDailyReport(ctx, func(ctx context.Context) {
 		telegramBot.RunDailyReport(ctx)
 	})

@@ -18,6 +18,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { TradeModal, type TradeMode } from "./components/TradeModal";
 import { LoginModal } from "./components/LoginModal";
 import { ImportView } from "./components/ImportView";
+import { SectorFlowView } from "./components/SectorFlowView";
 
 // Four client-side routes (dashboard, calendar, round list, round detail)
 // don't justify pulling in a routing library — a hand-rolled route
@@ -216,6 +217,15 @@ export default function App() {
         onSuccess={() => setRefreshSignal((n) => n + 1)}
       />
     ) : null;
+  } else if (path === "/flow") {
+    body = (
+      <SectorFlowView
+        dict={dict}
+        market={market}
+        names={names}
+        onTickerClick={(t) => navigate(`/chart?ticker=${encodeURIComponent(t)}`)}
+      />
+    );
   } else if (path === "/risk") {
     body = (
       <RiskView

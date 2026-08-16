@@ -2040,3 +2040,111 @@ th {
 .rec-source-cell {
   color: var(--ink-2);
 }
+
+/* Phase 18 sector money-flow treemap (SectorFlowView.tsx). .flow-treemap's
+   fixed aspect-ratio matches the component's virtual 1000x560 squarify
+   canvas, so percentage-based child positions always line up regardless of
+   the card's real rendered width — no ResizeObserver needed. */
+.flow-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.flow-stats-grid {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.flow-treemap-card {
+  padding: 0;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.flow-treemap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1000 / 560;
+}
+
+.flow-sector {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.flow-sector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 11px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.flow-sector-body {
+  position: relative;
+  width: 100%;
+  height: calc(100% - 28px);
+}
+
+.flow-block {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  padding: 4px 6px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+
+.flow-block.held {
+  outline: 1.5px solid var(--accent);
+  outline-offset: -1.5px;
+}
+
+.flow-block-held-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.flow-block-ticker {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flow-block-change {
+  font-size: 10px;
+}
+
+.flow-rank-bar-wrap {
+  position: relative;
+}
+
+.flow-rank-bar {
+  height: 3px;
+  border-radius: 2px;
+  margin-top: 4px;
+}
+
+.flow-rank-bar.profit-bar {
+  background: var(--profit);
+}
+
+.flow-rank-bar.loss-bar {
+  background: var(--loss);
+}

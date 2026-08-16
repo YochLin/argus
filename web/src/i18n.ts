@@ -312,6 +312,22 @@ export interface Dictionary {
   noOptionPositions: string;
   noClosedOptions: string;
   noOptionCollateral: string;
+  // Phase 18: the sector money-flow treemap page.
+  navFlow: string;
+  sectorFlowNotReady: string;
+  sectorFlowSizeBy: string;
+  sectorFlowSizeByCap: string;
+  sectorFlowSizeByFlow: string;
+  sectorFlowHeld: string;
+  sectorFlowNetFlow: string;
+  sectorFlowChange: string;
+  sectorFlowTickerCount: string;
+  sectorFlowRanking: string;
+  sectorFlowTWCapNote: string;
+  sectorFlowTotalNetFlow: string;
+  sectorFlowBreadth: string;
+  sectorFlowStrongest: string;
+  sectorFlowWeakest: string;
 }
 
 const en: Dictionary = {
@@ -595,6 +611,21 @@ const en: Dictionary = {
   noOptionPositions: "No open option positions.",
   noClosedOptions: "No closed option trades yet.",
   noOptionCollateral: "No collateral obligations.",
+  navFlow: "Flow",
+  sectorFlowNotReady: "Sector data isn't ready yet — check back after the next scan.",
+  sectorFlowSizeBy: "Size by",
+  sectorFlowSizeByCap: "Market Cap",
+  sectorFlowSizeByFlow: "Money Flow",
+  sectorFlowHeld: "Held",
+  sectorFlowNetFlow: "Net Flow",
+  sectorFlowChange: "Change",
+  sectorFlowTickerCount: "Tickers",
+  sectorFlowRanking: "Sector Money Flow Ranking",
+  sectorFlowTWCapNote: "TW block size uses trading value (no free market-cap source), not real market cap.",
+  sectorFlowTotalNetFlow: "Total Net Flow",
+  sectorFlowBreadth: "Advancers / Decliners",
+  sectorFlowStrongest: "Strongest Sector",
+  sectorFlowWeakest: "Weakest Sector",
 };
 
 const zh: Dictionary = {
@@ -873,6 +904,21 @@ const zh: Dictionary = {
   noOptionPositions: "目前沒有期權部位。",
   noClosedOptions: "尚無已平倉期權交易。",
   noOptionCollateral: "沒有擔保品義務。",
+  navFlow: "資金流向",
+  sectorFlowNotReady: "類股資料尚未就緒，請等待下次排程掃描後再查看。",
+  sectorFlowSizeBy: "方塊大小",
+  sectorFlowSizeByCap: "市值",
+  sectorFlowSizeByFlow: "資金流",
+  sectorFlowHeld: "持有",
+  sectorFlowNetFlow: "淨資金流",
+  sectorFlowChange: "漲跌",
+  sectorFlowTickerCount: "檔數",
+  sectorFlowRanking: "類股資金流排行",
+  sectorFlowTWCapNote: "台股方塊大小以成交金額計算（無免費市值資料源），非實際市值。",
+  sectorFlowTotalNetFlow: "全市場淨資金流",
+  sectorFlowBreadth: "上漲／下跌家數",
+  sectorFlowStrongest: "資金流最強類股",
+  sectorFlowWeakest: "資金流最弱類股",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

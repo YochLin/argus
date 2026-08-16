@@ -535,6 +535,39 @@ export interface Options {
   };
 }
 
+// SectorFlow mirrors internal/web/sectorflow.go's SectorFlowResponse (Phase
+// 18). Cap is real market cap for US, a trading-value proxy for TW — same
+// field name regardless of source (see that file's doc comment); the TW
+// page renders sectorFlowTWCapNote so the difference isn't silently implied
+// as apples-to-apples. Ready false means no scan has completed for this
+// market yet (fresh process restart), not "market has zero sectors."
+export interface SectorFlowItem {
+  ticker: string;
+  cap: number;
+  flow: number;
+  changePct: number;
+  held: boolean;
+}
+
+export interface SectorFlowSector {
+  name: string;
+  netFlow: number;
+  dollarVolume: number;
+  marketCap: number;
+  changePct: number;
+  tickerCount: number;
+  heldCount: number;
+  items: SectorFlowItem[];
+}
+
+export interface SectorFlow {
+  ready: boolean;
+  computedAt: string;
+  sectors: SectorFlowSector[];
+}
+
+export type SectorFlowTimeframe = "1d" | "1w" | "1m";
+
 async function getJSON<T>(url: string): Promise<T> {
   try {
     const res = await fetch(url);
@@ -961,6 +994,51 @@ function getMockData(url: string): any {
       },
     };
   }
+  if (path === "/api/sectorflow") {
+    const sectorNames =
+      market === "tw"
+        ? ["半導體業", "電子零組件業", "金融保險業", "航運業", "塑膠工業"]
+        : ["Semiconductors", "Software", "Internet Retail", "Banks", "Automobiles"];
+    const tickersFor: Record<string, string[]> =
+      market === "tw"
+        ? {
+            [sectorNames[0]]: ["2330", "2454", "3711"],
+            [sectorNames[1]]: ["2317", "3231"],
+            [sectorNames[2]]: ["2881", "2882"],
+            [sectorNames[3]]: ["2603", "2609"],
+            [sectorNames[4]]: ["1301", "1303"],
+          }
+        : {
+            [sectorNames[0]]: ["NVDA", "AMD", "AVGO"],
+            [sectorNames[1]]: ["MSFT", "ORCL"],
+            [sectorNames[2]]: ["AMZN", "META"],
+            [sectorNames[3]]: ["JPM", "V"],
+            [sectorNames[4]]: ["TSLA", "GM"],
+          };
+    const held = market === "tw" ? ["2330", "2603"] : ["NVDA", "TSLA"];
+    const sectors: SectorFlowSector[] = sectorNames.map((name, i) => {
+      const tickers = tickersFor[name];
+      const items: SectorFlowItem[] = tickers.map((ticker, j) => {
+        const cap = (5 - i) * 800 + (tickers.length - j) * 150;
+        const changePct = (Math.random() - 0.45) * 6;
+        const flow = cap * (changePct / 100) * 8;
+        return { ticker, cap, flow, changePct, held: held.includes(ticker) };
+      });
+      const netFlow = items.reduce((s, it) => s + it.flow, 0);
+      const marketCap = items.reduce((s, it) => s + it.cap, 0);
+      return {
+        name,
+        netFlow,
+        dollarVolume: marketCap,
+        marketCap,
+        changePct: items.reduce((s, it) => s + it.changePct * it.cap, 0) / marketCap,
+        tickerCount: items.length,
+        heldCount: items.filter((it) => it.held).length,
+        items,
+      };
+    });
+    return { ready: true, computedAt: new Date().toISOString(), sectors };
+  }
   if (path === "/api/rec-performance") {
     const tickers = market === "tw" ? ["2330", "2454", "2317", "2412", "3008"] : ["NVDA", "AAPL", "MSFT", "AMD", "TSLA"];
     const mkSignal = (t: string, action: string, src: string, entryDate: string, entryPrice: number, daysHeld: number, excess: number) => ({
@@ -1137,6 +1215,10 @@ export function fetchPaper(market: Market = "us"): Promise<Paper> {
 
 export function fetchOptions(market: Market = "us"): Promise<Options> {
   return getJSON<Options>(`/api/options?market=${market}`);
+}
+
+export function fetchSectorFlow(market: Market = "us", tf: SectorFlowTimeframe = "1d"): Promise<SectorFlow> {
+  return getJSON<SectorFlow>(`/api/sectorflow?market=${market}&tf=${tf}`);
 }
 
 // --- Phase 10 write endpoints (docs/phase-10-web-trade-input.md) ---
