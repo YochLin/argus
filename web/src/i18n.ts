@@ -314,6 +314,8 @@ export interface Dictionary {
   noOptionCollateral: string;
   // Phase 18: the sector money-flow treemap page.
   navFlow: string;
+  sectorFlowSubtitle: string;
+  sectorFlowHeldHint: string;
   sectorFlowNotReady: string;
   sectorFlowSizeBy: string;
   sectorFlowSizeByCap: string;
@@ -615,6 +617,8 @@ const en: Dictionary = {
   noClosedOptions: "No closed option trades yet.",
   noOptionCollateral: "No collateral obligations.",
   navFlow: "Flow",
+  sectorFlowSubtitle: "Sector × market-cap money-flow heatmap — block size is market cap, color is change.",
+  sectorFlowHeldHint: "Outlined blocks = your positions. Click a block to view its chart.",
   sectorFlowNotReady: "Sector data isn't ready yet — check back after the next scan.",
   sectorFlowSizeBy: "Size by",
   sectorFlowSizeByCap: "Market Cap",
@@ -911,6 +915,8 @@ const zh: Dictionary = {
   noClosedOptions: "尚無已平倉期權交易。",
   noOptionCollateral: "沒有擔保品義務。",
   navFlow: "資金流向",
+  sectorFlowSubtitle: "資金流向產業 × 市值熱力圖，方格大小為市值，顏色為漲跌。",
+  sectorFlowHeldHint: "外框標示 = 我的持倉，點方格可看個股圖。",
   sectorFlowNotReady: "類股資料尚未就緒，請等待下次排程掃描後再查看。",
   sectorFlowSizeBy: "方塊大小",
   sectorFlowSizeByCap: "市值",

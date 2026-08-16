@@ -86,6 +86,10 @@ a {
   color: inherit;
 }
 
+input {
+  font-family: var(--font-mono);
+}
+
 .mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -2050,6 +2054,38 @@ th {
   align-items: center;
   gap: 16px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.flow-controls-title {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.flow-controls-subtitle {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+/* Pushes the timeframe toggle to the right of the title, matching the
+   reference layout (title far left, tf + size-by grouped on the right). */
+.flow-controls-tf {
+  margin-left: auto;
+}
+
+.flow-controls-sizeby {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.flow-controls-sizeby-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
 }
 
 .flow-stats-grid {
@@ -2057,8 +2093,6 @@ th {
 }
 
 .flow-treemap-card {
-  padding: 0;
-  overflow: hidden;
   margin-bottom: 16px;
 }
 
@@ -2068,10 +2102,13 @@ th {
   aspect-ratio: 1000 / 560;
 }
 
+/* No border/background of its own — the reference design separates sectors
+   with whitespace (the padding below), not grid lines, so the card's own
+   surface shows through as the gutter between adjacent sectors. */
 .flow-sector {
   position: absolute;
   box-sizing: border-box;
-  border: 1px solid var(--border);
+  padding: 3px;
   overflow: hidden;
 }
 
@@ -2079,66 +2116,84 @@ th {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 8px;
-  font-size: 11px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  padding: 0 2px;
+  height: 22px;
+  font-size: 11.5px;
 }
 
 .flow-sector-body {
   position: relative;
   width: 100%;
-  height: calc(100% - 28px);
+  height: calc(100% - 22px);
 }
 
+/* Anchor only positions/sizes the tile and insets it via padding — the
+   colored box lives in .flow-block-box so the gap between adjacent tiles is
+   real whitespace, not just a border line. */
 .flow-block {
   position: absolute;
   box-sizing: border-box;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  padding: 4px 6px;
+  padding: 1px;
   cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  overflow: hidden;
 }
 
-.flow-block.held {
+.flow-block-box {
+  width: 100%;
+  height: 100%;
+  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  overflow: hidden;
+  outline: 1px solid rgba(148, 163, 184, 0.14);
+  outline-offset: -1px;
+}
+
+.flow-block-box.held {
   outline: 1.5px solid var(--accent);
   outline-offset: -1.5px;
 }
 
 .flow-block-held-dot {
   position: absolute;
-  top: 4px;
+  top: 3px;
   right: 4px;
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--accent);
 }
 
+/* Always the neutral ink tone (not profit/loss red-green) — the tile's own
+   background already carries the red/green signal, and colored text on a
+   same-hue background is what made these numbers unreadable. */
 .flow-block-ticker {
+  font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
   color: var(--ink);
+  line-height: 1.1;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .flow-block-change {
   font-size: 10px;
+  color: var(--ink-2);
+  line-height: 1.1;
 }
 
-.flow-rank-bar-wrap {
-  position: relative;
+.flow-held-hint {
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: var(--ink-3);
 }
 
 .flow-rank-bar {
-  height: 3px;
-  border-radius: 2px;
-  margin-top: 4px;
+  height: 6px;
+  border-radius: 3px;
+  opacity: 0.7;
 }
 
 .flow-rank-bar.profit-bar {

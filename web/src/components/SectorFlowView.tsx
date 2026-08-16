@@ -202,21 +202,28 @@ export function SectorFlowView({ dict, market, names = {}, onTickerClick }: Prop
   return (
     <>
       <div className="flow-controls">
-        <div className="topbar-tabs" role="group" aria-label="size by">
-          {(["cap", "flow"] as SizeBy[]).map((v) => (
-            <button key={v} className={`topbar-tab${sizeBy === v ? " active" : ""}`} onClick={() => setSizeBy(v)}>
-              {v === "cap" ? dict.sectorFlowSizeByCap : dict.sectorFlowSizeByFlow}
-            </button>
-          ))}
+        <div className="flow-controls-title">
+          <span className="eyebrow">{dict.navFlow}</span>
+          <span className="flow-controls-subtitle">{dict.sectorFlowSubtitle}</span>
         </div>
-        <div className="topbar-tabs" role="group" aria-label="timeframe">
+        <div className="topbar-tabs flow-controls-tf" role="group" aria-label="timeframe">
           {(["1d", "1w", "1m"] as SectorFlowTimeframe[]).map((v) => (
             <button key={v} className={`topbar-tab${tf === v ? " active" : ""}`} onClick={() => setTf(v)}>
               {v.toUpperCase()}
             </button>
           ))}
         </div>
-        {market === "tw" && sizeBy === "cap" && <InfoTip text={dict.sectorFlowTWCapNote} />}
+        <div className="flow-controls-sizeby">
+          <span className="flow-controls-sizeby-label">{dict.sectorFlowSizeBy}</span>
+          <div className="topbar-tabs" role="group" aria-label="size by">
+            {(["cap", "flow"] as SizeBy[]).map((v) => (
+              <button key={v} className={`topbar-tab${sizeBy === v ? " active" : ""}`} onClick={() => setSizeBy(v)}>
+                {v === "cap" ? dict.sectorFlowSizeByCap : dict.sectorFlowSizeByFlow}
+              </button>
+            ))}
+          </div>
+          {market === "tw" && sizeBy === "cap" && <InfoTip text={dict.sectorFlowTWCapNote} />}
+        </div>
       </div>
 
       <div className="kpi-grid flow-stats-grid">
@@ -258,33 +265,37 @@ export function SectorFlowView({ dict, market, names = {}, onTickerClick }: Prop
                 <span className={sector.netFlow >= 0 ? "profit" : "loss"}>{fmtFlow(sector.netFlow, currency)}</span>
               </div>
               <div className="flow-sector-body">
-                {items.map(({ item, rect: r }) => (
-                  <div
-                    key={item.ticker}
-                    className={`flow-block${item.held ? " held" : ""}`}
-                    style={{
-                      left: `${(r.x / rect.w) * 100}%`,
-                      top: `${(r.y / Math.max(1, rect.h - SECTOR_HEADER_H)) * 100}%`,
-                      width: `${(r.w / rect.w) * 100}%`,
-                      height: `${(r.h / Math.max(1, rect.h - SECTOR_HEADER_H)) * 100}%`,
-                      background: tintFor(item.changePct, tf),
-                    }}
-                    title={`${tickerLabel(item.ticker, names)} ${fmtPct(item.changePct)} ${fmtFlow(item.flow, currency)}`}
-                    onClick={() => onTickerClick?.(item.ticker)}
-                  >
-                    {item.held && r.w > 52 && r.h > 34 && <span className="flow-block-held-dot" />}
-                    <span className="flow-block-ticker mono">{item.ticker}</span>
-                    {r.w > 52 && r.h > 34 && (
-                      <span className={`flow-block-change mono ${item.changePct >= 0 ? "profit" : "loss"}`}>
-                        {fmtPct(item.changePct)}
-                      </span>
-                    )}
-                  </div>
-                ))}
+                {items.map(({ item, rect: r }) => {
+                  const big = r.w > 52 && r.h > 34;
+                  return (
+                    <div
+                      key={item.ticker}
+                      className="flow-block"
+                      style={{
+                        left: `${(r.x / rect.w) * 100}%`,
+                        top: `${(r.y / Math.max(1, rect.h - SECTOR_HEADER_H)) * 100}%`,
+                        width: `${(r.w / rect.w) * 100}%`,
+                        height: `${(r.h / Math.max(1, rect.h - SECTOR_HEADER_H)) * 100}%`,
+                      }}
+                      title={`${tickerLabel(item.ticker, names)} ${fmtPct(item.changePct)} ${fmtFlow(item.flow, currency)}`}
+                      onClick={() => onTickerClick?.(item.ticker)}
+                    >
+                      <div
+                        className={`flow-block-box${item.held ? " held" : ""}`}
+                        style={{ background: tintFor(item.changePct, tf) }}
+                      >
+                        {item.held && big && <span className="flow-block-held-dot" />}
+                        <span className="flow-block-ticker mono">{item.ticker}</span>
+                        {big && <span className="flow-block-change mono">{fmtPct(item.changePct)}</span>}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}
         </div>
+        <div className="flow-held-hint">{dict.sectorFlowHeldHint}</div>
       </div>
 
       <div className="card">
@@ -297,6 +308,7 @@ export function SectorFlowView({ dict, market, names = {}, onTickerClick }: Prop
               <th>{dict.group}</th>
               <th>{dict.sectorFlowChange}</th>
               <th>{dict.sectorFlowNetFlow}</th>
+              <th style={{ width: "34%" }}></th>
               <th>{dict.sectorFlowTickerCount}</th>
               <th>{dict.sectorFlowHeld}</th>
             </tr>
@@ -306,14 +318,12 @@ export function SectorFlowView({ dict, market, names = {}, onTickerClick }: Prop
               <tr key={s.name}>
                 <td>{s.name}</td>
                 <td className={s.changePct >= 0 ? "profit" : "loss"}>{fmtPct(s.changePct)}</td>
-                <td className={s.netFlow >= 0 ? "profit" : "loss"}>
-                  <div className="flow-rank-bar-wrap">
-                    <span>{fmtFlow(s.netFlow, currency)}</span>
-                    <div
-                      className={`flow-rank-bar ${s.netFlow >= 0 ? "profit-bar" : "loss-bar"}`}
-                      style={{ width: `${(Math.abs(s.netFlow) / maxAbsFlow) * 100}%` }}
-                    />
-                  </div>
+                <td className={s.netFlow >= 0 ? "profit" : "loss"}>{fmtFlow(s.netFlow, currency)}</td>
+                <td>
+                  <div
+                    className={`flow-rank-bar ${s.netFlow >= 0 ? "profit-bar" : "loss-bar"}`}
+                    style={{ width: `${(Math.abs(s.netFlow) / maxAbsFlow) * 100}%` }}
+                  />
                 </td>
                 <td>{s.tickerCount}</td>
                 <td>{s.heldCount}</td>
