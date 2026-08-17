@@ -1074,12 +1074,21 @@ func (b *Bot) buildClosedTradeReview(ticker string, stopPrice float64) (llm.Clos
 }
 
 // reviewClosedTrade is the automatic sell-review path, triggered by
-// handleSell/executePendingAction right after a sell fully closes a
-// position. Log-only on any failure — the user already has their sell
+// handleSell/executePendingAction/ExecuteSell right after a sell fully
+// closes a position, always via "go b.reviewClosedTrade(ctx, ...)" so the
+// caller's own handler can return immediately. ctx is detached from the
+// caller's cancellation with context.WithoutCancel — ExecuteSell in
+// particular passes an http.Request's context, which net/http cancels the
+// instant the handler returns, well before this goroutine's (multi-minute)
+// LLM call finishes; the callTimeout budget inside llm.Client.prompt still
+// bounds it, just no longer tied to a request/dispatch context that dies
+// first. Log-only on any failure — the user already has their sell
 // confirmation, so a second failure alert about the review itself would be
 // noise for something that isn't the trade record. See handleReview for the
-// manual /review TICKER path, which reports failures to the user instead.
+// manual /review TICKER path, which reports failures to the user instead
+// (and is also the way to backfill a review that got dropped this way).
 func (b *Bot) reviewClosedTrade(ctx context.Context, ticker string, stopPrice float64) {
+	ctx = context.WithoutCancel(ctx)
 	trade, ok, err := b.buildClosedTradeReview(ticker, stopPrice)
 	if err != nil {
 		logger.Errorf("review %s: %v", ticker, err)
