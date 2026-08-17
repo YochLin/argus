@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -85,7 +86,7 @@ func TestRunSectorFlowScanUS(t *testing.T) {
 		t.Fatalf("missing sector, got %+v", resp.Sectors)
 	}
 
-	if want := 2200.0 - 1350.0; tech.NetFlow != want {
+	if want := (2200.0 - 1350.0) / 1e6; math.Abs(tech.NetFlow-want) > 1e-12 {
 		t.Errorf("Tech.NetFlow = %v, want %v", tech.NetFlow, want)
 	}
 	if tech.TickerCount != 2 || tech.HeldCount != 1 {
@@ -94,7 +95,7 @@ func TestRunSectorFlowScanUS(t *testing.T) {
 	if tech.MarketCap != 3000 {
 		t.Errorf("Tech.MarketCap = %v, want 3000", tech.MarketCap)
 	}
-	if want := 275.0; auto.NetFlow != want {
+	if want := 275.0 / 1e6; auto.NetFlow != want {
 		t.Errorf("Auto.NetFlow = %v, want %v", auto.NetFlow, want)
 	}
 	if auto.TickerCount != 1 || auto.HeldCount != 0 {

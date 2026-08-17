@@ -263,6 +263,13 @@ func (s *Server) RunSectorFlowScan(ctx context.Context, m market.MarketID) {
 
 		for tf, period := range sectorFlowPeriods {
 			posMF, negMF, dollarVol := signals.TickerMoneyFlow(candles, period)
+			// TickerMoneyFlow returns raw currency units (price * volume);
+			// scale to millions so NetFlow/Flow/dollarVol-as-TW-cap match
+			// usCap's Finnhub millions scale — fmtFlow (web/src) assumes
+			// every value it renders is already in millions.
+			posMF /= 1e6
+			negMF /= 1e6
+			dollarVol /= 1e6
 			changePct := periodChangePct(candles, period)
 			cap := usCap
 			if m == market.TW {
