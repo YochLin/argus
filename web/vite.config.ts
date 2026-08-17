@@ -505,6 +505,55 @@ function getMockData(urlStr: string): any {
       });
     return { month, days: dayValues, transactions, events };
   }
+  if (path === "/api/sectorflow") {
+    const sectorNames =
+      market === "tw"
+        ? ["半導體業", "電子零組件業", "金融保險業", "航運業", "塑膠工業"]
+        : ["Semiconductors", "Software", "Internet Retail", "Banks", "Automobiles"];
+    const tickersFor: Record<string, string[]> =
+      market === "tw"
+        ? {
+            [sectorNames[0]]: ["2330", "2454", "3711"],
+            [sectorNames[1]]: ["2317", "3231"],
+            [sectorNames[2]]: ["2881", "2882"],
+            [sectorNames[3]]: ["2603", "2609"],
+            [sectorNames[4]]: ["1301", "1303"],
+          }
+        : {
+            [sectorNames[0]]: ["NVDA", "AMD", "AVGO"],
+            [sectorNames[1]]: ["MSFT", "ORCL"],
+            [sectorNames[2]]: ["AMZN", "META"],
+            [sectorNames[3]]: ["JPM", "V"],
+            [sectorNames[4]]: ["TSLA", "GM"],
+          };
+    const held = market === "tw" ? ["2330", "2603"] : ["NVDA", "TSLA"];
+    // cap/flow are in millions of the market's own currency (NTD or USD),
+    // matching internal/web/sectorflow.go's RunSectorFlowScan output —
+    // web/src/App.tsx's fmtFlow assumes every value it renders is already
+    // in millions.
+    const sectors = sectorNames.map((name, i) => {
+      const tickers = tickersFor[name];
+      const items = tickers.map((ticker, j) => {
+        const cap = (5 - i) * 800 + (tickers.length - j) * 150;
+        const changePct = (Math.random() - 0.45) * 6;
+        const flow = cap * (changePct / 100) * 8;
+        return { ticker, cap, flow, changePct, held: held.includes(ticker) };
+      });
+      const netFlow = items.reduce((s, it) => s + it.flow, 0);
+      const marketCap = items.reduce((s, it) => s + it.cap, 0);
+      return {
+        name,
+        netFlow,
+        dollarVolume: marketCap,
+        marketCap,
+        changePct: items.reduce((s, it) => s + it.changePct * it.cap, 0) / marketCap,
+        tickerCount: items.length,
+        heldCount: items.filter((it) => it.held).length,
+        items,
+      };
+    });
+    return { ready: true, computedAt: new Date().toISOString(), sectors };
+  }
   if (path === "/api/login") {
     return { ok: true };
   }
