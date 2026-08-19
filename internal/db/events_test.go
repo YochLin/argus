@@ -13,7 +13,7 @@ func TestHasPriceEventAndSavePriceEvent(t *testing.T) {
 		t.Errorf("HasPriceEvent() = true before any write, want false")
 	}
 
-	if err := d.SavePriceEvent(PriceEvent{Ticker: "AAPL", Market: "us", Date: "2026-08-14", GapPct: 6.2, Summary: "gapped up on earnings beat"}); err != nil {
+	if err := d.SavePriceEvent(PriceEvent{Ticker: "AAPL", Market: "us", Date: "2026-08-14", GapPct: 6.2, CumulativePct: -9.1, Summary: "gapped up on earnings beat"}); err != nil {
 		t.Fatalf("SavePriceEvent() error = %v", err)
 	}
 
@@ -79,6 +79,22 @@ func TestGetPriceEventsForTicker(t *testing.T) {
 	}
 	if got[0].Date != "2026-08-14" || got[0].Summary != "gapped on guidance cut" {
 		t.Errorf("GetPriceEventsForTicker(AAPL)[0] = %+v, want the 2026-08-14 row newest-first", got[0])
+	}
+}
+
+func TestPriceEventCumulativePctRoundTrip(t *testing.T) {
+	d := newTestDB(t)
+
+	if err := d.SavePriceEvent(PriceEvent{Ticker: "AAPL", Market: "us", Date: "2026-08-14", CumulativePct: -8.7, Summary: "five-day slide"}); err != nil {
+		t.Fatalf("SavePriceEvent() error = %v", err)
+	}
+
+	got, err := d.GetPriceEventsForTicker("AAPL", 1)
+	if err != nil {
+		t.Fatalf("GetPriceEventsForTicker() error = %v", err)
+	}
+	if len(got) != 1 || got[0].CumulativePct != -8.7 {
+		t.Errorf("GetPriceEventsForTicker(AAPL) = %+v, want CumulativePct=-8.7", got)
 	}
 }
 

@@ -941,7 +941,7 @@ func tradeEntryPrice(legs []TradeLeg) (price, shares float64) {
 // 素材" decision. gapPct/changePct are 0 when that particular threshold
 // didn't fire (see signals.PriceEvent), so only the ones that are non-zero
 // get rendered rather than always naming both.
-func buildPriceEventPrompt(lang i18n.Lang, ticker string, gapPct, changePct float64, news []data.NewsItem) string {
+func buildPriceEventPrompt(lang i18n.Lang, ticker string, gapPct, changePct, cumulativePct float64, news []data.NewsItem) string {
 	var sb strings.Builder
 	sb.WriteString(i18n.T(lang, i18n.KeyPriceEventPromptIntro, ticker))
 
@@ -950,6 +950,9 @@ func buildPriceEventPrompt(lang i18n.Lang, ticker string, gapPct, changePct floa
 	}
 	if changePct != 0 {
 		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyPriceEventChangeLine, changePct))
+	}
+	if cumulativePct != 0 {
+		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyPriceEventCumulativeLine, cumulativePct))
 	}
 
 	if len(news) > 0 {

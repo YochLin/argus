@@ -80,3 +80,32 @@ func TestCheckPriceEvent(t *testing.T) {
 		}
 	})
 }
+
+func TestCheckCumulativeDecline(t *testing.T) {
+	us := DefaultEventThresholds(market.US) // cumulative decline 8% over 5 sessions
+
+	t.Run("decline past threshold triggers", func(t *testing.T) {
+		ev := CheckCumulativeDecline("AAPL", 100, 91, us)
+		if ev == nil || !almostEqual(ev.CumulativePct, -9) {
+			t.Fatalf("CheckCumulativeDecline() = %+v, want CumulativePct=-9", ev)
+		}
+	})
+
+	t.Run("decline under threshold returns nil", func(t *testing.T) {
+		if ev := CheckCumulativeDecline("AAPL", 100, 95, us); ev != nil {
+			t.Errorf("CheckCumulativeDecline() = %+v, want nil", ev)
+		}
+	})
+
+	t.Run("rally does not trigger, only decline", func(t *testing.T) {
+		if ev := CheckCumulativeDecline("AAPL", 100, 115, us); ev != nil {
+			t.Errorf("CheckCumulativeDecline() = %+v, want nil (rally, not decline)", ev)
+		}
+	})
+
+	t.Run("windowAgoClose <= 0 skips the check", func(t *testing.T) {
+		if ev := CheckCumulativeDecline("AAPL", 0, 50, us); ev != nil {
+			t.Errorf("CheckCumulativeDecline() = %+v, want nil", ev)
+		}
+	})
+}

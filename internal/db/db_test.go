@@ -684,6 +684,47 @@ func TestGetSnapshotCloseRange(t *testing.T) {
 	})
 }
 
+func TestGetRecentCloses(t *testing.T) {
+	d := newTestDB(t)
+
+	snap := func(date string, close float64) {
+		t.Helper()
+		if err := d.SaveSnapshot(DailySnapshot{Ticker: "AAPL", Date: date, Close: close}); err != nil {
+			t.Fatalf("SaveSnapshot(%s) error = %v", date, err)
+		}
+	}
+	snap("2026-08-10", 100)
+	snap("2026-08-11", 102)
+	snap("2026-08-12", 98)
+	snap("2026-08-13", 95)
+	snap("2026-08-14", 93)
+
+	t.Run("returns the n most recent closes, oldest first", func(t *testing.T) {
+		got, err := d.GetRecentCloses("AAPL", 3)
+		if err != nil {
+			t.Fatalf("GetRecentCloses() error = %v", err)
+		}
+		want := []float64{98, 95, 93}
+		if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+			t.Errorf("GetRecentCloses(3) = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("fewer rows than n returns what's available", func(t *testing.T) {
+		got, err := d.GetRecentCloses("AAPL", 10)
+		if err != nil || len(got) != 5 {
+			t.Errorf("GetRecentCloses(10) = %v, %v; want 5 rows, nil error", got, err)
+		}
+	})
+
+	t.Run("unknown ticker returns empty", func(t *testing.T) {
+		got, err := d.GetRecentCloses("MSFT", 5)
+		if err != nil || len(got) != 0 {
+			t.Errorf("GetRecentCloses(MSFT) = %v, %v; want empty, nil", got, err)
+		}
+	})
+}
+
 func TestGetSettingUnsetKeyIsNotFound(t *testing.T) {
 	d := newTestDB(t)
 
