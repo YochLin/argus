@@ -51,6 +51,13 @@ type Config struct {
 	// WebAddr also set, but no extra validation beyond that: an unreachable
 	// server's password setting is simply inert.
 	WebPassword string
+	// WebLLMAudit (WEB_LLM_AUDIT, Phase 19 PR1, docs/phase-19-llm-transparency.md
+	// §8.4) gates the /llm audit-trail page's API routes — llm_runs is still
+	// written on every GenerateRecommendations call regardless (that's the
+	// audit trail's whole point), this only controls whether anything can
+	// read it back over HTTP, checked at route-registration time rather than
+	// request time like Paper/Options' feature flags.
+	WebLLMAudit bool
 
 	// Phase 3.8 exit-discipline thresholds: positive percentages, 0 disables
 	// the corresponding daily-report check entirely. Defaults are a starting
@@ -141,6 +148,7 @@ func loadConfig() Config {
 
 		WebAddr:     os.Getenv("WEB_ADDR"),
 		WebPassword: os.Getenv("WEB_PASSWORD"),
+		WebLLMAudit: os.Getenv("WEB_LLM_AUDIT") == "true",
 
 		StopLossPct:         envOrFloat("STOP_LOSS_PCT", 10),
 		TrailingStopPct:     envOrFloat("TRAILING_STOP_PCT", 15),

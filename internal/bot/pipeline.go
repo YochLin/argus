@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -98,6 +99,60 @@ func (b *Bot) gatherRecommendationInputs(m market.MarketID) (recommendationInput
 		watchlist:        watchlist,
 		candidates:       candidates,
 	}, nil
+}
+
+// recordLLMRun persists Phase 19's LLM-input-transparency audit row (see
+// docs/phase-19-llm-transparency.md §4.3) — called from both handleRecommend
+// and RunDailyReport right after their shared GenerateRecommendations call,
+// so any future GenerateRecommendations-shaped call site reuses the same
+// three lines instead of reimplementing the marshal. kind distinguishes a
+// manual /recommend from a scheduled daily report ("recommend" /
+// "daily_report"). Skipped when raw and model are both empty, which only
+// happens when every backend in the chain failed outright (see
+// llm.Client.prompt) — there's nothing informative to record beyond the
+// error the caller already surfaces to the user. The marshaled payload
+// mirrors GenerateRecommendations' own parameters field-for-field with no
+// trimming (§3 decision 3: a missing field would defeat the point of a
+// transparency feature). Marshal/insert failures are logged, never block
+// /recommend or the daily report — this is an audit trail, not a write the
+// user is waiting on.
+func (b *Bot) recordLLMRun(kind string, m market.MarketID, in recommendationInputs, raw, model string, latencyMs int64) {
+	if raw == "" && model == "" {
+		return
+	}
+
+	payload := struct {
+		Watchlist     []llm.StockData    `json:"watchlist"`
+		Candidates    []llm.StockData    `json:"candidates"`
+		MarketNews    []data.NewsItem    `json:"marketNews"`
+		MarketContext *llm.MarketContext `json:"marketContext"`
+		RecentLessons []llm.PastLesson   `json:"recentLessons"`
+		IsTW          bool               `json:"isTW"`
+	}{
+		Watchlist:     in.watchlist,
+		Candidates:    in.candidates,
+		MarketNews:    in.marketNews,
+		MarketContext: in.marketContext,
+		RecentLessons: in.recentLessons,
+		IsTW:          m == market.TW,
+	}
+	inputJSON, err := json.Marshal(payload)
+	if err != nil {
+		logger.Errorf("llm run: marshal input: %v", err)
+		return
+	}
+
+	newsCount := len(in.marketNews)
+	for _, s := range in.watchlist {
+		newsCount += len(s.News)
+	}
+	for _, s := range in.candidates {
+		newsCount += len(s.News)
+	}
+
+	if err := b.db.InsertLLMRun(kind, m, model, latencyMs, string(inputJSON), raw, len(in.watchlist), len(in.candidates), newsCount); err != nil {
+		logger.Errorf("llm run: insert: %v", err)
+	}
 }
 
 // sendAndSaveRecommendations formats LLM recommendations for Telegram and

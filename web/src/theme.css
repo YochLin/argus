@@ -1974,6 +1974,19 @@ th {
   color: var(--ink);
 }
 
+/* Phase 19's /llm audit page: per-stock cards grid and a dimmed row style
+   for news items whose source is currently blocklisted (kept visible, not
+   hidden — see LlmRunsView.tsx's NewsTable). */
+.llm-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.llm-row-dim {
+  opacity: 0.5;
+}
+
 @media (max-width: 1024px) {
   .dash-charts-grid {
     grid-template-columns: 1fr;

@@ -110,6 +110,40 @@ export interface Dictionary {
   monthlyPnl: string;
   yearTotal: string;
   navRecs: string;
+  navLlm: string;
+  llmKind: string;
+  llmModel: string;
+  llmLatency: string;
+  llmCreated: string;
+  llmWatchlist: string;
+  llmCandidates: string;
+  llmNews: string;
+  llmRunRecommend: string;
+  llmRunDailyReport: string;
+  llmNoRuns: string;
+  llmNewsMarket: string;
+  llmNewsPerTicker: string;
+  llmSource: string;
+  llmHeadline: string;
+  llmPublishedAt: string;
+  llmBlockSource: string;
+  llmBlocked: string;
+  llmDataQuality: string;
+  llmLowQualitySource: string;
+  llmStaleNews: string;
+  llmDuplicateTitles: string;
+  llmCandleGaps: string;
+  llmBlockedSources: string;
+  llmUnblock: string;
+  llmNoBlockedSources: string;
+  llmCandlesSummary: string;
+  llmMarketContext: string;
+  llmCrossTickerLessons: string;
+  llmPerTickerLessons: string;
+  llmStrategyHits: string;
+  llmScanReason: string;
+  llmPrevRecommendation: string;
+  llmRawReply: string;
   recCounts: string;
   recTotal: string;
   recScorable: string;
@@ -438,6 +472,40 @@ const en: Dictionary = {
   monthlyPnl: "MONTHLY P&L",
   yearTotal: "Total",
   navRecs: "Recs",
+  navLlm: "LLM Audit",
+  llmKind: "Kind",
+  llmModel: "Model",
+  llmLatency: "Latency",
+  llmCreated: "Created",
+  llmWatchlist: "Watchlist",
+  llmCandidates: "Candidates",
+  llmNews: "News",
+  llmRunRecommend: "/recommend",
+  llmRunDailyReport: "Daily report",
+  llmNoRuns: "No LLM runs recorded yet.",
+  llmNewsMarket: "Market news",
+  llmNewsPerTicker: "Per-ticker news",
+  llmSource: "Source",
+  llmHeadline: "Headline",
+  llmPublishedAt: "Published",
+  llmBlockSource: "Block",
+  llmBlocked: "Blocked",
+  llmDataQuality: "Data quality",
+  llmLowQualitySource: "Low-quality source",
+  llmStaleNews: "Stale (>72h)",
+  llmDuplicateTitles: "Duplicate titles",
+  llmCandleGaps: "Candle gaps",
+  llmBlockedSources: "Blocked news sources",
+  llmUnblock: "Unblock",
+  llmNoBlockedSources: "No sources blocked yet.",
+  llmCandlesSummary: "Candles",
+  llmMarketContext: "Market context",
+  llmCrossTickerLessons: "Cross-ticker lessons",
+  llmPerTickerLessons: "Past lessons (this ticker)",
+  llmStrategyHits: "Strategy hits",
+  llmScanReason: "Scan reason",
+  llmPrevRecommendation: "Previous recommendation",
+  llmRawReply: "Raw model reply",
   recCounts: "RECOMMENDATION COVERAGE",
   recTotal: "Total",
   recScorable: "Scorable",
@@ -744,6 +812,40 @@ const zh: Dictionary = {
   monthlyPnl: "月度損益",
   yearTotal: "年度合計",
   navRecs: "推薦成效",
+  navLlm: "LLM 稽核",
+  llmKind: "類型",
+  llmModel: "模型",
+  llmLatency: "耗時",
+  llmCreated: "時間",
+  llmWatchlist: "追蹤清單",
+  llmCandidates: "候選標的",
+  llmNews: "新聞",
+  llmRunRecommend: "/recommend",
+  llmRunDailyReport: "每日報告",
+  llmNoRuns: "尚無 LLM 執行紀錄。",
+  llmNewsMarket: "市場新聞",
+  llmNewsPerTicker: "個股新聞",
+  llmSource: "來源",
+  llmHeadline: "標題",
+  llmPublishedAt: "發布時間",
+  llmBlockSource: "封鎖",
+  llmBlocked: "已封鎖",
+  llmDataQuality: "資料品質檢查",
+  llmLowQualitySource: "低品質來源",
+  llmStaleNews: "過期新聞（>72h）",
+  llmDuplicateTitles: "重複標題",
+  llmCandleGaps: "K 線缺漏",
+  llmBlockedSources: "已封鎖的新聞來源",
+  llmUnblock: "解除封鎖",
+  llmNoBlockedSources: "目前沒有封鎖任何來源。",
+  llmCandlesSummary: "K 線",
+  llmMarketContext: "市場背景",
+  llmCrossTickerLessons: "跨標的教訓",
+  llmPerTickerLessons: "過去教訓（此標的）",
+  llmStrategyHits: "策略命中",
+  llmScanReason: "掃描原因",
+  llmPrevRecommendation: "前次建議",
+  llmRawReply: "模型原始回覆",
   recCounts: "推薦覆蓋率",
   recTotal: "總筆數",
   recScorable: "可評分",

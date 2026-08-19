@@ -19,6 +19,9 @@ interface Props {
   // paperEnabled (Phase 11 PR4) gates the /paper nav link the same way —
   // hidden entirely when PAPER_DB_PATH isn't configured server-side.
   paperEnabled: boolean;
+  // llmAuditEnabled (Phase 19, WEB_LLM_AUDIT) gates the /llm nav link the
+  // same way — hidden entirely when unset server-side.
+  llmAuditEnabled: boolean;
 }
 
 // /round (the detail page reached by clicking a row in /rounds) has no nav
@@ -42,15 +45,17 @@ const links: Array<{ path: string; label: (dict: Dictionary) => string; icon: Re
 
 const importLink = { path: "/import", label: (d: Dictionary) => d.navImport, icon: <ImportIcon /> };
 const paperLink = { path: "/paper", label: (d: Dictionary) => d.navPaper, icon: <PaperIcon /> };
+const llmLink = { path: "/llm", label: (d: Dictionary) => d.navLlm, icon: <LlmIcon /> };
 
 function isActive(linkPath: string, path: string): boolean {
   return linkPath === path;
 }
 
-export function Sidebar({ path, onNavigate, dict, market, status, writable, paperEnabled }: Props) {
+export function Sidebar({ path, onNavigate, dict, market, status, writable, paperEnabled, llmAuditEnabled }: Props) {
   const navLinks = [
     ...links,
     ...(paperEnabled ? [paperLink] : []),
+    ...(llmAuditEnabled ? [llmLink] : []),
     ...(writable ? [importLink] : []),
   ];
   return (
@@ -203,6 +208,15 @@ function PaperIcon() {
       <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" />
       <line x1="5.5" y1="8" x2="10.5" y2="8" />
       <line x1="5.5" y1="10.5" x2="8.5" y2="10.5" />
+    </svg>
+  );
+}
+
+function LlmIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <circle cx="6.5" cy="6.5" r="4.5" />
+      <line x1="9.8" y1="9.8" x2="14" y2="14" />
     </svg>
   );
 }

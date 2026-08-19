@@ -575,6 +575,54 @@ var migrations = []string{
 	);
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_price_events_ticker_date ON price_events(ticker, date);
 	`,
+
+	// 20: llm_runs backs Phase 19's LLM-input-transparency audit trail (see
+	// docs/phase-19-llm-transparency.md) — one row per GenerateRecommendations
+	// call (/recommend and the daily report both funnel through it), storing
+	// the full, unprojected prompt input (input_json — see
+	// recordLLMRun/internal/bot/pipeline.go for why nothing gets trimmed) and
+	// the model's raw reply (output_raw) side by side, so a bad recommendation
+	// can be diagnosed as "bad data in" vs "model made it up" instead of
+	// guessing. model/latency_ms come from llm.Client.GenerateRecommendations'
+	// own return values; no tokens column — ACP has no per-token usage to
+	// report (see client.go's existing comment on that). watchlist_count/
+	// candidate_count/news_count are computed once at write time (not in the
+	// doc's original schema) so ListLLMRuns' list view can show a summary
+	// without pulling every row's input_json over the wire, which is the
+	// whole reason ListLLMRuns excludes it. No retention policy (§3's
+	// decision 5): add a DELETE alongside the existing backup job later if
+	// the table ever grows large enough to matter.
+	`
+	CREATE TABLE IF NOT EXISTS llm_runs (
+		id              INTEGER PRIMARY KEY AUTOINCREMENT,
+		kind            TEXT NOT NULL,
+		market          TEXT NOT NULL,
+		model           TEXT NOT NULL,
+		latency_ms      INTEGER NOT NULL,
+		created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+		input_json      TEXT NOT NULL,
+		output_raw      TEXT NOT NULL,
+		watchlist_count INTEGER NOT NULL DEFAULT 0,
+		candidate_count INTEGER NOT NULL DEFAULT 0,
+		news_count      INTEGER NOT NULL DEFAULT 0
+	);
+	CREATE INDEX IF NOT EXISTS idx_llm_runs_created ON llm_runs(created_at DESC);
+	`,
+
+	// 21: blocked_news_sources backs Phase 19 PR2's news-source blacklist
+	// (see docs/phase-19-llm-transparency.md §5) — one global table, not
+	// scoped by market/ticker (media quality is a property of the media
+	// outlet, and TW/US source names don't overlap anyway). source is the
+	// exact string NewsItem.Source carries (Finnhub's `source`, Yahoo's
+	// Publisher, cnyes'/Google News' own source field), compared
+	// case-insensitively + trimmed by the filter (internal/data/newsfilter.go)
+	// since the four providers don't agree on casing/whitespace.
+	`
+	CREATE TABLE IF NOT EXISTS blocked_news_sources (
+		source     TEXT PRIMARY KEY,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	`,
 }
 
 func (d *DB) migrate() error {

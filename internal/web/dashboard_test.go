@@ -53,6 +53,12 @@ type fakeDB struct {
 	optionTransactions []db.OptionTransaction
 	// universe backs GetUniverse for sectorflow_test.go's Phase 18 scan tests.
 	universe []db.UniverseEntry
+	// llmRuns/llmRunByID back ListLLMRuns/GetLLMRun for llmruns_test.go's
+	// Phase 19 tests — nil/zero (the default) behaves as "no runs recorded."
+	llmRuns    []db.LLMRun
+	llmRunByID map[int64]db.LLMRunDetail
+	// blockedSources backs ListBlockedNewsSources for newssources_test.go.
+	blockedSources []db.BlockedNewsSource
 }
 
 func (f *fakeDB) GetPositions() ([]db.Position, error)          { return f.positions, nil }
@@ -117,6 +123,40 @@ func (f *fakeDB) GetAllOptionTransactions() ([]db.OptionTransaction, error) {
 	return f.optionTransactions, nil
 }
 func (f *fakeDB) GetUniverse() ([]db.UniverseEntry, error) { return f.universe, nil }
+func (f *fakeDB) ListLLMRuns(limit int) ([]db.LLMRun, error) {
+	if limit < len(f.llmRuns) {
+		return f.llmRuns[:limit], nil
+	}
+	return f.llmRuns, nil
+}
+func (f *fakeDB) GetLLMRun(id int64) (db.LLMRunDetail, bool, error) {
+	run, ok := f.llmRunByID[id]
+	return run, ok, nil
+}
+func (f *fakeDB) ListBlockedNewsSources() ([]db.BlockedNewsSource, error) { return f.blockedSources, nil }
+
+// BlockNewsSource/UnblockNewsSource let fakeDB double as a newsSourceWriter
+// in newssources_test.go, mutating blockedSources the same way a real DB
+// write would change what a following ListBlockedNewsSources call returns.
+func (f *fakeDB) BlockNewsSource(source string) error {
+	for _, s := range f.blockedSources {
+		if s.Source == source {
+			return nil
+		}
+	}
+	f.blockedSources = append(f.blockedSources, db.BlockedNewsSource{Source: source})
+	return nil
+}
+func (f *fakeDB) UnblockNewsSource(source string) error {
+	out := f.blockedSources[:0]
+	for _, s := range f.blockedSources {
+		if s.Source != source {
+			out = append(out, s)
+		}
+	}
+	f.blockedSources = out
+	return nil
+}
 
 // fakeQuotes implements quoteGetter for tests.
 type fakeQuotes struct {
