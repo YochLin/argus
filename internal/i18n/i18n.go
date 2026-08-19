@@ -520,8 +520,12 @@ const (
 	KeyPriceEventPromptIntro Key = "price_event_prompt_intro"
 	KeyPriceEventGapLine     Key = "price_event_gap_line"
 	KeyPriceEventChangeLine  Key = "price_event_change_line"
-	KeyPriceEventPromptTask  Key = "price_event_prompt_task"
-	KeyPriceEventResultTitle Key = "price_event_result_title"
+	// KeyPriceEventCumulativeLine is the multi-day-decline sibling of
+	// KeyPriceEventGapLine/KeyPriceEventChangeLine — same "only rendered when
+	// non-zero" convention (see buildPriceEventPrompt).
+	KeyPriceEventCumulativeLine Key = "price_event_cumulative_line"
+	KeyPriceEventPromptTask     Key = "price_event_prompt_task"
+	KeyPriceEventResultTitle    Key = "price_event_result_title"
 	// KeyPriceEventOverflowLine wraps the whole overflow-notice message
 	// (%s = the joined per-ticker list); KeyPriceEventOverflowTickerLine
 	// formats each of that list's lines individually.

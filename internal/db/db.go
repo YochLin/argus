@@ -575,6 +575,13 @@ var migrations = []string{
 	);
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_price_events_ticker_date ON price_events(ticker, date);
 	`,
+
+	// 20: price_events gains cumulative_pct, a multi-day decline event
+	// alongside migration 19's single-day gap_pct/change_pct — same
+	// (ticker, date) row/unique index, RunClosingSnapshot merges a same-day
+	// single-day and cumulative hit into one row rather than the unique
+	// index rejecting a second write.
+	`ALTER TABLE price_events ADD COLUMN cumulative_pct REAL NOT NULL DEFAULT 0;`,
 }
 
 func (d *DB) migrate() error {
@@ -1508,6 +1515,33 @@ func (d *DB) GetSnapshotCloseRange(ticker, from, to string) (first, last float64
 		return 0, 0, false, nil
 	}
 	return closes[0], closes[len(closes)-1], true, nil
+}
+
+// GetRecentCloses returns ticker's n most recent daily_snapshots closes
+// recorded so far, oldest first — RunClosingSnapshot's cumulative-decline
+// check calls this before writing today's own row, so the result is exactly
+// "the last n sessions before today," no date filter needed. Returns fewer
+// than n (possibly zero) rows if daily_snapshots doesn't have enough history
+// yet for ticker, which the caller treats as "not enough data, skip."
+func (d *DB) GetRecentCloses(ticker string, n int) ([]float64, error) {
+	rows, err := d.conn.Query(
+		`SELECT close FROM (SELECT close, date FROM daily_snapshots WHERE ticker = ? ORDER BY date DESC LIMIT ?) sub ORDER BY date ASC`,
+		ticker, n,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var closes []float64
+	for rows.Next() {
+		var c float64
+		if err := rows.Scan(&c); err != nil {
+			return nil, err
+		}
+		closes = append(closes, c)
+	}
+	return closes, rows.Err()
 }
 
 // GetDailySnapshotsForTickers returns every daily_snapshots row for any of

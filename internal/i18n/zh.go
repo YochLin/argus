@@ -443,20 +443,21 @@ var zhMessages = map[Key]string{
 	KeyLessonMarker: "教訓:",
 
 	KeyPriceEventPromptIntro: "你是一位股票分析師，*%s* 今天觸發了值得記錄的價格事件，請根據以下資料整理這次事件的情況說明。\n\n",
-	KeyPriceEventGapLine:     "開盤跳空：%+.1f%%（相對前收）\n",
-	KeyPriceEventChangeLine:  "當日漲跌：%+.1f%%（收盤相對前收）\n",
+	KeyPriceEventGapLine:        "開盤跳空：%+.1f%%（相對前收）\n",
+	KeyPriceEventChangeLine:     "當日漲跌：%+.1f%%（收盤相對前收）\n",
+	KeyPriceEventCumulativeLine: "近期累積跌幅：%+.1f%%\n",
 	KeyPriceEventPromptTask: `
 請用繁體中文，依下列要求寫 3–5 句話：
-1. 先陳述上方跳空／漲跌的事實數字
+1. 先陳述上方跳空／漲跌／累積跌幅的事實數字
 2. 若上方附有相關新聞，依新聞推測可能原因；若沒有附上任何新聞，請直接說「無對應新聞，原因不明」，不要憑空臆測
 3. 這是事實性描述，不要給任何買賣操作建議或語氣
 `,
 	KeyPriceEventResultTitle:        "📊 *價格事件：%s*\n\n%s",
 	KeyPriceEventOverflowLine:       "另有以下標的今日也觸發價格事件（超過本次上限，未附摘要）：\n%s完整記錄請見 /events",
-	KeyPriceEventOverflowTickerLine: "  • %s：跳空 %+.1f%% ／ 漲跌 %+.1f%%\n",
+	KeyPriceEventOverflowTickerLine: "  • %s：跳空 %+.1f%% ／ 漲跌 %+.1f%% ／ 累積 %+.1f%%\n",
 	KeyEventsListTitle:              "📊 *近期價格事件*\n",
 	KeyEventsTickerTitle:            "📊 *%s 價格事件紀錄*\n",
-	KeyEventsLine:                   "%s │ %s │ 跳空 %+.1f%% ／ 漲跌 %+.1f%% │ %s\n",
+	KeyEventsLine:                   "%s │ %s │ 跳空 %+.1f%% ／ 漲跌 %+.1f%% ／ 累積 %+.1f%% │ %s\n",
 	KeyEventsNoSummary:              "（無摘要）",
 	KeyEventsEmpty:                  "目前沒有價格事件紀錄。",
 

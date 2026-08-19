@@ -455,20 +455,21 @@ Keep the reply concise — under 300 words total.
 	KeyLessonMarker: "Lesson:",
 
 	KeyPriceEventPromptIntro: "You are a stock analyst. *%s* triggered a price event worth recording today — based on the data below, summarize what happened.\n\n",
-	KeyPriceEventGapLine:     "Opening gap: %+.1f%% (vs prior close)\n",
-	KeyPriceEventChangeLine:  "Day's change: %+.1f%% (close vs prior close)\n",
+	KeyPriceEventGapLine:        "Opening gap: %+.1f%% (vs prior close)\n",
+	KeyPriceEventChangeLine:     "Day's change: %+.1f%% (close vs prior close)\n",
+	KeyPriceEventCumulativeLine: "Recent cumulative decline: %+.1f%%\n",
 	KeyPriceEventPromptTask: `
 Write 3–5 sentences:
-1. State the gap/change numbers above as fact.
+1. State the gap/change/cumulative-decline numbers above as fact.
 2. If news is attached above, infer a likely cause from it; if no news is attached, say plainly "no related news, cause unknown" — don't guess.
 3. This is a factual description, not trading advice — don't recommend any action.
 `,
 	KeyPriceEventResultTitle:        "📊 *Price Event: %s*\n\n%s",
 	KeyPriceEventOverflowLine:       "The following tickers also triggered a price event today (over this run's cap, no writeup):\n%sSee /events for the full log",
-	KeyPriceEventOverflowTickerLine: "  • %s: gap %+.1f%% / change %+.1f%%\n",
+	KeyPriceEventOverflowTickerLine: "  • %s: gap %+.1f%% / change %+.1f%% / cumulative %+.1f%%\n",
 	KeyEventsListTitle:              "📊 *Recent Price Events*\n",
 	KeyEventsTickerTitle:            "📊 *%s Price Event Log*\n",
-	KeyEventsLine:                   "%s │ %s │ gap %+.1f%% / change %+.1f%% │ %s\n",
+	KeyEventsLine:                   "%s │ %s │ gap %+.1f%% / change %+.1f%% / cumulative %+.1f%% │ %s\n",
 	KeyEventsNoSummary:              "(no summary)",
 	KeyEventsEmpty:                  "No price events on record yet.",
 

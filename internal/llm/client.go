@@ -237,8 +237,8 @@ func (c *Client) ReviewTrade(ctx context.Context, trade ClosedTrade) (result str
 // same reasoning as ReviewTrade/InsightPortfolio. Returns the model's reply
 // verbatim (no marker parsing, same convention as MorningBriefing) — the
 // caller (bot.RunClosingSnapshot) stores it as-is via db.SavePriceEvent.
-func (c *Client) ExplainPriceEvent(ctx context.Context, ticker string, gapPct, changePct float64, news []data.NewsItem) (string, error) {
-	prompt := buildPriceEventPrompt(c.lang, ticker, gapPct, changePct, news)
+func (c *Client) ExplainPriceEvent(ctx context.Context, ticker string, gapPct, changePct, cumulativePct float64, news []data.NewsItem) (string, error) {
+	prompt := buildPriceEventPrompt(c.lang, ticker, gapPct, changePct, cumulativePct, news)
 	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
 }
 

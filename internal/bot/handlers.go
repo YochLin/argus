@@ -1206,7 +1206,7 @@ func (b *Bot) handleEvents(args string) {
 				summary = summary[:i]
 			}
 		}
-		sb.WriteString(i18n.T(b.lang, i18n.KeyEventsLine, ev.Date, ev.Ticker, ev.GapPct, ev.ChangePct, summary))
+		sb.WriteString(i18n.T(b.lang, i18n.KeyEventsLine, ev.Date, ev.Ticker, ev.GapPct, ev.ChangePct, ev.CumulativePct, summary))
 	}
 	b.Send(sb.String())
 }
