@@ -138,6 +138,7 @@ export interface Dictionary {
   llmBlockedSources: string;
   llmUnblock: string;
   llmNoBlockedSources: string;
+  llmBlockedHint: string;
   llmCandlesSummary: string;
   llmMarketContext: string;
   llmCrossTickerLessons: string;
@@ -505,6 +506,7 @@ const en: Dictionary = {
   llmBlockedSources: "Blocked news sources",
   llmUnblock: "Unblock",
   llmNoBlockedSources: "No sources blocked yet.",
+  llmBlockedHint: "History records what was actually sent — blocking a source later never rewrites it.",
   llmCandlesSummary: "Candles",
   llmMarketContext: "Market context",
   llmCrossTickerLessons: "Cross-ticker lessons",
@@ -850,6 +852,7 @@ const zh: Dictionary = {
   llmBlockedSources: "已封鎖的新聞來源",
   llmUnblock: "解除封鎖",
   llmNoBlockedSources: "目前沒有封鎖任何來源。",
+  llmBlockedHint: "歷史紀錄保留實際送出的內容，之後封鎖來源不會改寫歷史。",
   llmCandlesSummary: "K 線",
   llmMarketContext: "市場背景",
   llmCrossTickerLessons: "跨標的教訓",

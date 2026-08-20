@@ -389,7 +389,11 @@ function RunDetail({
             </span>
           ))}
         </div>
-        {blockedSources.length === 0 && <div className="empty-message">{dict.llmNoBlockedSources}</div>}
+        {blockedSources.length > 0 ? (
+          <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 8 }}>{dict.llmBlockedHint}</div>
+        ) : (
+          <div className="empty-message">{dict.llmNoBlockedSources}</div>
+        )}
       </div>
 
       <div className="card" style={{ overflowX: "auto" }}>
