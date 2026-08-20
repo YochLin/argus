@@ -2061,6 +2061,67 @@ th {
   line-height: 1;
 }
 
+/* Accent-tinted variant of .tag, for badges that mark something as
+   noteworthy rather than neutral metadata (e.g. the /llm page's DEV badge
+   and its sidebar's /recommend kind tag) — mirrors .readonly-notice-badge's
+   tinted-accent look rather than introducing a third badge color. */
+.tag.tint {
+  color: var(--accent);
+  border-color: var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+}
+
+/* Data-quality panel's 4 stat boxes (design mockup's individually-bordered
+   grid, not the connected .dash-kpi-strip used elsewhere) — each box turns
+   amber when its count crosses the mockup's per-metric warn threshold. */
+.llm-quality-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.llm-quality-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.llm-quality-item.warn {
+  border-color: color-mix(in srgb, var(--s1) 35%, transparent);
+}
+
+.llm-quality-value {
+  font-family: var(--font-mono);
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+
+.llm-quality-item.warn .llm-quality-value {
+  color: var(--s1);
+}
+
+.llm-quality-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+
+/* Raw model reply block — matches the mockup's shaded <pre> rather than
+   plain unstyled text. */
+.llm-raw {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  max-height: 340px;
+  overflow: auto;
+}
+
 @media (max-width: 1024px) {
   .llm-layout {
     grid-template-columns: 1fr;
@@ -2068,6 +2129,10 @@ th {
 
   .llm-pair-grid {
     grid-template-columns: 1fr;
+  }
+
+  .llm-quality-grid {
+    grid-template-columns: 1fr 1fr;
   }
 
   .dash-charts-grid {

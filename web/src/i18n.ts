@@ -111,6 +111,8 @@ export interface Dictionary {
   yearTotal: string;
   navRecs: string;
   navLlm: string;
+  llmDevTag: string;
+  llmSubtitle: string;
   llmKind: string;
   llmModel: string;
   llmLatency: string;
@@ -476,6 +478,8 @@ const en: Dictionary = {
   yearTotal: "Total",
   navRecs: "Recs",
   navLlm: "LLM Audit",
+  llmDevTag: "DEV",
+  llmSubtitle: "Exactly what was sent to the model for each /recommend or daily report call.",
   llmKind: "Kind",
   llmModel: "Model",
   llmLatency: "Latency",
@@ -819,6 +823,8 @@ const zh: Dictionary = {
   yearTotal: "年度合計",
   navRecs: "推薦成效",
   navLlm: "LLM 稽核",
+  llmDevTag: "開發用",
+  llmSubtitle: "每次 /recommend 或每日報告實際送給模型的完整輸入內容。",
   llmKind: "類型",
   llmModel: "模型",
   llmLatency: "耗時",

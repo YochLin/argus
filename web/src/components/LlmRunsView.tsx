@@ -63,6 +63,16 @@ function countDuplicateTitles(news: LLMNewsItem[]): number {
   return news.filter((n) => dupes.has(normTitle(n.Headline))).length;
 }
 
+// Renders MarketContext's flat key/value struct (Bench/SPYPrice/VIX/...) as
+// a mockup-style " · "-joined line instead of a raw JSON dump — still no
+// server-side reshaping (design doc's "pass through as-is" rule), just a
+// friendlier join of the same fields, none dropped.
+function formatMarketContext(value: Record<string, unknown>): string {
+  return Object.entries(value)
+    .map(([k, v]) => `${k} ${formatKV(v)}`)
+    .join(" · ");
+}
+
 function formatKV(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
   if (Array.isArray(value)) return value.length === 0 ? "—" : JSON.stringify(value);
@@ -99,6 +109,18 @@ function StatBlock({ label, value }: { label: string; value: string | number }) 
     <div className="dash-kpi-strip-item">
       <div className="dash-kpi-strip-label">{label}</div>
       <div className="dash-kpi-strip-value">{value}</div>
+    </div>
+  );
+}
+
+// Design mockup's per-metric warn thresholds (its llmModel()'s `flags`
+// array) — a source name found in the blacklist or a candle gap is bad at
+// any count, stale/duplicate news only stands out past a couple of items.
+function QualityBlock({ label, value, warn }: { label: string; value: number; warn: boolean }) {
+  return (
+    <div className={`llm-quality-item${warn ? " warn" : ""}`}>
+      <span className="llm-quality-value">{value}</span>
+      <span className="llm-quality-label">{label}</span>
     </div>
   );
 }
@@ -240,7 +262,9 @@ function RunSidebar({
           onClick={() => onOpenRun(r.id)}
         >
           <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span className="tag">{r.kind === "recommend" ? dict.llmRunRecommend : dict.llmRunDailyReport}</span>
+            <span className={`tag${r.kind === "recommend" ? " tint" : ""}`}>
+              {r.kind === "recommend" ? dict.llmRunRecommend : dict.llmRunDailyReport}
+            </span>
           </span>
           <span className="mono">{r.createdAt}</span>
           <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
@@ -314,7 +338,9 @@ function RunDetail({
           <span className="mono" style={{ fontSize: 12, color: "var(--ink-2)" }}>
             {detail.createdAt}
           </span>
-          <span className="tag">{detail.kind === "recommend" ? dict.llmRunRecommend : dict.llmRunDailyReport}</span>
+          <span className={`tag${detail.kind === "recommend" ? " tint" : ""}`}>
+            {detail.kind === "recommend" ? dict.llmRunRecommend : dict.llmRunDailyReport}
+          </span>
           <span className="tag">{detail.market.toUpperCase()}</span>
         </div>
         <div className="dash-kpi-strip" style={{ marginTop: 12, marginBottom: 0 }}>
@@ -329,11 +355,23 @@ function RunDetail({
         <div className="eyebrow" style={{ marginBottom: 10 }}>
           {dict.llmDataQuality}
         </div>
-        <div className="dash-kpi-strip" style={{ marginBottom: 0 }}>
-          <StatBlock label={dict.llmLowQualitySource} value={countLowQuality(news, blocked)} />
-          <StatBlock label={dict.llmStaleNews} value={countStale(news, detail.createdAt)} />
-          <StatBlock label={dict.llmDuplicateTitles} value={countDuplicateTitles(news)} />
-          <StatBlock label={dict.llmCandleGaps} value={detail.candleGapCount} />
+        <div className="llm-quality-grid">
+          <QualityBlock
+            label={dict.llmLowQualitySource}
+            value={countLowQuality(news, blocked)}
+            warn={countLowQuality(news, blocked) > 0}
+          />
+          <QualityBlock
+            label={dict.llmStaleNews}
+            value={countStale(news, detail.createdAt)}
+            warn={countStale(news, detail.createdAt) > 2}
+          />
+          <QualityBlock
+            label={dict.llmDuplicateTitles}
+            value={countDuplicateTitles(news)}
+            warn={countDuplicateTitles(news) > 0}
+          />
+          <QualityBlock label={dict.llmCandleGaps} value={detail.candleGapCount} warn={detail.candleGapCount > 0} />
         </div>
       </div>
 
@@ -433,7 +471,7 @@ function RunDetail({
               {dict.llmMarketContext}
             </div>
             <div className="mono" style={{ fontSize: 12, color: "var(--ink-2)", lineHeight: 1.7 }}>
-              {formatKV(detail.input.marketContext)}
+              {formatMarketContext(detail.input.marketContext)}
             </div>
           </div>
         )}
@@ -453,7 +491,7 @@ function RunDetail({
 
       <div className="card">
         <div className="eyebrow">{dict.llmRawReply}</div>
-        <pre className="mono" style={{ whiteSpace: "pre-wrap" }}>
+        <pre className="mono llm-raw" style={{ whiteSpace: "pre-wrap" }}>
           {detail.outputRaw}
         </pre>
       </div>
@@ -477,7 +515,13 @@ export function LlmRunsView({ dict, names = {}, writable, onUnauthorized, runId,
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div className="eyebrow">{dict.navLlm}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span className="eyebrow">{dict.navLlm}</span>
+          <span className="tag tint">{dict.llmDevTag}</span>
+        </div>
+        <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{dict.llmSubtitle}</span>
+      </div>
       {error ? (
         <div className="error-message">{dict.error}</div>
       ) : !runs ? (
