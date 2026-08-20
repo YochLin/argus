@@ -9,10 +9,10 @@ import (
 func TestInsertLLMRunAndListLLMRuns(t *testing.T) {
 	d := newTestDB(t)
 
-	if err := d.InsertLLMRun("recommend", market.US, "opus", 4200, `{"watchlist":[]}`, "raw reply", 2, 5, 8); err != nil {
+	if err := d.InsertLLMRun("recommend", market.US, "opus", 4200, `{"watchlist":[]}`, "raw reply", 2, 5, 8, 1); err != nil {
 		t.Fatalf("InsertLLMRun() error = %v", err)
 	}
-	if err := d.InsertLLMRun("daily_report", market.TW, "sonnet", 3100, `{"watchlist":[]}`, "raw reply 2", 1, 3, 4); err != nil {
+	if err := d.InsertLLMRun("daily_report", market.TW, "sonnet", 3100, `{"watchlist":[]}`, "raw reply 2", 1, 3, 4, 0); err != nil {
 		t.Fatalf("InsertLLMRun() error = %v", err)
 	}
 
@@ -27,15 +27,15 @@ func TestInsertLLMRunAndListLLMRuns(t *testing.T) {
 	if got[0].Kind != "daily_report" || got[0].Market != "tw" || got[0].Model != "sonnet" {
 		t.Errorf("ListLLMRuns()[0] = %+v, want the daily_report/tw/sonnet row newest-first", got[0])
 	}
-	if got[1].WatchlistCount != 2 || got[1].CandidateCount != 5 || got[1].NewsCount != 8 {
-		t.Errorf("ListLLMRuns()[1] counts = %+v, want {2,5,8}", got[1])
+	if got[1].WatchlistCount != 2 || got[1].CandidateCount != 5 || got[1].NewsCount != 8 || got[1].CandleGapCount != 1 {
+		t.Errorf("ListLLMRuns()[1] counts = %+v, want {2,5,8,1}", got[1])
 	}
 }
 
 func TestGetLLMRun(t *testing.T) {
 	d := newTestDB(t)
 
-	if err := d.InsertLLMRun("recommend", market.US, "opus", 4200, `{"watchlist":[]}`, "raw reply", 2, 5, 8); err != nil {
+	if err := d.InsertLLMRun("recommend", market.US, "opus", 4200, `{"watchlist":[]}`, "raw reply", 2, 5, 8, 3); err != nil {
 		t.Fatalf("InsertLLMRun() error = %v", err)
 	}
 
@@ -51,8 +51,8 @@ func TestGetLLMRun(t *testing.T) {
 	if !ok {
 		t.Fatal("GetLLMRun() ok = false, want true")
 	}
-	if got.InputJSON != `{"watchlist":[]}` || got.OutputRaw != "raw reply" {
-		t.Errorf("GetLLMRun() = %+v, want input/output round-tripped", got)
+	if got.InputJSON != `{"watchlist":[]}` || got.OutputRaw != "raw reply" || got.CandleGapCount != 3 {
+		t.Errorf("GetLLMRun() = %+v, want input/output round-tripped and CandleGapCount = 3", got)
 	}
 
 	_, ok, err = d.GetLLMRun(runs[0].ID + 999)

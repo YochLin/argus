@@ -149,10 +149,48 @@ func (b *Bot) recordLLMRun(kind string, m market.MarketID, in recommendationInpu
 	for _, s := range in.candidates {
 		newsCount += len(s.News)
 	}
+	gapCount := countCandleGaps(in.watchlist, m) + countCandleGaps(in.candidates, m)
 
-	if err := b.db.InsertLLMRun(kind, m, model, latencyMs, string(inputJSON), raw, len(in.watchlist), len(in.candidates), newsCount); err != nil {
+	if err := b.db.InsertLLMRun(kind, m, model, latencyMs, string(inputJSON), raw, len(in.watchlist), len(in.candidates), newsCount, gapCount); err != nil {
 		logger.Errorf("llm run: insert: %v", err)
 	}
+}
+
+// countCandleGaps counts, across every stock's Candles, how many consecutive
+// bar pairs skip more than one trading day — a stand-in for "Yahoo's chart
+// API silently dropped a bar" (see internal/data's GetHistory doc comment
+// for a documented instance of that). US uses internal/market.IsTradingDay's
+// real NYSE calendar; TW falls back to a weekday-only check since
+// internal/market doesn't cover the TWSE calendar (same limitation the prior
+// client-side TS heuristic had for both markets — see the /llm audit page's
+// data-quality panel).
+func countCandleGaps(stocks []llm.StockData, m market.MarketID) int {
+	gaps := 0
+	for _, s := range stocks {
+		for i := 1; i < len(s.Candles); i++ {
+			if tradingDaysBetween(s.Candles[i-1].Date, s.Candles[i].Date, m) > 1 {
+				gaps++
+			}
+		}
+	}
+	return gaps
+}
+
+// tradingDaysBetween counts trading days in (from, to], matching the
+// semantics of the TS heuristic it replaces: exactly 1 for two consecutive
+// trading days, >1 whenever a bar is missing in between.
+func tradingDaysBetween(from, to time.Time, m market.MarketID) int {
+	n := 0
+	for d := from.AddDate(0, 0, 1); !d.After(to); d = d.AddDate(0, 0, 1) {
+		if m == market.US {
+			if market.IsTradingDay(d) {
+				n++
+			}
+		} else if wd := d.Weekday(); wd != time.Saturday && wd != time.Sunday {
+			n++
+		}
+	}
+	return n
 }
 
 // sendAndSaveRecommendations formats LLM recommendations for Telegram and

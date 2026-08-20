@@ -1371,6 +1371,7 @@ export interface LLMRunSummary {
   watchlistCount: number;
   candidateCount: number;
   newsCount: number;
+  candleGapCount: number;
 }
 
 export interface LLMRunDetail extends LLMRunSummary {

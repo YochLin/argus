@@ -144,6 +144,9 @@ export interface Dictionary {
   llmScanReason: string;
   llmPrevRecommendation: string;
   llmRawReply: string;
+  llmScope: string;
+  llmInsiderTx: string;
+  llmStocksTitle: string;
   recCounts: string;
   recTotal: string;
   recScorable: string;
@@ -506,6 +509,9 @@ const en: Dictionary = {
   llmScanReason: "Scan reason",
   llmPrevRecommendation: "Previous recommendation",
   llmRawReply: "Raw model reply",
+  llmScope: "Scope",
+  llmInsiderTx: "Insider transactions",
+  llmStocksTitle: "Stocks",
   recCounts: "RECOMMENDATION COVERAGE",
   recTotal: "Total",
   recScorable: "Scorable",
@@ -846,6 +852,9 @@ const zh: Dictionary = {
   llmScanReason: "掃描原因",
   llmPrevRecommendation: "前次建議",
   llmRawReply: "模型原始回覆",
+  llmScope: "標的",
+  llmInsiderTx: "內部人交易",
+  llmStocksTitle: "個股",
   recCounts: "推薦覆蓋率",
   recTotal: "總筆數",
   recScorable: "可評分",

@@ -223,7 +223,6 @@ export default function App() {
         onUnauthorized={(retry) => setAuthRetry(() => retry)}
         runId={params.get("id") ? Number(params.get("id")) : null}
         onOpenRun={(id) => navigate(`/llm?id=${id}`)}
-        onBack={() => navigate("/llm")}
       />
     ) : null;
   } else if (path === "/import") {

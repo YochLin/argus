@@ -1987,7 +1987,89 @@ th {
   opacity: 0.5;
 }
 
+/* PR4's single-page-with-sidebar rework of /llm (design mockup's 268px
+   run list + detail layout, replacing the earlier RunList/RunDetail page
+   swap) — see docs/phase-19-llm-transparency.md's PLAN.md PR4 entry. */
+.llm-layout {
+  display: grid;
+  grid-template-columns: 268px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.llm-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: calc(100vh - 190px);
+  overflow-y: auto;
+}
+
+.llm-sidebar-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+.llm-sidebar-btn:hover {
+  background: var(--bg);
+}
+
+.llm-sidebar-btn.active {
+  background: var(--accent-tint-bg, color-mix(in srgb, var(--accent) 12%, transparent));
+}
+
+.llm-pair-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+/* Blocked-source pill chips (title-row inline list, unlike the plain .tag
+   the per-row "Blocked" markers use) — border-radius 14px pill with a
+   circular unblock button baked into the same element. */
+.llm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 3px 6px 3px 10px;
+}
+
+.llm-chip-x {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg);
+  color: var(--ink-3);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+}
+
 @media (max-width: 1024px) {
+  .llm-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .llm-pair-grid {
+    grid-template-columns: 1fr;
+  }
+
   .dash-charts-grid {
     grid-template-columns: 1fr;
   }

@@ -586,25 +586,30 @@ var migrations = []string{
 	// guessing. model/latency_ms come from llm.Client.GenerateRecommendations'
 	// own return values; no tokens column — ACP has no per-token usage to
 	// report (see client.go's existing comment on that). watchlist_count/
-	// candidate_count/news_count are computed once at write time (not in the
-	// doc's original schema) so ListLLMRuns' list view can show a summary
-	// without pulling every row's input_json over the wire, which is the
-	// whole reason ListLLMRuns excludes it. No retention policy (§3's
-	// decision 5): add a DELETE alongside the existing backup job later if
-	// the table ever grows large enough to matter.
+	// candidate_count/news_count/candle_gap_count are computed once at write
+	// time (not in the doc's original schema) so ListLLMRuns' list view can
+	// show a summary without pulling every row's input_json over the wire,
+	// which is the whole reason ListLLMRuns excludes it. candle_gap_count
+	// specifically replaces a client-side (TS) weekday-only heuristic with
+	// internal/market.IsTradingDay's real NYSE calendar (US only — TW falls
+	// back to the same weekday-only check, since internal/market has no TW
+	// calendar) — see pipeline.go's countCandleGaps. No retention policy
+	// (§3's decision 5): add a DELETE alongside the existing backup job
+	// later if the table ever grows large enough to matter.
 	`
 	CREATE TABLE IF NOT EXISTS llm_runs (
-		id              INTEGER PRIMARY KEY AUTOINCREMENT,
-		kind            TEXT NOT NULL,
-		market          TEXT NOT NULL,
-		model           TEXT NOT NULL,
-		latency_ms      INTEGER NOT NULL,
-		created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-		input_json      TEXT NOT NULL,
-		output_raw      TEXT NOT NULL,
-		watchlist_count INTEGER NOT NULL DEFAULT 0,
-		candidate_count INTEGER NOT NULL DEFAULT 0,
-		news_count      INTEGER NOT NULL DEFAULT 0
+		id               INTEGER PRIMARY KEY AUTOINCREMENT,
+		kind             TEXT NOT NULL,
+		market           TEXT NOT NULL,
+		model            TEXT NOT NULL,
+		latency_ms       INTEGER NOT NULL,
+		created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+		input_json       TEXT NOT NULL,
+		output_raw       TEXT NOT NULL,
+		watchlist_count  INTEGER NOT NULL DEFAULT 0,
+		candidate_count  INTEGER NOT NULL DEFAULT 0,
+		news_count       INTEGER NOT NULL DEFAULT 0,
+		candle_gap_count INTEGER NOT NULL DEFAULT 0
 	);
 	CREATE INDEX IF NOT EXISTS idx_llm_runs_created ON llm_runs(created_at DESC);
 	`,

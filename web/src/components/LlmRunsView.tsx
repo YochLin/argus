@@ -22,7 +22,6 @@ interface Props {
   onUnauthorized: (retry: () => void) => void;
   runId: number | null;
   onOpenRun: (id: number) => void;
-  onBack: () => void;
 }
 
 // SQLite's CURRENT_TIMESTAMP has no "T"/timezone suffix and is always UTC.
@@ -32,6 +31,18 @@ function parseSqliteUTC(s: string): number {
 
 function normTitle(s: string): string {
   return s.trim().toLowerCase();
+}
+
+function isStale(n: LLMNewsItem, createdAt: string): boolean {
+  return parseSqliteUTC(createdAt) - new Date(n.PublishedAt).getTime() > 72 * 3600 * 1000;
+}
+
+function duplicateTitleSet(news: LLMNewsItem[]): Set<string> {
+  const counts = new Map<string, number>();
+  for (const n of news) counts.set(normTitle(n.Headline), (counts.get(normTitle(n.Headline)) ?? 0) + 1);
+  const dupes = new Set<string>();
+  for (const [title, c] of counts) if (c > 1) dupes.add(title);
+  return dupes;
 }
 
 function allNews(detail: LLMRunDetail): LLMNewsItem[] {
@@ -44,40 +55,12 @@ function countLowQuality(news: LLMNewsItem[], blocked: Set<string>): number {
 }
 
 function countStale(news: LLMNewsItem[], createdAt: string): number {
-  const created = parseSqliteUTC(createdAt);
-  const cutoffMs = 72 * 3600 * 1000;
-  return news.filter((n) => created - new Date(n.PublishedAt).getTime() > cutoffMs).length;
+  return news.filter((n) => isStale(n, createdAt)).length;
 }
 
 function countDuplicateTitles(news: LLMNewsItem[]): number {
-  const counts = new Map<string, number>();
-  for (const n of news) counts.set(normTitle(n.Headline), (counts.get(normTitle(n.Headline)) ?? 0) + 1);
-  let dupes = 0;
-  for (const c of counts.values()) if (c > 1) dupes += c;
-  return dupes;
-}
-
-// ponytail: naive weekday-count gap heuristic (skips Sat/Sun only, not a
-// real trading-calendar) — upgrade to an internal/market-equivalent TS check
-// if holiday false positives turn out to matter in practice.
-function countCandleGaps(stocks: LLMStockData[]): number {
-  let gaps = 0;
-  for (const s of stocks) {
-    const candles = s.Candles;
-    if (!candles || candles.length < 2) continue;
-    for (let i = 1; i < candles.length; i++) {
-      const d = new Date(candles[i - 1].Date);
-      const cur = new Date(candles[i].Date).getTime();
-      let weekdays = 0;
-      while (d.getTime() < cur) {
-        d.setDate(d.getDate() + 1);
-        const day = d.getDay();
-        if (day !== 0 && day !== 6) weekdays++;
-      }
-      if (weekdays > 1) gaps++;
-    }
-  }
-  return gaps;
+  const dupes = duplicateTitleSet(news);
+  return news.filter((n) => dupes.has(normTitle(n.Headline))).length;
 }
 
 function formatKV(value: unknown): string {
@@ -87,177 +70,184 @@ function formatKV(value: unknown): string {
   return String(value);
 }
 
-// Generic renderer for the object-shaped StockData fields (Quote,
-// Fundamentals, AnalystRating, Technicals, Position, PrevRec, ...) — avoids
-// hand-typing/hand-rendering every nested Go struct's field list, and stays
-// correct as those structs grow new fields (design doc's "never trim a
-// field" rule).
-function KVTable({ obj }: { obj: Record<string, unknown> }) {
-  const entries = Object.entries(obj).filter(([, v]) => v !== null && v !== undefined && v !== "");
-  if (entries.length === 0) return null;
+// Flattens the object-shaped StockData fields (Quote/Fundamentals/
+// AnalystRating/...) into one label/value list, mockup-style — avoids
+// hand-typing every nested Go struct's field list, and stays correct as
+// those structs grow new fields (design doc's "never trim a field" rule).
+function stockFields(stock: LLMStockData): { label: string; value: string }[] {
+  const objs: Record<string, unknown>[] = [
+    stock.Quote,
+    stock.Fundamentals,
+    stock.AnalystRating,
+    stock.InstitutionalFlow,
+    stock.Technicals,
+    stock.Position,
+    stock.PrevRec,
+  ].filter((o): o is Record<string, unknown> => !!o);
+  const fields: { label: string; value: string }[] = [];
+  for (const obj of objs) {
+    for (const [k, v] of Object.entries(obj)) {
+      if (v === null || v === undefined || v === "") continue;
+      fields.push({ label: k, value: formatKV(v) });
+    }
+  }
+  return fields;
+}
+
+function StatBlock({ label, value }: { label: string; value: string | number }) {
   return (
-    <table className="mono">
-      <tbody>
-        {entries.map(([k, v]) => (
-          <tr key={k}>
-            <td>{k}</td>
-            <td>{formatKV(v)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className="dash-kpi-strip-item">
+      <div className="dash-kpi-strip-label">{label}</div>
+      <div className="dash-kpi-strip-value">{value}</div>
+    </div>
   );
 }
 
-function NewsTable({
+function NewsRow({
   dict,
   news,
+  scope,
+  createdAt,
+  isDuplicate,
   blocked,
   writable,
   onBlock,
 }: {
   dict: Dictionary;
-  news: LLMNewsItem[];
+  news: LLMNewsItem;
+  scope?: string;
+  createdAt: string;
+  isDuplicate: boolean;
   blocked: Set<string>;
   writable: boolean;
   onBlock: (source: string) => void;
 }) {
-  if (news.length === 0) return null;
+  const isBlocked = blocked.has(normTitle(news.Source));
+  const stale = isStale(news, createdAt);
   return (
-    <table className="mono">
-      <thead>
-        <tr>
-          <th>{dict.llmSource}</th>
-          <th>{dict.llmPublishedAt}</th>
-          <th>{dict.llmHeadline}</th>
-          {writable && <th />}
-        </tr>
-      </thead>
-      <tbody>
-        {news.map((n, i) => {
-          const isBlocked = blocked.has(normTitle(n.Source));
-          return (
-            <tr key={i} className={isBlocked ? "llm-row-dim" : ""}>
-              <td>
-                {n.Source} {isBlocked && <span className="tag warn">{dict.llmBlocked}</span>}
-              </td>
-              <td>{n.PublishedAt}</td>
-              <td>
-                {n.URL ? (
-                  <a href={n.URL} target="_blank" rel="noreferrer">
-                    {n.Headline}
-                  </a>
-                ) : (
-                  n.Headline
-                )}
-              </td>
-              {writable && (
-                <td>
-                  {!isBlocked && (
-                    <button className="btn-sm" onClick={() => onBlock(n.Source)}>
-                      {dict.llmBlockSource}
-                    </button>
-                  )}
-                </td>
-              )}
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <tr className={isBlocked ? "llm-row-dim" : ""}>
+      <td>{news.Source}</td>
+      {scope !== undefined && <td className="mono">{scope}</td>}
+      <td className="mono">{news.PublishedAt}</td>
+      <td style={{ textAlign: "left" }}>
+        {news.URL ? (
+          <a href={news.URL} target="_blank" rel="noreferrer">
+            {news.Headline}
+          </a>
+        ) : (
+          news.Headline
+        )}
+        {stale && <span className="tag">{dict.llmStaleNews}</span>}
+        {isDuplicate && <span className="tag">{dict.llmDuplicateTitles}</span>}
+        {isBlocked && <span className="tag warn">{dict.llmBlocked}</span>}
+      </td>
+      <td>
+        {writable && !isBlocked && (
+          <button className="btn-sm" onClick={() => onBlock(news.Source)}>
+            {dict.llmBlockSource}
+          </button>
+        )}
+      </td>
+    </tr>
   );
 }
 
 function StockCard({ dict, names, stock }: { dict: Dictionary; names: Record<string, string>; stock: LLMStockData }) {
   const ticker = (stock.Quote?.Ticker as string) || "?";
+  const fields = stockFields(stock);
+  const newsCount = stock.News?.length ?? 0;
   return (
     <div className="card">
-      <div className="eyebrow">{tickerLabel(ticker, names)}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span className="mono" style={{ fontWeight: 600 }}>
+          {tickerLabel(ticker, names)}
+        </span>
+        {stock.Position && <span className="tag warn">{dict.eventHeld}</span>}
+        <span className="mono" style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--ink-3)" }}>
+          {newsCount} {dict.llmNews}
+        </span>
+      </div>
       {stock.ScanReason && (
         <div className="stat-note">
           {dict.llmScanReason}: {stock.ScanReason}
         </div>
       )}
-      {stock.Quote && <KVTable obj={stock.Quote} />}
-      {stock.Fundamentals && <KVTable obj={stock.Fundamentals} />}
-      {stock.AnalystRating && <KVTable obj={stock.AnalystRating} />}
-      {stock.InstitutionalFlow && <KVTable obj={stock.InstitutionalFlow} />}
-      {stock.Technicals && <KVTable obj={stock.Technicals} />}
-      {stock.Position && <KVTable obj={stock.Position} />}
-      {stock.PrevRec && <KVTable obj={stock.PrevRec} />}
-      {stock.Candles && stock.Candles.length > 0 && (
-        <div className="stat-note">
-          {dict.llmCandlesSummary}: {stock.Candles.length} ({stock.Candles[0].Date} →{" "}
-          {stock.Candles[stock.Candles.length - 1].Date})
-        </div>
-      )}
-      {stock.StrategyHits && stock.StrategyHits.length > 0 && (
-        <div className="stat-note">
-          {dict.llmStrategyHits}: {stock.StrategyHits.map((h) => `${h.Name} (${h.DaysAgo}d)`).join(", ")}
-        </div>
-      )}
-      {stock.PastLessons && stock.PastLessons.length > 0 && (
-        <div className="stat-note">
-          {dict.llmPerTickerLessons}: {stock.PastLessons.map((l) => `${l.Date}: ${l.Lesson}`).join(" / ")}
-        </div>
-      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
+        {fields.map((f) => (
+          <div key={f.label} style={{ display: "flex", gap: 10 }}>
+            <span className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)", width: 104, flexShrink: 0 }}>
+              {f.label}
+            </span>
+            <span style={{ fontSize: 11.5 }}>{f.value}</span>
+          </div>
+        ))}
+        {stock.InsiderTx && stock.InsiderTx.length > 0 && (
+          <div style={{ display: "flex", gap: 10 }}>
+            <span className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)", width: 104, flexShrink: 0 }}>
+              {dict.llmInsiderTx}
+            </span>
+            <span style={{ fontSize: 11.5 }}>{formatKV(stock.InsiderTx)}</span>
+          </div>
+        )}
+        {stock.Candles && stock.Candles.length > 0 && (
+          <div style={{ display: "flex", gap: 10 }}>
+            <span className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)", width: 104, flexShrink: 0 }}>
+              {dict.llmCandlesSummary}
+            </span>
+            <span style={{ fontSize: 11.5 }}>
+              {stock.Candles.length} ({stock.Candles[0].Date} → {stock.Candles[stock.Candles.length - 1].Date})
+            </span>
+          </div>
+        )}
+        {stock.StrategyHits && stock.StrategyHits.length > 0 && (
+          <div style={{ display: "flex", gap: 10 }}>
+            <span className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)", width: 104, flexShrink: 0 }}>
+              {dict.llmStrategyHits}
+            </span>
+            <span style={{ fontSize: 11.5 }}>{stock.StrategyHits.map((h) => `${h.Name} (${h.DaysAgo}d)`).join(", ")}</span>
+          </div>
+        )}
+        {stock.PastLessons && stock.PastLessons.length > 0 && (
+          <div style={{ display: "flex", gap: 10 }}>
+            <span className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)", width: 104, flexShrink: 0 }}>
+              {dict.llmPerTickerLessons}
+            </span>
+            <span style={{ fontSize: 11.5 }}>{stock.PastLessons.map((l) => `${l.Date}: ${l.Lesson}`).join(" / ")}</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function RunList({ dict, onOpenRun }: { dict: Dictionary; onOpenRun: (id: number) => void }) {
-  const [runs, setRuns] = useState<LLMRunSummary[] | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    fetchLLMRuns()
-      .then((r) => setRuns(r.runs))
-      .catch(() => setError(true));
-  }, []);
-
-  if (error) return <div className="error-message">{dict.error}</div>;
-  if (!runs) return <div className="loading">{dict.loading}</div>;
-  if (runs.length === 0) return <div className="empty-message">{dict.llmNoRuns}</div>;
-
+function RunSidebar({
+  dict,
+  runs,
+  selectedId,
+  onOpenRun,
+}: {
+  dict: Dictionary;
+  runs: LLMRunSummary[];
+  selectedId: number | null;
+  onOpenRun: (id: number) => void;
+}) {
   return (
-    <div className="card">
-      <div className="eyebrow">{dict.navLlm}</div>
-      <table className="mono">
-        <thead>
-          <tr>
-            <th>{dict.llmCreated}</th>
-            <th>{dict.llmKind}</th>
-            <th>Market</th>
-            <th>{dict.llmModel}</th>
-            <th>{dict.llmLatency}</th>
-            <th>{dict.llmWatchlist}</th>
-            <th>{dict.llmCandidates}</th>
-            <th>{dict.llmNews}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {runs.map((r) => (
-            <tr
-              key={r.id}
-              className="round-row"
-              tabIndex={0}
-              onClick={() => onOpenRun(r.id)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") onOpenRun(r.id);
-              }}
-            >
-              <td>{r.createdAt}</td>
-              <td>{r.kind === "recommend" ? dict.llmRunRecommend : r.kind === "daily_report" ? dict.llmRunDailyReport : r.kind}</td>
-              <td>{r.market}</td>
-              <td>{r.model}</td>
-              <td>{r.latencyMs}ms</td>
-              <td>{r.watchlistCount}</td>
-              <td>{r.candidateCount}</td>
-              <td>{r.newsCount}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="card llm-sidebar">
+      {runs.map((r) => (
+        <button
+          key={r.id}
+          className={`llm-sidebar-btn${r.id === selectedId ? " active" : ""}`}
+          onClick={() => onOpenRun(r.id)}
+        >
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span className="tag">{r.kind === "recommend" ? dict.llmRunRecommend : dict.llmRunDailyReport}</span>
+          </span>
+          <span className="mono">{r.createdAt}</span>
+          <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
+            {r.market.toUpperCase()} · {r.model} · {r.latencyMs}ms
+          </span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -268,14 +258,12 @@ function RunDetail({
   writable,
   onUnauthorized,
   runId,
-  onBack,
 }: {
   dict: Dictionary;
   names: Record<string, string>;
   writable: boolean;
   onUnauthorized: (retry: () => void) => void;
   runId: number;
-  onBack: () => void;
 }) {
   const [detail, setDetail] = useState<LLMRunDetail | null>(null);
   const [error, setError] = useState(false);
@@ -314,125 +302,152 @@ function RunDetail({
   const blocked = new Set(blockedSources.map((b) => normTitle(b.source)));
   const news = allNews(detail);
   const stocks = [...detail.input.watchlist, ...detail.input.candidates];
+  const dupes = duplicateTitleSet(news);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <button className="btn-sm" onClick={onBack}>
-        ← {dict.navLlm}
-      </button>
-
       <div className="card">
-        <div className="eyebrow">
-          {detail.kind === "recommend" ? dict.llmRunRecommend : dict.llmRunDailyReport} · {detail.market}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span className="mono" style={{ fontSize: 15 }}>
+            #{detail.id}
+          </span>
+          <span className="mono" style={{ fontSize: 12, color: "var(--ink-2)" }}>
+            {detail.createdAt}
+          </span>
+          <span className="tag">{detail.kind === "recommend" ? dict.llmRunRecommend : dict.llmRunDailyReport}</span>
+          <span className="tag">{detail.market.toUpperCase()}</span>
         </div>
-        <table className="mono">
-          <tbody>
-            <tr>
-              <td>{dict.llmModel}</td>
-              <td>{detail.model}</td>
-            </tr>
-            <tr>
-              <td>{dict.llmLatency}</td>
-              <td>{detail.latencyMs}ms</td>
-            </tr>
-            <tr>
-              <td>{dict.llmCreated}</td>
-              <td>{detail.createdAt}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div className="dash-kpi-strip" style={{ marginTop: 12, marginBottom: 0 }}>
+          <StatBlock label={dict.llmModel} value={detail.model} />
+          <StatBlock label={dict.llmLatency} value={detail.latencyMs} />
+          <StatBlock label={dict.llmWatchlist} value={detail.watchlistCount} />
+          <StatBlock label={dict.llmCandidates} value={detail.candidateCount} />
+        </div>
       </div>
 
       <div className="card">
-        <div className="eyebrow">{dict.llmDataQuality}</div>
-        <table className="mono">
-          <tbody>
-            <tr>
-              <td>{dict.llmLowQualitySource}</td>
-              <td>{countLowQuality(news, blocked)}</td>
-            </tr>
-            <tr>
-              <td>{dict.llmStaleNews}</td>
-              <td>{countStale(news, detail.createdAt)}</td>
-            </tr>
-            <tr>
-              <td>{dict.llmDuplicateTitles}</td>
-              <td>{countDuplicateTitles(news)}</td>
-            </tr>
-            <tr>
-              <td>{dict.llmCandleGaps}</td>
-              <td>{countCandleGaps(stocks)}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div className="eyebrow" style={{ marginBottom: 10 }}>
+          {dict.llmDataQuality}
+        </div>
+        <div className="dash-kpi-strip" style={{ marginBottom: 0 }}>
+          <StatBlock label={dict.llmLowQualitySource} value={countLowQuality(news, blocked)} />
+          <StatBlock label={dict.llmStaleNews} value={countStale(news, detail.createdAt)} />
+          <StatBlock label={dict.llmDuplicateTitles} value={countDuplicateTitles(news)} />
+          <StatBlock label={dict.llmCandleGaps} value={detail.candleGapCount} />
+        </div>
       </div>
 
-      {detail.input.marketContext && (
-        <div className="card">
-          <div className="eyebrow">{dict.llmMarketContext}</div>
-          <KVTable obj={detail.input.marketContext} />
-        </div>
-      )}
-
-      {detail.input.recentLessons && detail.input.recentLessons.length > 0 && (
-        <div className="card">
-          <div className="eyebrow">{dict.llmCrossTickerLessons}</div>
-          {detail.input.recentLessons.map((l, i) => (
-            <div className="stat-note" key={i}>
-              {tickerLabel(l.Ticker, names)} · {l.Date}: {l.Lesson}
-            </div>
+      <div className="card">
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+          <span className="eyebrow">{dict.llmBlockedSources}</span>
+          {blockedSources.map((b) => (
+            <span key={b.source} className="llm-chip">
+              {b.source}
+              {writable && (
+                <button className="llm-chip-x" aria-label="unblock" onClick={() => doUnblock(b.source)}>
+                  ×
+                </button>
+              )}
+            </span>
           ))}
         </div>
-      )}
+        {blockedSources.length === 0 && <div className="empty-message">{dict.llmNoBlockedSources}</div>}
+      </div>
 
-      <div className="card">
+      <div className="card" style={{ overflowX: "auto" }}>
         <div className="eyebrow">{dict.llmNewsMarket}</div>
-        <NewsTable dict={dict} news={detail.input.marketNews} blocked={blocked} writable={writable} onBlock={doBlock} />
+        <table className="mono" style={{ width: "100%" }}>
+          <thead>
+            <tr>
+              <th>{dict.llmSource}</th>
+              <th>{dict.llmPublishedAt}</th>
+              <th>{dict.llmHeadline}</th>
+              {writable && <th />}
+            </tr>
+          </thead>
+          <tbody>
+            {detail.input.marketNews.map((n, i) => (
+              <NewsRow
+                key={i}
+                dict={dict}
+                news={n}
+                createdAt={detail.createdAt}
+                isDuplicate={dupes.has(normTitle(n.Headline))}
+                blocked={blocked}
+                writable={writable}
+                onBlock={doBlock}
+              />
+            ))}
+          </tbody>
+        </table>
+
+        <div className="eyebrow" style={{ marginTop: 14 }}>
+          {dict.llmNewsPerTicker}
+        </div>
+        <table className="mono" style={{ width: "100%" }}>
+          <thead>
+            <tr>
+              <th>{dict.llmSource}</th>
+              <th>{dict.llmScope}</th>
+              <th>{dict.llmPublishedAt}</th>
+              <th>{dict.llmHeadline}</th>
+              {writable && <th />}
+            </tr>
+          </thead>
+          <tbody>
+            {stocks.flatMap((s, si) => {
+              const ticker = (s.Quote?.Ticker as string) || "?";
+              return (s.News ?? []).map((n, ni) => (
+                <NewsRow
+                  key={`${si}-${ni}`}
+                  dict={dict}
+                  news={n}
+                  scope={tickerLabel(ticker, names)}
+                  createdAt={detail.createdAt}
+                  isDuplicate={dupes.has(normTitle(n.Headline))}
+                  blocked={blocked}
+                  writable={writable}
+                  onBlock={doBlock}
+                />
+              ));
+            })}
+          </tbody>
+        </table>
       </div>
 
       <div className="card">
-        <div className="eyebrow">{dict.llmNewsPerTicker}</div>
-        {stocks.map((s, i) => {
-          const items = s.News ?? [];
-          if (items.length === 0) return null;
-          const ticker = (s.Quote?.Ticker as string) || "?";
-          return (
-            <div key={i}>
-              <div className="stat-note">{tickerLabel(ticker, names)}</div>
-              <NewsTable dict={dict} news={items} blocked={blocked} writable={writable} onBlock={doBlock} />
+        <div className="eyebrow" style={{ marginBottom: 10 }}>
+          {dict.llmStocksTitle}
+        </div>
+        <div className="llm-cards-grid">
+          {stocks.map((s, i) => (
+            <StockCard key={i} dict={dict} names={names} stock={s} />
+          ))}
+        </div>
+      </div>
+
+      <div className="llm-pair-grid">
+        {detail.input.marketContext && (
+          <div className="card">
+            <div className="eyebrow" style={{ marginBottom: 8 }}>
+              {dict.llmMarketContext}
             </div>
-          );
-        })}
-      </div>
-
-      <div className="llm-cards-grid">
-        {stocks.map((s, i) => (
-          <StockCard key={i} dict={dict} names={names} stock={s} />
-        ))}
-      </div>
-
-      <div className="card">
-        <div className="eyebrow">{dict.llmBlockedSources}</div>
-        {blockedSources.length === 0 ? (
-          <div className="empty-message">{dict.llmNoBlockedSources}</div>
-        ) : (
-          <table className="mono">
-            <tbody>
-              {blockedSources.map((b) => (
-                <tr key={b.source}>
-                  <td>{b.source}</td>
-                  <td>{b.createdAt}</td>
-                  {writable && (
-                    <td>
-                      <button className="btn-sm" onClick={() => doUnblock(b.source)}>
-                        {dict.llmUnblock}
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            <div className="mono" style={{ fontSize: 12, color: "var(--ink-2)", lineHeight: 1.7 }}>
+              {formatKV(detail.input.marketContext)}
+            </div>
+          </div>
+        )}
+        {detail.input.recentLessons && detail.input.recentLessons.length > 0 && (
+          <div className="card">
+            <div className="eyebrow" style={{ marginBottom: 8 }}>
+              {dict.llmCrossTickerLessons}
+            </div>
+            {detail.input.recentLessons.map((l, i) => (
+              <div className="stat-note" key={i}>
+                {tickerLabel(l.Ticker, names)} · {l.Date}: {l.Lesson}
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
@@ -446,10 +461,37 @@ function RunDetail({
   );
 }
 
-export function LlmRunsView({ dict, names = {}, writable, onUnauthorized, runId, onOpenRun, onBack }: Props) {
-  return runId ? (
-    <RunDetail dict={dict} names={names} writable={writable} onUnauthorized={onUnauthorized} runId={runId} onBack={onBack} />
-  ) : (
-    <RunList dict={dict} onOpenRun={onOpenRun} />
+export function LlmRunsView({ dict, names = {}, writable, onUnauthorized, runId, onOpenRun }: Props) {
+  const [runs, setRuns] = useState<LLMRunSummary[] | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    fetchLLMRuns()
+      .then((r) => setRuns(r.runs))
+      .catch(() => setError(true));
+  }, []);
+
+  useEffect(() => {
+    if (runId === null && runs && runs.length > 0) onOpenRun(runs[0].id);
+  }, [runId, runs, onOpenRun]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="eyebrow">{dict.navLlm}</div>
+      {error ? (
+        <div className="error-message">{dict.error}</div>
+      ) : !runs ? (
+        <div className="loading">{dict.loading}</div>
+      ) : runs.length === 0 ? (
+        <div className="empty-message">{dict.llmNoRuns}</div>
+      ) : (
+        <div className="llm-layout">
+          <RunSidebar dict={dict} runs={runs} selectedId={runId} onOpenRun={onOpenRun} />
+          {runId !== null && (
+            <RunDetail dict={dict} names={names} writable={writable} onUnauthorized={onUnauthorized} runId={runId} />
+          )}
+        </div>
+      )}
+    </div>
   );
 }

@@ -9,7 +9,7 @@ function getMockData(urlStr: string): any {
   const market = parsed.searchParams.get("market") || "us";
 
   if (path === "/api/config") {
-    return { lang: "zh", paperEnabled: true };
+    return { lang: "zh", paperEnabled: true, llmAuditEnabled: true };
   }
   if (path === "/api/status") {
     return {
@@ -553,6 +553,86 @@ function getMockData(urlStr: string): any {
       };
     });
     return { ready: true, computedAt: new Date().toISOString(), sectors };
+  }
+  if (path === "/api/llm-runs") {
+    return {
+      runs: [
+        { id: 3, kind: "recommend", market, model: "claude-sonnet-4-5", latencyMs: 8420, createdAt: "2026-08-19 05:30:00", watchlistCount: 2, candidateCount: 1, newsCount: 4, candleGapCount: 1 },
+        { id: 2, kind: "daily_report", market, model: "claude-opus-4-1", latencyMs: 14210, createdAt: "2026-08-18 15:30:00", watchlistCount: 2, candidateCount: 0, newsCount: 3, candleGapCount: 0 },
+        { id: 1, kind: "recommend", market, model: "claude-sonnet-4-5", latencyMs: 6100, createdAt: "2026-08-17 05:30:00", watchlistCount: 2, candidateCount: 2, newsCount: 5, candleGapCount: 0 },
+      ],
+    };
+  }
+  if (path.startsWith("/api/llm-runs/")) {
+    const id = Number(path.split("/").pop());
+    const sym = market === "tw" ? "2330" : "AAPL";
+    const candSym = market === "tw" ? "2454" : "NVDA";
+    return {
+      id,
+      kind: "recommend",
+      market,
+      model: "claude-sonnet-4-5",
+      latencyMs: 8420,
+      createdAt: "2026-08-19 05:30:00",
+      watchlistCount: 2,
+      candidateCount: 1,
+      newsCount: 4,
+      candleGapCount: 1,
+      outputRaw: `[TICKER: ${sym}]\n動作: HOLD\n原因: 區間整理，等待突破確認。`,
+      input: {
+        isTW: market === "tw",
+        marketContext: { SPYChangePct: 0.42, VIX: 14.8, TenYearYield: 4.12 },
+        recentLessons: [{ Ticker: candSym, Date: "2026-08-10", Lesson: "追高在阻力位附近進場，隔日即拉回停損。" }],
+        marketNews: [
+          { Headline: "Fed 官員暗示 9 月可能降息", Summary: "…", Source: "Reuters", URL: "https://example.com/1", PublishedAt: "2026-08-19T02:00:00Z" },
+          { Headline: "科技股盤中翻紅，半導體領漲", Summary: "…", Source: "SketchySite", URL: "https://example.com/2", PublishedAt: "2026-08-14T10:00:00Z" },
+        ],
+        watchlist: [
+          {
+            Quote: { Ticker: sym, Price: 205.83, ChangePct: 1.25, Volume: 48210000 },
+            Fundamentals: { PE: 31.2, PB: 48.5, DividendYield: 0.44 },
+            AnalystRating: { Buy: 28, Hold: 9, Sell: 1, TargetPrice: 235 },
+            InsiderTx: [{ Insider: "Cook, Tim", Type: "Sell", Shares: 50000, Date: "2026-08-05" }],
+            InstitutionalFlow: { NetBuyValue: 1250000000, TopBuyer: "Vanguard" },
+            Technicals: { RSI14: 58.2, MACD: 1.1, MA20: 198.4, MA60: 189.1 },
+            Position: { Shares: 80, AvgCost: 191.5, StopPrice: 188 },
+            PrevRec: { Action: "BUY", Date: "2026-08-12" },
+            ScanReason: "Squeeze Breakout",
+            StrategyHits: [{ Name: "Squeeze Breakout", DaysAgo: 2 }],
+            PastLessons: [{ Ticker: sym, Date: "2026-07-01", Lesson: "分批進場比一次到位平均成本更好。" }],
+            Candles: [
+              { Date: "2026-08-08", Open: 200, High: 203, Low: 199, Close: 202, Volume: 40000000 },
+              { Date: "2026-08-10", Open: 202, High: 204, Low: 200, Close: 203, Volume: 41000000 },
+              { Date: "2026-08-14", Open: 203, High: 207, Low: 202, Close: 205.83, Volume: 48210000 },
+            ],
+            News: [
+              { Headline: "科技股盤中翻紅，半導體領漲", Summary: "…", Source: "SketchySite", URL: "https://example.com/2", PublishedAt: "2026-08-14T10:00:00Z" },
+              { Headline: "公司宣布新一輪股票回購計畫", Summary: "…", Source: "Bloomberg", URL: "https://example.com/3", PublishedAt: "2026-08-18T20:00:00Z" },
+            ],
+          },
+          {
+            Quote: { Ticker: "MSFT", Price: 431.55, ChangePct: -0.45, Volume: 19800000 },
+            Fundamentals: { PE: 34.1, PB: 12.3, DividendYield: 0.72 },
+            Technicals: { RSI14: 47.6, MACD: -0.3, MA20: 428.1, MA60: 415.6 },
+            Position: { Shares: 40, AvgCost: 402.1, StopPrice: 0 },
+            News: [{ Headline: "公司宣布新一輪股票回購計畫", Summary: "…", Source: "Bloomberg", URL: "https://example.com/4", PublishedAt: "2026-08-18T20:00:00Z" }],
+          },
+        ],
+        candidates: [
+          {
+            Quote: { Ticker: candSym, Price: 141.22, ChangePct: 3.42, Volume: 210000000 },
+            Fundamentals: { PE: 45.8, PB: 38.2, DividendYield: 0.03 },
+            Technicals: { RSI14: 71.4, MACD: 2.8, MA20: 132.1, MA60: 118.9 },
+            ScanReason: "Trend Breakout",
+            StrategyHits: [{ Name: "Trend Breakout", DaysAgo: 1 }],
+            News: [{ Headline: "AI 晶片需求持續強勁，股價創新高", Summary: "…", Source: "CNBC", URL: "https://example.com/5", PublishedAt: "2026-08-19T01:00:00Z" }],
+          },
+        ],
+      },
+    };
+  }
+  if (path === "/api/news-sources/blocked") {
+    return { sources: [{ source: "AdSpam Daily", createdAt: "2026-08-01 09:00:00" }] };
   }
   if (path === "/api/login") {
     return { ok: true };

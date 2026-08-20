@@ -28,6 +28,7 @@ type llmRunSummaryResponse struct {
 	WatchlistCount int    `json:"watchlistCount"`
 	CandidateCount int    `json:"candidateCount"`
 	NewsCount      int    `json:"newsCount"`
+	CandleGapCount int    `json:"candleGapCount"`
 }
 
 type llmRunsResponse struct {
@@ -57,6 +58,7 @@ func toLLMRunSummary(r db.LLMRun) llmRunSummaryResponse {
 		WatchlistCount: r.WatchlistCount,
 		CandidateCount: r.CandidateCount,
 		NewsCount:      r.NewsCount,
+		CandleGapCount: r.CandleGapCount,
 	}
 }
 
