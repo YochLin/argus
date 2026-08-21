@@ -259,6 +259,36 @@ func TestWriteStockSectionRendersMonthRevenueYoYWhenPresent(t *testing.T) {
 	}
 }
 
+func TestWriteStockSectionOmitsEarningsSurprisesWhenEmpty(t *testing.T) {
+	var sb strings.Builder
+	writeStockSection(&sb, i18n.EN, StockData{
+		Quote: &data.Quote{Ticker: "AAPL", Price: 200},
+	})
+	if got := sb.String(); strings.Contains(got, "beat") {
+		t.Errorf("writeStockSection() should omit the earnings-surprise line when empty, got:\n%s", got)
+	}
+}
+
+func TestWriteStockSectionRendersEarningsSurpriseBeatMissStreak(t *testing.T) {
+	var sb strings.Builder
+	writeStockSection(&sb, i18n.EN, StockData{
+		Quote: &data.Quote{Ticker: "AAPL", Price: 200},
+		EarningsSurprises: []data.EarningsSurprise{
+			{Period: "2025-09-30", Actual: 1.85, Estimate: 1.8075, SurprisePct: 2.3513},
+			{Period: "2025-12-31", Actual: 2.84, Estimate: 2.7257, SurprisePct: 4.1934},
+			{Period: "2026-03-31", Actual: 2.01, Estimate: 1.9884, SurprisePct: 1.0863},
+			{Period: "2026-06-30", Actual: 1.91, Estimate: 1.9271, SurprisePct: -0.8873}, // the one miss
+		},
+	})
+	got := sb.String()
+	if !strings.Contains(got, "3 beat / 1 miss") {
+		t.Errorf("writeStockSection() = %q, want a \"3 beat / 1 miss\" line", got)
+	}
+	if !strings.Contains(got, "2026-06-30") {
+		t.Errorf("writeStockSection() = %q, want the most recent quarter's period", got)
+	}
+}
+
 func TestBuildTradeReviewPromptMinimal(t *testing.T) {
 	trade := ClosedTrade{
 		Ticker: "AAPL",

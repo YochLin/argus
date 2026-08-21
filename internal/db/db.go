@@ -582,6 +582,30 @@ var migrations = []string{
 	// single-day and cumulative hit into one row rather than the unique
 	// index rejecting a second write.
 	`ALTER TABLE price_events ADD COLUMN cumulative_pct REAL NOT NULL DEFAULT 0;`,
+
+	// 21: fundamental_snapshots caches Phase 23 PR6's SEC EDGAR-derived
+	// valuation/cash-flow summary, one row per US ticker (SEC EDGAR has no
+	// ADR/20-F coverage, docs/phase-23-strategy-data-uplift.md §4.5, so a
+	// TW ticker never gets a row here — no market column needed). Upserted
+	// on ticker, refreshed on a 90-day TTL read against fetched_at (see
+	// internal/data/sec.go for the fetch+compute side, internal/db's own
+	// GetFundamentalSnapshot/SaveFundamentalSnapshot for the cache
+	// read/write). pe_percentile/cash_flow_quality are nullable: a ticker
+	// with too little annual history or a loss-making fiscal year simply
+	// omits that line rather than showing a fabricated number.
+	`
+	CREATE TABLE IF NOT EXISTS fundamental_snapshots (
+		ticker TEXT PRIMARY KEY,
+		eps_annual REAL NOT NULL DEFAULT 0,
+		pe_ratio REAL NOT NULL DEFAULT 0,
+		pe_percentile REAL,
+		ocf REAL NOT NULL DEFAULT 0,
+		net_income REAL NOT NULL DEFAULT 0,
+		cash_flow_quality REAL,
+		as_of_fiscal_year_end TEXT NOT NULL DEFAULT '',
+		fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	`,
 }
 
 func (d *DB) migrate() error {

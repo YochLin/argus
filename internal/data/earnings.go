@@ -2,7 +2,10 @@ package data
 
 import (
 	"fmt"
+	"sort"
 	"time"
+
+	"argus/internal/market"
 )
 
 // EarningsEvent is a single scheduled earnings report date, from Finnhub's
@@ -86,6 +89,59 @@ func (f *Finnhub) GetEarningsInRange(tickers []string, from, to time.Time) ([]Ea
 		if want[e.Symbol] {
 			out = append(out, EarningsEvent{Ticker: e.Symbol, Date: e.Date, Hour: e.Hour})
 		}
+	}
+	return out, nil
+}
+
+// EarningsSurprise is one past quarter's actual-vs-estimate EPS (Phase 23
+// PR8, docs/phase-23-strategy-data-uplift.md §5) — briefing material only
+// (§4.2, same as valuation percentile/cash-flow quality), never a ranking
+// factor. SurprisePct is Finnhub's own surprisePercent, not
+// (Actual-Estimate)/Estimate recomputed here — Finnhub's own figure already
+// handles a near-zero or negative Estimate sanely, which a naive
+// recomputation wouldn't.
+type EarningsSurprise struct {
+	Period      string // fiscal quarter end, "2026-06-30"
+	Actual      float64
+	Estimate    float64
+	SurprisePct float64
+}
+
+// EarningsSurpriseProvider is implemented only by Finnhub, US-only
+// (live-verified 2026-08-20: Finnhub's free tier caps /stock/earnings at the
+// trailing 4 quarters regardless of a from/to range — unlike the Yahoo
+// fundamentals-timeseries case this project already rejected for being too
+// shallow for a percentile, §3.1, a 4-quarter beat/miss streak is exactly
+// the standard shape this signal is used in, not a crippled version of
+// something that needed to be longer).
+type EarningsSurpriseProvider interface {
+	GetEarningsSurprises(ticker string) ([]EarningsSurprise, error)
+}
+
+type finnhubEarningsSurprise struct {
+	Period          string  `json:"period"`
+	Actual          float64 `json:"actual"`
+	Estimate        float64 `json:"estimate"`
+	SurprisePercent float64 `json:"surprisePercent"`
+}
+
+// GetEarningsSurprises fetches Finnhub's /stock/earnings, one ticker per
+// call (like GetAnalystRating/GetFundamentals) — only called for a bounded
+// ticker set to stay under the free-tier rate limit. Returned oldest-first
+// (Finnhub documents newest-first, but this project sorts defensively
+// rather than trust response ordering, same reasoning as GetAnalystRating).
+func (f *Finnhub) GetEarningsSurprises(ticker string) ([]EarningsSurprise, error) {
+	if market.Of(ticker) == market.TW {
+		return nil, errTWNotSupported
+	}
+	var result []finnhubEarningsSurprise
+	if err := f.get(fmt.Sprintf("/stock/earnings?symbol=%s", ticker), &result); err != nil {
+		return nil, err
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Period < result[j].Period })
+	out := make([]EarningsSurprise, len(result))
+	for i, r := range result {
+		out[i] = EarningsSurprise{Period: r.Period, Actual: r.Actual, Estimate: r.Estimate, SurprisePct: r.SurprisePercent}
 	}
 	return out, nil
 }

@@ -319,7 +319,7 @@ Review every ticker above, but output only items that genuinely need the user's 
 includes a "Position:" line must get an explicit call, and the action must be exactly one of BUY, SELL, or HOLD;
 keep the full analysis for holdings. A watchlist ticker without a "Position:" line should be output only when you
 believe it is worth buying now (action BUY); otherwise omit the entire block. From the broad market movers, only
-list the ones you actually like as buys (at most 3, action BUY) — none is fine.
+list the ones you actually like as buys (at most 5, action BUY) — none is fine.
 
 When weighing each ticker's news, note whether each headline reads as bullish or bearish and fold that into your reasoning.
 
@@ -554,8 +554,13 @@ Write only from the data actually provided above — omit any section you have n
 	KeyAnalystRatingLine:       "- Analyst Ratings (%s): Strong Buy %d | Buy %d | Hold %d | Sell %d | Strong Sell %d\n",
 	KeyAnalystRatingTrendLine:  "  vs. last month: Buy-side %+d | Sell-side %+d\n",
 	KeyInsiderTxLine:           "- Insider Transactions (open-market filings, latest %s): Buys %d (%d sh) | Sells %d (%d sh)\n",
+	KeyEarningsSurpriseLine:    "- Past %d quarters: %d beat / %d miss, avg surprise %+.1f%% (most recent %s: %+.1f%%)\n",
 	KeyInstitutionalFlowLine:   "- Institutional Flow (%s): Foreign %+d | Trust %+d | Dealer %+d | Total %+d sh\n",
 	KeyStatementSummaryLine:    "- Latest Filing (%s, FY%d, as of %s): Revenue $%.0fM | Gross Profit $%.0fM | Operating Income $%.0fM | Net Income $%.0fM | Total Assets $%.0fM | Total Liabilities $%.0fM | Total Equity $%.0fM | Operating Cash Flow $%.0fM | Free Cash Flow $%.0fM\n",
+	KeyValuationEPSLine:        "- SEC annual EPS (fiscal year through %s): %.2f\n",
+	KeyValuationPELine:         "- P/E at current price: %.1f\n",
+	KeyValuationPercentileLine: "- Valuation percentile (vs. its own history only, not cross-market comparable): %.0f%%\n",
+	KeyCashFlowQualityLine:     "- Cash-flow quality (operating cash flow / net income, same fiscal year): %.2f\n",
 	KeyPositionLine:            "- Position: %g shares, avg cost $%.2f (unrealized %+.2f%%)\n",
 	KeyPrevRecLine:             "- Previous call: %s @ $%.2f (%d days ago)\n",
 	KeyEarningsLine:            "- ⚠️ Earnings date: %s (in %d days) — expect volatility\n",

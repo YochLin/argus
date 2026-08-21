@@ -320,7 +320,7 @@ var zhMessages = map[Key]string{
 逐一查看上方的標的，但只輸出真正需要使用者注意的項目：區塊內有「持倉:」那行的
 每一檔都必須給出明確操作建議，動作只能是 BUY、SELL、HOLD 三者之一，並維持完整分析；
 沒有「持倉:」的自選股只有在你認為值得現在買進時才輸出（動作為 BUY），否則整個區塊不要輸出；
-大盤熱門標的維持相同規則，只挑出你看好、值得買進的（最多 3 檔，動作為 BUY），沒有就不列。
+大盤熱門標的維持相同規則，只挑出你看好、值得買進的（最多 5 檔，動作為 BUY），沒有就不列。
 
 評估每檔新聞時，請留意每則是利多還是利空，並融入你的原因說明。
 
@@ -542,8 +542,13 @@ var zhMessages = map[Key]string{
 	KeyAnalystRatingLine:       "- 分析師評等（%s）：強力買進 %d｜買進 %d｜持有 %d｜賣出 %d｜強力賣出 %d\n",
 	KeyAnalystRatingTrendLine:  "  較上月：買進方 %+d｜賣出方 %+d\n",
 	KeyInsiderTxLine:           "- 內部人交易（近期公開市場申報，最近一筆 %s）：買進 %d 筆共 %d 股｜賣出 %d 筆共 %d 股\n",
+	KeyEarningsSurpriseLine:    "- 近 %d 季財報：%d 勝 %d 負，平均 surprise %+.1f%%（最近一季 %s：%+.1f%%）\n",
 	KeyInstitutionalFlowLine:   "- 三大法人買賣超（%s）：外資 %+d｜投信 %+d｜自營商 %+d｜合計 %+d 股\n",
 	KeyStatementSummaryLine:    "- 最新財報（%s，會計年度 %d，截至 %s）：營收 $%.0fM｜毛利 $%.0fM｜營業利益 $%.0fM｜淨利 $%.0fM｜總資產 $%.0fM｜總負債 $%.0fM｜股東權益 $%.0fM｜營運現金流 $%.0fM｜自由現金流 $%.0fM\n",
+	KeyValuationEPSLine:        "- SEC 年度 EPS（最近財報年度迄 %s）：%.2f\n",
+	KeyValuationPELine:         "- 依目前股價換算 P/E：%.1f\n",
+	KeyValuationPercentileLine: "- 估值百分位（僅與自身歷史比較，不可跨市場比較）：%.0f%%\n",
+	KeyCashFlowQualityLine:     "- 現金流品質（同財報年度營運現金流 / 淨利）：%.2f\n",
 	KeyPositionLine:            "- 持倉: %g 股　平均成本 $%.2f　未實現損益 %+.2f%%\n",
 	KeyPrevRecLine:             "- 上次建議: %s @ $%.2f（%d 天前）\n",
 	KeyEarningsLine:            "- ⚠️ 財報日: %s（%d 天內），留意波動\n",

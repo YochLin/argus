@@ -414,3 +414,54 @@ func (f *FinMind) GetTrustNetSeries(ticker string, days int) ([]TrustNetDay, err
 	sort.Slice(out, func(i, j int) bool { return out[i].Date.Before(out[j].Date) })
 	return out, nil
 }
+
+// twPERHistoryYears is how far back GetFundamentalSnapshot fetches
+// TaiwanStockPER for its percentile pool — 3 years is long enough for a
+// self-relative percentile to mean something without dragging in a stock's
+// entire multi-decade re-rating history (a controlled scope choice, not a
+// FinMind API limit — TaiwanStockPER goes back much further).
+const twPERHistoryYears = 3
+
+// GetFundamentalSnapshot is Phase 23 PR7's TW-market implementation of
+// FundamentalHistoryProvider, sharing db.fundamental_snapshots/the
+// bot.cachedValuationSnapshot caching path with data.SEC's US
+// implementation (docs/phase-23-strategy-data-uplift.md §5: "接進同一張表").
+// Unlike SEC's EPS-times-price reconstruction, FinMind's TaiwanStockPER
+// dataset already reports PER/PBR directly per trading day, so
+// priceCandles is unused — the percentile pool comes straight from
+// FinMind's own history, no separate price series to align against dates.
+// PR7's doc scope is valuation only, not cash-flow quality for TW
+// (OCF/NetIncome/CashFlowQuality stay zero/nil) — TaiwanStockFinancialStatements
+// has no cash-flow-statement fields at all (see GetFinancialStatements'
+// own doc comment), so there's nothing to compute that from yet.
+func (f *FinMind) GetFundamentalSnapshot(ticker string, priceCandles []Candle) (*FundamentalSnapshot, error) {
+	if market.Of(ticker) != market.TW {
+		return nil, errNotTWTicker
+	}
+
+	start := time.Now().AddDate(-twPERHistoryYears, 0, 0).Format("2006-01-02")
+	var perRows []finmindPERRow
+	if err := f.get("TaiwanStockPER", ticker, start, "", &perRows); err != nil {
+		return nil, err
+	}
+	if len(perRows) == 0 {
+		return nil, fmt.Errorf("finmind: no PER data for %s", ticker)
+	}
+	sort.Slice(perRows, func(i, j int) bool { return perRows[i].Date < perRows[j].Date })
+	latest := perRows[len(perRows)-1]
+
+	snap := &FundamentalSnapshot{Ticker: ticker, PERatio: latest.PER, AsOfFiscalYearEnd: latest.Date}
+	if latest.PER > 0 {
+		var pes []float64
+		for _, r := range perRows {
+			if r.PER > 0 {
+				pes = append(pes, r.PER)
+			}
+		}
+		if len(pes) >= minPEHistoryPoints {
+			pct := percentileOf(pes, latest.PER)
+			snap.PEPercentile = &pct
+		}
+	}
+	return snap, nil
+}

@@ -57,16 +57,31 @@ type Bot struct {
 	fundamentals  data.FundamentalsProvider       // nil if FINNHUB_API_KEY isn't set
 	analystRating data.AnalystRatingProvider      // nil if FINNHUB_API_KEY isn't set
 	insiderTx     data.InsiderTransactionProvider // nil if FINNHUB_API_KEY isn't set
-	institutional data.InstitutionalFlowProvider  // TW's 三大法人 counterpart (TWSE T86), always non-nil — no API key required
-	earnings      data.EarningsProvider           // nil if FINNHUB_API_KEY isn't set
-	marketNews    data.MarketNewsProvider         // nil if FINNHUB_API_KEY isn't set
-	twMarketNews  data.MarketNewsProvider         // TW's marketNews counterpart (cnyes), always non-nil — no API key required
-	twMovers      data.TWMarketMoversProvider     // TW's GetMarketMovers counterpart (TWSE OpenAPI), always non-nil — no API key required
-	companyNames  data.CompanyNameProvider        // nil if FINMIND_TOKEN isn't set
-	trustNet      data.TrustNetProvider           // Phase 15 網 5【主力跟單】, TW only; nil if FINMIND_TOKEN isn't set
-	optionChain   data.OptionChainProvider        // Phase 12, US-only; always non-nil in real use (Yahoo needs no API key), nil-checked anyway for tests that build a partial Bot
-	history       data.HistoryProvider
-	sinopac       *sinopac.Client // Phase 16, TW only; nil unless SHIOAJI_ADDR is set
+	// earningsSurprise is Phase 23 PR8's actual-vs-estimate EPS history,
+	// US-only; nil if FINNHUB_API_KEY isn't set (same gate as
+	// fundamentals/analystRating/insiderTx above).
+	earningsSurprise data.EarningsSurpriseProvider
+	institutional    data.InstitutionalFlowProvider // TW's 三大法人 counterpart (TWSE T86), always non-nil — no API key required
+	earnings         data.EarningsProvider          // nil if FINNHUB_API_KEY isn't set
+	marketNews       data.MarketNewsProvider        // nil if FINNHUB_API_KEY isn't set
+	twMarketNews     data.MarketNewsProvider        // TW's marketNews counterpart (cnyes), always non-nil — no API key required
+	twMovers         data.TWMarketMoversProvider    // TW's GetMarketMovers counterpart (TWSE OpenAPI), always non-nil — no API key required
+	companyNames     data.CompanyNameProvider       // nil if FINMIND_TOKEN isn't set
+	trustNet         data.TrustNetProvider          // Phase 15 網 5【主力跟單】, TW only; nil if FINMIND_TOKEN isn't set
+	optionChain      data.OptionChainProvider       // Phase 12, US-only; always non-nil in real use (Yahoo needs no API key), nil-checked anyway for tests that build a partial Bot
+	// secFundamentals is Phase 23 PR6's SEC EDGAR-derived valuation
+	// percentile/cash-flow quality source, US-only; nil unless SEC_USER_AGENT
+	// is set — SEC's edge filter requires the UA to look like a real contact
+	// email (see data.SEC's doc comment), so this can't default to an
+	// anonymous UA the way institutional/twMarketNews/twMovers do.
+	secFundamentals data.FundamentalHistoryProvider
+	// twValuation is Phase 23 PR7's TW counterpart, backed by FinMind's
+	// TaiwanStockPER (nil unless FINMIND_TOKEN is set — same instance as
+	// trustNet/companyNames, not a second FinMind client). Both providers
+	// are dispatched by market.Of(ticker) from the same cachedValuationSnapshot.
+	twValuation data.FundamentalHistoryProvider
+	history     data.HistoryProvider
+	sinopac     *sinopac.Client // Phase 16, TW only; nil unless SHIOAJI_ADDR is set
 	// sinopacSkip (SINOPAC_SKIP_TICKERS env, comma-separated, Phase 16) is
 	// periodic/定期定額 investment tickers the sync job should never propose
 	// — the user knows which ones those are; RunSinopacSync deliberately
@@ -175,29 +190,32 @@ type Bot struct {
 // is deliberately not the 架構債 "設定整理" item (centralized env parsing/
 // validation in main.go); it only fixes this constructor's signature.
 type Config struct {
-	Token           string
-	ChatID          int64
-	DB              *db.DB
-	Provider        data.Provider
-	Fundamentals    data.FundamentalsProvider       // nil if FINNHUB_API_KEY isn't set
-	AnalystRating   data.AnalystRatingProvider      // nil if FINNHUB_API_KEY isn't set
-	InsiderTx       data.InsiderTransactionProvider // nil if FINNHUB_API_KEY isn't set
-	Institutional   data.InstitutionalFlowProvider  // TW's 三大法人 counterpart (TWSE T86) — always non-nil, no API key required
-	Earnings        data.EarningsProvider           // nil if FINNHUB_API_KEY isn't set
-	MarketNews      data.MarketNewsProvider         // nil if FINNHUB_API_KEY isn't set
-	TWMarketNews    data.MarketNewsProvider         // TW's MarketNews counterpart (cnyes) — always non-nil, no API key required
-	TWMovers        data.TWMarketMoversProvider     // TW's GetMarketMovers counterpart (TWSE OpenAPI) — always non-nil, no API key required
-	CompanyNames    data.CompanyNameProvider        // nil if FINMIND_TOKEN isn't set
-	TrustNet        data.TrustNetProvider           // Phase 15 網 5【主力跟單】, TW only; nil if FINMIND_TOKEN isn't set
-	OptionChain     data.OptionChainProvider        // Phase 12, US-only; always non-nil in real use
-	History         data.HistoryProvider
-	Sinopac         *sinopac.Client // Phase 16, TW only; nil unless SHIOAJI_ADDR is set
-	SinopacSkip     map[string]bool // Phase 16; from SINOPAC_SKIP_TICKERS
-	SinopacSyncLive bool            // Phase 16; from SINOPAC_SYNC_LIVE
-	LLM             *llm.Client
-	Lang            i18n.Lang
-	StopLossPct     float64 // STOP_LOSS_PCT env; 0 disables the check
-	TrailingStopPct float64 // TRAILING_STOP_PCT env; 0 disables the check
+	Token            string
+	ChatID           int64
+	DB               *db.DB
+	Provider         data.Provider
+	Fundamentals     data.FundamentalsProvider       // nil if FINNHUB_API_KEY isn't set
+	AnalystRating    data.AnalystRatingProvider      // nil if FINNHUB_API_KEY isn't set
+	InsiderTx        data.InsiderTransactionProvider // nil if FINNHUB_API_KEY isn't set
+	EarningsSurprise data.EarningsSurpriseProvider   // Phase 23 PR8, US-only; nil if FINNHUB_API_KEY isn't set
+	Institutional    data.InstitutionalFlowProvider  // TW's 三大法人 counterpart (TWSE T86) — always non-nil, no API key required
+	Earnings         data.EarningsProvider           // nil if FINNHUB_API_KEY isn't set
+	MarketNews       data.MarketNewsProvider         // nil if FINNHUB_API_KEY isn't set
+	TWMarketNews     data.MarketNewsProvider         // TW's MarketNews counterpart (cnyes) — always non-nil, no API key required
+	TWMovers         data.TWMarketMoversProvider     // TW's GetMarketMovers counterpart (TWSE OpenAPI) — always non-nil, no API key required
+	CompanyNames     data.CompanyNameProvider        // nil if FINMIND_TOKEN isn't set
+	TrustNet         data.TrustNetProvider           // Phase 15 網 5【主力跟單】, TW only; nil if FINMIND_TOKEN isn't set
+	OptionChain      data.OptionChainProvider        // Phase 12, US-only; always non-nil in real use
+	SECFundamentals  data.FundamentalHistoryProvider // Phase 23 PR6, US-only; nil unless SEC_USER_AGENT is set
+	TWValuation      data.FundamentalHistoryProvider // Phase 23 PR7, TW-only; nil unless FINMIND_TOKEN is set
+	History          data.HistoryProvider
+	Sinopac          *sinopac.Client // Phase 16, TW only; nil unless SHIOAJI_ADDR is set
+	SinopacSkip      map[string]bool // Phase 16; from SINOPAC_SKIP_TICKERS
+	SinopacSyncLive  bool            // Phase 16; from SINOPAC_SYNC_LIVE
+	LLM              *llm.Client
+	Lang             i18n.Lang
+	StopLossPct      float64 // STOP_LOSS_PCT env; 0 disables the check
+	TrailingStopPct  float64 // TRAILING_STOP_PCT env; 0 disables the check
 	// StopLossPctTW/TrailingStopPctTW (STOP_LOSS_PCT_TW/TRAILING_STOP_PCT_TW
 	// env, Phase 13 §7) are TW's wider thresholds — a single TW daily ±10%
 	// limit move would otherwise itself trigger the US-calibrated 10%/15%
@@ -260,6 +278,7 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		fundamentals:           cfg.Fundamentals,
 		analystRating:          cfg.AnalystRating,
 		insiderTx:              cfg.InsiderTx,
+		earningsSurprise:       cfg.EarningsSurprise,
 		institutional:          cfg.Institutional,
 		earnings:               cfg.Earnings,
 		marketNews:             cfg.MarketNews,
@@ -268,6 +287,8 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		companyNames:           cfg.CompanyNames,
 		trustNet:               cfg.TrustNet,
 		optionChain:            cfg.OptionChain,
+		secFundamentals:        cfg.SECFundamentals,
+		twValuation:            cfg.TWValuation,
 		history:                cfg.History,
 		sinopac:                cfg.Sinopac,
 		sinopacSkip:            cfg.SinopacSkip,
