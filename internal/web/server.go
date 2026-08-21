@@ -87,6 +87,15 @@ type Config struct {
 	// IndustryMap backs /api/sectorflow's TW classification (FinMind's
 	// whole-market GetIndustryMap) — nil when FINMIND_TOKEN isn't set.
 	IndustryMap data.IndustryMapProvider
+	// LLMAudit gates Phase 19's /llm page (env WEB_LLM_AUDIT, §8.4) — unlike
+	// Paper/OptionChain/etc.'s "always register, 404/empty at request time"
+	// convention, this one skips route registration entirely when off, so
+	// /api/llm-runs and /api/news-sources/* fall through to spaHandler's
+	// catch-all like any other unregistered path. Argus is single-user, so
+	// there's no "someone else might see this" reason to gate at request
+	// time instead — a deploy-time env flag matches every other optional
+	// feature's presence-of-config convention (WEB_ADDR, Password, etc.).
+	LLMAudit bool
 }
 
 // Server is Argus's read-only web dashboard (Phase 5 PR1 — see
@@ -120,6 +129,8 @@ type Server struct {
 	sector              data.SectorProvider
 	industryMap         data.IndustryMapProvider
 	sectorFlow          *sectorFlowCache
+	newsSourceDB        newsSourceWriter
+	llmAudit            bool
 	mux                 *http.ServeMux
 }
 
@@ -147,6 +158,8 @@ func New(cfg Config) *Server {
 		sector:              cfg.Sector,
 		industryMap:         cfg.IndustryMap,
 		sectorFlow:          newSectorFlowCache(),
+		newsSourceDB:        cfg.DB,
+		llmAudit:            cfg.LLMAudit,
 	}
 	s.recPerf = newRecPerfStore(s.db, s.history)
 	s.mux = http.NewServeMux()
@@ -169,6 +182,16 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /api/options", s.handleOptions)
 	s.mux.HandleFunc("GET /api/sectorflow", s.handleSectorFlow)
 	s.mux.HandleFunc("POST /api/sectorflow/refresh", s.handleSectorFlowRefresh)
+	// Phase 19's /llm page (§4.4/§5.3) — see Config.LLMAudit's doc comment
+	// for why this is the one feature gated by skipping registration
+	// entirely rather than 404ing/degrading at request time.
+	if cfg.LLMAudit {
+		s.mux.HandleFunc("GET /api/llm-runs", s.handleLLMRuns)
+		s.mux.HandleFunc("GET /api/llm-runs/{id}", s.handleLLMRunDetail)
+		s.mux.HandleFunc("GET /api/news-sources/blocked", s.handleBlockedNewsSources)
+		s.mux.HandleFunc("POST /api/news-sources/block", s.requireWritable(s.requireAuth(s.handleNewsSourceBlock)))
+		s.mux.HandleFunc("POST /api/news-sources/unblock", s.requireWritable(s.requireAuth(s.handleNewsSourceUnblock)))
+	}
 	// Write routes (Phase 10) are always registered, but requireWritable
 	// 404s every one of them when no password is configured (see Config.
 	// Password's doc comment) — registering unconditionally, rather than

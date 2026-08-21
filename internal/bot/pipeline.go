@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
@@ -100,6 +101,98 @@ func (b *Bot) gatherRecommendationInputs(m market.MarketID) (recommendationInput
 		watchlist:        watchlist,
 		candidates:       candidates,
 	}, nil
+}
+
+// recordLLMRun persists Phase 19's LLM-input-transparency audit row (see
+// docs/phase-19-llm-transparency.md §4.3) — called from both handleRecommend
+// and RunDailyReport right after their shared GenerateRecommendations call,
+// so any future GenerateRecommendations-shaped call site reuses the same
+// three lines instead of reimplementing the marshal. kind distinguishes a
+// manual /recommend from a scheduled daily report ("recommend" /
+// "daily_report"). Skipped when raw and model are both empty, which only
+// happens when every backend in the chain failed outright (see
+// llm.Client.prompt) — there's nothing informative to record beyond the
+// error the caller already surfaces to the user. The marshaled payload
+// mirrors GenerateRecommendations' own parameters field-for-field with no
+// trimming (§3 decision 3: a missing field would defeat the point of a
+// transparency feature). Marshal/insert failures are logged, never block
+// /recommend or the daily report — this is an audit trail, not a write the
+// user is waiting on.
+func (b *Bot) recordLLMRun(kind string, m market.MarketID, in recommendationInputs, raw, model string, latencyMs int64) {
+	if raw == "" && model == "" {
+		return
+	}
+
+	payload := struct {
+		Watchlist     []llm.StockData    `json:"watchlist"`
+		Candidates    []llm.StockData    `json:"candidates"`
+		MarketNews    []data.NewsItem    `json:"marketNews"`
+		MarketContext *llm.MarketContext `json:"marketContext"`
+		RecentLessons []llm.PastLesson   `json:"recentLessons"`
+		IsTW          bool               `json:"isTW"`
+	}{
+		Watchlist:     in.watchlist,
+		Candidates:    in.candidates,
+		MarketNews:    in.marketNews,
+		MarketContext: in.marketContext,
+		RecentLessons: in.recentLessons,
+		IsTW:          m == market.TW,
+	}
+	inputJSON, err := json.Marshal(payload)
+	if err != nil {
+		logger.Errorf("llm run: marshal input: %v", err)
+		return
+	}
+
+	newsCount := len(in.marketNews)
+	for _, s := range in.watchlist {
+		newsCount += len(s.News)
+	}
+	for _, s := range in.candidates {
+		newsCount += len(s.News)
+	}
+	gapCount := countCandleGaps(in.watchlist, m) + countCandleGaps(in.candidates, m)
+
+	if err := b.db.InsertLLMRun(kind, m, model, latencyMs, string(inputJSON), raw, len(in.watchlist), len(in.candidates), newsCount, gapCount); err != nil {
+		logger.Errorf("llm run: insert: %v", err)
+	}
+}
+
+// countCandleGaps counts, across every stock's Candles, how many consecutive
+// bar pairs skip more than one trading day — a stand-in for "Yahoo's chart
+// API silently dropped a bar" (see internal/data's GetHistory doc comment
+// for a documented instance of that). US uses internal/market.IsTradingDay's
+// real NYSE calendar; TW falls back to a weekday-only check since
+// internal/market doesn't cover the TWSE calendar (same limitation the prior
+// client-side TS heuristic had for both markets — see the /llm audit page's
+// data-quality panel).
+func countCandleGaps(stocks []llm.StockData, m market.MarketID) int {
+	gaps := 0
+	for _, s := range stocks {
+		for i := 1; i < len(s.Candles); i++ {
+			if tradingDaysBetween(s.Candles[i-1].Date, s.Candles[i].Date, m) > 1 {
+				gaps++
+			}
+		}
+	}
+	return gaps
+}
+
+// tradingDaysBetween counts trading days in (from, to], matching the
+// semantics of the TS heuristic it replaces: exactly 1 for two consecutive
+// trading days, >1 whenever a bar is missing in between.
+func tradingDaysBetween(from, to time.Time, m market.MarketID) int {
+	n := 0
+	for d := from.AddDate(0, 0, 1); !d.After(to); d = d.AddDate(0, 0, 1) {
+		if m == market.US {
+			if market.IsTradingDay(d) {
+				n++
+			}
+		} else if wd := d.Weekday(); wd != time.Saturday && wd != time.Sunday {
+			n++
+		}
+	}
+	return n
 }
 
 // sendAndSaveRecommendations formats LLM recommendations for Telegram and

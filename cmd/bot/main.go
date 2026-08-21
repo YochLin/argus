@@ -191,7 +191,28 @@ func main() {
 	providers = append(providers, data.NewGoogleNews(companyNameProvider))
 	yahoo := data.NewYahoo()
 	providers = append(providers, yahoo)
-	provider := data.NewMulti(providers...)
+	multi := data.NewMulti(providers...)
+
+	// newsBlocked backs Phase 19 PR2's global news-source blacklist (see
+	// docs/phase-19-llm-transparency.md §5) — a closure reading straight from
+	// the DB, not a snapshot, so a block/unblock via the /llm page takes
+	// effect on the very next fetch, and so internal/data never needs an
+	// internal/db import. Wrapping multi/marketNewsProvider/twMarketNews from
+	// the outside (rather than filtering inside Multi.GetNews) keeps Multi's
+	// provider-fallback semantics untouched: a filtered-to-empty result is
+	// still a success, never a trigger to fall through to the next provider.
+	newsBlocked := func(source string) bool {
+		blocked, err := database.IsNewsSourceBlocked(source)
+		if err != nil {
+			logger.Errorf("news filter: check blocked source %q: %v", source, err)
+			return false
+		}
+		return blocked
+	}
+	var provider data.Provider = data.NewNewsFilter(multi, newsBlocked)
+	if marketNewsProvider != nil {
+		marketNewsProvider = data.NewMarketNewsFilter(marketNewsProvider, newsBlocked)
+	}
 
 	// SEC EDGAR (Phase 23 PR6) is US-only and needs a real contact-email UA
 	// (see internal/data/sec.go) — presence-gated same as Finnhub/FinMind
@@ -206,7 +227,7 @@ func main() {
 	// fundamentalsProvider/earningsProvider above they're constructed
 	// unconditionally, same as yahoo/History.
 	twMovers := data.NewTWSE()
-	twMarketNews := data.NewCnyes()
+	twMarketNews := data.MarketNewsProvider(data.NewMarketNewsFilter(data.NewCnyes(), newsBlocked))
 	var twMoversProvider data.TWMarketMoversProvider = twMovers
 	if sinopacClient != nil {
 		// Scanner's AmountRank covers TPEx-listed movers too, which
@@ -308,6 +329,7 @@ func main() {
 			PaperInitialCashTWD: cfg.PaperInitialCashTWD,
 			Sector:              sectorProvider,
 			IndustryMap:         industryMapProvider,
+			LLMAudit:            cfg.WebLLMAudit,
 		})
 		go func() {
 			if err := webServer.Run(ctx, cfg.WebAddr); err != nil {
@@ -404,6 +426,28 @@ func runMCPServer() {
 	shioajiAddr := os.Getenv("SHIOAJI_ADDR")
 	lang := i18n.Parse(envOr("BOT_LANGUAGE", "zh"))
 
+	// Read-only DB connection for get_watchlist/get_portfolio/
+	// get_recommendation_stats/get_universe_summary (Phase 3.5 "追加項" —
+	// see db.OpenReadOnly's doc comment for how read-only is actually
+	// enforced), and also (Phase 19 PR2) the source for the news-blacklist
+	// closure below — opened before provider construction for that reason,
+	// unlike main()'s ordering. A failure here degrades exactly like a
+	// missing Finnhub key: those four tools are simply not registered
+	// (mcptools.NewServer's nil-check), everything else still works, and the
+	// news filter just passes everything through (see newsBlocked below).
+	// DB_PATH falls back to the same default as main() for the case where
+	// this subcommand is run directly (e.g. manual testing from the repo
+	// root) rather than spawned as a chat session's MCP server, where main()
+	// always exports an absolute DB_PATH before the subprocess is launched.
+	dbPath := envOr("DB_PATH", "data/argus.db")
+	database, err := db.OpenReadOnly(dbPath)
+	if err != nil {
+		logger.Errorf("mcp: open read-only db: %v", err)
+		database = nil
+	} else {
+		defer database.Close()
+	}
+
 	// Same provider construction as main(): Finnhub-only tools
 	// (statements/earnings) stay nil without a key, same as Bot's — and
 	// fundamentalsProvider is the same US/TW FundamentalsRouter as main()
@@ -443,28 +487,23 @@ func runMCPServer() {
 	providers = append(providers, data.NewGoogleNews(companyNameProvider))
 	yahoo := data.NewYahoo()
 	providers = append(providers, yahoo)
-	provider := data.NewMulti(providers...)
+	multi := data.NewMulti(providers...)
+	// Same newsBlocked wrapping as main() (Phase 19 PR2) — database is nil
+	// when the read-only open above failed, in which case nothing is ever
+	// reported blocked rather than every get_news call erroring out.
+	var provider data.Provider = data.NewNewsFilter(multi, func(source string) bool {
+		if database == nil {
+			return false
+		}
+		blocked, err := database.IsNewsSourceBlocked(source)
+		if err != nil {
+			logger.Errorf("news filter: check blocked source %q: %v", source, err)
+			return false
+		}
+		return blocked
+	})
 	// twInstitutional (TWSE T86), like main()'s twMovers, needs no API key.
 	twInstitutional := data.NewTWSE()
-
-	// Read-only DB connection for get_watchlist/get_portfolio/
-	// get_recommendation_stats/get_universe_summary (Phase 3.5 "追加項" —
-	// see db.OpenReadOnly's doc comment for how read-only is actually
-	// enforced). A failure here degrades exactly like a missing Finnhub
-	// key: those four tools are simply not registered (mcptools.NewServer's
-	// nil-check), everything else still works. DB_PATH falls back to the
-	// same default as main() for the case where this subcommand is run
-	// directly (e.g. manual testing from the repo root) rather than spawned
-	// as a chat session's MCP server, where main() always exports an
-	// absolute DB_PATH before the subprocess is launched.
-	dbPath := envOr("DB_PATH", "data/argus.db")
-	database, err := db.OpenReadOnly(dbPath)
-	if err != nil {
-		logger.Errorf("mcp: open read-only db: %v", err)
-		database = nil
-	} else {
-		defer database.Close()
-	}
 
 	// Writable DB connection for add_to_watchlist/remove_from_watchlist
 	// (Phase 3.5 "watchlist 寫入工具" pilot — see db.OpenForWrites' doc

@@ -125,11 +125,20 @@ func (c *Client) AddFallback(provider Provider, recommendModel, checkModel, chat
 // parameter name here would otherwise shadow the internal/market package
 // name if this package ever needed to import it (it doesn't, for this one
 // flag).
-func (c *Client) GenerateRecommendations(ctx context.Context, watchlist []StockData, candidates []StockData, marketNews []data.NewsItem, market *MarketContext, recentLessons []PastLesson, isTW bool) (summary string, recs []Recommendation, err error) {
+//
+// raw/model/latencyMs are Phase 19's LLM-input-transparency addition (see
+// docs/phase-19-llm-transparency.md §4.2): the caller (internal/bot) persists
+// them alongside the prompt inputs via db.InsertLLMRun regardless of which
+// return path is taken below, including the parse-failure one — a failed
+// parse is exactly the case where seeing what the model actually replied
+// matters most. They're "" and 0 only when the underlying c.prompt call
+// itself failed (no backend produced a reply at all, so there's nothing to
+// record beyond err).
+func (c *Client) GenerateRecommendations(ctx context.Context, watchlist []StockData, candidates []StockData, marketNews []data.NewsItem, market *MarketContext, recentLessons []PastLesson, isTW bool) (summary string, recs []Recommendation, raw, model string, latencyMs int64, err error) {
 	prompt := buildRecommendationPrompt(c.lang, watchlist, candidates, marketNews, market, recentLessons, isTW)
-	raw, err := c.prompt(ctx, prompt, func(b backend) string { return b.recommendModel })
+	raw, model, latencyMs, err = c.prompt(ctx, prompt, func(b backend) string { return b.recommendModel })
 	if err != nil {
-		return "", nil, err
+		return "", nil, "", "", 0, err
 	}
 	if len(marketNews) > 0 {
 		summary = parseMarketSummary(raw, i18n.T(c.lang, i18n.KeyMarketSummaryMarker))
@@ -137,9 +146,9 @@ func (c *Client) GenerateRecommendations(ctx context.Context, watchlist []StockD
 	recs = parseRecommendations(c.lang, raw)
 	if strings.TrimSpace(raw) != "" && len(recs) == 0 {
 		logger.Errorf("llm: GenerateRecommendations parsed 0 recommendations from a non-empty reply (%d chars); raw reply follows:\n%s", len(raw), truncateForLog(raw))
-		return "", nil, ErrRecommendationParseFailed
+		return "", nil, raw, model, latencyMs, ErrRecommendationParseFailed
 	}
-	return summary, recs, nil
+	return summary, recs, raw, model, latencyMs, nil
 }
 
 // truncateForLog caps a raw LLM reply before it goes into a log line — the
@@ -158,7 +167,8 @@ func truncateForLog(s string) string {
 // CheckStock performs instant analysis of a single ticker.
 func (c *Client) CheckStock(ctx context.Context, stock StockData) (string, error) {
 	prompt := buildCheckPrompt(c.lang, stock)
-	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+	reply, _, _, err := c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+	return reply, err
 }
 
 // InsightPortfolio performs a one-shot, portfolio-level analysis across
@@ -173,7 +183,8 @@ func (c *Client) CheckStock(ctx context.Context, stock StockData) (string, error
 // identifies.
 func (c *Client) InsightPortfolio(ctx context.Context, positions []StockData, cash float64, haveCash bool, isTW bool) (string, error) {
 	prompt := buildInsightPrompt(c.lang, positions, cash, haveCash, isTW)
-	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+	reply, _, _, err := c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+	return reply, err
 }
 
 // WeeklyReview performs Phase 3.6 PR2's Sunday portfolio review: the same
@@ -187,7 +198,8 @@ func (c *Client) InsightPortfolio(ctx context.Context, positions []StockData, ca
 // see buildWeeklyReviewPrompt for why the two markets aren't mixed.
 func (c *Client) WeeklyReview(ctx context.Context, positions []StockData, cash float64, haveCash bool, trackSummary string, isTW bool) (string, error) {
 	prompt := buildWeeklyReviewPrompt(c.lang, positions, cash, haveCash, trackSummary, isTW)
-	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+	reply, _, _, err := c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+	return reply, err
 }
 
 // MorningBriefing performs the 07:00 CST narrative recap of the US session
@@ -200,7 +212,8 @@ func (c *Client) WeeklyReview(ctx context.Context, positions []StockData, cash f
 // Reuses checkModel, same reasoning as InsightPortfolio/WeeklyReview.
 func (c *Client) MorningBriefing(ctx context.Context, date string, indices []IndexQuote, vix float64, marketNews []data.NewsItem, watchlist []StockData, movers []StockData, isTW bool) (string, error) {
 	prompt := buildMorningBriefingPrompt(c.lang, date, indices, vix, marketNews, watchlist, movers, isTW)
-	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+	reply, _, _, err := c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+	return reply, err
 }
 
 // ReviewTrade performs Phase 3.8 追加項's sell-review: a one-shot look back
@@ -222,7 +235,7 @@ func (c *Client) MorningBriefing(ctx context.Context, date string, indices []Ind
 // db.SaveLesson.
 func (c *Client) ReviewTrade(ctx context.Context, trade ClosedTrade) (result string, lesson string, err error) {
 	prompt := buildTradeReviewPrompt(c.lang, trade)
-	result, err = c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+	result, _, _, err = c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
 	if err != nil {
 		return "", "", err
 	}
@@ -239,7 +252,8 @@ func (c *Client) ReviewTrade(ctx context.Context, trade ClosedTrade) (result str
 // caller (bot.RunClosingSnapshot) stores it as-is via db.SavePriceEvent.
 func (c *Client) ExplainPriceEvent(ctx context.Context, ticker string, gapPct, changePct, cumulativePct float64, news []data.NewsItem) (string, error) {
 	prompt := buildPriceEventPrompt(c.lang, ticker, gapPct, changePct, cumulativePct, news)
-	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+	reply, _, _, err := c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+	return reply, err
 }
 
 // ExploreNomination is one candidate proposed by Phase 2.6 解凍's two-stage
@@ -272,7 +286,7 @@ const maxExploreNominations = 3
 // internal/bot instead.
 func (c *Client) ExploreCandidates(ctx context.Context, marketNews []data.NewsItem, exclude []string) ([]ExploreNomination, error) {
 	prompt := buildExplorePrompt(c.lang, marketNews, exclude)
-	raw, err := c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+	raw, _, _, err := c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
 	if err != nil {
 		return nil, err
 	}
@@ -350,19 +364,21 @@ func (c *Client) Close() {
 // hung claude-agent-acp subprocess would otherwise block the caller's
 // goroutine forever with no error ever surfacing — see callTimeout's doc
 // comment.
-func (c *Client) prompt(ctx context.Context, prompt string, modelFor func(backend) string) (string, error) {
+func (c *Client) prompt(ctx context.Context, prompt string, modelFor func(backend) string) (reply string, model string, latencyMs int64, err error) {
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 
 	systemPrompt := i18n.T(c.lang, i18n.KeySystemPromptAnalyst)
 	var lastErr error
 	for _, b := range c.backends {
+		start := time.Now()
 		reply, err := b.provider.Prompt(ctx, systemPrompt, modelFor(b), prompt)
+		elapsed := time.Since(start).Milliseconds()
 		if err == nil {
-			return reply, nil
+			return reply, modelFor(b), elapsed, nil
 		}
 		logger.Errorf("llm: backend %T failed: %v", b.provider, err)
 		lastErr = err
 	}
-	return "", lastErr
+	return "", "", 0, lastErr
 }

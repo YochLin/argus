@@ -26,19 +26,25 @@ func (f fakeReplyProvider) NewChatSession(ctx context.Context, systemPrompt, mod
 }
 
 func TestGenerateRecommendations_ParseFailure(t *testing.T) {
-	c := NewClientWithProvider(fakeReplyProvider{reply: "just some prose with no [TICKER: ...] blocks"}, "", "", "", i18n.EN)
-	summary, recs, err := c.GenerateRecommendations(context.Background(), nil, nil, nil, nil, nil, false)
+	reply := "just some prose with no [TICKER: ...] blocks"
+	c := NewClientWithProvider(fakeReplyProvider{reply: reply}, "", "", "", i18n.EN)
+	summary, recs, raw, _, _, err := c.GenerateRecommendations(context.Background(), nil, nil, nil, nil, nil, false)
 	if !errors.Is(err, ErrRecommendationParseFailed) {
 		t.Fatalf("GenerateRecommendations() err = %v, want ErrRecommendationParseFailed", err)
 	}
 	if recs != nil || summary != "" {
 		t.Errorf("GenerateRecommendations() = (%q, %+v), want (\"\", nil) on parse failure", summary, recs)
 	}
+	// Phase 19: raw must still come back on a parse failure — that's exactly
+	// the case a caller most needs to record for later auditing.
+	if raw != reply {
+		t.Errorf("GenerateRecommendations() raw = %q, want the model's reply even on parse failure", raw)
+	}
 }
 
 func TestGenerateRecommendations_EmptyReplyIsNotParseFailure(t *testing.T) {
 	c := NewClientWithProvider(fakeReplyProvider{reply: ""}, "", "", "", i18n.EN)
-	_, recs, err := c.GenerateRecommendations(context.Background(), nil, nil, nil, nil, nil, false)
+	_, recs, _, _, _, err := c.GenerateRecommendations(context.Background(), nil, nil, nil, nil, nil, false)
 	if err != nil {
 		t.Fatalf("GenerateRecommendations() err = %v, want nil for an empty (not malformed) reply", err)
 	}
@@ -50,7 +56,7 @@ func TestGenerateRecommendations_EmptyReplyIsNotParseFailure(t *testing.T) {
 func TestGenerateRecommendations_ParsesSuccessfully(t *testing.T) {
 	reply := "[TICKER: AAPL]\nAction: BUY\nReason: strong earnings\n"
 	c := NewClientWithProvider(fakeReplyProvider{reply: reply}, "", "", "", i18n.EN)
-	_, recs, err := c.GenerateRecommendations(context.Background(), nil, nil, nil, nil, nil, false)
+	_, recs, _, _, _, err := c.GenerateRecommendations(context.Background(), nil, nil, nil, nil, nil, false)
 	if err != nil {
 		t.Fatalf("GenerateRecommendations() err = %v, want nil", err)
 	}

@@ -504,7 +504,8 @@ func (b *Bot) runDailyReport(ctx context.Context, m market.MarketID) {
 		explore = b.exploreCandidates(ctx, &in)
 	}
 
-	summary, recs, err := b.llm.GenerateRecommendations(ctx, in.watchlist, in.candidates, in.marketNews, in.marketContext, in.recentLessons, m == market.TW)
+	summary, recs, raw, model, latencyMs, err := b.llm.GenerateRecommendations(ctx, in.watchlist, in.candidates, in.marketNews, in.marketContext, in.recentLessons, m == market.TW)
+	b.recordLLMRun("daily_report", m, in, raw, model, latencyMs)
 	if err != nil {
 		if errors.Is(err, llm.ErrRecommendationParseFailed) {
 			b.Send(i18n.T(b.lang, i18n.KeyRecParseFailed, err))

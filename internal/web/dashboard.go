@@ -104,6 +104,15 @@ type dbReader interface {
 	// candidate pool RunUniverseScan/RunTWUniverseScan already scan, not a
 	// new ticker set.
 	GetUniverse() ([]db.UniverseEntry, error)
+	// ListLLMRuns/GetLLMRun back llmruns.go's Phase 19 /llm audit page —
+	// GET /api/llm-runs (list) and GET /api/llm-runs/{id} (detail).
+	ListLLMRuns(limit int) ([]db.LLMRun, error)
+	GetLLMRun(id int64) (db.LLMRunDetail, bool, error)
+	// ListBlockedNewsSources backs both newssources.go's GET
+	// /api/news-sources/blocked and the /llm page's own data-quality
+	// "low-quality source" check (Phase 19 §8.2) — the block/unblock writes
+	// themselves go through the separate newsSourceWriter interface.
+	ListBlockedNewsSources() ([]db.BlockedNewsSource, error)
 }
 
 // netWorthBaseline resolves the capital base for a period starting at

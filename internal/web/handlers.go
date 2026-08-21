@@ -102,6 +102,11 @@ type configResponse struct {
 	// showing a nav link to a page that always errors would be worse than
 	// not showing it, same reasoning as Writable gating the trade UI.
 	PaperEnabled bool `json:"paperEnabled"`
+	// LLMAuditEnabled (Phase 19, §8.4) tells the frontend whether to show
+	// the "/llm" sidebar item at all — mirrors PaperEnabled's reasoning, but
+	// here the API routes themselves are also unregistered (see
+	// Config.LLMAudit), so this really is the only signal the frontend has.
+	LLMAuditEnabled bool `json:"llmAuditEnabled"`
 }
 
 // calendarResponse is /api/calendar's body — same "raw data only" rule as
@@ -297,7 +302,7 @@ type riskPositionResponse struct {
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, configResponse{Lang: string(s.lang), PaperEnabled: s.paperDB != nil})
+	writeJSON(w, http.StatusOK, configResponse{Lang: string(s.lang), PaperEnabled: s.paperDB != nil, LLMAuditEnabled: s.llmAudit})
 }
 
 // handlePaper serves /api/paper?market=us|tw (Phase 11 PR4). 404s outright

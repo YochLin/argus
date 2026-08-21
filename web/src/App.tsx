@@ -19,6 +19,7 @@ import { TradeModal, type TradeMode } from "./components/TradeModal";
 import { LoginModal } from "./components/LoginModal";
 import { ImportView } from "./components/ImportView";
 import { SectorFlowView } from "./components/SectorFlowView";
+import { LlmRunsView } from "./components/LlmRunsView";
 
 // Four client-side routes (dashboard, calendar, round list, round detail)
 // don't justify pulling in a routing library — a hand-rolled route
@@ -66,6 +67,9 @@ export default function App() {
   // server-side). Defaults false so a slow/failed /api/config fetch never
   // briefly shows a link to a page that would 404.
   const [paperEnabled, setPaperEnabled] = useState(false);
+  // llmAuditEnabled (Phase 19, WEB_LLM_AUDIT) gates the /llm nav link and
+  // route the same way — hidden entirely when unset server-side.
+  const [llmAuditEnabled, setLlmAuditEnabled] = useState(false);
   const [userLang, setUserLang] = useState<Lang | null>(() => {
     const stored = localStorage.getItem(langStorageKey);
     return stored === null ? null : normalizeLang(stored);
@@ -141,6 +145,7 @@ export default function App() {
       .then((cfg) => {
         setServerLang(normalizeLang(cfg.lang));
         setPaperEnabled(cfg.paperEnabled);
+        setLlmAuditEnabled(cfg.llmAuditEnabled);
       })
       .catch(() => {});
   }, []);
@@ -209,6 +214,17 @@ export default function App() {
     ) : null;
   } else if (path === "/options") {
     body = <OptionsView dict={dict} market={market} />;
+  } else if (path === "/llm") {
+    body = llmAuditEnabled ? (
+      <LlmRunsView
+        dict={dict}
+        names={names}
+        writable={status?.writable ?? false}
+        onUnauthorized={(retry) => setAuthRetry(() => retry)}
+        runId={params.get("id") ? Number(params.get("id")) : null}
+        onOpenRun={(id) => navigate(`/llm?id=${id}`)}
+      />
+    ) : null;
   } else if (path === "/import") {
     body = status?.writable ? (
       <ImportView
@@ -284,6 +300,7 @@ export default function App() {
         status={status}
         writable={status?.writable ?? false}
         paperEnabled={paperEnabled}
+        llmAuditEnabled={llmAuditEnabled}
       />
       <div className="app-main">
         <TopBar
