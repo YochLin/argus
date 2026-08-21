@@ -6,7 +6,7 @@ import (
 	"argus/internal/market"
 )
 
-// LLMRun is one row of Phase 19's audit trail (migration 20) — see
+// LLMRun is one row of Phase 19's audit trail (migration 22) — see
 // docs/phase-19-llm-transparency.md. Kind distinguishes a manual /recommend
 // call from a scheduled daily-report run ("recommend" / "daily_report");
 // Model/LatencyMs come straight from llm.Client.GenerateRecommendations'

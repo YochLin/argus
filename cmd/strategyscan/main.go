@@ -13,6 +13,7 @@ import (
 
 	"argus/internal/data"
 	"argus/internal/market"
+	"argus/internal/paper"
 	"argus/internal/signals"
 )
 
@@ -69,26 +70,67 @@ type TradeOutcome struct {
 	HoldDays   int
 }
 
-// simulateTrade walks candles forward from entryIdx day by day, up to
-// maxHoldDays, exiting on whichever comes first: stop-loss, take-profit, or
-// the hold-day limit (§11.9 — 固定持有 N 天比勝率 measures the wrong thing for
-// right-skewed signals; this measures profit factor on a full trade instead).
-// Stop is checked before target on any bar that touches both (conservative:
-// with only OHLC, not intraday fills, assume the worse fill). ExitRet is the
-// return at the ACTUAL fill price, not the nominal stopPct/targetPct — a
-// gap-down open can breach the stop well past -stopPct, and using the
-// nominal value instead of the real fill would make the profit factor a
-// tautological targetPct/stopPct rather than a measurement. Fill price is
-// the worse of the bar's open and the trigger price (open gaps through the
-// level fill at the open, not the level, since there's no way to fill at a
-// price the stock never traded at that day).
-func simulateTrade(candles []data.Candle, entryIdx int, stopPct, targetPct float64, maxHoldDays int) (TradeOutcome, bool) {
+// simulatedAccountCash is a huge starting balance for simulateTrade's
+// throwaway one-ticker paper.Account — big enough that SuggestShares' cash
+// cap never binds ahead of its risk-based sizing, so the resulting position
+// (and therefore its commission as a % of notional) converges to the real
+// statutory rate instead of being distorted by TW's flat NT$20 commission
+// floor at a tiny/arbitrary notional. simulateTrade only ever reads a
+// Trade's Price/Fee/Reason, never Cash/Shares in isolation, so the absolute
+// scale doesn't otherwise matter.
+const simulatedAccountCash = 1e15
+
+// atrPeriod matches every other ATR(14) read in this codebase (see
+// stopCandidateATRMult's doc comment in internal/bot/pipeline.go) — the live
+// paper account's stop/target/trailing formulas are all calibrated to 14,
+// not parameterized, so this can't be a flag without silently drifting from
+// what simulateTrade is trying to replicate.
+const atrPeriod = 14
+
+// simulateTrade replays entryIdx forward through the exact rule engine the
+// live paper account uses (internal/paper.Account.ApplySignal/MarkClose) —
+// PR3, docs/phase-23-strategy-data-uplift.md §5 — instead of this tool's own
+// bespoke stop/target logic, which never matched what's actually running in
+// production (the doc's whole point: those CSVs never described the real
+// system). cfg carries the live exit rules (StopATRMult/StopLossPct/
+// TrailingPct/TrailingATRMult/TakeProfitATRMult/Market/FeeDiscount) —
+// InitialCash/RiskPct/MaxPositionPct are overridden internally to guarantee
+// the simulated BUY always fills (see simulatedAccountCash), since this
+// study only measures % return, never position size. slippagePct (PR2, a
+// flag not a const — a fixed number here is a false-precision guess about
+// market impact) is added on top of the two fills' ACTUAL commission+tax
+// (Trade.Fee, computed by the real paper.FeeFor at cfg.Market's statutory
+// rate net of cfg.FeeDiscount) as the round-trip friction subtracted from
+// the raw price return. A trade that's still open at maxHoldDays is scored
+// as a forced close at that day's close (a real sell fee is estimated for
+// it via paper.FeeFor directly, since the account itself was never told to
+// sell) — same "somebody has to eventually exit" convention the old model
+// used for its timeout branch.
+func simulateTrade(candles []data.Candle, entryIdx int, cfg paper.Config, slippagePct float64, maxHoldDays int) (TradeOutcome, bool) {
 	entry := candles[entryIdx].Close
 	if entry <= 0 {
 		return TradeOutcome{}, false
 	}
-	stopPrice := entry * (1 - stopPct/100.0)
-	targetPrice := entry * (1 + targetPct/100.0)
+	highs, lows, closes := data.Highs(candles), data.Lows(candles), data.Closes(candles)
+	atrAt := func(idx int) float64 {
+		return signals.ATR(highs[:idx+1], lows[:idx+1], closes[:idx+1], atrPeriod)
+	}
+
+	sizingCfg := cfg
+	sizingCfg.InitialCash = simulatedAccountCash
+	sizingCfg.RiskPct = 100
+	sizingCfg.MaxPositionPct = 0
+
+	const ticker = "T"
+	acct := paper.NewAccount(sizingCfg.InitialCash)
+	entryDate := candles[entryIdx].Date.Format("2006-01-02")
+	buyTrade, ok := acct.ApplySignal(paper.Signal{Date: entryDate, Ticker: ticker, Action: "BUY", Price: entry}, entry, atrAt(entryIdx), sizingCfg)
+	if !ok {
+		return TradeOutcome{}, false
+	}
+	notional := buyTrade.Price * buyTrade.Shares
+	slippageRoundTripPct := 2 * slippagePct
+
 	last := entryIdx
 	for i := 1; i <= maxHoldDays; i++ {
 		idx := entryIdx + i
@@ -96,37 +138,56 @@ func simulateTrade(candles []data.Candle, entryIdx int, stopPct, targetPct float
 			break
 		}
 		last = idx
-		c := candles[idx]
-		if c.Low <= stopPrice {
-			fill := stopPrice
-			if c.Open < stopPrice {
-				fill = c.Open // gapped through the stop
-			}
-			exitRet := (fill - entry) / entry * 100.0
-			return TradeOutcome{ExitRet: exitRet, ExitReason: "stop", HoldDays: i}, true
-		}
-		if c.High >= targetPrice {
-			fill := targetPrice
-			if c.Open > targetPrice {
-				fill = c.Open // gapped through the target
-			}
-			exitRet := (fill - entry) / entry * 100.0
-			return TradeOutcome{ExitRet: exitRet, ExitReason: "target", HoldDays: i}, true
+		date := candles[idx].Date.Format("2006-01-02")
+		trades := acct.MarkClose(date, map[string]float64{ticker: candles[idx].Close}, map[string]float64{ticker: atrAt(idx)}, sizingCfg)
+		if len(trades) > 0 {
+			sell := trades[0]
+			feePct := (buyTrade.Fee + sell.Fee) / notional * 100.0
+			exitRet := (sell.Price-entry)/entry*100.0 - feePct - slippageRoundTripPct
+			return TradeOutcome{ExitRet: exitRet, ExitReason: sell.Reason, HoldDays: i}, true
 		}
 	}
 	if last == entryIdx {
 		return TradeOutcome{}, false
 	}
-	exitRet := (candles[last].Close - entry) / entry * 100.0
+	sellFeeAtTimeout := paper.FeeFor(cfg.Market, "SELL", notional, cfg.FeeDiscount)
+	feePct := (buyTrade.Fee + sellFeeAtTimeout) / notional * 100.0
+	exitRet := (candles[last].Close-entry)/entry*100.0 - feePct - slippageRoundTripPct
 	return TradeOutcome{ExitRet: exitRet, ExitReason: "timeout", HoldDays: last - entryIdx}, true
 }
 
 func main() {
 	marketFlag := flag.String("market", "us", "market to scan: us|tw")
 	rangeFlag := flag.String("range", "5y", "history range: 1y|2y|5y")
-	stopPctFlag := flag.Float64("stop-pct", 5.0, "full-trade replay: fixed stop-loss %% below entry (§11.9)")
-	targetPctFlag := flag.Float64("target-pct", 10.0, "full-trade replay: fixed take-profit %% above entry (§11.9)")
-	maxHoldDaysFlag := flag.Int("max-hold-days", 20, "full-trade replay: max holding days before a timeout exit")
+	// PR3 (docs/phase-23-strategy-data-uplift.md §5): these five default to
+	// exactly the live paper account's own defaults (stopCandidateATRMult in
+	// internal/bot/pipeline.go, STOP_LOSS_PCT/TRAILING_STOP_PCT/
+	// TRAILING_STOP_ATR_MULT/PAPER_TAKE_PROFIT_ATR_MULT in .env.example, and
+	// cmd/bot/backtest.go's own flags) — same names as that tool's flags on
+	// purpose, so a user familiar with one recognizes the other.
+	stopATRFlag := flag.Float64("stop-atr", 2, "full-trade replay: ATR(14) multiple below entry for the initial stop")
+	stopPctFlag := flag.Float64("stop-pct", 10, "full-trade replay: fixed %% stop fallback when ATR is unavailable")
+	trailingPctFlag := flag.Float64("trailing-pct", 15, "full-trade replay: fixed trailing-stop distance, %%; 0 disables")
+	trailingATRFlag := flag.Float64("trailing-atr", 0, "full-trade replay: ATR-based trailing distance multiple; <=0 = fixed %% only")
+	takeProfitATRFlag := flag.Float64("take-profit-atr", 0, "full-trade replay: ATR(14) multiple above entry for the take-profit target; <=0 = disabled")
+	maxHoldDaysFlag := flag.Int("max-hold-days", 60, "full-trade replay: max holding days before a timeout exit (§11.9/PR3: 20 -> 60, matching the 數週到數月 position style)")
+	// PR2 friction cost: -1 sentinel means "use the market's default" (US
+	// 0.1%, TW 0.15%, live-verified as a reasonable one-side slippage guess)
+	// since flag.Float64 can't default on a value (-market) not known until
+	// after Parse. Commission/tax are no longer a separate flag/model here —
+	// PR3's simulateTrade computes them from the real paper.FeeFor at the
+	// simulated trade's actual size (see simulatedAccountCash).
+	slippagePctFlag := flag.Float64("slippage-pct", -1, "full-trade replay: one-side slippage %% assumption per fill; default is market-specific (US 0.1%%, TW 0.15%%)")
+	feeDiscountFlag := flag.Float64("fee-discount", 1.0, "full-trade replay: TW broker commission discount (1.0 = no discount); unused for US")
+	// PR4 out-of-sample time-slice (docs/phase-23-strategy-data-uplift.md §5):
+	// -range still controls how much history GetHistory fetches (relative to
+	// today, Yahoo has no absolute date-range param — see internal/data/
+	// yahoo.go's GetHistory doc comment), so covering 2016-2021 needs both a
+	// wide enough -range (e.g. -range=10y) AND these two bounds to actually
+	// restrict which triggers get evaluated/recorded. Empty = no bound
+	// (today's unbounded behavior, unchanged default).
+	dateFromFlag := flag.String("date-from", "", "out-of-sample: only evaluate/record triggers on or after this date (YYYY-MM-DD)")
+	dateToFlag := flag.String("date-to", "", "out-of-sample: only evaluate/record triggers on or before this date (YYYY-MM-DD)")
 	flag.Parse()
 
 	m := market.US
@@ -135,6 +196,29 @@ func main() {
 	} else if *marketFlag != "us" {
 		fmt.Printf("Error: -market must be us or tw, got %q\n", *marketFlag)
 		os.Exit(1)
+	}
+
+	if *slippagePctFlag < 0 {
+		if m == market.TW {
+			*slippagePctFlag = 0.15
+		} else {
+			*slippagePctFlag = 0.1
+		}
+	}
+	exitCfg := paper.Config{
+		StopATRMult:       *stopATRFlag,
+		StopLossPct:       *stopPctFlag,
+		TrailingPct:       *trailingPctFlag,
+		TrailingATRMult:   *trailingATRFlag,
+		TakeProfitATRMult: *takeProfitATRFlag,
+		Market:            m,
+		FeeDiscount:       *feeDiscountFlag,
+	}
+	fmt.Printf("Exit model (PR3, live-aligned): stop-atr=%.1f stop-pct=%.1f%% trailing-pct=%.1f%% trailing-atr=%.1f take-profit-atr=%.1f max-hold-days=%d slippage=%.2f%%/side fee-discount=%.2f\n",
+		*stopATRFlag, *stopPctFlag, *trailingPctFlag, *trailingATRFlag, *takeProfitATRFlag, *maxHoldDaysFlag, *slippagePctFlag, *feeDiscountFlag)
+	if *dateFromFlag != "" || *dateToFlag != "" {
+		fmt.Printf("Out-of-sample window (PR4): [%s .. %s] — make sure -range is wide enough to actually reach %s (e.g. -range=10y for a 2016 start)\n",
+			orDash(*dateFromFlag), orDash(*dateToFlag), orDash(*dateFromFlag))
 	}
 
 	fmt.Printf("=== Argus Strategy Historical Study Tool (cmd/strategyscan, market=%s, range=%s) ===\n", m, *rangeFlag)
@@ -239,6 +323,16 @@ func main() {
 		for t := 59; t < len(candles); t++ {
 			sub := candles[:t+1]
 			evalDateStr := candles[t].Date.Format("2006-01-02")
+			// PR4: out-of-sample time-slice — skip triggers outside
+			// [-date-from, -date-to] entirely (not just at CSV-write time),
+			// so baseline/summary stats are computed over the same restricted
+			// window the strategy hits are.
+			if *dateFromFlag != "" && evalDateStr < *dateFromFlag {
+				continue
+			}
+			if *dateToFlag != "" && evalDateStr > *dateToFlag {
+				continue
+			}
 			entryPrice := candles[t].Close
 			if entryPrice <= 0 {
 				continue
@@ -306,7 +400,7 @@ func main() {
 
 				rec := baseRec
 				rec.Strategy = strat
-				if outcome, ok := simulateTrade(candles, t, *stopPctFlag, *targetPctFlag, *maxHoldDaysFlag); ok {
+				if outcome, ok := simulateTrade(candles, t, exitCfg, *slippagePctFlag, *maxHoldDaysFlag); ok {
 					rec.HasTrade = true
 					rec.TradeExitRet = outcome.ExitRet
 					rec.TradeExitReason = outcome.ExitReason
@@ -340,6 +434,15 @@ func main() {
 			}
 			fmt.Printf("Trust-net fetch failures (first %d of %d): %s\n", len(shown), len(trustFailedTickers), strings.Join(shown, ", "))
 		}
+		// PR1 (docs/phase-23-strategy-data-uplift.md §5): a silent drop here is
+		// how 網 5 went unbacktested for an entire phase without anyone
+		// noticing (§2.3) — FINMIND_TOKEN missing/invalid must fail the run,
+		// not just print a line nobody reads.
+		if fetched > 0 && float64(trustFetchFailed)/float64(fetched) > 0.05 {
+			fmt.Printf("FATAL: trust-net fetch error rate %.1f%% exceeds 5%% — 網 5 (trust_follow) would be studied on a crippled sample. Check FINMIND_TOKEN and re-run.\n",
+				float64(trustFetchFailed)/float64(fetched)*100.0)
+			os.Exit(1)
+		}
 	}
 
 	// ponytail: baseline keeps every (ticker, day) record in memory (~5y x 503
@@ -368,6 +471,13 @@ func main() {
 	// §11.2 point 1: baseline aggregate stats as their own CSV so anyone can
 	// independently re-derive every excess number above.
 	writeBaselineSummaryCSV(fmt.Sprintf("strategyscan_baseline_%s.csv", m), baselineRecs)
+}
+
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }
 
 func parseTickers(raw string) []string {

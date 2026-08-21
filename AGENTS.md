@@ -56,6 +56,24 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   silently ignores `interval=1d` for `range=max` and returns quarterly bars instead (live-verified:
   AAPL "max" comes back as 168 bars, matching "3mo"), which would otherwise corrupt anything computed
   off Yahoo history at that range (e.g. `/recs`/Distributions' h=1 return, MAE/MFE) without erroring.
+  `sec.go`'s `FundamentalHistoryProvider` (US-only, Phase 23 PR6) wraps SEC EDGAR's free, keyless XBRL
+  `companyfacts` API for valuation percentile (self-relative P/E, US EPS × price since Yahoo's free-tier
+  fundamentals-timeseries caps out at 4 years) and cash-flow quality (OCF/NetIncome, same fiscal year) —
+  briefing material only (never a ranking/filter factor). Only 10-K annual points are used (no TTM
+  reconstruction from quarterly 10-Qs — false precision for a briefing line); `SEC_USER_AGENT` must
+  contain a real, working email since SEC's edge filter technically requires an email-shaped UA and a bad
+  one just gets the IP silently blocked, not bounced. `finmind.go`'s `GetFundamentalSnapshot` (Phase 23
+  PR7) is the same `FundamentalHistoryProvider` interface's TW implementation — `TaiwanStockPER` already
+  reports PER per trading day, so its own history is the percentile pool directly, no price series to
+  align against EPS dates the way SEC's US path needs; valuation only, no cash-flow-quality equivalent for
+  TW yet (`TaiwanStockFinancialStatements` has no cash-flow-statement fields). Both share one
+  `internal/db` cache (`fundamental_snapshots`, see below), dispatched by `bot.cachedValuationSnapshot`.
+  `earnings.go`'s `EarningsSurpriseProvider` (US-only, Phase 23 PR8) wraps Finnhub's `/stock/earnings`
+  (live-verified 2026-08-20: free tier caps at the trailing 4 quarters regardless of a `from`/`to` range —
+  unlike the Yahoo/SEC percentile cases, 4 quarters is exactly the right depth for a beat/miss-streak
+  signal, not a crippled version of something that needed more). No DB cache — unlike PR6/PR7's valuation
+  snapshot, Finnhub's response is already the whole useful window every call, so it rides the same
+  in-memory `dataCache`/`slowDataCacheTTL` as Fundamentals/AnalystRating/InsiderTx.
   Full rationale, live-endpoint gotchas, and TW-specific design notes: **[docs/architecture/data.md](docs/architecture/data.md)**.
 
 - `internal/option` — Phase 12's pure functions for US equity options, independent of
@@ -82,6 +100,12 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   (migration 15) added `option_positions`/`option_transactions` (`options.go`) as two fully independent
   tables — an OCC symbol never enters `positions.ticker` — with `RecordOption` as their single write
   path so the signed-`contracts` realized-P&L formula (docs/phase-12-options.md §3.2) only exists once.
+  Phase 23 PR6/PR7 (migration 21) added `fundamental_snapshots` (`fundamentals.go`) — one upserted row per
+  ticker (no `market` column needed; a ticker's own value already disambiguates) caching either
+  `internal/data.SEC` (US) or FinMind's `TaiwanStockPER` (TW) valuation percentile/cash-flow quality on a
+  90-day TTL that `bot.cachedValuationSnapshot` checks before ever calling either source;
+  `pe_percentile`/`cash_flow_quality` are nullable columns, not 0-sentinel, since a ticker with too little
+  history is a real "unknown," not a real zero.
   Full table/method rationale: **[docs/architecture/db.md](docs/architecture/db.md)**.
 
 - `internal/i18n` — every user/LLM-facing string, split into `zh.go` (default) and `en.go`, keyed by

@@ -5,14 +5,15 @@ package db
 // different fields), same convention as db.DailySnapshot vs the signals
 // package staying independent of each other.
 type PriceEvent struct {
-	ID        int64
-	Ticker    string
-	Market    string
-	Date      string
-	GapPct    float64
-	ChangePct float64
-	Summary   string
-	CreatedAt string
+	ID            int64
+	Ticker        string
+	Market        string
+	Date          string
+	GapPct        float64
+	ChangePct     float64
+	CumulativePct float64
+	Summary       string
+	CreatedAt     string
 }
 
 // HasPriceEvent reports whether ticker already has a price_events row for
@@ -34,8 +35,8 @@ func (d *DB) HasPriceEvent(ticker, date string) (bool, error) {
 // rather than treat that as fatal.
 func (d *DB) SavePriceEvent(ev PriceEvent) error {
 	_, err := d.conn.Exec(
-		`INSERT INTO price_events (ticker, market, date, gap_pct, change_pct, summary) VALUES (?, ?, ?, ?, ?, ?)`,
-		ev.Ticker, ev.Market, ev.Date, ev.GapPct, ev.ChangePct, ev.Summary,
+		`INSERT INTO price_events (ticker, market, date, gap_pct, change_pct, cumulative_pct, summary) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		ev.Ticker, ev.Market, ev.Date, ev.GapPct, ev.ChangePct, ev.CumulativePct, ev.Summary,
 	)
 	return err
 }
@@ -44,7 +45,7 @@ func (d *DB) SavePriceEvent(ev PriceEvent) error {
 // across every ticker, newest first — /events' no-argument form.
 func (d *DB) GetRecentPriceEvents(limit int) ([]PriceEvent, error) {
 	rows, err := d.conn.Query(
-		`SELECT id, ticker, market, date, gap_pct, change_pct, summary, created_at
+		`SELECT id, ticker, market, date, gap_pct, change_pct, cumulative_pct, summary, created_at
 		 FROM price_events ORDER BY id DESC LIMIT ?`,
 		limit,
 	)
@@ -56,7 +57,7 @@ func (d *DB) GetRecentPriceEvents(limit int) ([]PriceEvent, error) {
 	var out []PriceEvent
 	for rows.Next() {
 		var ev PriceEvent
-		if err := rows.Scan(&ev.ID, &ev.Ticker, &ev.Market, &ev.Date, &ev.GapPct, &ev.ChangePct, &ev.Summary, &ev.CreatedAt); err != nil {
+		if err := rows.Scan(&ev.ID, &ev.Ticker, &ev.Market, &ev.Date, &ev.GapPct, &ev.ChangePct, &ev.CumulativePct, &ev.Summary, &ev.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, ev)
@@ -68,7 +69,7 @@ func (d *DB) GetRecentPriceEvents(limit int) ([]PriceEvent, error) {
 // for ticker, newest first — /events TICKER's form.
 func (d *DB) GetPriceEventsForTicker(ticker string, limit int) ([]PriceEvent, error) {
 	rows, err := d.conn.Query(
-		`SELECT id, ticker, market, date, gap_pct, change_pct, summary, created_at
+		`SELECT id, ticker, market, date, gap_pct, change_pct, cumulative_pct, summary, created_at
 		 FROM price_events WHERE ticker = ? ORDER BY id DESC LIMIT ?`,
 		ticker, limit,
 	)
@@ -80,7 +81,7 @@ func (d *DB) GetPriceEventsForTicker(ticker string, limit int) ([]PriceEvent, er
 	var out []PriceEvent
 	for rows.Next() {
 		var ev PriceEvent
-		if err := rows.Scan(&ev.ID, &ev.Ticker, &ev.Market, &ev.Date, &ev.GapPct, &ev.ChangePct, &ev.Summary, &ev.CreatedAt); err != nil {
+		if err := rows.Scan(&ev.ID, &ev.Ticker, &ev.Market, &ev.Date, &ev.GapPct, &ev.ChangePct, &ev.CumulativePct, &ev.Summary, &ev.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, ev)

@@ -26,6 +26,49 @@ func TestFinMindTWGuard(t *testing.T) {
 	if _, err := f.GetTrustNetSeries("AAPL", 60); err != errNotTWTicker {
 		t.Errorf("GetTrustNetSeries(AAPL) error = %v, want errNotTWTicker", err)
 	}
+	if _, err := f.GetFundamentalSnapshot("AAPL", nil); err != errNotTWTicker {
+		t.Errorf("GetFundamentalSnapshot(AAPL) error = %v, want errNotTWTicker", err)
+	}
+}
+
+// TestFinMindGetFundamentalSnapshot covers Phase 23 PR7: TaiwanStockPER's
+// own daily PER series is the percentile pool directly (no separate price
+// history to align, unlike data.SEC's US path) — priceCandles is passed as
+// nil here to confirm it's genuinely unused.
+func TestFinMindGetFundamentalSnapshot(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"msg":"success","status":200,"data":[
+			{"date":"2026-01-05","stock_id":"2330","dividend_yield":1.0,"PER":15.0,"PBR":5.0},
+			{"date":"2026-02-05","stock_id":"2330","dividend_yield":1.0,"PER":20.0,"PBR":5.0},
+			{"date":"2026-03-05","stock_id":"2330","dividend_yield":1.0,"PER":25.0,"PBR":5.0},
+			{"date":"2026-04-05","stock_id":"2330","dividend_yield":1.0,"PER":30.0,"PBR":5.0}
+		]}`))
+	}))
+	defer srv.Close()
+
+	f := NewFinMind("test-token")
+	f.baseURL = srv.URL
+
+	got, err := f.GetFundamentalSnapshot("2330", nil)
+	if err != nil {
+		t.Fatalf("GetFundamentalSnapshot() error = %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetFundamentalSnapshot() = nil, want a snapshot")
+	}
+	if got.PERatio != 30.0 {
+		t.Errorf("PERatio = %v, want 30.0 (latest row)", got.PERatio)
+	}
+	if got.EPSAnnual != 0 {
+		t.Errorf("EPSAnnual = %v, want 0 (PR7 is valuation-only, no EPS reconstruction)", got.EPSAnnual)
+	}
+	if got.PEPercentile == nil {
+		t.Fatal("PEPercentile = nil, want a value (4 priced points)")
+	}
+	if *got.PEPercentile != 100.0 {
+		t.Errorf("PEPercentile = %v, want 100.0 (latest PER is the highest in its own history)", *got.PEPercentile)
+	}
 }
 
 // finmindServer serves recorded 2330 (TSMC) responses — live-curled from

@@ -1,7 +1,7 @@
 package db
 
 // BlockedNewsSource is one row from Phase 19 PR2's news-source blacklist
-// (migration 21) — see docs/phase-19-llm-transparency.md §5.
+// (migration 23) — see docs/phase-19-llm-transparency.md §5.
 type BlockedNewsSource struct {
 	Source    string
 	CreatedAt string

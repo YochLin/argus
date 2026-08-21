@@ -124,6 +124,7 @@ func main() {
 	var marketNewsProvider data.MarketNewsProvider
 	var companyNameProvider data.CompanyNameProvider
 	var trustNetProvider data.TrustNetProvider
+	var twValuationProvider data.FundamentalHistoryProvider
 	// sectorProvider/industryMapProvider back Phase 18's /api/sectorflow —
 	// US via Finnhub (per-ticker), TW via FinMind's whole-market map (see
 	// internal/web/sectorflow.go). Only web.Config reads these; the bot
@@ -131,6 +132,7 @@ func main() {
 	// entry).
 	var sectorProvider data.SectorProvider
 	var industryMapProvider data.IndustryMapProvider
+	var earningsSurpriseProvider data.EarningsSurpriseProvider
 	fundamentalsRouter := &data.FundamentalsRouter{}
 	if cfg.FinnhubKey != "" {
 		finnhub := data.NewFinnhub(cfg.FinnhubKey)
@@ -141,6 +143,7 @@ func main() {
 		earningsProvider = finnhub
 		marketNewsProvider = finnhub
 		sectorProvider = finnhub
+		earningsSurpriseProvider = finnhub // Phase 23 PR8
 	}
 	// FINMIND_TOKEN gates TW fundamentals the same way FINNHUB_API_KEY gates
 	// US (Phase 6 PR3) — FinMind has no Yahoo-style Multi fallback to sit
@@ -155,6 +158,7 @@ func main() {
 		companyNameProvider = finmind
 		trustNetProvider = finmind
 		industryMapProvider = finmind
+		twValuationProvider = finmind // Phase 23 PR7: TaiwanStockPER-derived valuation percentile
 	}
 	// fundamentalsProvider stays nil (not a router wrapping two nil fields)
 	// when neither key is set, preserving every existing `if b.fundamentals
@@ -210,6 +214,14 @@ func main() {
 		marketNewsProvider = data.NewMarketNewsFilter(marketNewsProvider, newsBlocked)
 	}
 
+	// SEC EDGAR (Phase 23 PR6) is US-only and needs a real contact-email UA
+	// (see internal/data/sec.go) — presence-gated same as Finnhub/FinMind
+	// above, left nil (not constructed at all) when SEC_USER_AGENT is unset.
+	var secFundamentalsProvider data.FundamentalHistoryProvider
+	if cfg.SECUserAgent != "" {
+		secFundamentalsProvider = data.NewSEC(cfg.SECUserAgent)
+	}
+
 	// twMovers/twMarketNews (2026-07-28 TW data-gap PR) need no API key —
 	// TWSE's OpenAPI and cnyes are both free/keyless — so unlike
 	// fundamentalsProvider/earningsProvider above they're constructed
@@ -245,6 +257,7 @@ func main() {
 		Fundamentals:           fundamentalsProvider,
 		AnalystRating:          analystRatingProvider,
 		InsiderTx:              insiderTxProvider,
+		EarningsSurprise:       earningsSurpriseProvider,
 		Institutional:          twMovers,
 		Earnings:               earningsProvider,
 		MarketNews:             marketNewsProvider,
@@ -253,6 +266,8 @@ func main() {
 		CompanyNames:           companyNameProvider,
 		TrustNet:               trustNetProvider,
 		OptionChain:            yahoo,
+		SECFundamentals:        secFundamentalsProvider,
+		TWValuation:            twValuationProvider,
 		History:                yahoo,
 		Sinopac:                sinopacClient,
 		SinopacSkip:            cfg.SinopacSkip,

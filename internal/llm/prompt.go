@@ -41,12 +41,30 @@ type StockData struct {
 	// every row, same "raw data in, opinionated summary out" split as
 	// Fundamentals.
 	InsiderTx []data.InsiderTransaction
+	// EarningsSurprises is Phase 23 PR8's actual-vs-estimate EPS history,
+	// US-only, oldest first (nil when Finnhub isn't configured, same gate as
+	// Fundamentals/AnalystRating/InsiderTx — see data.EarningsSurpriseProvider).
+	// Briefing material only, never a ranking factor
+	// (docs/phase-23-strategy-data-uplift.md §4.2) — writeStockSection
+	// summarizes it into a beat/miss streak rather than listing every quarter,
+	// same "raw data in, opinionated summary out" split as InsiderTx.
+	EarningsSurprises []data.EarningsSurprise
 	// InstitutionalFlow is optional, TW-only (see
 	// data.InstitutionalFlowProvider): the ticker's most recent day of
 	// three-major-institutional-investor (三大法人) net buy/sell, from TWSE's
 	// own T86 report. Nil for a US ticker or when the lookup found no session
 	// with data in range.
 	InstitutionalFlow *data.InstitutionalFlow
+	// SECSnapshot is Phase 23 PR6/PR7's valuation percentile + (US-only)
+	// cash-flow quality — US via SEC EDGAR, TW via FinMind's TaiwanStockPER
+	// (both share this one field/db.fundamental_snapshots row; see
+	// bot.cachedValuationSnapshot for which provider gets picked). Nil when
+	// the ticker's market has no configured provider or the lookup found
+	// nothing usable. Briefing material only, never a ranking factor
+	// (docs/phase-23-strategy-data-uplift.md §4.2) — reuses data.FundamentalSnapshot
+	// directly rather than a mirrored llm-package type, same as
+	// InstitutionalFlow above, since both already live in a package llm imports.
+	SECSnapshot *data.FundamentalSnapshot
 	// Position is set when the user holds shares of this ticker, so a
 	// SELL/HOLD call has actual cost basis to reason against instead of just
 	// price action. Nil for tickers with no open position.
@@ -681,6 +699,26 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 		}
 	}
 
+	// Phase 23 PR8 (§4.2): a beat/miss streak + average surprise summary
+	// rather than listing every quarter, same "opinionated summary" split as
+	// InsiderTx above. SurprisePct itself is Finnhub's own figure, not
+	// recomputed here — see data.EarningsSurprise's doc comment.
+	if es := s.EarningsSurprises; len(es) > 0 {
+		var beats, misses int
+		var sum float64
+		for _, e := range es {
+			switch {
+			case e.SurprisePct > 0:
+				beats++
+			case e.SurprisePct < 0:
+				misses++
+			}
+			sum += e.SurprisePct
+		}
+		latest := es[len(es)-1]
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyEarningsSurpriseLine, len(es), beats, misses, sum/float64(len(es)), latest.Period, latest.SurprisePct))
+	}
+
 	if fl := s.InstitutionalFlow; fl != nil {
 		fmt.Fprint(sb, i18n.T(lang, i18n.KeyInstitutionalFlowLine, fl.Date,
 			fl.ForeignNet+fl.ForeignDealerNet, fl.TrustNet, fl.DealerNet, fl.TotalNet))
@@ -691,6 +729,25 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 			st.Form, st.FiscalYear, st.PeriodEnd,
 			st.Revenue/1e6, st.GrossProfit/1e6, st.OperatingIncome/1e6, st.NetIncome/1e6,
 			st.TotalAssets/1e6, st.TotalLiabilities/1e6, st.TotalEquity/1e6, st.OperatingCashFlow/1e6, st.FreeCashFlow/1e6))
+	}
+
+	if snap := s.SECSnapshot; snap != nil {
+		// EPSAnnual is 0 for a Phase 23 PR7 (TW/FinMind) snapshot — that
+		// path reports PER directly, no separate EPS figure — so this line
+		// is conditional, unlike PR6's US/SEC path where it's always set
+		// whenever snap is non-nil at all.
+		if snap.EPSAnnual != 0 {
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyValuationEPSLine, snap.AsOfFiscalYearEnd, snap.EPSAnnual))
+		}
+		if snap.PERatio > 0 {
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyValuationPELine, snap.PERatio))
+		}
+		if snap.PEPercentile != nil {
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyValuationPercentileLine, *snap.PEPercentile))
+		}
+		if snap.CashFlowQuality != nil {
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyCashFlowQualityLine, *snap.CashFlowQuality))
+		}
 	}
 
 	if p := s.Position; p != nil {
@@ -941,7 +998,7 @@ func tradeEntryPrice(legs []TradeLeg) (price, shares float64) {
 // 素材" decision. gapPct/changePct are 0 when that particular threshold
 // didn't fire (see signals.PriceEvent), so only the ones that are non-zero
 // get rendered rather than always naming both.
-func buildPriceEventPrompt(lang i18n.Lang, ticker string, gapPct, changePct float64, news []data.NewsItem) string {
+func buildPriceEventPrompt(lang i18n.Lang, ticker string, gapPct, changePct, cumulativePct float64, news []data.NewsItem) string {
 	var sb strings.Builder
 	sb.WriteString(i18n.T(lang, i18n.KeyPriceEventPromptIntro, ticker))
 
@@ -950,6 +1007,9 @@ func buildPriceEventPrompt(lang i18n.Lang, ticker string, gapPct, changePct floa
 	}
 	if changePct != 0 {
 		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyPriceEventChangeLine, changePct))
+	}
+	if cumulativePct != 0 {
+		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyPriceEventCumulativeLine, cumulativePct))
 	}
 
 	if len(news) > 0 {

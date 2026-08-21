@@ -320,7 +320,7 @@ var zhMessages = map[Key]string{
 逐一查看上方的標的，但只輸出真正需要使用者注意的項目：區塊內有「持倉:」那行的
 每一檔都必須給出明確操作建議，動作只能是 BUY、SELL、HOLD 三者之一，並維持完整分析；
 沒有「持倉:」的自選股只有在你認為值得現在買進時才輸出（動作為 BUY），否則整個區塊不要輸出；
-大盤熱門標的維持相同規則，只挑出你看好、值得買進的（最多 3 檔，動作為 BUY），沒有就不列。
+大盤熱門標的維持相同規則，只挑出你看好、值得買進的（最多 5 檔，動作為 BUY），沒有就不列。
 
 評估每檔新聞時，請留意每則是利多還是利空，並融入你的原因說明。
 
@@ -443,20 +443,21 @@ var zhMessages = map[Key]string{
 	KeyLessonMarker: "教訓:",
 
 	KeyPriceEventPromptIntro: "你是一位股票分析師，*%s* 今天觸發了值得記錄的價格事件，請根據以下資料整理這次事件的情況說明。\n\n",
-	KeyPriceEventGapLine:     "開盤跳空：%+.1f%%（相對前收）\n",
-	KeyPriceEventChangeLine:  "當日漲跌：%+.1f%%（收盤相對前收）\n",
+	KeyPriceEventGapLine:        "開盤跳空：%+.1f%%（相對前收）\n",
+	KeyPriceEventChangeLine:     "當日漲跌：%+.1f%%（收盤相對前收）\n",
+	KeyPriceEventCumulativeLine: "近期累積跌幅：%+.1f%%\n",
 	KeyPriceEventPromptTask: `
 請用繁體中文，依下列要求寫 3–5 句話：
-1. 先陳述上方跳空／漲跌的事實數字
+1. 先陳述上方跳空／漲跌／累積跌幅的事實數字
 2. 若上方附有相關新聞，依新聞推測可能原因；若沒有附上任何新聞，請直接說「無對應新聞，原因不明」，不要憑空臆測
 3. 這是事實性描述，不要給任何買賣操作建議或語氣
 `,
 	KeyPriceEventResultTitle:        "📊 *價格事件：%s*\n\n%s",
 	KeyPriceEventOverflowLine:       "另有以下標的今日也觸發價格事件（超過本次上限，未附摘要）：\n%s完整記錄請見 /events",
-	KeyPriceEventOverflowTickerLine: "  • %s：跳空 %+.1f%% ／ 漲跌 %+.1f%%\n",
+	KeyPriceEventOverflowTickerLine: "  • %s：跳空 %+.1f%% ／ 漲跌 %+.1f%% ／ 累積 %+.1f%%\n",
 	KeyEventsListTitle:              "📊 *近期價格事件*\n",
 	KeyEventsTickerTitle:            "📊 *%s 價格事件紀錄*\n",
-	KeyEventsLine:                   "%s │ %s │ 跳空 %+.1f%% ／ 漲跌 %+.1f%% │ %s\n",
+	KeyEventsLine:                   "%s │ %s │ 跳空 %+.1f%% ／ 漲跌 %+.1f%% ／ 累積 %+.1f%% │ %s\n",
 	KeyEventsNoSummary:              "（無摘要）",
 	KeyEventsEmpty:                  "目前沒有價格事件紀錄。",
 
@@ -541,8 +542,13 @@ var zhMessages = map[Key]string{
 	KeyAnalystRatingLine:       "- 分析師評等（%s）：強力買進 %d｜買進 %d｜持有 %d｜賣出 %d｜強力賣出 %d\n",
 	KeyAnalystRatingTrendLine:  "  較上月：買進方 %+d｜賣出方 %+d\n",
 	KeyInsiderTxLine:           "- 內部人交易（近期公開市場申報，最近一筆 %s）：買進 %d 筆共 %d 股｜賣出 %d 筆共 %d 股\n",
+	KeyEarningsSurpriseLine:    "- 近 %d 季財報：%d 勝 %d 負，平均 surprise %+.1f%%（最近一季 %s：%+.1f%%）\n",
 	KeyInstitutionalFlowLine:   "- 三大法人買賣超（%s）：外資 %+d｜投信 %+d｜自營商 %+d｜合計 %+d 股\n",
 	KeyStatementSummaryLine:    "- 最新財報（%s，會計年度 %d，截至 %s）：營收 $%.0fM｜毛利 $%.0fM｜營業利益 $%.0fM｜淨利 $%.0fM｜總資產 $%.0fM｜總負債 $%.0fM｜股東權益 $%.0fM｜營運現金流 $%.0fM｜自由現金流 $%.0fM\n",
+	KeyValuationEPSLine:        "- SEC 年度 EPS（最近財報年度迄 %s）：%.2f\n",
+	KeyValuationPELine:         "- 依目前股價換算 P/E：%.1f\n",
+	KeyValuationPercentileLine: "- 估值百分位（僅與自身歷史比較，不可跨市場比較）：%.0f%%\n",
+	KeyCashFlowQualityLine:     "- 現金流品質（同財報年度營運現金流 / 淨利）：%.2f\n",
 	KeyPositionLine:            "- 持倉: %g 股　平均成本 $%.2f　未實現損益 %+.2f%%\n",
 	KeyPrevRecLine:             "- 上次建議: %s @ $%.2f（%d 天前）\n",
 	KeyEarningsLine:            "- ⚠️ 財報日: %s（%d 天內），留意波動\n",

@@ -103,7 +103,20 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context, m market.MarketID) {
 		// see recordPriceEvents' doc comment for why the LLM call can't
 		// live inside this already-sequential per-ticker fetch loop.
 		if ev := signals.CheckPriceEvent(q, eventThresholds); ev != nil {
-			priceEventHits = append(priceEventHits, *ev)
+			priceEventHits = mergePriceEventHit(priceEventHits, *ev)
+		}
+		// Cumulative-decline check: today's close vs. the close
+		// CumulativeWindowDays sessions ago, queried before SaveSnapshot
+		// below writes today's own row (see GetRecentCloses' doc comment).
+		// A merge into an existing same-ticker hit, not a separate append —
+		// price_events' (ticker, date) unique index allows only one row per
+		// ticker per day.
+		if closes, err := b.db.GetRecentCloses(t, eventThresholds.CumulativeWindowDays); err != nil {
+			logger.Errorf("closing snapshot: recent closes %s: %v", t, err)
+		} else if len(closes) == eventThresholds.CumulativeWindowDays {
+			if ev := signals.CheckCumulativeDecline(t, closes[0], q.Price, eventThresholds); ev != nil {
+				priceEventHits = mergePriceEventHit(priceEventHits, *ev)
+			}
 		}
 		snap := db.DailySnapshot{
 			Ticker:        t,
@@ -187,8 +200,7 @@ func (b *Bot) recordPriceEvents(ctx context.Context, hits []signals.PriceEvent, 
 		return
 	}
 	sort.Slice(pending, func(i, j int) bool {
-		return math.Max(math.Abs(pending[i].GapPct), math.Abs(pending[i].ChangePct)) >
-			math.Max(math.Abs(pending[j].GapPct), math.Abs(pending[j].ChangePct))
+		return priceEventMoveSize(pending[i]) > priceEventMoveSize(pending[j])
 	})
 
 	writeup, overflow := pending, []signals.PriceEvent(nil)
@@ -198,12 +210,12 @@ func (b *Bot) recordPriceEvents(ctx context.Context, hits []signals.PriceEvent, 
 
 	for _, ev := range writeup {
 		news, _ := b.provider.GetNews(ev.Ticker, 5)
-		summary, err := b.llm.ExplainPriceEvent(ctx, ev.Ticker, ev.GapPct, ev.ChangePct, news)
+		summary, err := b.llm.ExplainPriceEvent(ctx, ev.Ticker, ev.GapPct, ev.ChangePct, ev.CumulativePct, news)
 		if err != nil {
 			logger.Errorf("price events: LLM %s: %v", ev.Ticker, err)
 			continue
 		}
-		if err := b.db.SavePriceEvent(db.PriceEvent{Ticker: ev.Ticker, Market: string(m), Date: date, GapPct: ev.GapPct, ChangePct: ev.ChangePct, Summary: summary}); err != nil {
+		if err := b.db.SavePriceEvent(db.PriceEvent{Ticker: ev.Ticker, Market: string(m), Date: date, GapPct: ev.GapPct, ChangePct: ev.ChangePct, CumulativePct: ev.CumulativePct, Summary: summary}); err != nil {
 			logger.Errorf("price events: save %s: %v", ev.Ticker, err)
 			continue
 		}
@@ -215,13 +227,44 @@ func (b *Bot) recordPriceEvents(ctx context.Context, hits []signals.PriceEvent, 
 	}
 	var sb strings.Builder
 	for _, ev := range overflow {
-		if err := b.db.SavePriceEvent(db.PriceEvent{Ticker: ev.Ticker, Market: string(m), Date: date, GapPct: ev.GapPct, ChangePct: ev.ChangePct}); err != nil {
+		if err := b.db.SavePriceEvent(db.PriceEvent{Ticker: ev.Ticker, Market: string(m), Date: date, GapPct: ev.GapPct, ChangePct: ev.ChangePct, CumulativePct: ev.CumulativePct}); err != nil {
 			logger.Errorf("price events: save %s: %v", ev.Ticker, err)
 			continue
 		}
-		sb.WriteString(i18n.T(b.lang, i18n.KeyPriceEventOverflowTickerLine, ev.Ticker, ev.GapPct, ev.ChangePct))
+		sb.WriteString(i18n.T(b.lang, i18n.KeyPriceEventOverflowTickerLine, ev.Ticker, ev.GapPct, ev.ChangePct, ev.CumulativePct))
 	}
 	b.Send(i18n.T(b.lang, i18n.KeyPriceEventOverflowLine, sb.String()))
+}
+
+// priceEventMoveSize is recordPriceEvents' writeup-priority ranking key —
+// the largest of gap/change/cumulative-decline magnitude, so a ticker with
+// only a big cumulative decline still competes fairly against one with a
+// large single-day move.
+func priceEventMoveSize(ev signals.PriceEvent) float64 {
+	return math.Max(math.Max(math.Abs(ev.GapPct), math.Abs(ev.ChangePct)), math.Abs(ev.CumulativePct))
+}
+
+// mergePriceEventHit adds ev to hits, merging into an existing same-ticker
+// entry instead of appending a duplicate — price_events' (ticker, date)
+// unique index means a single-day and cumulative-decline hit for the same
+// ticker on the same day must become one row, not two.
+func mergePriceEventHit(hits []signals.PriceEvent, ev signals.PriceEvent) []signals.PriceEvent {
+	for i := range hits {
+		if hits[i].Ticker != ev.Ticker {
+			continue
+		}
+		if ev.GapPct != 0 {
+			hits[i].GapPct = ev.GapPct
+		}
+		if ev.ChangePct != 0 {
+			hits[i].ChangePct = ev.ChangePct
+		}
+		if ev.CumulativePct != 0 {
+			hits[i].CumulativePct = ev.CumulativePct
+		}
+		return hits
+	}
+	return append(hits, ev)
 }
 
 // snapshotBenchmark records benchmarkFor(m)'s (SPY/0050) closing price into
