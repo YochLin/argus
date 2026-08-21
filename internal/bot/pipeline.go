@@ -2,6 +2,7 @@ package bot
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -72,6 +73,7 @@ func (b *Bot) gatherRecommendationInputs(m market.MarketID) (recommendationInput
 	}
 	scanHits := b.loadScanHits(m)
 	dedupedCandidates := mergeCandidates(candidateTickers, scanHits, tickers)
+	dedupedCandidates = b.rankAndTruncateCandidates(dedupedCandidates, m, candidatePrefilterCount)
 	allTickers := append(append([]string{}, tickers...), dedupedCandidates...)
 
 	positions := b.loadPositions()
@@ -448,6 +450,13 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 				stock.InsiderTx = tx
 			}
 		}
+		if fetchFundamentals && b.earningsSurprise != nil && market.Of(t) == market.US {
+			if es, err := b.cachedEarningsSurprises(t); err != nil {
+				logger.Errorf("earnings surprises %s: %v", t, err)
+			} else {
+				stock.EarningsSurprises = es
+			}
+		}
 		// Institutional flow is a TW-only data source. Guard it here as
 		// well as inside TWSE.GetInstitutionalFlow so US recommendation
 		// batches do not produce an expected-but-noisy "us market not
@@ -458,6 +467,9 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 			} else {
 				stock.InstitutionalFlow = fl
 			}
+		}
+		if fetchFundamentals {
+			stock.SECSnapshot = b.cachedValuationSnapshot(t)
 		}
 		stock.Technicals, stock.Candles, stock.StrategyHits = b.computeTechnicals(t, loadBenchCloses(market.Of(t)))
 		if p, ok := positions[t]; ok {
@@ -527,6 +539,110 @@ func (b *Bot) cachedInsiderTx(ticker string) ([]data.InsiderTransaction, error) 
 	}
 	b.dataCache.set(key, tx, slowDataCacheTTL)
 	return tx, nil
+}
+
+// cachedEarningsSurprises is Phase 23 PR8's Finnhub read, cached the same
+// way cachedFundamentals/cachedAnalystRating/cachedInsiderTx are (in-memory,
+// slowDataCacheTTL) — no separate DB table needed, unlike PR6/PR7's
+// valuation snapshot: Finnhub's own trailing-4-quarter response is already
+// the entire useful window every time, so there's nothing to accumulate
+// across calls the way SEC's full company history was worth persisting.
+func (b *Bot) cachedEarningsSurprises(ticker string) ([]data.EarningsSurprise, error) {
+	key := "earningsSurprise:" + ticker
+	if v, ok := b.dataCache.get(key); ok {
+		return v.([]data.EarningsSurprise), nil
+	}
+	time.Sleep(finnhubRequestDelay)
+	es, err := b.earningsSurprise.GetEarningsSurprises(ticker)
+	if err != nil {
+		return nil, err
+	}
+	b.dataCache.set(key, es, slowDataCacheTTL)
+	return es, nil
+}
+
+// valuationSnapshotTTLDays is Phase 23 PR6/PR7's 90-day cache lifetime
+// (docs/phase-23-strategy-data-uplift.md §3.5) — both SEC's companyfacts and
+// FinMind's TaiwanStockPER only move on a real filing/trading day, so
+// refetching more often just burns rate budget for no new information.
+const valuationSnapshotTTLDays = 90
+
+// cachedValuationSnapshot is PR6/PR7's on-demand valuation-history read —
+// US via SEC EDGAR (b.secFundamentals), TW via FinMind's TaiwanStockPER
+// (b.twValuation) — sharing one db.fundamental_snapshots cache/90-day TTL
+// (§3.5's "按需抓 + 90天TTL"; PR7 explicitly shares PR6's table rather than
+// duplicating the caching logic per market). Nil whenever the ticker's
+// market has no configured provider — same nil-degrade convention as every
+// other optional data source (SEC EDGAR has no ADR/20-F coverage either,
+// §4.5, so a TW ticker never reaches b.secFundamentals and vice versa). A
+// fetch/decode error falls back to the stale cached row (if any, itself
+// possibly nil) rather than nothing, since a 90-day-old number still beats
+// no number for a briefing-only line.
+func (b *Bot) cachedValuationSnapshot(ticker string) *data.FundamentalSnapshot {
+	var provider data.FundamentalHistoryProvider
+	needsPriceHistory := false
+	switch market.Of(ticker) {
+	case market.US:
+		provider = b.secFundamentals
+		needsPriceHistory = true // SEC gives fiscal-year EPS; the percentile needs a price to pair it against
+	case market.TW:
+		provider = b.twValuation // FinMind's PER series already carries a percentile pool by itself
+	}
+	if provider == nil {
+		return nil
+	}
+
+	cached, err := b.db.GetFundamentalSnapshot(ticker)
+	if err != nil {
+		logger.Errorf("valuation snapshot cache read %s: %v", ticker, err)
+	}
+	if cached != nil {
+		// modernc.org/sqlite returns a DATETIME DEFAULT CURRENT_TIMESTAMP
+		// column as RFC3339 (live-verified: "2026-08-20T14:48:18Z"), not
+		// SQLite's own "YYYY-MM-DD HH:MM:SS" text format.
+		if fetchedAt, err := time.Parse(time.RFC3339, cached.FetchedAt); err == nil && time.Since(fetchedAt) < valuationSnapshotTTLDays*24*time.Hour {
+			return dbToDataSnapshot(cached)
+		}
+	}
+
+	// Cache miss or stale — fetch fresh. US needs a much longer price
+	// history than computeTechnicals' 1y candles for a meaningful
+	// multi-fiscal-year P/E percentile (see data.SEC.GetFundamentalSnapshot);
+	// TW's FinMind path ignores candles entirely (see data.FinMind's own
+	// GetFundamentalSnapshot doc comment), so skip the extra fetch for it.
+	var candles []data.Candle
+	if needsPriceHistory {
+		candles, err = b.history.GetHistory(ticker, "10y")
+		if err != nil {
+			logger.Errorf("valuation price history %s: %v", ticker, err)
+			return dbToDataSnapshot(cached)
+		}
+	}
+	snap, err := provider.GetFundamentalSnapshot(ticker, candles)
+	if err != nil {
+		logger.Errorf("valuation fundamentals %s: %v", ticker, err)
+		return dbToDataSnapshot(cached)
+	}
+	if snap == nil {
+		return dbToDataSnapshot(cached)
+	}
+	if err := b.db.SaveFundamentalSnapshot(db.FundamentalSnapshot{
+		Ticker: snap.Ticker, EPSAnnual: snap.EPSAnnual, PERatio: snap.PERatio, PEPercentile: snap.PEPercentile,
+		OCF: snap.OCF, NetIncome: snap.NetIncome, CashFlowQuality: snap.CashFlowQuality, AsOfFiscalYearEnd: snap.AsOfFiscalYearEnd,
+	}); err != nil {
+		logger.Errorf("valuation snapshot cache write %s: %v", ticker, err)
+	}
+	return snap
+}
+
+func dbToDataSnapshot(s *db.FundamentalSnapshot) *data.FundamentalSnapshot {
+	if s == nil {
+		return nil
+	}
+	return &data.FundamentalSnapshot{
+		Ticker: s.Ticker, EPSAnnual: s.EPSAnnual, PERatio: s.PERatio, PEPercentile: s.PEPercentile,
+		OCF: s.OCF, NetIncome: s.NetIncome, CashFlowQuality: s.CashFlowQuality, AsOfFiscalYearEnd: s.AsOfFiscalYearEnd,
+	}
 }
 
 // computeTechnicals fetches ticker's daily-candle history and reduces it to
@@ -1177,6 +1293,142 @@ func mergeCandidates(movers []string, scanHits map[string]string, exclude []stri
 	}
 	for t := range scanHits {
 		add(t)
+	}
+	return out
+}
+
+// candidatePrefilterCount is Phase 23 PR9's rule-score cutoff
+// (docs/phase-23-strategy-data-uplift.md §5: "規則分粗篩到 20") — the daily
+// candidate pool (movers ∪ scan hits, 40-55/day before this) is too big for
+// a "credible briefing"; the LLM's own KeyRecTaskBlock cap (最多 5 檔) does
+// the final pick, so this prefilter only needs to not drop a real candidate,
+// not be precise (§4.2/§4.3).
+const candidatePrefilterCount = 20
+
+// rankAndTruncateCandidates keeps only the top n of tickers by a rule score
+// combining relative strength, liquidity, and distance to the nearest
+// support/resistance level (§4.2's ranking-factor layer — deliberately no
+// hard filter, §4.2: "硬濾網一律空的"). A no-op when tickers already fits
+// within n. Order of the kept tickers doesn't matter to any caller.
+func (b *Bot) rankAndTruncateCandidates(tickers []string, m market.MarketID, n int) []string {
+	if len(tickers) <= n {
+		return tickers
+	}
+
+	var benchCloses []float64
+	if candles, err := b.history.GetHistory(benchmarkFor(m), "1y"); err == nil {
+		benchCloses = data.Closes(candles)
+	}
+
+	type rawScore struct {
+		ticker         string
+		relStrength    float64
+		hasRelStrength bool
+		avgDollarVol   float64
+		distToLevel    float64
+		hasDistToLevel bool
+	}
+	rows := make([]rawScore, 0, len(tickers))
+	for _, t := range tickers {
+		row := rawScore{ticker: t}
+		candles, err := b.history.GetHistory(t, "1y")
+		if err != nil || len(candles) < 60 {
+			rows = append(rows, row) // unscoreable — neutral score, not dropped outright
+			continue
+		}
+		closes := data.Closes(candles)
+		if rs, ok := signals.RelativeStrength(closes, benchCloses, 63); ok {
+			row.relStrength, row.hasRelStrength = rs, true
+		}
+		volumes := data.Volumes(candles)
+		tail := 20
+		if len(candles) < tail {
+			tail = len(candles)
+		}
+		var dollarSum float64
+		for i := len(candles) - tail; i < len(candles); i++ {
+			dollarSum += closes[i] * float64(volumes[i])
+		}
+		row.avgDollarVol = dollarSum / float64(tail)
+		lastClose := closes[len(closes)-1]
+		if levels := signals.PriceLevels(candles); len(levels) > 0 && lastClose > 0 {
+			best := math.MaxFloat64
+			for _, lvl := range levels {
+				if d := math.Abs(lastClose-lvl.Price) / lastClose; d < best {
+					best = d
+				}
+			}
+			row.distToLevel, row.hasDistToLevel = best, true
+		}
+		rows = append(rows, row)
+	}
+
+	// Each factor is min-max normalized to [0,1] across this batch — a
+	// batch-relative rank is all "粗篩到 20" needs, and sidesteps picking an
+	// absolute scale across three unrelated units (%, $, %).
+	rs := make([]float64, len(rows))
+	vol := make([]float64, len(rows))
+	dist := make([]float64, len(rows))
+	for i, r := range rows {
+		rs[i], vol[i], dist[i] = r.relStrength, r.avgDollarVol, r.distToLevel
+	}
+	rsNorm, volNorm, distNorm := normalize01(rs), normalize01(vol), normalize01(dist)
+
+	type ranked struct {
+		ticker string
+		score  float64
+	}
+	out := make([]ranked, len(rows))
+	for i, r := range rows {
+		score := volNorm[i]
+		if r.hasRelStrength {
+			score += rsNorm[i]
+		} else {
+			score += 0.5
+		}
+		if r.hasDistToLevel {
+			score += 1 - distNorm[i] // closer to a level scores higher
+		} else {
+			score += 0.5
+		}
+		out[i] = ranked{r.ticker, score}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].score > out[j].score })
+	if len(out) > n {
+		out = out[:n]
+	}
+	kept := make([]string, len(out))
+	for i, r := range out {
+		kept[i] = r.ticker
+	}
+	return kept
+}
+
+// normalize01 min-max scales vals to [0,1]. An empty batch or a batch where
+// every value is equal returns 0.5 for each — a neutral score that
+// contributes nothing to the ranking rather than a divide-by-zero.
+func normalize01(vals []float64) []float64 {
+	out := make([]float64, len(vals))
+	if len(vals) == 0 {
+		return out
+	}
+	lo, hi := vals[0], vals[0]
+	for _, v := range vals {
+		if v < lo {
+			lo = v
+		}
+		if v > hi {
+			hi = v
+		}
+	}
+	if hi == lo {
+		for i := range out {
+			out[i] = 0.5
+		}
+		return out
+	}
+	for i, v := range vals {
+		out[i] = (v - lo) / (hi - lo)
 	}
 	return out
 }

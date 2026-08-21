@@ -21,6 +21,13 @@ type Config struct {
 	ChatID        int64
 	FinnhubKey    string
 	FinMindToken  string
+	// SECUserAgent (Phase 23 PR6) gates the SEC EDGAR fundamentals source,
+	// same presence-of-config convention as FinnhubKey — empty disables it
+	// entirely rather than falling back to some default UA, since SEC's edge
+	// filter requires the UA to look like a real contact email (see
+	// internal/data/sec.go's doc comment) and there's no safe default for
+	// that.
+	SECUserAgent string
 	// ShioajiAddr (Phase 16, internal/sinopac) points at the local Shioaji
 	// gRPC daemon — empty disables the Sinopac provider/sync entirely, same
 	// presence-of-config convention as FinnhubKey.
@@ -127,6 +134,7 @@ func loadConfig() Config {
 		ChatID:        chatID,
 		FinnhubKey:    os.Getenv("FINNHUB_API_KEY"),
 		FinMindToken:  os.Getenv("FINMIND_TOKEN"),
+		SECUserAgent:  os.Getenv("SEC_USER_AGENT"),
 
 		ShioajiAddr:     os.Getenv("SHIOAJI_ADDR"),
 		SinopacSkip:     parseSinopacSkip(os.Getenv("SINOPAC_SKIP_TICKERS")),

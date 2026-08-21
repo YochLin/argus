@@ -32,6 +32,48 @@ func TestFinnhubTWGuard(t *testing.T) {
 	if _, err := f.GetSector("2330"); err != errTWNotSupported {
 		t.Errorf("GetSector(2330) error = %v, want errTWNotSupported", err)
 	}
+	if _, err := f.GetEarningsSurprises("2330"); err != errTWNotSupported {
+		t.Errorf("GetEarningsSurprises(2330) error = %v, want errTWNotSupported", err)
+	}
+}
+
+// TestFinnhubGetEarningsSurprises fixture mirrors a real /stock/earnings
+// response live-curled 2026-08-20 (AAPL) — deliberately out of
+// newest-first order to confirm the method sorts oldest-first itself
+// rather than trusting Finnhub's response ordering.
+func TestFinnhubGetEarningsSurprises(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("symbol"); got != "AAPL" {
+			t.Errorf("symbol = %q, want AAPL", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`[
+			{"symbol":"AAPL","estimate":1.9271,"actual":1.91,"period":"2026-06-30","surprise":-0.0171,"surprisePercent":-0.8873},
+			{"symbol":"AAPL","estimate":1.8075,"actual":1.85,"period":"2025-09-30","surprise":0.0425,"surprisePercent":2.3513},
+			{"symbol":"AAPL","estimate":1.9884,"actual":2.01,"period":"2026-03-31","surprise":0.0216,"surprisePercent":1.0863}
+		]`))
+	}))
+	defer srv.Close()
+
+	f := NewFinnhub("")
+	f.baseURL = srv.URL
+
+	got, err := f.GetEarningsSurprises("AAPL")
+	if err != nil {
+		t.Fatalf("GetEarningsSurprises: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("len = %d, want 3", len(got))
+	}
+	wantPeriods := []string{"2025-09-30", "2026-03-31", "2026-06-30"}
+	for i, w := range wantPeriods {
+		if got[i].Period != w {
+			t.Errorf("got[%d].Period = %q, want %q (oldest-first)", i, got[i].Period, w)
+		}
+	}
+	if got[2].SurprisePct != -0.8873 {
+		t.Errorf("got[2].SurprisePct = %v, want -0.8873", got[2].SurprisePct)
+	}
 }
 
 // TestFinnhubGetSector confirms finnhubIndustry and marketCapitalization are

@@ -574,8 +574,26 @@ const (
 	KeyAnalystRatingLine       Key = "analyst_rating_line"
 	KeyAnalystRatingTrendLine  Key = "analyst_rating_trend_line"
 	KeyInsiderTxLine           Key = "insider_tx_line"
-	KeyInstitutionalFlowLine   Key = "institutional_flow_line"
-	KeyStatementSummaryLine    Key = "statement_summary_line"
+	// KeyEarningsSurpriseLine is Phase 23 PR8's beat/miss-streak briefing
+	// line (US-only, §4.2/§5 of docs/phase-23-strategy-data-uplift.md).
+	KeyEarningsSurpriseLine  Key = "earnings_surprise_line"
+	KeyInstitutionalFlowLine Key = "institutional_flow_line"
+	KeyStatementSummaryLine  Key = "statement_summary_line"
+	// KeyValuationEPSLine/KeyValuationPELine/KeyValuationPercentileLine/KeyCashFlowQualityLine
+	// are Phase 23 PR6/PR7's valuation-history briefing-material lines
+	// (§4.2 of docs/phase-23-strategy-data-uplift.md) — US via SEC EDGAR
+	// (PR6, including cash-flow quality), TW via FinMind's TaiwanStockPER
+	// (PR7, valuation only). Deliberately separate keys, not packed into one
+	// line like KeyFundamentalsSummaryLine, since EPSAnnual/PERatio/
+	// PEPercentile/CashFlowQuality each independently degrade to "omit this
+	// line" rather than a fabricated 0. KeyValuationEPSLine only ever
+	// renders for the US/SEC path (see writeStockSection) — its "sec_eps_line"
+	// identifier is historical, kept stable rather than renamed for no
+	// functional reason.
+	KeyValuationEPSLine        Key = "sec_eps_line"
+	KeyValuationPELine         Key = "sec_pe_line"
+	KeyValuationPercentileLine Key = "sec_pe_percentile_line"
+	KeyCashFlowQualityLine     Key = "sec_cash_flow_line"
 	KeyPositionLine            Key = "position_line"
 	KeyPrevRecLine             Key = "prev_rec_line"
 	KeyEarningsLine            Key = "earnings_line"
