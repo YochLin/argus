@@ -166,6 +166,7 @@ export function ChartView({
   const [selectedRoundStart, setSelectedRoundStart] = useState<string | null>(initialRoundStart ?? null);
   const [roundDetail, setRoundDetail] = useState<RoundDetail | null>(null);
   const [thesisDraft, setThesisDraft] = useState("");
+  const [thesisEditing, setThesisEditing] = useState(false);
   const [thesisSubmitting, setThesisSubmitting] = useState(false);
   const [thesisError, setThesisError] = useState<string | null>(null);
 
@@ -190,6 +191,7 @@ export function ChartView({
 
   useEffect(() => {
     setThesisDraft("");
+    setThesisEditing(false);
     setThesisError(null);
     if (!selectedRoundStart || !ticker) {
       setRoundDetail(null);
@@ -207,6 +209,7 @@ export function ChartView({
     try {
       await setThesis(ticker, thesisDraft.trim());
       setThesisDraft("");
+      setThesisEditing(false);
       setRoundDetail(await fetchRoundDetail(ticker, selectedRoundStart));
     } catch (e) {
       if (e instanceof ApiError && e.status === 401 && onUnauthorized) {
@@ -543,8 +546,30 @@ export function ChartView({
           <div className="card">
             {(roundDetail.theses.length > 0 || (writable && roundDetail.editable)) && (
               <>
-                <div className="eyebrow">{dict.thesisLabel}</div>
-                {roundDetail.theses.length > 0 && (
+                <div className="thesis-header">
+                  <div className="eyebrow">{dict.thesisLabel}</div>
+                  {writable && roundDetail.editable && !thesisEditing && (
+                    <button
+                      type="button"
+                      className="thesis-edit-btn"
+                      onClick={() => setThesisEditing(true)}
+                    >
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        aria-hidden="true"
+                      >
+                        <path d="M11.5 2.5 L13.5 4.5 L5.5 12.5 L2.5 13.5 L3.5 10.5 Z" />
+                      </svg>
+                      <span>{dict.thesisEditToggle}</span>
+                    </button>
+                  )}
+                </div>
+                {roundDetail.theses.length > 0 ? (
                   <ul className="lessons-list">
                     {roundDetail.theses.map((t, i) => (
                       <li key={i}>
@@ -552,28 +577,41 @@ export function ChartView({
                       </li>
                     ))}
                   </ul>
+                ) : (
+                  !thesisEditing && <div className="thesis-empty-box">{dict.thesisEmptyNote}</div>
                 )}
-                {writable && roundDetail.editable && (
-                  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+                {thesisEditing && (
+                  <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
                     <label className="form-field">
                       <textarea
-                        className="mono"
-                        rows={2}
+                        rows={4}
+                        autoFocus
                         value={thesisDraft}
                         placeholder={dict.thesisFieldPlaceholder}
                         onChange={(e) => setThesisDraft(e.target.value)}
                       />
                     </label>
                     {thesisError && <div className="error-message">{thesisError}</div>}
-                    <button
-                      type="button"
-                      className="btn-sm"
-                      disabled={!thesisDraft.trim() || thesisSubmitting}
-                      onClick={submitThesis}
-                      style={{ alignSelf: "flex-start" }}
-                    >
-                      {dict.thesisEditToggle}
-                    </button>
+                    <div className="modal-actions">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setThesisEditing(false);
+                          setThesisDraft("");
+                          setThesisError(null);
+                        }}
+                      >
+                        {dict.cancel}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={!thesisDraft.trim() || thesisSubmitting}
+                        onClick={submitThesis}
+                      >
+                        {dict.submit}
+                      </button>
+                    </div>
                   </div>
                 )}
               </>
