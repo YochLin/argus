@@ -227,7 +227,13 @@ function getMockData(urlStr: string): any {
       maePct: -3.4,
       mfePct: 14.2,
       hasMaeMfe: true,
-      thesis: "Base breakout on rising volume; holding while the 20d holds and the earnings guide stays intact. Trim half into the prior high.",
+      theses: [
+        {
+          date: start,
+          text: "Base breakout on rising volume; holding while the 20d holds and the earnings guide stays intact. Trim half into the prior high.",
+        },
+      ],
+      editable: true,
       lessons: [
         { date: "2026-06-02", lesson: "Stop was too tight relative to ATR — shaken out before the real move." },
         { date: "2026-06-19", lesson: "Adding on strength worked; adding on weakness did not." },

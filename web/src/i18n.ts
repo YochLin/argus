@@ -202,6 +202,7 @@ export interface Dictionary {
   thesisEditToggle: string;
   thesisFieldPlaceholder: string;
   thesisSaveFailedNote: string;
+  thesisEmptyNote: string;
   lessonsLabel: string;
   rMultipleHistogram: string;
   rMultipleNote: string;
@@ -565,6 +566,7 @@ const en: Dictionary = {
   thesisEditToggle: "Add thesis entry",
   thesisFieldPlaceholder: "Your reasoning right now",
   thesisSaveFailedNote: "Trade went through, but the thesis note failed to save",
+  thesisEmptyNote: "No thesis recorded for this round yet.",
   lessonsLabel: "TRADE LESSONS",
   rMultipleHistogram: "R-MULTIPLE DISTRIBUTION",
   rMultipleNote: "R data accumulating since",
@@ -909,6 +911,7 @@ const zh: Dictionary = {
   thesisEditToggle: "新增論點",
   thesisFieldPlaceholder: "現在的判斷是什麼",
   thesisSaveFailedNote: "買單已成立，但論點寫入失敗",
+  thesisEmptyNote: "此回合尚未記錄任何論點。",
   lessonsLabel: "交易教訓",
   rMultipleHistogram: "R-MULTIPLE 分布",
   rMultipleNote: "R 資料自",
