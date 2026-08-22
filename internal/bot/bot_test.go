@@ -477,35 +477,6 @@ func TestUniverseScanChunkEmptyAndNegativeDay(t *testing.T) {
 	}
 }
 
-func TestBreachAlertDecision(t *testing.T) {
-	tests := []struct {
-		name           string
-		adverseMovePct float64
-		thresholdPct   float64
-		prevState      string
-		wantBreached   bool
-		wantAlert      bool
-		wantNewState   string
-	}{
-		{"under threshold, never breached", 5, 10, "", false, false, ""},
-		{"fresh breach alerts", 12, 10, "", true, true, "breached"},
-		{"exactly at threshold counts as breached", 10, 10, "", true, true, "breached"},
-		{"already breached does not re-alert", 15, 10, "breached", true, false, "breached"},
-		{"still under threshold with no prior breach stays quiet", 3, 10, "", false, false, ""},
-		{"recovering under threshold resets state", 8, 10, "breached", false, false, ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			breached, alert, newState := breachAlertDecision(tt.adverseMovePct, tt.thresholdPct, tt.prevState)
-			if breached != tt.wantBreached || alert != tt.wantAlert || newState != tt.wantNewState {
-				t.Errorf("breachAlertDecision(%v, %v, %q) = %v, %v, %q; want %v, %v, %q",
-					tt.adverseMovePct, tt.thresholdPct, tt.prevState,
-					breached, alert, newState, tt.wantBreached, tt.wantAlert, tt.wantNewState)
-			}
-		})
-	}
-}
-
 func TestRestrictedAlertDecision(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -531,65 +502,17 @@ func TestRestrictedAlertDecision(t *testing.T) {
 	}
 }
 
-func TestStopBreachDecision(t *testing.T) {
-	tests := []struct {
-		name         string
-		close        float64
-		stopPrice    float64
-		prevState    string
-		wantBreached bool
-		wantAlert    bool
-		wantNewState string
-	}{
-		{"above stop, never breached", 105, 100, "", false, false, ""},
-		{"exactly at stop does not breach (long stop is a floor, not a ceiling)", 100, 100, "", false, false, ""},
-		{"fresh breach alerts", 95, 100, "", true, true, "breached"},
-		{"already breached does not re-alert", 90, 100, "breached", true, false, "breached"},
-		{"recovering back at or above stop resets state", 100, 100, "breached", false, false, ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			breached, alert, newState := stopBreachDecision(tt.close, tt.stopPrice, tt.prevState)
-			if breached != tt.wantBreached || alert != tt.wantAlert || newState != tt.wantNewState {
-				t.Errorf("stopBreachDecision(%v, %v, %q) = %v, %v, %q; want %v, %v, %q",
-					tt.close, tt.stopPrice, tt.prevState,
-					breached, alert, newState, tt.wantBreached, tt.wantAlert, tt.wantNewState)
-			}
-		})
-	}
-}
-
-func TestTargetReachedDecision(t *testing.T) {
-	tests := []struct {
-		name         string
-		close        float64
-		targetPrice  float64
-		prevState    string
-		wantReached  bool
-		wantAlert    bool
-		wantNewState string
-	}{
-		{"below target, never reached", 95, 100, "", false, false, ""},
-		{"exactly at target reaches (upward threshold, not a floor)", 100, 100, "", true, true, "hit"},
-		{"fresh reach alerts", 105, 100, "", true, true, "hit"},
-		{"already hit does not re-alert", 110, 100, "hit", true, false, "hit"},
-		{"falling back under target resets state", 95, 100, "hit", false, false, ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			reached, alert, newState := targetReachedDecision(tt.close, tt.targetPrice, tt.prevState)
-			if reached != tt.wantReached || alert != tt.wantAlert || newState != tt.wantNewState {
-				t.Errorf("targetReachedDecision(%v, %v, %q) = %v, %v, %q; want %v, %v, %q",
-					tt.close, tt.targetPrice, tt.prevState,
-					reached, alert, newState, tt.wantReached, tt.wantAlert, tt.wantNewState)
-			}
-		})
-	}
-}
-
 // suggestShares/trailingStopThreshold moved to internal/paper (Phase 11
 // PR1, see paper.SuggestShares/paper.TrailingStopThreshold) — their tests
 // moved with them to internal/paper/paper_test.go.
+//
+// TestBreachAlertDecision/TestStopBreachDecision/TestTargetReachedDecision
+// moved to internal/service/risk_test.go (Phase 24 tech debt 1) — the
+// bot-package wrapper functions they tested were orphan copies of
+// service.BreachAlertDecision/StopBreachDecision/TargetReachedDecision left
+// behind by Stage 1.1's RiskService extraction, unused by anything except
+// these tests; deleting the wrappers moved the tests to where the real
+// implementation lives instead of dropping the edge-case coverage.
 
 func TestComputeVsSPY(t *testing.T) {
 	tests := []struct {
