@@ -101,6 +101,7 @@ type Bot struct {
 	portfolio       *service.PortfolioService
 	recommendation  *service.RecommendationTrackingService
 	riskService     *service.RiskService
+	snapshotService *service.SnapshotService
 	detector        *signals.Detector
 	lang            i18n.Lang
 
@@ -301,6 +302,7 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		portfolio:              service.NewPortfolioService(cfg.DB, cfg.Provider),
 		recommendation:         service.NewRecommendationTrackingService(cfg.DB, cfg.Provider),
 		riskService:            service.NewRiskService(cfg.DB, cfg.History, cfg.Provider, service.StopCandidateATRMult),
+		snapshotService:        service.NewSnapshotService(cfg.DB, cfg.Provider),
 		detector:               signals.NewDetector(cfg.Lang),
 		lang:                   cfg.Lang,
 		stopLossPct:            cfg.StopLossPct,
@@ -367,6 +369,13 @@ func (b *Bot) risksOrErr() (*service.RiskService, error) {
 		return nil, errRiskUnavailable
 	}
 	return r, nil
+}
+
+func (b *Bot) snapshots() *service.SnapshotService {
+	if b.snapshotService == nil && b.db != nil {
+		b.snapshotService = service.NewSnapshotService(b.db, b.provider)
+	}
+	return b.snapshotService
 }
 
 func (b *Bot) Send(text string) {
