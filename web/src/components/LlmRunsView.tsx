@@ -29,6 +29,16 @@ function parseSqliteUTC(s: string): number {
   return new Date(s.replace(" ", "T") + "Z").getTime();
 }
 
+function formatDuration(ms: number): string {
+  const totalSec = Math.round(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
 function normTitle(s: string): string {
   return s.trim().toLowerCase();
 }
@@ -268,7 +278,7 @@ function RunSidebar({
           </span>
           <span className="mono">{r.createdAt}</span>
           <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
-            {r.market.toUpperCase()} · {r.model} · {r.latencyMs}ms
+            {r.market.toUpperCase()} · {r.model} · {formatDuration(r.latencyMs)}
           </span>
         </button>
       ))}
@@ -345,7 +355,7 @@ function RunDetail({
         </div>
         <div className="dash-kpi-strip" style={{ marginTop: 12, marginBottom: 0 }}>
           <StatBlock label={dict.llmModel} value={detail.model} />
-          <StatBlock label={dict.llmLatency} value={detail.latencyMs} />
+          <StatBlock label={dict.llmLatency} value={formatDuration(detail.latencyMs)} />
           <StatBlock label={dict.llmWatchlist} value={detail.watchlistCount} />
           <StatBlock label={dict.llmCandidates} value={detail.candidateCount} />
         </div>
