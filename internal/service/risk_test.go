@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"math"
 	"testing"
 	"time"
@@ -10,12 +11,13 @@ import (
 )
 
 type mockRiskStore struct {
-	positions    map[string]db.Position
-	signalStates map[string]string // key: ticker:family
-	buyAlerts    map[int64]db.BuyAlert
-	nextAlertID  int64
-	earliestBuy  map[string]string
-	peakClose    map[string]float64
+	positions      map[string]db.Position
+	signalStates   map[string]string // key: ticker:family
+	earliestBuy    map[string]string
+	peakClose      map[string]float64
+	buyAlerts      map[int64]db.BuyAlert
+	nextAlertID    int64
+	removeAlertErr error
 }
 
 func newMockRiskStore() *mockRiskStore {
@@ -32,14 +34,6 @@ func newMockRiskStore() *mockRiskStore {
 func (m *mockRiskStore) GetPosition(ticker string) (db.Position, bool, error) {
 	p, ok := m.positions[ticker]
 	return p, ok, nil
-}
-
-func (m *mockRiskStore) GetPositions() ([]db.Position, error) {
-	out := make([]db.Position, 0, len(m.positions))
-	for _, p := range m.positions {
-		out = append(out, p)
-	}
-	return out, nil
 }
 
 func (m *mockRiskStore) SetStopPrice(ticker string, price float64) error {
@@ -98,6 +92,9 @@ func (m *mockRiskStore) GetBuyAlertsByTicker(ticker string) ([]db.BuyAlert, erro
 }
 
 func (m *mockRiskStore) RemoveBuyAlert(id int64) error {
+	if m.removeAlertErr != nil {
+		return m.removeAlertErr
+	}
 	delete(m.buyAlerts, id)
 	return nil
 }
@@ -216,10 +213,24 @@ func TestSetStop(t *testing.T) {
 		t.Errorf("expected RiskPerShare=10, got %v", res.RiskPerShare)
 	}
 
+	// Invalid stop <= 0
+	_, err = svc.SetStop(SetStopInput{Ticker: "AAPL", Price: 0})
+	if !errors.Is(err, ErrNonPositivePrice) {
+		t.Fatalf("expected ErrNonPositivePrice for price 0, got %v", err)
+	}
+	_, err = svc.SetStop(SetStopInput{Ticker: "AAPL", Price: -10})
+	if !errors.Is(err, ErrNonPositivePrice) {
+		t.Fatalf("expected ErrNonPositivePrice for negative price, got %v", err)
+	}
+
 	// Invalid stop >= close
 	_, err = svc.SetStop(SetStopInput{Ticker: "AAPL", Price: 165})
-	if err == nil {
-		t.Fatalf("expected error for stop price >= latest close")
+	if !errors.Is(err, ErrInvalidStopPrice) {
+		t.Fatalf("expected ErrInvalidStopPrice, got %v", err)
+	}
+	var invErr *InvalidStopPriceError
+	if !errors.As(err, &invErr) || invErr.LatestClose != 160 {
+		t.Fatalf("expected InvalidStopPriceError with LatestClose=160, got %v", invErr)
 	}
 
 	// No position
@@ -262,6 +273,20 @@ func TestBuyAlerts(t *testing.T) {
 		t.Fatalf("expected 2 alerts, got %v, err=%v", len(alerts), err)
 	}
 
+	// Remove by price - not found
+	removed, err := svc.RemoveBuyAlertByPrice("NVDA", 999)
+	if err != nil || removed {
+		t.Fatalf("expected removed=false, err=nil for non-existent price, got removed=%v, err=%v", removed, err)
+	}
+
+	// Remove by price - DB error
+	store.removeAlertErr = errors.New("db delete failure")
+	removed, err = svc.RemoveBuyAlertByPrice("NVDA", 90)
+	if err == nil || removed {
+		t.Fatalf("expected err != nil, removed=false on DB error, got removed=%v, err=%v", removed, err)
+	}
+	store.removeAlertErr = nil
+
 	// Evaluate buy alert triggers
 	// NVDA drops to 89 -> triggers dip alert (90)
 	triggers, err := svc.EvaluateBuyAlerts(alerts, map[string]float64{"NVDA": 89})
@@ -276,6 +301,16 @@ func TestBuyAlerts(t *testing.T) {
 	remaining, _ := svc.GetBuyAlerts("NVDA")
 	if len(remaining) != 1 || remaining[0].ID != res2.ID {
 		t.Fatalf("expected only alert 2 remaining, got %v", remaining)
+	}
+
+	// Remove alert 2 by price - success
+	removed, err = svc.RemoveBuyAlertByPrice("NVDA", 110)
+	if err != nil || !removed {
+		t.Fatalf("expected removed=true, err=nil, got removed=%v, err=%v", removed, err)
+	}
+	remainingAfter, _ := svc.GetBuyAlerts("NVDA")
+	if len(remainingAfter) != 0 {
+		t.Fatalf("expected 0 alerts remaining, got %v", len(remainingAfter))
 	}
 }
 

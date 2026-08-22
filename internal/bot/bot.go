@@ -299,7 +299,7 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		watchlist:              service.NewWatchlistService(cfg.DB),
 		portfolio:              service.NewPortfolioService(cfg.DB, cfg.Provider),
 		recommendation:         service.NewRecommendationTrackingService(cfg.DB, cfg.Provider),
-		riskService:            service.NewRiskService(cfg.DB, cfg.History, cfg.Provider, 2.0),
+		riskService:            service.NewRiskService(cfg.DB, cfg.History, cfg.Provider, service.StopCandidateATRMult),
 		detector:               signals.NewDetector(cfg.Lang),
 		lang:                   cfg.Lang,
 		stopLossPct:            cfg.StopLossPct,
@@ -353,7 +353,7 @@ func (b *Bot) recommendations() *service.RecommendationTrackingService {
 
 func (b *Bot) risks() *service.RiskService {
 	if b.riskService == nil && b.db != nil {
-		b.riskService = service.NewRiskService(b.db, b.history, b.provider, 2.0)
+		b.riskService = service.NewRiskService(b.db, b.history, b.provider, service.StopCandidateATRMult)
 	}
 	return b.riskService
 }

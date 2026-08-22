@@ -431,14 +431,18 @@ func (b *Bot) handleStop(args string) {
 // same one computeStopSuggestion already computes for the candidate display,
 // so both entry points reject against exactly the number the user would see.
 func (b *Bot) setStop(ticker string, price float64) (string, error) {
-	res, err := b.risks().SetStop(service.SetStopInput{Ticker: ticker, Price: price})
+	r := b.risks()
+	if r == nil {
+		return i18n.T(b.lang, i18n.KeyQueryFailed, "risk service unavailable"), errors.New("risk service unavailable")
+	}
+	res, err := r.SetStop(service.SetStopInput{Ticker: ticker, Price: price})
 	if err != nil {
 		if errors.Is(err, db.ErrNoPosition) {
 			return i18n.T(b.lang, i18n.KeyStopNoPosition, b.tickerLabel(ticker)), err
 		}
-		if errors.Is(err, service.ErrInvalidStopPrice) {
-			sugg, _ := b.computeStopSuggestion(ticker)
-			return i18n.T(b.lang, i18n.KeyStopInvalidPrice, b.money(ticker, price), b.money(ticker, sugg.LatestClose)), err
+		var invalidStopErr *service.InvalidStopPriceError
+		if errors.As(err, &invalidStopErr) {
+			return i18n.T(b.lang, i18n.KeyStopInvalidPrice, b.money(ticker, price), b.money(ticker, invalidStopErr.LatestClose)), err
 		}
 		return i18n.T(b.lang, i18n.KeyQueryFailed, err), err
 	}
@@ -587,7 +591,11 @@ func (b *Bot) handleBuyAlert(args string) {
 // infers direction identically instead of duplicating the quote fetch —
 // same split as setStop/ExecuteSetStop.
 func (b *Bot) addBuyAlert(ticker string, price float64) (string, error) {
-	res, err := b.risks().AddBuyAlert(service.BuyAlertInput{Ticker: ticker, Price: price})
+	r := b.risks()
+	if r == nil {
+		return i18n.T(b.lang, i18n.KeyBuyAlertQueryFailed, "risk service unavailable"), errors.New("risk service unavailable")
+	}
+	res, err := r.AddBuyAlert(service.BuyAlertInput{Ticker: ticker, Price: price})
 	if err != nil {
 		return i18n.T(b.lang, i18n.KeyBuyAlertQueryFailed, err), err
 	}
@@ -598,7 +606,12 @@ func (b *Bot) addBuyAlert(ticker string, price float64) (string, error) {
 // showBuyAlerts renders /buyalert TICKER's no-price branch: every alert
 // currently set on ticker, oldest first.
 func (b *Bot) showBuyAlerts(ticker string) {
-	alerts, err := b.risks().GetBuyAlerts(ticker)
+	r := b.risks()
+	if r == nil {
+		b.Send(i18n.T(b.lang, i18n.KeyBuyAlertQueryFailed, "risk service unavailable"))
+		return
+	}
+	alerts, err := r.GetBuyAlerts(ticker)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyBuyAlertQueryFailed, err))
 		return
@@ -621,7 +634,12 @@ func (b *Bot) showBuyAlerts(ticker string) {
 // has (same tradeoff as most chat commands operating on human-entered
 // numbers rather than internal ids).
 func (b *Bot) removeBuyAlert(ticker string, price float64) {
-	removed, err := b.risks().RemoveBuyAlertByPrice(ticker, price)
+	r := b.risks()
+	if r == nil {
+		b.Send(i18n.T(b.lang, i18n.KeyBuyAlertQueryFailed, "risk service unavailable"))
+		return
+	}
+	removed, err := r.RemoveBuyAlertByPrice(ticker, price)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyBuyAlertQueryFailed, err))
 		return

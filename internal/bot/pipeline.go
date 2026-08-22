@@ -827,10 +827,7 @@ func (b *Bot) computeTechnicals(ticker string, spyCloses []float64) (*llm.Techni
 }
 
 // stopCandidateATRMult is the ATR multiplier for the volatility-adaptive
-// stop candidate (§3.2/§3.4 of docs/phase-3.11-trade-risk-management.md) —
-// fixed at 2x, same as the existing ATR trailing-stop's own default
-// reasoning (Phase 3.8 追加項), not a separate env knob.
-const stopCandidateATRMult = 2.0
+const stopCandidateATRMult = service.StopCandidateATRMult
 
 // stopSuggestion bundles Phase 3.11's three candidate stop-loss reference
 // prices (see /stop and the /buy suggestion line) plus the latest close they

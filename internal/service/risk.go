@@ -7,6 +7,7 @@ import (
 
 	"argus/internal/data"
 	"argus/internal/db"
+	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/paper"
 	"argus/internal/signals"
@@ -34,15 +35,31 @@ const (
 
 var (
 	ErrNoReferencePrice   = errors.New("no reference price available")
+	ErrNonPositivePrice   = errors.New("price must be positive")
 	ErrInvalidStopPrice   = errors.New("stop price must be below latest close")
 	ErrQuoteUnavailable   = errors.New("quote unavailable")
 	ErrHistoryUnavailable = errors.New("history unavailable")
 )
 
+// InvalidStopPriceError is returned when a stop price is at or above the latest close.
+// It carries the reference close price used during validation so callers can format
+// error messages without redundant market data queries.
+type InvalidStopPriceError struct {
+	Price       float64
+	LatestClose float64
+}
+
+func (e *InvalidStopPriceError) Error() string {
+	return fmt.Sprintf("stop price %.2f must be below latest close %.2f", e.Price, e.LatestClose)
+}
+
+func (e *InvalidStopPriceError) Is(target error) bool {
+	return target == ErrInvalidStopPrice
+}
+
 // RiskStore is the persistence boundary needed for risk and alert operations.
 type RiskStore interface {
 	GetPosition(ticker string) (db.Position, bool, error)
-	GetPositions() ([]db.Position, error)
 	SetStopPrice(ticker string, price float64) error
 	GetSignalState(ticker, family string) (string, error)
 	SetSignalState(ticker, family, state string) error
@@ -195,7 +212,7 @@ func (s *RiskService) SetStop(in SetStopInput) (SetStopResult, error) {
 		return SetStopResult{}, err
 	}
 	if in.Price <= 0 {
-		return SetStopResult{}, fmt.Errorf("%w: price must be positive", ErrInvalidStopPrice)
+		return SetStopResult{}, ErrNonPositivePrice
 	}
 
 	pos, ok, err := s.store.GetPosition(ticker)
@@ -211,7 +228,10 @@ func (s *RiskService) SetStop(in SetStopInput) (SetStopResult, error) {
 		return SetStopResult{}, ErrNoReferencePrice
 	}
 	if in.Price >= suggestion.LatestClose {
-		return SetStopResult{}, ErrInvalidStopPrice
+		return SetStopResult{}, &InvalidStopPriceError{
+			Price:       in.Price,
+			LatestClose: suggestion.LatestClose,
+		}
 	}
 
 	if err := s.store.SetStopPrice(ticker, in.Price); err != nil {
@@ -238,7 +258,7 @@ func (s *RiskService) AddBuyAlert(in BuyAlertInput) (BuyAlertResult, error) {
 		return BuyAlertResult{}, err
 	}
 	if in.Price <= 0 {
-		return BuyAlertResult{}, fmt.Errorf("price must be positive")
+		return BuyAlertResult{}, ErrNonPositivePrice
 	}
 	if s.quotes == nil {
 		return BuyAlertResult{}, ErrQuoteUnavailable
@@ -282,9 +302,10 @@ func (s *RiskService) RemoveBuyAlertByPrice(ticker string, price float64) (bool,
 	removed := false
 	for _, a := range alerts {
 		if math.Abs(a.Price-price) < 1e-4 {
-			if err := s.store.RemoveBuyAlert(a.ID); err == nil {
-				removed = true
+			if err := s.store.RemoveBuyAlert(a.ID); err != nil {
+				return false, err
 			}
+			removed = true
 		}
 	}
 	return removed, nil
@@ -316,13 +337,16 @@ func (s *RiskService) EvaluateStopLoss(positions []db.Position, prices map[strin
 
 		prev, err := s.store.GetSignalState(p.Ticker, StopLossSignalFamily)
 		if err != nil {
+			logger.Errorf("stop loss state %s: %v", p.Ticker, err)
 			prev = ""
 		}
 
 		if p.StopPrice > 0 {
 			_, shouldAlert, newState := StopBreachDecision(price, p.StopPrice, prev)
 			if newState != prev {
-				_ = s.store.SetSignalState(p.Ticker, StopLossSignalFamily, newState)
+				if err := s.store.SetSignalState(p.Ticker, StopLossSignalFamily, newState); err != nil {
+					logger.Errorf("stop loss state %s: %v", p.Ticker, err)
+				}
 			}
 			if shouldAlert {
 				alerts = append(alerts, StopLossAlert{
@@ -343,7 +367,9 @@ func (s *RiskService) EvaluateStopLoss(positions []db.Position, prices map[strin
 		lossPct := (p.AvgCost - price) / p.AvgCost * 100
 		_, shouldAlert, newState := BreachAlertDecision(lossPct, effectivePct, prev)
 		if newState != prev {
-			_ = s.store.SetSignalState(p.Ticker, StopLossSignalFamily, newState)
+			if err := s.store.SetSignalState(p.Ticker, StopLossSignalFamily, newState); err != nil {
+				logger.Errorf("stop loss state %s: %v", p.Ticker, err)
+			}
 		}
 		if shouldAlert {
 			alerts = append(alerts, StopLossAlert{
@@ -382,12 +408,20 @@ func (s *RiskService) EvaluateTrailingStop(
 		}
 
 		buyDate, ok, err := s.store.GetEarliestBuyDate(p.Ticker)
-		if err != nil || !ok {
+		if err != nil {
+			logger.Errorf("trailing stop: earliest buy %s: %v", p.Ticker, err)
+			continue
+		}
+		if !ok {
 			continue
 		}
 
 		peak, ok, err := s.store.GetPeakClose(p.Ticker, buyDate)
-		if err != nil || !ok || peak <= 0 {
+		if err != nil {
+			logger.Errorf("trailing stop: peak close %s: %v", p.Ticker, err)
+			continue
+		}
+		if !ok || peak <= 0 {
 			continue
 		}
 
@@ -406,17 +440,21 @@ func (s *RiskService) EvaluateTrailingStop(
 
 		thresholdPct, atrBased, ok := paper.TrailingStopThreshold(effectivePct, trailingStopATRMult, atr, peak)
 		if !ok {
+			logger.Warnf("trailing stop: no usable threshold for %s (fixed=%.2f atrMult=%.2f atr=%.2f)", p.Ticker, effectivePct, trailingStopATRMult, atr)
 			continue
 		}
 
 		prev, err := s.store.GetSignalState(p.Ticker, TrailingStopSignalFamily)
 		if err != nil {
+			logger.Errorf("trailing stop state %s: %v", p.Ticker, err)
 			prev = ""
 		}
 
 		_, shouldAlert, newState := BreachAlertDecision(drawdownPct, thresholdPct, prev)
 		if newState != prev {
-			_ = s.store.SetSignalState(p.Ticker, TrailingStopSignalFamily, newState)
+			if err := s.store.SetSignalState(p.Ticker, TrailingStopSignalFamily, newState); err != nil {
+				logger.Errorf("trailing stop state %s: %v", p.Ticker, err)
+			}
 		}
 		if shouldAlert {
 			alerts = append(alerts, TrailingStopAlert{
@@ -450,11 +488,14 @@ func (s *RiskService) EvaluateTargetAlerts(positions []db.Position, prices map[s
 
 		prev, err := s.store.GetSignalState(p.Ticker, TargetSignalFamily)
 		if err != nil {
+			logger.Errorf("target state %s: %v", p.Ticker, err)
 			prev = ""
 		}
 		_, shouldAlert, newState := TargetReachedDecision(price, target, prev)
 		if newState != prev {
-			_ = s.store.SetSignalState(p.Ticker, TargetSignalFamily, newState)
+			if err := s.store.SetSignalState(p.Ticker, TargetSignalFamily, newState); err != nil {
+				logger.Errorf("target state %s: %v", p.Ticker, err)
+			}
 		}
 		if shouldAlert {
 			alerts = append(alerts, TargetAlert{
@@ -502,11 +543,14 @@ func (s *RiskService) EvaluateMA5BreakAlerts(positions []db.Position, prices map
 
 		prev, err := s.store.GetSignalState(p.Ticker, MA5TrailSignalFamily)
 		if err != nil {
+			logger.Errorf("ma5 trail state %s: %v", p.Ticker, err)
 			prev = ""
 		}
 		_, shouldAlert, newState := StopBreachDecision(price, ma5, prev)
 		if newState != prev {
-			_ = s.store.SetSignalState(p.Ticker, MA5TrailSignalFamily, newState)
+			if err := s.store.SetSignalState(p.Ticker, MA5TrailSignalFamily, newState); err != nil {
+				logger.Errorf("ma5 trail state %s: %v", p.Ticker, err)
+			}
 		}
 		if shouldAlert {
 			alerts = append(alerts, MA5BreakAlert{
@@ -534,7 +578,9 @@ func (s *RiskService) EvaluateBuyAlerts(alerts []db.BuyAlert, prices map[string]
 		if !BuyAlertTriggered(price, a) {
 			continue
 		}
-		_ = s.store.RemoveBuyAlert(a.ID)
+		if err := s.store.RemoveBuyAlert(a.ID); err != nil {
+			logger.Errorf("buy alert remove %s (id=%d): %v", a.Ticker, a.ID, err)
+		}
 		triggered = append(triggered, BuyAlertTrigger{
 			Alert:        a,
 			CurrentPrice: price,
