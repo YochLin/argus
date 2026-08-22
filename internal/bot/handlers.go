@@ -736,18 +736,19 @@ func (b *Bot) recordBuy(ticker string, shares, price, fee float64, feeAuto bool,
 
 // ExecuteBuy is ExecuteSell/ExecuteSetStop's sibling: internal/web's POST
 // /api/trade/buy calls this instead of db.RecordBuy directly, so a web
-// order gets the exact same Telegram confirmation push and watchlist
-// auto-add /buy itself produces (see docs/phase-10-web-trade-input.md §4.2's
-// "one write path" rule). Validation mirrors parseTradeArgs' semantics;
-// date is expected already resolved (defaulted to today) by the caller, the
-// same "date defaults in the handler, not the shared function" convention
-// parseTradeArgs' own callers follow. On invalid input this still sends
-// (and returns) the same KeyBuyUsage text a malformed /buy command would.
+// order gets the exact same watchlist auto-add /buy itself produces (see
+// docs/phase-10-web-trade-input.md §4.2's "one write path" rule).
+// Validation mirrors parseTradeArgs' semantics; date is expected already
+// resolved (defaulted to today) by the caller, the same "date defaults in
+// the handler, not the shared function" convention parseTradeArgs' own
+// callers follow. Unlike before Phase 24 tech debt 3, this no longer pushes
+// a Telegram confirmation itself — the caller decides whether to notify (see
+// Notify), so a web trade's Telegram push is now internal/web's explicit
+// choice rather than baked into every Execute* call.
 func (b *Bot) ExecuteBuy(ticker string, shares, price float64, fee *float64, date string) (string, error) {
 	ticker = strings.ToUpper(strings.TrimSpace(ticker))
 	if ticker == "" || shares <= 0 || price <= 0 || (fee != nil && *fee < 0) {
 		msg := i18n.T(b.lang, i18n.KeyBuyUsage)
-		b.Send(msg)
 		return msg, fmt.Errorf("invalid buy arguments")
 	}
 	feeAuto := fee == nil
@@ -755,9 +756,17 @@ func (b *Bot) ExecuteBuy(ticker string, shares, price float64, fee *float64, dat
 	if !feeAuto {
 		feeVal = *fee
 	}
-	msg, err := b.recordBuy(ticker, shares, price, feeVal, feeAuto, date, "")
+	return b.recordBuy(ticker, shares, price, feeVal, feeAuto, date, "")
+}
+
+// Notify pushes msg to Telegram on the caller's behalf. It exists so
+// internal/web's write handlers (ExecuteBuy/ExecuteSell/ExecuteSetStop
+// callers) can still surface the same confirmation Telegram would show for
+// the equivalent slash command — the "Telegram 照常同步" decision from
+// docs/phase-10-web-trade-input.md §4.2 — without that push being an
+// unconditional side effect of Execute* itself (Phase 24 tech debt 3).
+func (b *Bot) Notify(msg string) {
 	b.Send(msg)
-	return msg, err
 }
 
 // thesisNudge returns a one-line nudge to record a holding thesis when
@@ -860,13 +869,13 @@ func (b *Bot) recordSell(ticker string, shares, price, fee float64, feeAuto bool
 
 // ExecuteSell is ExecuteBuy's sibling for internal/web's POST
 // /api/trade/sell (see docs/phase-10-web-trade-input.md §4.2) — same
-// validation/Telegram-parity shape, plus triggering the same sell-review
-// goroutine handleSell kicks off on a closing sell.
+// validation shape (Telegram parity now via Notify, not built in — see
+// ExecuteBuy), plus triggering the same sell-review goroutine handleSell
+// kicks off on a closing sell.
 func (b *Bot) ExecuteSell(ctx context.Context, ticker string, shares, price float64, fee *float64, date string) (string, error) {
 	ticker = strings.ToUpper(strings.TrimSpace(ticker))
 	if ticker == "" || shares <= 0 || price <= 0 || (fee != nil && *fee < 0) {
 		msg := i18n.T(b.lang, i18n.KeySellUsage)
-		b.Send(msg)
 		return msg, fmt.Errorf("invalid sell arguments")
 	}
 	feeAuto := fee == nil
@@ -875,7 +884,6 @@ func (b *Bot) ExecuteSell(ctx context.Context, ticker string, shares, price floa
 		feeVal = *fee
 	}
 	msg, closed, stopPrice, err := b.recordSell(ticker, shares, price, feeVal, feeAuto, date, "")
-	b.Send(msg)
 	if closed {
 		go b.reviewClosedTrade(ctx, ticker, stopPrice)
 	}
@@ -890,12 +898,9 @@ func (b *Bot) ExecuteSetStop(ticker string, price float64) (string, error) {
 	ticker = strings.ToUpper(strings.TrimSpace(ticker))
 	if ticker == "" || price <= 0 {
 		msg := i18n.T(b.lang, i18n.KeyStopUsage)
-		b.Send(msg)
 		return msg, fmt.Errorf("invalid stop arguments")
 	}
-	msg, err := b.setStop(ticker, price)
-	b.Send(msg)
-	return msg, err
+	return b.setStop(ticker, price)
 }
 
 // tradeRound is a fully closed round trip in a ticker's transaction history:

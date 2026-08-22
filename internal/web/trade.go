@@ -9,14 +9,13 @@ import (
 )
 
 // TradeExecutor is web's narrow view of *bot.Bot for the write endpoints
-// that need bot-layer behavior beyond the raw DB write — Telegram
-// confirmation push, buy's auto-watchlist-add, and a closing sell's
-// sell-review trigger (see docs/phase-10-web-trade-input.md §4.2's "one
-// write path" rule: these three must never be duplicated by calling
-// db.RecordBuy/RecordSell directly). internal/web doesn't import
-// internal/bot and *bot.Bot doesn't import internal/web — main.go wires the
-// concrete type in, the same seam convention as bot.Channel/
-// llm.Provider/NewClientWithProvider.
+// that need bot-layer behavior beyond the raw DB write — buy's
+// auto-watchlist-add and a closing sell's sell-review trigger (see
+// docs/phase-10-web-trade-input.md §4.2's "one write path" rule: these must
+// never be duplicated by calling db.RecordBuy/RecordSell directly).
+// internal/web doesn't import internal/bot and *bot.Bot doesn't import
+// internal/web — main.go wires the concrete type in, the same seam
+// convention as bot.Channel/llm.Provider/NewClientWithProvider.
 type TradeExecutor interface {
 	ExecuteBuy(ticker string, shares, price float64, fee *float64, date string) (string, error)
 	ExecuteSell(ctx context.Context, ticker string, shares, price float64, fee *float64, date string) (string, error)
@@ -25,6 +24,14 @@ type TradeExecutor interface {
 	// infer the alert's direction, see bot.buyAlertDirection) is bot-layer
 	// behavior beyond the raw DB write, same rationale as ExecuteSetStop.
 	ExecuteAddBuyAlert(ticker string, price float64) (string, error)
+	// Notify pushes a Telegram message. Since Phase 24 tech debt 3,
+	// ExecuteBuy/ExecuteSell/ExecuteSetStop no longer push to Telegram on
+	// their own — the handlers below call Notify explicitly after every
+	// call (success or failure) so a web-triggered trade still surfaces the
+	// same Telegram confirmation the equivalent slash command would (Phase
+	// 10's "Telegram 照常同步" decision), but as this package's own choice
+	// rather than a side effect baked into the bot-layer call.
+	Notify(msg string)
 }
 
 // watchlistWriter is web's narrow view of *db.DB for watchlist add/remove —
@@ -124,6 +131,7 @@ func (s *Server) handleTradeBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msg, err := s.trade.ExecuteBuy(req.Ticker, req.Shares, req.Price, req.Fee, date)
+	s.trade.Notify(msg)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, msg)
 		return
@@ -142,6 +150,7 @@ func (s *Server) handleTradeSell(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msg, err := s.trade.ExecuteSell(r.Context(), req.Ticker, req.Shares, req.Price, req.Fee, date)
+	s.trade.Notify(msg)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, msg)
 		return
@@ -155,6 +164,7 @@ func (s *Server) handleSetStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msg, err := s.trade.ExecuteSetStop(req.Ticker, req.Price)
+	s.trade.Notify(msg)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, msg)
 		return

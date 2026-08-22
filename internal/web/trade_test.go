@@ -22,6 +22,11 @@ type fakeTrade struct {
 	lastBuy, lastSell                     tradeRequest
 	lastStop                              stopRequest
 	lastBuyAlert                          buyAlertRequest
+	notified                              []string
+}
+
+func (f *fakeTrade) Notify(msg string) {
+	f.notified = append(f.notified, msg)
 }
 
 func (f *fakeTrade) ExecuteBuy(ticker string, shares, price float64, fee *float64, date string) (string, error) {
@@ -213,6 +218,12 @@ func TestHandleTradeBuy(t *testing.T) {
 		if trade.lastBuy.Ticker != "aapl" {
 			t.Errorf("ExecuteBuy() ticker = %q, want %q (uppercasing is bot-layer's job)", trade.lastBuy.Ticker, "aapl")
 		}
+		// Phase 24 tech debt 3: ExecuteBuy no longer pushes to Telegram on
+		// its own, so the handler must call Notify explicitly to preserve
+		// the "web trade still gets a Telegram confirmation" decision.
+		if len(trade.notified) != 1 || trade.notified[0] != "bought AAPL" {
+			t.Errorf("Notify() calls = %v, want exactly [%q]", trade.notified, "bought AAPL")
+		}
 	})
 
 	t.Run("rejects a malformed date", func(t *testing.T) {
@@ -246,6 +257,11 @@ func TestHandleTradeBuy(t *testing.T) {
 		}
 		if got["error"] != "no position" {
 			t.Errorf("error = %q, want %q", got["error"], "no position")
+		}
+		// Notify still fires on a failed trade, matching the pre-decoupling
+		// behavior where ExecuteBuy sent the failure message too.
+		if last := trade.notified[len(trade.notified)-1]; last != "no position" {
+			t.Errorf("last Notify() call = %q, want %q (failures still notify)", last, "no position")
 		}
 	})
 }

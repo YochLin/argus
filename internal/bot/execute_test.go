@@ -67,9 +67,17 @@ func TestExecuteBuySuccess(t *testing.T) {
 		t.Errorf("GetWatchlist() = %v, %v, want [AAPL] (buy auto-adds to watchlist)", watchlist, err)
 	}
 
+	// Since Phase 24 tech debt 3, ExecuteBuy itself no longer pushes to
+	// Telegram — the caller (internal/web) does that explicitly via Notify,
+	// so a direct ExecuteBuy call sends nothing.
 	fc := b.channel.(*fakeChannel)
+	if len(fc.sent) != 0 {
+		t.Errorf("channel.sent = %v, want none (ExecuteBuy no longer pushes on its own)", fc.sent)
+	}
+
+	b.Notify(msg)
 	if len(fc.sent) != 1 || fc.sent[0] != msg {
-		t.Errorf("channel.sent = %v, want exactly [%q] (Telegram parity)", fc.sent, msg)
+		t.Errorf("channel.sent after Notify = %v, want exactly [%q]", fc.sent, msg)
 	}
 }
 
