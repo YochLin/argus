@@ -102,6 +102,7 @@ type Bot struct {
 	recommendation  *service.RecommendationTrackingService
 	riskService     *service.RiskService
 	snapshotService *service.SnapshotService
+	brokerSyncSvc   *service.BrokerSyncService
 	detector        *signals.Detector
 	lang            i18n.Lang
 
@@ -303,6 +304,7 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		recommendation:         service.NewRecommendationTrackingService(cfg.DB, cfg.Provider),
 		riskService:            service.NewRiskService(cfg.DB, cfg.History, cfg.Provider, service.StopCandidateATRMult),
 		snapshotService:        service.NewSnapshotService(cfg.DB, cfg.Provider),
+		brokerSyncSvc:          newBrokerSyncService(cfg.Sinopac, cfg.DB),
 		detector:               signals.NewDetector(cfg.Lang),
 		lang:                   cfg.Lang,
 		stopLossPct:            cfg.StopLossPct,
@@ -376,6 +378,20 @@ func (b *Bot) snapshots() *service.SnapshotService {
 		b.snapshotService = service.NewSnapshotService(b.db, b.provider)
 	}
 	return b.snapshotService
+}
+
+func newBrokerSyncService(sinopacClient *sinopac.Client, database *db.DB) *service.BrokerSyncService {
+	if database == nil {
+		return nil
+	}
+	return service.NewBrokerSyncService(sinopacClient, database)
+}
+
+func (b *Bot) brokerSync() *service.BrokerSyncService {
+	if b.brokerSyncSvc == nil && b.db != nil {
+		b.brokerSyncSvc = service.NewBrokerSyncService(b.sinopac, b.db)
+	}
+	return b.brokerSyncSvc
 }
 
 func (b *Bot) Send(text string) {
