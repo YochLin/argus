@@ -14,7 +14,7 @@ import (
 	"argus/internal/llm"
 	"argus/internal/logger"
 	"argus/internal/market"
-	"argus/internal/paper"
+	"argus/internal/service"
 	"argus/internal/signals"
 )
 
@@ -1157,92 +1157,34 @@ func positionsSlice(positions map[string]db.Position) []db.Position {
 // GetSignalState's own "unset" representation) — callers should only write
 // it back when it differs from prevState, same as checkStatefulSignals does.
 func breachAlertDecision(adverseMovePct, thresholdPct float64, prevState string) (breached, shouldAlert bool, newState string) {
-	if adverseMovePct < thresholdPct {
-		return false, false, ""
-	}
-	if prevState == breachedState {
-		return true, false, breachedState
-	}
-	return true, true, breachedState
+	return service.BreachAlertDecision(adverseMovePct, thresholdPct, prevState)
 }
 
-// stopBreachDecision is stopBreachAlertDecision's absolute-price sibling
-// (Phase 3.11 PR1 §3.3): alert once when close first drops below stopPrice,
-// stay silent on later calls while it remains below, and reset once it
-// recovers back at-or-above stopPrice so a later re-breach alerts again.
-// Deliberately not a call into breachAlertDecision with some
-// price-to-percent conversion bolted on — that function's thresholdPct <= 0
-// already means "disabled", a contract that has no meaning for an absolute
-// price level and would just invite confusing the two call sites.
 func stopBreachDecision(close, stopPrice float64, prevState string) (breached, shouldAlert bool, newState string) {
-	if close >= stopPrice {
-		return false, false, ""
-	}
-	if prevState == breachedState {
-		return true, false, breachedState
-	}
-	return true, true, breachedState
+	return service.StopBreachDecision(close, stopPrice, prevState)
 }
 
-// checkStopLossAlerts is Phase 3.11 PR1's two-tier stop-loss check (§3.3):
-// a position with a per-trade stop_price set (via /stop) is checked against
-// that absolute price (stopBreachDecision); one without falls back to the
-// original global STOP_LOSS_PCT percentage check (b.stopLossPct, 0 disables
-// it), unchanged from before this phase. A position only ever takes one of
-// the two branches, so both safely share the same signal_states family
-// (stopLossSignalFamily) without state collisions. Rule-based and
-// independent of the LLM, so it still fires when every LLM provider is
-// down. positions is expected sorted by ticker (see positionsSlice); prices
-// is the current-price lookup built by the caller (see priceFor).
+// checkStopLossAlerts is Phase 3.11 PR1's two-tier stop-loss check (§3.3).
 func (b *Bot) checkStopLossAlerts(positions []db.Position, prices map[string]float64) {
-	var lines []string
-	for _, p := range positions {
-		price, ok := b.priceFor(p.Ticker, prices)
-		if !ok {
-			continue
-		}
-
-		stopLossPct := b.stopLossPct
-		if market.Of(p.Ticker) == market.TW {
-			stopLossPct = b.stopLossPctTW
-		}
-
-		prev, err := b.db.GetSignalState(p.Ticker, stopLossSignalFamily)
-		if err != nil {
-			logger.Errorf("stop loss state %s: %v", p.Ticker, err)
-		}
-
-		if p.StopPrice > 0 {
-			_, shouldAlert, newState := stopBreachDecision(price, p.StopPrice, prev)
-			if newState != prev {
-				if err := b.db.SetSignalState(p.Ticker, stopLossSignalFamily, newState); err != nil {
-					logger.Errorf("stop loss state %s: %v", p.Ticker, err)
-				}
-			}
-			if !shouldAlert {
-				continue
-			}
-			lines = append(lines, i18n.T(b.lang, i18n.KeyStopPriceHit, b.tickerLabel(p.Ticker), b.money(p.Ticker, p.StopPrice), b.money(p.Ticker, price)))
-			continue
-		}
-
-		if stopLossPct <= 0 {
-			continue
-		}
-		lossPct := (p.AvgCost - price) / p.AvgCost * 100
-		_, shouldAlert, newState := breachAlertDecision(lossPct, stopLossPct, prev)
-		if newState != prev {
-			if err := b.db.SetSignalState(p.Ticker, stopLossSignalFamily, newState); err != nil {
-				logger.Errorf("stop loss state %s: %v", p.Ticker, err)
-			}
-		}
-		if !shouldAlert {
-			continue
-		}
-		lines = append(lines, i18n.T(b.lang, i18n.KeyStopLossAlertLine, b.tickerLabel(p.Ticker), b.money(p.Ticker, p.AvgCost), b.money(p.Ticker, price), lossPct))
-	}
-	if len(lines) == 0 {
+	if b.risks() == nil {
 		return
+	}
+	alerts, err := b.risks().EvaluateStopLoss(positions, prices, b.stopLossPct, b.stopLossPctTW)
+	if err != nil {
+		logger.Errorf("stop loss evaluation: %v", err)
+		return
+	}
+	if len(alerts) == 0 {
+		return
+	}
+
+	var lines []string
+	for _, a := range alerts {
+		if a.IsCustomStop {
+			lines = append(lines, i18n.T(b.lang, i18n.KeyStopPriceHit, b.tickerLabel(a.Ticker), b.money(a.Ticker, a.StopPrice), b.money(a.Ticker, a.CurrentPrice)))
+		} else {
+			lines = append(lines, i18n.T(b.lang, i18n.KeyStopLossAlertLine, b.tickerLabel(a.Ticker), b.money(a.Ticker, a.AvgCost), b.money(a.Ticker, a.CurrentPrice), a.LossPct))
+		}
 	}
 
 	var sb strings.Builder
@@ -1255,91 +1197,27 @@ func (b *Bot) checkStopLossAlerts(positions []db.Position, prices map[string]flo
 
 // checkTrailingStopAlerts warns about any open position whose close-price
 // drawdown from its post-first-buy peak has just breached the trailing-stop
-// threshold (see paper.TrailingStopThreshold — either b.trailingStopPct alone, or
-// combined with an ATR(14)-based distance when TRAILING_STOP_ATR_MULT > 0).
-// The peak is computed on demand from daily_snapshots closes on or after the
-// ticker's earliest recorded BUY date (db.GetEarliestBuyDate/GetPeakClose)
-// rather than a separately maintained running-high column — a held ticker is
-// always on the watchlist (via /buy's auto-add), so it already gets a daily
-// closing snapshot. Skips (logs, no alert) a ticker with no BUY transaction
-// or no snapshot history yet, rather than risk a false alarm off an unknown
-// peak. atrs is the prefetched ticker->ATR14 map built by RunDailyReport from
-// its watchlist StockData (same prefetch-with-fallback shape as prices — see
-// priceFor); a ticker missing from atrs falls back to a direct
-// b.computeTechnicals call, and if that also fails to yield an ATR, the
-// ATR-based distance is simply unavailable for it (paper.TrailingStopThreshold's
-// fixed-percentage-only branch, or a skip if that's disabled too). Same dedup
-// shape as checkStopLossAlerts (see breachAlertDecision), under its own
-// signal_states family so the two checks don't share state.
+// threshold.
 func (b *Bot) checkTrailingStopAlerts(positions []db.Position, prices map[string]float64, atrs map[string]float64) {
-	if b.trailingStopPct <= 0 && b.trailingStopPctTW <= 0 && b.trailingStopATRMult <= 0 {
+	if b.risks() == nil {
 		return
 	}
+	alerts, err := b.risks().EvaluateTrailingStop(positions, prices, atrs, b.trailingStopPct, b.trailingStopPctTW, b.trailingStopATRMult)
+	if err != nil {
+		logger.Errorf("trailing stop evaluation: %v", err)
+		return
+	}
+	if len(alerts) == 0 {
+		return
+	}
+
 	var lines []string
-	for _, p := range positions {
-		trailingStopPct := b.trailingStopPct
-		if market.Of(p.Ticker) == market.TW {
-			trailingStopPct = b.trailingStopPctTW
-		}
-		if trailingStopPct <= 0 && b.trailingStopATRMult <= 0 {
-			continue
-		}
-
-		buyDate, ok, err := b.db.GetEarliestBuyDate(p.Ticker)
-		if err != nil {
-			logger.Errorf("trailing stop: earliest buy %s: %v", p.Ticker, err)
-			continue
-		}
-		if !ok {
-			continue
-		}
-		peak, ok, err := b.db.GetPeakClose(p.Ticker, buyDate)
-		if err != nil {
-			logger.Errorf("trailing stop: peak close %s: %v", p.Ticker, err)
-			continue
-		}
-		if !ok || peak <= 0 {
-			continue
-		}
-		price, ok := b.priceFor(p.Ticker, prices)
-		if !ok {
-			continue
-		}
-		drawdownPct := (peak - price) / peak * 100
-
-		atr, ok := atrs[p.Ticker]
-		if !ok && b.trailingStopATRMult > 0 {
-			if t, _, _ := b.computeTechnicals(p.Ticker, nil); t != nil {
-				atr = t.ATR14
-			}
-		}
-		thresholdPct, atrBased, ok := paper.TrailingStopThreshold(trailingStopPct, b.trailingStopATRMult, atr, peak)
-		if !ok {
-			logger.Warnf("trailing stop: no usable threshold for %s (fixed=%.2f atrMult=%.2f atr=%.2f)", p.Ticker, trailingStopPct, b.trailingStopATRMult, atr)
-			continue
-		}
-
-		prev, err := b.db.GetSignalState(p.Ticker, trailingStopSignalFamily)
-		if err != nil {
-			logger.Errorf("trailing stop state %s: %v", p.Ticker, err)
-		}
-		_, shouldAlert, newState := breachAlertDecision(drawdownPct, thresholdPct, prev)
-		if newState != prev {
-			if err := b.db.SetSignalState(p.Ticker, trailingStopSignalFamily, newState); err != nil {
-				logger.Errorf("trailing stop state %s: %v", p.Ticker, err)
-			}
-		}
-		if !shouldAlert {
-			continue
-		}
-		if atrBased {
-			lines = append(lines, i18n.T(b.lang, i18n.KeyTrailingStopAlertLineATR, b.tickerLabel(p.Ticker), b.money(p.Ticker, peak), b.money(p.Ticker, price), drawdownPct, thresholdPct, b.trailingStopATRMult))
+	for _, a := range alerts {
+		if a.ATRBased {
+			lines = append(lines, i18n.T(b.lang, i18n.KeyTrailingStopAlertLineATR, b.tickerLabel(a.Ticker), b.money(a.Ticker, a.PeakPrice), b.money(a.Ticker, a.CurrentPrice), a.DrawdownPct, a.ThresholdPct, a.TrailingATRMult))
 		} else {
-			lines = append(lines, i18n.T(b.lang, i18n.KeyTrailingStopAlertLine, b.tickerLabel(p.Ticker), b.money(p.Ticker, peak), b.money(p.Ticker, price), drawdownPct))
+			lines = append(lines, i18n.T(b.lang, i18n.KeyTrailingStopAlertLine, b.tickerLabel(a.Ticker), b.money(a.Ticker, a.PeakPrice), b.money(a.Ticker, a.CurrentPrice), a.DrawdownPct))
 		}
-	}
-	if len(lines) == 0 {
-		return
 	}
 
 	var sb strings.Builder
@@ -1350,87 +1228,39 @@ func (b *Bot) checkTrailingStopAlerts(positions []db.Position, prices map[string
 	b.Send(sb.String())
 }
 
-// Phase 3.11 PR2 (§4 of docs/phase-3.11-trade-risk-management.md): rule-based
-// exit alerts that build on PR1's per-trade stop_price, same daily-report-only
-// asymmetry as every other check in this file. targetRMultiple/trailProfitPct
-// are fixed package constants, not env-configurable — unlike STOP_LOSS_PCT/
-// TRAILING_STOP_PCT these aren't independent risk tolerances the user tunes,
-// they're the textbook 2R/10% figures the design doc's source material uses,
-// and both new checks are inherently opt-in already (no stop set = no target;
-// no meaningful profit yet = no 5MA check), so there's no "0 disables it"
-// knob to wire up. targetSignalFamily/ma5TrailSignalFamily each get their own
-// signal_states family so neither collides with stopLossSignalFamily/
-// trailingStopSignalFamily or with each other.
 const (
-	targetRMultiple = 2.0
-	trailProfitPct  = 10.0
+	targetRMultiple = service.TargetRMultiple
+	trailProfitPct  = service.TrailProfitPct
 
-	targetSignalFamily   = "target"
-	ma5TrailSignalFamily = "ma5_trail"
-	// hitState mirrors breachedState's role but under a name that reads
-	// correctly for "target reached"/"5MA broken" rather than "breached" —
-	// same "" = not currently hit convention.
-	hitState = "hit"
+	targetSignalFamily   = service.TargetSignalFamily
+	ma5TrailSignalFamily = service.MA5TrailSignalFamily
+	hitState             = service.HitState
 )
 
-// targetReachedDecision is the alert-once/reset decision for the 2R
-// take-profit check (§4.1): the mirror image of stopBreachDecision — alerts
-// the first time close reaches (or passes) targetPrice, stays quiet while it
-// remains there, and resets once it falls back under so a later re-touch
-// alerts again (accepted as symmetric with the stop-loss checks' own
-// re-alert-after-recovery behavior, per the design doc).
 func targetReachedDecision(close, targetPrice float64, prevState string) (reached, shouldAlert bool, newState string) {
-	if close < targetPrice {
-		return false, false, ""
-	}
-	if prevState == hitState {
-		return true, false, hitState
-	}
-	return true, true, hitState
+	return service.TargetReachedDecision(close, targetPrice, prevState)
 }
 
-// checkTargetAlerts warns once when a position with a stop price set (§3.1's
-// /stop) first closes at or above its 2R target (avgCost +
-// targetRMultiple*(avgCost-stopPrice)) — "take half off, defend the rest with
-// the 5MA" per the design doc's source material. A position without a stop
-// price has no R to measure a target against, so it's skipped rather than
-// improvising one off some other threshold (unlike checkStopLossAlerts, this
-// check has no global-percentage fallback branch at all). A stop at or above
-// cost (shouldn't happen — /stop validates against price, not cost, so a very
-// unusual manual entry could still produce one) is also skipped, since the
-// target formula would move backwards. positions/prices follow
-// checkStopLossAlerts' own conventions (sorted slice, prefetch-with-fallback
-// price lookup via priceFor).
+// checkTargetAlerts warns once when a position with a stop price set
+// first closes at or above its 2R target.
 func (b *Bot) checkTargetAlerts(positions []db.Position, prices map[string]float64) {
-	var lines []string
-	for _, p := range positions {
-		if p.StopPrice <= 0 || p.StopPrice >= p.AvgCost {
-			continue
-		}
-		price, ok := b.priceFor(p.Ticker, prices)
-		if !ok {
-			continue
-		}
-		target := p.AvgCost + targetRMultiple*(p.AvgCost-p.StopPrice)
-
-		prev, err := b.db.GetSignalState(p.Ticker, targetSignalFamily)
-		if err != nil {
-			logger.Errorf("target state %s: %v", p.Ticker, err)
-		}
-		_, shouldAlert, newState := targetReachedDecision(price, target, prev)
-		if newState != prev {
-			if err := b.db.SetSignalState(p.Ticker, targetSignalFamily, newState); err != nil {
-				logger.Errorf("target state %s: %v", p.Ticker, err)
-			}
-		}
-		if !shouldAlert {
-			continue
-		}
-		lines = append(lines, i18n.T(b.lang, i18n.KeyTargetReached, b.tickerLabel(p.Ticker), targetRMultiple, b.money(p.Ticker, target), b.money(p.Ticker, price)))
-	}
-	if len(lines) == 0 {
+	if b.risks() == nil {
 		return
 	}
+	alerts, err := b.risks().EvaluateTargetAlerts(positions, prices)
+	if err != nil {
+		logger.Errorf("target alert evaluation: %v", err)
+		return
+	}
+	if len(alerts) == 0 {
+		return
+	}
+
+	var lines []string
+	for _, a := range alerts {
+		lines = append(lines, i18n.T(b.lang, i18n.KeyTargetReached, b.tickerLabel(a.Ticker), a.RMultiple, b.money(a.Ticker, a.TargetPrice), b.money(a.Ticker, a.CurrentPrice)))
+	}
+
 	var sb strings.Builder
 	for _, l := range lines {
 		sb.WriteString(l)
@@ -1439,62 +1269,25 @@ func (b *Bot) checkTargetAlerts(positions []db.Position, prices map[string]float
 }
 
 // checkMA5BreakAlerts warns once when a position that's up at least
-// trailProfitPct (10%) unrealized closes below its MA5 — "the strong-trend
-// line just failed" per the design doc's source material ("魚身防守"). The
-// profit gate is deliberate (see the design doc): without it this would fire
-// on every ordinary pullback for a flat, long-held position, since MA5 is
-// tight enough that price dips under it constantly in a non-trending stock.
-// This is a companion to the ATR-based trailing stop, not a replacement —
-// the ATR version manages deep drawdowns from any position, this one manages
-// the cadence of a position that's already run hard. Reuses stopBreachDecision
-// (identical "alert once when close first drops below threshold, reset on
-// recovery" shape — MA5 is just another absolute-price threshold, same as a
-// stop price) rather than a near-duplicate function. ma5s is a prefetched
-// ticker->MA5 map (same prefetch-with-fallback shape as checkTrailingStopAlerts'
-// atrs — a ticker missing from it falls back to one computeTechnicals call).
+// trailProfitPct (10%) unrealized closes below its MA5.
 func (b *Bot) checkMA5BreakAlerts(positions []db.Position, prices map[string]float64, ma5s map[string]float64) {
-	var lines []string
-	for _, p := range positions {
-		if p.AvgCost <= 0 {
-			continue
-		}
-		price, ok := b.priceFor(p.Ticker, prices)
-		if !ok {
-			continue
-		}
-		profitPct := (price - p.AvgCost) / p.AvgCost * 100
-		if profitPct < trailProfitPct {
-			continue
-		}
-
-		ma5, ok := ma5s[p.Ticker]
-		if !ok {
-			if t, _, _ := b.computeTechnicals(p.Ticker, nil); t != nil {
-				ma5 = t.MA5
-			}
-		}
-		if ma5 <= 0 {
-			continue
-		}
-
-		prev, err := b.db.GetSignalState(p.Ticker, ma5TrailSignalFamily)
-		if err != nil {
-			logger.Errorf("ma5 trail state %s: %v", p.Ticker, err)
-		}
-		_, shouldAlert, newState := stopBreachDecision(price, ma5, prev)
-		if newState != prev {
-			if err := b.db.SetSignalState(p.Ticker, ma5TrailSignalFamily, newState); err != nil {
-				logger.Errorf("ma5 trail state %s: %v", p.Ticker, err)
-			}
-		}
-		if !shouldAlert {
-			continue
-		}
-		lines = append(lines, i18n.T(b.lang, i18n.KeyMA5Break, b.tickerLabel(p.Ticker), b.money(p.Ticker, ma5), b.money(p.Ticker, price)))
-	}
-	if len(lines) == 0 {
+	if b.risks() == nil {
 		return
 	}
+	alerts, err := b.risks().EvaluateMA5BreakAlerts(positions, prices, ma5s)
+	if err != nil {
+		logger.Errorf("ma5 break evaluation: %v", err)
+		return
+	}
+	if len(alerts) == 0 {
+		return
+	}
+
+	var lines []string
+	for _, a := range alerts {
+		lines = append(lines, i18n.T(b.lang, i18n.KeyMA5Break, b.tickerLabel(a.Ticker), b.money(a.Ticker, a.MA5), b.money(a.Ticker, a.CurrentPrice)))
+	}
+
 	var sb strings.Builder
 	for _, l := range lines {
 		sb.WriteString(l)
@@ -1502,45 +1295,29 @@ func (b *Bot) checkMA5BreakAlerts(positions []db.Position, prices map[string]flo
 	b.Send(sb.String())
 }
 
-// buyAlertTriggered reports whether price has crossed alert's target in the
-// watched direction (see db.BuyAlertBelow/BuyAlertAbove). Unlike the
-// stop-loss family above, a buy alert is one-shot — checkBuyAlerts deletes it
-// on trigger instead of writing back to signal_states, so there's no reset/
-// re-alert state to track here.
 func buyAlertTriggered(price float64, alert db.BuyAlert) bool {
-	if alert.Direction == db.BuyAlertAbove {
-		return price >= alert.Price
-	}
-	return price <= alert.Price
+	return service.BuyAlertTriggered(price, alert)
 }
 
-// checkBuyAlerts is the buy-alert counterpart of checkStopLossAlerts etc.,
-// called from both runDailyReport and RunClosingSnapshot (see their own call
-// sites) rather than just one — a buy alert is about a ticker the user
-// doesn't necessarily hold yet, so it gets checked at both of a market's
-// daily checkpoints instead of riding along with the position-only
-// exit-discipline sweep. alerts is expected already scoped to one market
-// (see db.GetBuyAlertsByMarket); prices is the caller's prefetch map (see
-// priceFor). A triggered alert is deleted immediately — no dedup state
-// needed since it can only ever fire once.
+// checkBuyAlerts is the buy-alert counterpart of checkStopLossAlerts etc.
 func (b *Bot) checkBuyAlerts(alerts []db.BuyAlert, prices map[string]float64) {
-	var lines []string
-	for _, a := range alerts {
-		price, ok := b.priceFor(a.Ticker, prices)
-		if !ok {
-			continue
-		}
-		if !buyAlertTriggered(price, a) {
-			continue
-		}
-		if err := b.db.RemoveBuyAlert(a.ID); err != nil {
-			logger.Errorf("buy alert remove %s (id=%d): %v", a.Ticker, a.ID, err)
-		}
-		lines = append(lines, i18n.T(b.lang, i18n.KeyBuyAlertHitLine, b.tickerLabel(a.Ticker), b.money(a.Ticker, a.Price), b.money(a.Ticker, price), b.buyAlertDirPhrase(a.Direction)))
-	}
-	if len(lines) == 0 {
+	if b.risks() == nil {
 		return
 	}
+	triggers, err := b.risks().EvaluateBuyAlerts(alerts, prices)
+	if err != nil {
+		logger.Errorf("buy alert evaluation: %v", err)
+		return
+	}
+	if len(triggers) == 0 {
+		return
+	}
+
+	var lines []string
+	for _, t := range triggers {
+		lines = append(lines, i18n.T(b.lang, i18n.KeyBuyAlertHitLine, b.tickerLabel(t.Alert.Ticker), b.money(t.Alert.Ticker, t.Alert.Price), b.money(t.Alert.Ticker, t.CurrentPrice), b.buyAlertDirPhrase(t.Alert.Direction)))
+	}
+
 	var sb strings.Builder
 	sb.WriteString(i18n.T(b.lang, i18n.KeyBuyAlertTitle))
 	for _, l := range lines {

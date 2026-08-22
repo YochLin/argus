@@ -431,34 +431,19 @@ func (b *Bot) handleStop(args string) {
 // same one computeStopSuggestion already computes for the candidate display,
 // so both entry points reject against exactly the number the user would see.
 func (b *Bot) setStop(ticker string, price float64) (string, error) {
-	pos, ok, err := b.db.GetPosition(ticker)
+	res, err := b.risks().SetStop(service.SetStopInput{Ticker: ticker, Price: price})
 	if err != nil {
-		return i18n.T(b.lang, i18n.KeyQueryFailed, err), err
-	}
-	if !ok {
-		return i18n.T(b.lang, i18n.KeyStopNoPosition, b.tickerLabel(ticker)), db.ErrNoPosition
-	}
-
-	suggestion, refOK := b.computeStopSuggestion(ticker)
-	if !refOK {
-		err = fmt.Errorf("no reference price available")
-		return i18n.T(b.lang, i18n.KeyQueryFailed, err), err
-	}
-	if price >= suggestion.LatestClose {
-		err = fmt.Errorf("stop price must be below latest close")
-		return i18n.T(b.lang, i18n.KeyStopInvalidPrice, b.money(ticker, price), b.money(ticker, suggestion.LatestClose)), err
-	}
-
-	if err = b.db.SetStopPrice(ticker, price); err != nil {
 		if errors.Is(err, db.ErrNoPosition) {
 			return i18n.T(b.lang, i18n.KeyStopNoPosition, b.tickerLabel(ticker)), err
+		}
+		if errors.Is(err, service.ErrInvalidStopPrice) {
+			sugg, _ := b.computeStopSuggestion(ticker)
+			return i18n.T(b.lang, i18n.KeyStopInvalidPrice, b.money(ticker, price), b.money(ticker, sugg.LatestClose)), err
 		}
 		return i18n.T(b.lang, i18n.KeyQueryFailed, err), err
 	}
 
-	distPct := (suggestion.LatestClose - price) / suggestion.LatestClose * 100
-	riskPerShare := pos.AvgCost - price
-	return i18n.T(b.lang, i18n.KeyStopSet, b.tickerLabel(ticker), b.money(ticker, price), distPct, b.money(ticker, riskPerShare)), nil
+	return i18n.T(b.lang, i18n.KeyStopSet, b.tickerLabel(res.Ticker), b.money(res.Ticker, res.StopPrice), res.DistPct, b.money(res.Ticker, res.RiskPerShare)), nil
 }
 
 // showStop renders /stop TICKER's no-price branch: the current setting (or
@@ -532,10 +517,7 @@ func (b *Bot) buyStopSuggestion(ticker string, existingStopPrice float64) string
 // single price argument and still support both "notify me on a dip" and
 // "notify me on a breakout" without an extra direction flag.
 func buyAlertDirection(price, currentPrice float64) string {
-	if price <= currentPrice {
-		return db.BuyAlertBelow
-	}
-	return db.BuyAlertAbove
+	return service.BuyAlertDirection(price, currentPrice)
 }
 
 func (b *Bot) buyAlertDirPhrase(direction string) string {
@@ -605,23 +587,18 @@ func (b *Bot) handleBuyAlert(args string) {
 // infers direction identically instead of duplicating the quote fetch —
 // same split as setStop/ExecuteSetStop.
 func (b *Bot) addBuyAlert(ticker string, price float64) (string, error) {
-	q, err := b.provider.GetQuote(ticker)
+	res, err := b.risks().AddBuyAlert(service.BuyAlertInput{Ticker: ticker, Price: price})
 	if err != nil {
 		return i18n.T(b.lang, i18n.KeyBuyAlertQueryFailed, err), err
 	}
 
-	direction := buyAlertDirection(price, q.Price)
-	if _, err := b.db.AddBuyAlert(ticker, price, direction); err != nil {
-		return i18n.T(b.lang, i18n.KeyBuyAlertQueryFailed, err), err
-	}
-
-	return i18n.T(b.lang, i18n.KeyBuyAlertSet, b.tickerLabel(ticker), b.money(ticker, price), b.buyAlertDirPhrase(direction)), nil
+	return i18n.T(b.lang, i18n.KeyBuyAlertSet, b.tickerLabel(res.Ticker), b.money(res.Ticker, res.Price), b.buyAlertDirPhrase(res.Direction)), nil
 }
 
 // showBuyAlerts renders /buyalert TICKER's no-price branch: every alert
 // currently set on ticker, oldest first.
 func (b *Bot) showBuyAlerts(ticker string) {
-	alerts, err := b.db.GetBuyAlertsByTicker(ticker)
+	alerts, err := b.risks().GetBuyAlerts(ticker)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyBuyAlertQueryFailed, err))
 		return
@@ -644,23 +621,12 @@ func (b *Bot) showBuyAlerts(ticker string) {
 // has (same tradeoff as most chat commands operating on human-entered
 // numbers rather than internal ids).
 func (b *Bot) removeBuyAlert(ticker string, price float64) {
-	alerts, err := b.db.GetBuyAlertsByTicker(ticker)
+	removed, err := b.risks().RemoveBuyAlertByPrice(ticker, price)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyBuyAlertQueryFailed, err))
 		return
 	}
-
-	var found bool
-	for _, a := range alerts {
-		if a.Price == price {
-			found = true
-			if err := b.db.RemoveBuyAlert(a.ID); err != nil {
-				b.Send(i18n.T(b.lang, i18n.KeyBuyAlertQueryFailed, err))
-				return
-			}
-		}
-	}
-	if !found {
+	if !removed {
 		b.Send(i18n.T(b.lang, i18n.KeyBuyAlertNotFound, b.tickerLabel(ticker), b.money(ticker, price)))
 		return
 	}

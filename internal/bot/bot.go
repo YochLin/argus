@@ -99,6 +99,7 @@ type Bot struct {
 	watchlist       *service.WatchlistService
 	portfolio       *service.PortfolioService
 	recommendation  *service.RecommendationTrackingService
+	riskService     *service.RiskService
 	detector        *signals.Detector
 	lang            i18n.Lang
 
@@ -271,7 +272,7 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 	if trailingStopPctTW == 0 {
 		trailingStopPctTW = cfg.TrailingStopPct
 	}
-	return &Bot{
+	b := &Bot{
 		channel:                channel,
 		db:                     cfg.DB,
 		provider:               cfg.Provider,
@@ -316,6 +317,8 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		dataCache:              newTTLCache(),
 		now:                    time.Now,
 	}
+	b.riskService = service.NewRiskService(cfg.DB, botHistoryAdapter{b: b}, botQuoteAdapter{b: b}, 2.0)
+	return b
 }
 
 // trading returns the shared application service used by all bot trade entry
@@ -347,6 +350,31 @@ func (b *Bot) recommendations() *service.RecommendationTrackingService {
 		b.recommendation = service.NewRecommendationTrackingService(b.db, b.provider)
 	}
 	return b.recommendation
+}
+
+type botHistoryAdapter struct{ b *Bot }
+
+func (a botHistoryAdapter) GetHistory(ticker, rangeParam string) ([]data.Candle, error) {
+	if a.b.history == nil {
+		return nil, service.ErrHistoryUnavailable
+	}
+	return a.b.history.GetHistory(ticker, rangeParam)
+}
+
+type botQuoteAdapter struct{ b *Bot }
+
+func (a botQuoteAdapter) GetQuote(ticker string) (*data.Quote, error) {
+	if a.b.provider == nil {
+		return nil, service.ErrQuoteUnavailable
+	}
+	return a.b.provider.GetQuote(ticker)
+}
+
+func (b *Bot) risks() *service.RiskService {
+	if b.riskService == nil && b.db != nil {
+		b.riskService = service.NewRiskService(b.db, botHistoryAdapter{b: b}, botQuoteAdapter{b: b}, 2.0)
+	}
+	return b.riskService
 }
 
 func (b *Bot) Send(text string) {

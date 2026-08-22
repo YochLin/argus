@@ -15,6 +15,7 @@ import (
 	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/paper"
+	"argus/internal/service"
 	"argus/internal/signals"
 )
 
@@ -837,47 +838,15 @@ const stopCandidateATRMult = 2.0
 // history for that particular candidate (same "0 = not enough data"
 // sentinel signals.MA already uses) — callers must skip rendering a
 // zero-valued candidate rather than showing a misleading $0.00.
-type stopSuggestion struct {
-	LatestClose float64
-	Low10       float64
-	Low20       float64
-	ATRBased    float64
-}
+type stopSuggestion = service.StopSuggestion
 
 // computeStopSuggestion fetches ticker's OHLCV history and reduces it to
-// stopSuggestion's three candidates, all computed against LatestClose — the
-// most recent daily close in that same history, not a separate live quote,
-// so /stop's "price must be below the latest close" validation compares
-// against exactly the number the candidates were derived from. Falls back to
-// a live quote for LatestClose only (leaving Low10/Low20/ATRBased at 0) when
-// history can't be fetched at all — e.g. a brand-new watchlist addition
-// Yahoo has no history for yet; ok is false only when that fallback also
-// fails, meaning there's no usable reference price at all.
+// stopSuggestion's three candidates, all computed against LatestClose.
 func (b *Bot) computeStopSuggestion(ticker string) (stopSuggestion, bool) {
-	var s stopSuggestion
-
-	candles, err := b.history.GetHistory(ticker, "1y")
-	if err != nil || len(candles) == 0 {
-		logger.Errorf("stop suggestion %s: history: %v", ticker, err)
-		q, qerr := b.provider.GetQuote(ticker)
-		if qerr != nil {
-			logger.Errorf("stop suggestion %s: quote fallback: %v", ticker, qerr)
-			return stopSuggestion{}, false
-		}
-		s.LatestClose = q.Price
-		return s, true
+	if b.risks() == nil {
+		return stopSuggestion{}, false
 	}
-
-	closes := data.Closes(candles)
-	highs := data.Highs(candles)
-	lows := data.Lows(candles)
-	s.LatestClose = closes[len(closes)-1]
-	s.Low10 = signals.LowestClose(closes, 10)
-	s.Low20 = signals.LowestClose(closes, 20)
-	if atr := signals.ATR(highs, lows, closes, 14); atr > 0 {
-		s.ATRBased = s.LatestClose - stopCandidateATRMult*atr
-	}
-	return s, true
+	return b.risks().ComputeStopSuggestion(ticker)
 }
 
 // accountValue is Phase 3.11's account-size input for paper.SuggestShares: m's
