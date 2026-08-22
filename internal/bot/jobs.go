@@ -603,180 +603,21 @@ func (b *Bot) exploreCandidates(ctx context.Context, in *recommendationInputs) m
 	return reasons
 }
 
-// checkStatefulSignals runs the RSI/MACD and strategy checks that diff against
-// the last state persisted in signal_states.
+// checkStatefulSignals is a thin wrapper around service.ScanService's
+// CheckStatefulSignals (Phase 24 Stage 1 Scan & Strategy Service extraction)
+// that adds the one piece of adapter-layer formatting the service doesn't
+// own: decorating every strategy hit (Type prefix "strategy_") with the
+// bear-regime warning when isBearRegime is set.
 func (b *Bot) checkStatefulSignals(ticker string, candles []data.Candle, isBearRegime bool) []signals.Signal {
-	var out []signals.Signal
-	closes := data.Closes(candles)
-
-	prevRSI, err := b.db.GetSignalState(ticker, signals.FamilyRSI)
-	if err != nil {
-		logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyRSI, err)
-	}
-	sig, newRSI := b.detector.CheckRSIState(ticker, closes, prevRSI)
-	if sig != nil {
-		out = append(out, *sig)
-	}
-	if newRSI != prevRSI {
-		if err := b.db.SetSignalState(ticker, signals.FamilyRSI, newRSI); err != nil {
-			logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyRSI, err)
-		}
-	}
-
-	prevMACD, err := b.db.GetSignalState(ticker, signals.FamilyMACD)
-	if err != nil {
-		logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyMACD, err)
-	}
-	sig, newMACD := b.detector.CheckMACDCross(ticker, closes, prevMACD)
-	if sig != nil {
-		out = append(out, *sig)
-	}
-	if newMACD != prevMACD {
-		if err := b.db.SetSignalState(ticker, signals.FamilyMACD, newMACD); err != nil {
-			logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyMACD, err)
-		}
-	}
-
-	// Strategy 1: Squeeze Breakout
-	prevSqueeze, err := b.db.GetSignalState(ticker, signals.FamilyStrategySqueeze)
-	if err != nil {
-		logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategySqueeze, err)
-	}
-	sig, newSqueeze := b.detector.CheckSqueezeBreakout(ticker, candles, prevSqueeze)
-	if sig != nil {
-		if isBearRegime {
-			sig.Message += "\n" + i18n.T(b.lang, i18n.KeyStrategyBearRegimeWarning)
-		}
-		out = append(out, *sig)
-	}
-	if newSqueeze != prevSqueeze {
-		if err := b.db.SetSignalState(ticker, signals.FamilyStrategySqueeze, newSqueeze); err != nil {
-			logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategySqueeze, err)
-		}
-	}
-
-	// Strategy 2: Box Bottom Rebound
-	prevBox, err := b.db.GetSignalState(ticker, signals.FamilyStrategyBox)
-	if err != nil {
-		logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategyBox, err)
-	}
-	sig, newBox := b.detector.CheckBoxBottom(ticker, candles, prevBox)
-	if sig != nil {
-		if isBearRegime {
-			sig.Message += "\n" + i18n.T(b.lang, i18n.KeyStrategyBearRegimeWarning)
-		}
-		out = append(out, *sig)
-	}
-	if newBox != prevBox {
-		if err := b.db.SetSignalState(ticker, signals.FamilyStrategyBox, newBox); err != nil {
-			logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategyBox, err)
-		}
-	}
-
-	// Strategy 3: Trend Breakout (Phase 14 網 3) — revenue-growth gate is
-	// short-circuited: only evaluated when the (zero-request) technical AND
-	// already passed, so the FinMind/Finnhub hit stays ~0-5/day (see
-	// docs/phase-14-strategy-screens-2.md §4.2c).
-	prevBreakout, err := b.db.GetSignalState(ticker, signals.FamilyStrategyBreakout)
-	if err != nil {
-		logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategyBreakout, err)
-	}
-	sig, newBreakout := b.detector.CheckTrendBreakout(ticker, candles, prevBreakout)
-	if sig != nil {
-		p := signals.DefaultScreenParams(market.Of(ticker))
-		if p.RequireRevenueGrowth && !b.revenueGrowthOK(ticker, p.MinRevenueGrowthPct) {
-			sig = nil
-		}
-	}
-	if sig != nil {
-		if isBearRegime {
-			sig.Message += "\n" + i18n.T(b.lang, i18n.KeyStrategyBearRegimeWarning)
-		}
-		out = append(out, *sig)
-	}
-	if newBreakout != prevBreakout {
-		if err := b.db.SetSignalState(ticker, signals.FamilyStrategyBreakout, newBreakout); err != nil {
-			logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategyBreakout, err)
-		}
-	}
-
-	// Strategy 4: Trend Pullback (Phase 14 網 4)
-	prevPullback, err := b.db.GetSignalState(ticker, signals.FamilyStrategyPullback)
-	if err != nil {
-		logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategyPullback, err)
-	}
-	sig, newPullback := b.detector.CheckTrendPullback(ticker, candles, prevPullback)
-	if sig != nil {
-		if isBearRegime {
-			sig.Message += "\n" + i18n.T(b.lang, i18n.KeyStrategyBearRegimeWarning)
-		}
-		out = append(out, *sig)
-	}
-	if newPullback != prevPullback {
-		if err := b.db.SetSignalState(ticker, signals.FamilyStrategyPullback, newPullback); err != nil {
-			logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategyPullback, err)
-		}
-	}
-
-	// Strategy 5: Trust Follow (Phase 15 網 5, TW only) — the FinMind call is
-	// short-circuited behind TrustFollowTechnicalGate the same way Strategy
-	// 3's revenue-growth gate is short-circuited (see revenueGrowthOK's doc
-	// comment): only tickers that already clear the candle-only liquidity/
-	// trend/deviation conditions are worth a network request, keeping this to
-	// a handful of TW tickers per day rather than the whole universe.
-	p := signals.DefaultScreenParams(market.Of(ticker))
-	if p.RequireTrustData && b.trustNet != nil && signals.TrustFollowTechnicalGate(candles, p) {
-		prevTrust, err := b.db.GetSignalState(ticker, signals.FamilyStrategyTrust)
-		if err != nil {
-			logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategyTrust, err)
-		}
-		rows, err := b.trustNet.GetTrustNetSeries(ticker, len(candles))
-		if err != nil {
-			logger.Errorf("trust net %s: %v", ticker, err)
-		} else {
-			trustAligned := signals.AlignTrustNet(candles, rows)
-			foreignAligned := signals.AlignForeignNet(candles, rows)
-			sig, newTrust := b.detector.CheckTrustFollow(ticker, candles, trustAligned, foreignAligned, prevTrust)
-			if sig != nil {
-				if isBearRegime {
-					sig.Message += "\n" + i18n.T(b.lang, i18n.KeyStrategyBearRegimeWarning)
-				}
-				out = append(out, *sig)
-			}
-			if newTrust != prevTrust {
-				if err := b.db.SetSignalState(ticker, signals.FamilyStrategyTrust, newTrust); err != nil {
-					logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategyTrust, err)
-				}
+	sigs := b.scans().CheckStatefulSignals(ticker, candles)
+	if isBearRegime {
+		for i := range sigs {
+			if strings.HasPrefix(sigs[i].Type, "strategy_") {
+				sigs[i].Message += "\n" + i18n.T(b.lang, i18n.KeyStrategyBearRegimeWarning)
 			}
 		}
 	}
-
-	return out
-}
-
-// revenueGrowthOK is Phase 14 §4.2c's short-circuit fundamentals gate for
-// 網 3【趨勢突破】's TW-only revenue-growth condition: called only after the
-// technical AND already passed (0-5 tickers/day, not the full universe), so
-// routing through cachedFundamentals keeps this to one FinMind request per
-// ticker per slowDataCacheTTL window rather than one per scan. minPct is
-// ScreenParams.MinRevenueGrowthPct; the underlying field differs by market
-// (data.Fundamentals.MonthRevenueYoYPct is TW-only) but b.fundamentals
-// already routes US/TW via FundamentalsRouter, so this reads whichever field
-// is non-zero for ticker's market.
-func (b *Bot) revenueGrowthOK(ticker string, minPct float64) bool {
-	if b.fundamentals == nil {
-		return false
-	}
-	fd, err := b.cachedFundamentals(ticker)
-	if err != nil {
-		logger.Errorf("revenue growth gate %s: %v", ticker, err)
-		return false
-	}
-	growth := fd.MonthRevenueYoYPct
-	if market.Of(ticker) != market.TW {
-		growth = fd.RevenueGrowthYoY
-	}
-	return growth > minPct
+	return sigs
 }
 
 // scanChunkCount and universeScanRequestDelay govern Phase 2.6's daily
@@ -798,33 +639,6 @@ const (
 	universeScanRequestDelay = 1 * time.Second
 )
 
-// universeScanChunk returns the slice of tickers to scan for dayIndex (an
-// ever-increasing day counter, e.g. time.Now().YearDay()), rotating through
-// all of tickers over chunkCount calls. Pure and stateless — no persisted
-// scan cursor needed — so coverage is deterministic given the same tickers
-// and dayIndex, at the cost of chunk boundaries shifting slightly as the
-// universe's membership changes day to day (harmless: PLAN.md tolerates
-// staleness on the order of months for this data).
-func universeScanChunk(tickers []string, chunkCount, dayIndex int) []string {
-	if len(tickers) == 0 || chunkCount <= 0 {
-		return nil
-	}
-	size := (len(tickers) + chunkCount - 1) / chunkCount
-	idx := dayIndex % chunkCount
-	if idx < 0 {
-		idx += chunkCount
-	}
-	start := idx * size
-	if start >= len(tickers) {
-		return nil
-	}
-	end := start + size
-	if end > len(tickers) {
-		end = len(tickers)
-	}
-	return tickers[start:end]
-}
-
 // RunUniverseScan is the US-market universe scan's scheduler entry point
 // (05:45 CST Tue-Sat, unchanged since before Phase 6) — a thin wrapper
 // around runUniverseScan(ctx, market.US).
@@ -843,7 +657,7 @@ func (b *Bot) RunTWUniverseScan(ctx context.Context) {
 // runUniverseScan is Phase 2.6's candidate-pool scan, generalized by
 // Phase 6 PR2 to run per-market: it checks market m's universe entries
 // (all of them daily as of scanChunkCount 1, see that const's comment;
-// still routed through universeScanChunk so the rotation can come back as a
+// still routed through service.UniverseScanChunk so the rotation can come back as a
 // one-line change) (filtered via market.Of(ticker) — not by
 // source, since a manually /universe add'ed TW ticker is source='manual'
 // and must still be scanned as TW, see docs/phase-6-tw-market.md §5.2)
@@ -914,7 +728,7 @@ func (b *Bot) runUniverseScan(ctx context.Context, m market.MarketID) {
 	// same nil-degrade convention as every other optional provider).
 	restricted := b.restrictedTickers(ctx, m)
 
-	chunk := universeScanChunk(tickers, scanChunkCount, time.Now().In(cst).YearDay())
+	chunk := service.UniverseScanChunk(tickers, scanChunkCount, time.Now().In(cst).YearDay())
 	date := todayDate()
 	hits := 0
 	for i, t := range chunk {
