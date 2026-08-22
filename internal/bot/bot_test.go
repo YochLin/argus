@@ -437,45 +437,9 @@ func TestFormatChatContext(t *testing.T) {
 	})
 }
 
-// TestUniverseScanChunkFullCoverage verifies universeScanChunk rotates
-// through every ticker exactly once over a full chunkCount-day cycle, with
-// no gaps or duplicates — the property the daily scan job actually depends
-// on for eventual full universe coverage.
-func TestUniverseScanChunkFullCoverage(t *testing.T) {
-	var tickers []string
-	for i := 0; i < 503; i++ {
-		tickers = append(tickers, fmt.Sprintf("T%03d", i))
-	}
-
-	seen := make(map[string]int)
-	for day := 0; day < scanChunkCount; day++ {
-		for _, ticker := range universeScanChunk(tickers, scanChunkCount, day) {
-			seen[ticker]++
-		}
-	}
-
-	if len(seen) != len(tickers) {
-		t.Fatalf("covered %d/%d tickers over a full cycle, want all of them", len(seen), len(tickers))
-	}
-	for ticker, n := range seen {
-		if n != 1 {
-			t.Errorf("ticker %s scanned %d times over a full cycle, want exactly 1", ticker, n)
-		}
-	}
-}
-
-func TestUniverseScanChunkEmptyAndNegativeDay(t *testing.T) {
-	if got := universeScanChunk(nil, scanChunkCount, 0); got != nil {
-		t.Errorf("universeScanChunk(nil, ...) = %v, want nil", got)
-	}
-	tickers := []string{"A", "B", "C", "D", "E"}
-	// A negative dayIndex must still resolve to a valid, in-range chunk
-	// rather than panicking on a negative slice index.
-	got := universeScanChunk(tickers, scanChunkCount, -1)
-	if len(got) == 0 {
-		t.Errorf("universeScanChunk(..., -1) = %v, want a non-empty chunk", got)
-	}
-}
+// TestUniverseScanChunkFullCoverage/TestUniverseScanChunkEmptyAndNegativeDay
+// moved to internal/service/scan_test.go (Phase 24 Stage 1) along with
+// universeScanChunk itself — see service.UniverseScanChunk.
 
 // suggestShares/trailingStopThreshold moved to internal/paper (Phase 11
 // PR1, see paper.SuggestShares/paper.TrailingStopThreshold) — their tests
