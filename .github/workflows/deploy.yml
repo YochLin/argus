@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    runs-on: self-hosted
+  build:
+    runs-on: ubuntu-latest
     # workflow_run only fires when CI completes on the main branch (due to the
     # branches filter above). We check conclusion == 'success' to ensure CI
     # passed before deploying. workflow_dispatch has no workflow_run event
@@ -28,16 +28,10 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      # cache: false — setup-go's default (true) round-trips the module/build
-      # cache through GitHub's network-backed Actions cache, which only pays
-      # off on an ephemeral hosted runner (see ci.yml, where the default is
-      # left on). This runner is the VPS itself, persistent across jobs, so
-      # $GOMODCACHE/$GOCACHE already sit on local disk between deploys for
-      # free — the network round-trip here would be pure overhead.
-      # No setup-node here: this self-hosted runner is the VPS itself,
-      # which scripts/vps/setup-env.sh already provisions with Node.js —
-      # same reasoning as skipping setup-go's cache above, an ephemeral
-      # hosted runner's bootstrap step is this runner's permanent state.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: web/package.json
+
       - name: Build frontend
         run: npm ci && npm run build
         working-directory: web
@@ -45,14 +39,36 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: false
 
+      # GOOS/GOARCH pinned explicitly (rather than relying on the hosted
+      # runner's defaults) since this binary is cross-compiled here and then
+      # shipped to the VPS in the deploy job below — it never runs on the
+      # machine that builds it.
       - name: Build
-        run: go build -o argus.new ./cmd/bot
+        env:
+          CGO_ENABLED: 0
+          GOOS: linux
+          GOARCH: amd64
+        run: go build -trimpath -o argus.new ./cmd/bot
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: argus-binary
+          path: argus.new
+          retention-days: 1
+
+  deploy:
+    needs: build
+    runs-on: self-hosted
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: argus-binary
 
       - name: Install binary
         run: |
           mkdir -p "$HOME/apps/argus"
+          chmod +x argus.new
           # mv 是原子的 rename，即使舊 binary 正在執行也不會遇到 "text file busy"
           mv -f argus.new "$HOME/apps/argus/argus"
 
