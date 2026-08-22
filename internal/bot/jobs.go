@@ -3,7 +3,6 @@ package bot
 import (
 	"context"
 	"errors"
-	"math"
 	"sort"
 	"strings"
 	"time"
@@ -82,59 +81,11 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context, m market.MarketID) {
 	if m == market.US {
 		date = now.AddDate(0, 0, -1).Format("2006-01-02")
 	}
-	prices := make(map[string]float64, len(tickers))
-	eventThresholds := signals.DefaultEventThresholds(m)
-	var priceEventHits []signals.PriceEvent
-	for _, t := range tickers {
-		q, err := b.provider.GetQuote(t)
-		if err != nil {
-			logger.Errorf("closing snapshot: quote %s: %v", t, err)
-			continue
-		}
-		// On a market holiday the cron still fires but providers return the
-		// previous session's quote; its timestamp is then a full day old,
-		// and saving it would file old data under the wrong date.
-		if time.Since(q.Timestamp) > 12*time.Hour {
-			logger.Warnf("closing snapshot: %s quote is stale (%s), skipping (holiday?)", t, q.Timestamp.Format(time.RFC3339))
-			continue
-		}
-		prices[t] = q.Price
-		// Phase 20: collected here, not acted on until after the loop —
-		// see recordPriceEvents' doc comment for why the LLM call can't
-		// live inside this already-sequential per-ticker fetch loop.
-		if ev := signals.CheckPriceEvent(q, eventThresholds); ev != nil {
-			priceEventHits = mergePriceEventHit(priceEventHits, *ev)
-		}
-		// Cumulative-decline check: today's close vs. the close
-		// CumulativeWindowDays sessions ago, queried before SaveSnapshot
-		// below writes today's own row (see GetRecentCloses' doc comment).
-		// A merge into an existing same-ticker hit, not a separate append —
-		// price_events' (ticker, date) unique index allows only one row per
-		// ticker per day.
-		if closes, err := b.db.GetRecentCloses(t, eventThresholds.CumulativeWindowDays); err != nil {
-			logger.Errorf("closing snapshot: recent closes %s: %v", t, err)
-		} else if len(closes) == eventThresholds.CumulativeWindowDays {
-			if ev := signals.CheckCumulativeDecline(t, closes[0], q.Price, eventThresholds); ev != nil {
-				priceEventHits = mergePriceEventHit(priceEventHits, *ev)
-			}
-		}
-		snap := db.DailySnapshot{
-			Ticker:        t,
-			Date:          date,
-			Open:          q.Open,
-			Close:         q.Price,
-			High:          q.High,
-			Low:           q.Low,
-			Volume:        q.Volume,
-			ChangePercent: q.ChangePercent,
-		}
-		if err := b.db.SaveSnapshot(snap); err != nil {
-			logger.Errorf("closing snapshot: save %s: %v", t, err)
-		}
-	}
+	closing := b.snapshots().FetchClosingQuotes(tickers, m, date)
+	prices := closing.Prices
 	logger.Infof("closing snapshot: done for %s market=%s (%d tickers)", date, m, len(tickers))
 
-	b.recordPriceEvents(ctx, priceEventHits, m, date)
+	b.recordPriceEvents(ctx, closing.PriceEvents, m, date)
 
 	b.snapshotBenchmark(date, m)
 	b.recordNetWorthSnapshot(date, m, prices)
@@ -199,9 +150,7 @@ func (b *Bot) recordPriceEvents(ctx context.Context, hits []signals.PriceEvent, 
 	if len(pending) == 0 {
 		return
 	}
-	sort.Slice(pending, func(i, j int) bool {
-		return priceEventMoveSize(pending[i]) > priceEventMoveSize(pending[j])
-	})
+	service.SortPriceEventsByMoveSize(pending)
 
 	writeup, overflow := pending, []signals.PriceEvent(nil)
 	if len(pending) > priceEventWriteupCap {
@@ -236,37 +185,6 @@ func (b *Bot) recordPriceEvents(ctx context.Context, hits []signals.PriceEvent, 
 	b.Send(i18n.T(b.lang, i18n.KeyPriceEventOverflowLine, sb.String()))
 }
 
-// priceEventMoveSize is recordPriceEvents' writeup-priority ranking key —
-// the largest of gap/change/cumulative-decline magnitude, so a ticker with
-// only a big cumulative decline still competes fairly against one with a
-// large single-day move.
-func priceEventMoveSize(ev signals.PriceEvent) float64 {
-	return math.Max(math.Max(math.Abs(ev.GapPct), math.Abs(ev.ChangePct)), math.Abs(ev.CumulativePct))
-}
-
-// mergePriceEventHit adds ev to hits, merging into an existing same-ticker
-// entry instead of appending a duplicate — price_events' (ticker, date)
-// unique index means a single-day and cumulative-decline hit for the same
-// ticker on the same day must become one row, not two.
-func mergePriceEventHit(hits []signals.PriceEvent, ev signals.PriceEvent) []signals.PriceEvent {
-	for i := range hits {
-		if hits[i].Ticker != ev.Ticker {
-			continue
-		}
-		if ev.GapPct != 0 {
-			hits[i].GapPct = ev.GapPct
-		}
-		if ev.ChangePct != 0 {
-			hits[i].ChangePct = ev.ChangePct
-		}
-		if ev.CumulativePct != 0 {
-			hits[i].CumulativePct = ev.CumulativePct
-		}
-		return hits
-	}
-	return append(hits, ev)
-}
-
 // snapshotBenchmark records benchmarkFor(m)'s (SPY/0050) closing price into
 // daily_snapshots under the same date as the watchlist snapshot, so /track's
 // relative-to-market hit rate (Phase 3.8) has same-day benchmark data to
@@ -282,69 +200,17 @@ func (b *Bot) snapshotBenchmark(date string, m market.MarketID) {
 // b.paperDB so the live paper account's benchmark-overlay data (BenchmarkReplay,
 // PR4) comes from the exact same fetch/stale-quote-guard code path as the
 // real dashboard's, instead of a second implementation that could drift.
-// Same stale-quote guard as RunClosingSnapshot's per-ticker loop. Silent on
-// failure, same as the rest of this job — a missing benchmark row just makes
-// /track (or, for paper.db, the trailing stop / equity curve) fall back to
-// whatever that caller already does without same-day benchmark data.
+// Thin wrapper around service.SnapshotService.SnapshotBenchmarkTo (Phase 24
+// Stage 1 Report & Snapshot Service extraction).
 func (b *Bot) snapshotBenchmarkTo(target *db.DB, date string, m market.MarketID) {
-	ticker := benchmarkFor(m)
-	q, err := b.provider.GetQuote(ticker)
-	if err != nil {
-		logger.Errorf("closing snapshot: benchmark %s: %v", ticker, err)
-		return
-	}
-	if time.Since(q.Timestamp) > 12*time.Hour {
-		logger.Warnf("closing snapshot: benchmark %s quote is stale (%s), skipping (holiday?)", ticker, q.Timestamp.Format(time.RFC3339))
-		return
-	}
-	snap := db.DailySnapshot{
-		Ticker:        ticker,
-		Date:          date,
-		Open:          q.Open,
-		Close:         q.Price,
-		High:          q.High,
-		Low:           q.Low,
-		Volume:        q.Volume,
-		ChangePercent: q.ChangePercent,
-	}
-	if err := target.SaveSnapshot(snap); err != nil {
-		logger.Errorf("closing snapshot: save benchmark %s: %v", ticker, err)
-	}
+	b.snapshots().SnapshotBenchmarkTo(target, benchmarkFor(m), date)
 }
 
-// recordNetWorthSnapshot totals market m's open positions' value as of the
-// closing snapshot and stores it dated the same day (Phase 6: per-market row,
-// never summed across markets — see SaveNetWorthSnapshot). prices reuses the
-// quotes RunClosingSnapshot already fetched for watchlist tickers (positions
-// are auto-added to the watchlist on /buy, so this covers the common case);
-// any position ticker missing from it gets a direct quote fetch as a
-// fallback (see priceFor).
+// recordNetWorthSnapshot is a thin wrapper around
+// service.SnapshotService.RecordNetWorthSnapshot (Phase 24 Stage 1 Report &
+// Snapshot Service extraction).
 func (b *Bot) recordNetWorthSnapshot(date string, m market.MarketID, prices map[string]float64) {
-	positions, err := b.db.GetPositions()
-	if err != nil {
-		logger.Errorf("net worth snapshot: positions: %v", err)
-		return
-	}
-
-	var total float64
-	var haveAny bool
-	for _, p := range positions {
-		if market.Of(p.Ticker) != m {
-			continue
-		}
-		haveAny = true
-		price, ok := b.priceFor(p.Ticker, prices)
-		if !ok {
-			continue
-		}
-		total += p.Shares * price
-	}
-	if !haveAny {
-		return
-	}
-	if err := b.db.SaveNetWorthSnapshot(date, m, total); err != nil {
-		logger.Errorf("net worth snapshot: save: %v", err)
-	}
+	b.snapshots().RecordNetWorthSnapshot(m, date, prices)
 }
 
 // RunDailyReport is the US-market daily report's scheduler entry point
