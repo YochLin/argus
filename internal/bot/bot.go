@@ -272,7 +272,7 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 	if trailingStopPctTW == 0 {
 		trailingStopPctTW = cfg.TrailingStopPct
 	}
-	b := &Bot{
+	return &Bot{
 		channel:                channel,
 		db:                     cfg.DB,
 		provider:               cfg.Provider,
@@ -299,6 +299,7 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		watchlist:              service.NewWatchlistService(cfg.DB),
 		portfolio:              service.NewPortfolioService(cfg.DB, cfg.Provider),
 		recommendation:         service.NewRecommendationTrackingService(cfg.DB, cfg.Provider),
+		riskService:            service.NewRiskService(cfg.DB, cfg.History, cfg.Provider, 2.0),
 		detector:               signals.NewDetector(cfg.Lang),
 		lang:                   cfg.Lang,
 		stopLossPct:            cfg.StopLossPct,
@@ -317,8 +318,6 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		dataCache:              newTTLCache(),
 		now:                    time.Now,
 	}
-	b.riskService = service.NewRiskService(cfg.DB, botHistoryAdapter{b: b}, botQuoteAdapter{b: b}, 2.0)
-	return b
 }
 
 // trading returns the shared application service used by all bot trade entry
@@ -352,27 +351,9 @@ func (b *Bot) recommendations() *service.RecommendationTrackingService {
 	return b.recommendation
 }
 
-type botHistoryAdapter struct{ b *Bot }
-
-func (a botHistoryAdapter) GetHistory(ticker, rangeParam string) ([]data.Candle, error) {
-	if a.b.history == nil {
-		return nil, service.ErrHistoryUnavailable
-	}
-	return a.b.history.GetHistory(ticker, rangeParam)
-}
-
-type botQuoteAdapter struct{ b *Bot }
-
-func (a botQuoteAdapter) GetQuote(ticker string) (*data.Quote, error) {
-	if a.b.provider == nil {
-		return nil, service.ErrQuoteUnavailable
-	}
-	return a.b.provider.GetQuote(ticker)
-}
-
 func (b *Bot) risks() *service.RiskService {
 	if b.riskService == nil && b.db != nil {
-		b.riskService = service.NewRiskService(b.db, botHistoryAdapter{b: b}, botQuoteAdapter{b: b}, 2.0)
+		b.riskService = service.NewRiskService(b.db, b.history, b.provider, 2.0)
 	}
 	return b.riskService
 }
