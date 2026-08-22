@@ -506,31 +506,6 @@ func TestBreachAlertDecision(t *testing.T) {
 	}
 }
 
-func TestRestrictedAlertDecision(t *testing.T) {
-	tests := []struct {
-		name         string
-		reason       string
-		prevState    string
-		wantAlert    bool
-		wantNewState string
-	}{
-		{"not restricted, never was", "", "", false, ""},
-		{"newly restricted alerts", "處置", "", true, "處置"},
-		{"same reason does not re-alert", "處置", "處置", false, "處置"},
-		{"reason changed re-alerts", "注意", "處置", true, "注意"},
-		{"restriction cleared resets state", "", "處置", false, ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			alert, newState := restrictedAlertDecision(tt.reason, tt.prevState)
-			if alert != tt.wantAlert || newState != tt.wantNewState {
-				t.Errorf("restrictedAlertDecision(%q, %q) = %v, %q; want %v, %q",
-					tt.reason, tt.prevState, alert, newState, tt.wantAlert, tt.wantNewState)
-			}
-		})
-	}
-}
-
 func TestStopBreachDecision(t *testing.T) {
 	tests := []struct {
 		name         string

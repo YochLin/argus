@@ -29,8 +29,11 @@ const (
 	TrailingStopSignalFamily = "trailing_stop"
 	TargetSignalFamily       = "target"
 	MA5TrailSignalFamily     = "ma5_trail"
-	BreachedState            = "breached"
-	HitState                 = "hit"
+	// RestrictedStockSignalFamily (Phase 16, TW only) dedupes
+	// EvaluateRestrictedAlerts — see RestrictedAlertDecision.
+	RestrictedStockSignalFamily = "restricted_stock"
+	BreachedState               = "breached"
+	HitState                    = "hit"
 )
 
 var (
@@ -152,6 +155,11 @@ type MA5BreakAlert struct {
 type BuyAlertTrigger struct {
 	Alert        db.BuyAlert
 	CurrentPrice float64
+}
+
+type RestrictedAlert struct {
+	Ticker string
+	Reason string
 }
 
 type RiskService struct {
@@ -597,6 +605,38 @@ func (s *RiskService) EvaluateBuyAlerts(alerts []db.BuyAlert, prices map[string]
 	return triggered, nil
 }
 
+// EvaluateRestrictedAlerts checks held positions against restricted (a
+// ticker -> human-readable reason map, e.g. TW disposition/attention
+// classifications) and returns one alert per position whose restriction
+// state changed since the last call. restricted is expected built by the
+// caller (bot.restrictedTickers) since RiskService has no broker-data
+// dependency of its own.
+func (s *RiskService) EvaluateRestrictedAlerts(positions []db.Position, restricted map[string]string) ([]RestrictedAlert, error) {
+	var alerts []RestrictedAlert
+
+	for _, p := range positions {
+		reason := restricted[p.Ticker]
+
+		prev, err := s.store.GetSignalState(p.Ticker, RestrictedStockSignalFamily)
+		if err != nil {
+			logger.Errorf("restricted state %s: %v", p.Ticker, err)
+			prev = ""
+		}
+
+		shouldAlert, newState := RestrictedAlertDecision(reason, prev)
+		if newState != prev {
+			if err := s.store.SetSignalState(p.Ticker, RestrictedStockSignalFamily, newState); err != nil {
+				logger.Errorf("restricted state %s: %v", p.Ticker, err)
+			}
+		}
+		if shouldAlert {
+			alerts = append(alerts, RestrictedAlert{Ticker: p.Ticker, Reason: reason})
+		}
+	}
+
+	return alerts, nil
+}
+
 func (s *RiskService) priceFor(ticker string, prices map[string]float64) (float64, bool) {
 	if p, ok := prices[ticker]; ok {
 		return p, true
@@ -641,6 +681,21 @@ func TargetReachedDecision(closePrice, targetPrice float64, prevState string) (r
 		return true, false, HitState
 	}
 	return true, true, HitState
+}
+
+// RestrictedAlertDecision is EvaluateRestrictedAlerts's pure dedup core:
+// reason == "" means the ticker isn't currently restricted (resets state so
+// a future re-entry alerts again); a non-empty reason alerts once per
+// distinct reason string (so punish -> notice or a renewed period with a
+// different end_date each re-alert), staying silent while it repeats.
+func RestrictedAlertDecision(reason, prevState string) (shouldAlert bool, newState string) {
+	if reason == "" {
+		return false, ""
+	}
+	if reason == prevState {
+		return false, prevState
+	}
+	return true, reason
 }
 
 // BuyAlertDirection infers whether a buy alert is watching above or below the current price.
