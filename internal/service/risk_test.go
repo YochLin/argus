@@ -502,6 +502,9 @@ func TestEvaluateTargetAndMA5Alerts(t *testing.T) {
 // decision functions — moved here from internal/bot/bot_test.go (Phase 24
 // tech debt 1), which tested them through now-deleted orphan wrapper
 // functions left over from this service's Stage 1.1 extraction.
+//
+// TestRestrictedAlertDecision/TestEvaluateRestrictedAlerts below cover the
+// same pattern for restrictedAlertDecision (Phase 24 tech debt 2).
 
 func TestBreachAlertDecision(t *testing.T) {
 	tests := []struct {
@@ -585,5 +588,75 @@ func TestTargetReachedDecision(t *testing.T) {
 					reached, alert, newState, tt.wantReached, tt.wantAlert, tt.wantNewState)
 			}
 		})
+	}
+}
+
+// TestRestrictedAlertDecision moved here from internal/bot/bot_test.go
+// (Phase 24 tech debt 2) along with the restrictedAlertDecision logic itself
+// — see RestrictedAlertDecision.
+func TestRestrictedAlertDecision(t *testing.T) {
+	tests := []struct {
+		name         string
+		reason       string
+		prevState    string
+		wantAlert    bool
+		wantNewState string
+	}{
+		{"not restricted, never was", "", "", false, ""},
+		{"newly restricted alerts", "處置", "", true, "處置"},
+		{"same reason does not re-alert", "處置", "處置", false, "處置"},
+		{"reason changed re-alerts", "注意", "處置", true, "注意"},
+		{"restriction cleared resets state", "", "處置", false, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			alert, newState := RestrictedAlertDecision(tt.reason, tt.prevState)
+			if alert != tt.wantAlert || newState != tt.wantNewState {
+				t.Errorf("RestrictedAlertDecision(%q, %q) = %v, %q; want %v, %q",
+					tt.reason, tt.prevState, alert, newState, tt.wantAlert, tt.wantNewState)
+			}
+		})
+	}
+}
+
+func TestEvaluateRestrictedAlerts(t *testing.T) {
+	store := newMockRiskStore()
+	svc := NewRiskService(store, nil, nil, 2.0)
+
+	positions := []db.Position{
+		{Ticker: "2330", AvgCost: 500},
+		{Ticker: "2454", AvgCost: 800},
+	}
+	restricted := map[string]string{"2330": "處置"}
+
+	alerts, err := svc.EvaluateRestrictedAlerts(positions, restricted)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(alerts) != 1 || alerts[0].Ticker != "2330" || alerts[0].Reason != "處置" {
+		t.Fatalf("expected 1 alert for 2330/處置, got %+v", alerts)
+	}
+
+	// Same reason on the next call must not re-alert.
+	alerts2, err := svc.EvaluateRestrictedAlerts(positions, restricted)
+	if err != nil || len(alerts2) != 0 {
+		t.Fatalf("expected 0 alerts on second call with unchanged reason, got %v, err=%v", alerts2, err)
+	}
+
+	// Reason changes -> re-alerts.
+	restrictedChanged := map[string]string{"2330": "注意"}
+	alerts3, err := svc.EvaluateRestrictedAlerts(positions, restrictedChanged)
+	if err != nil || len(alerts3) != 1 || alerts3[0].Reason != "注意" {
+		t.Fatalf("expected 1 alert with reason 注意 after change, got %v, err=%v", alerts3, err)
+	}
+
+	// Restriction cleared -> no alert, and state resets for a future re-entry.
+	alerts4, err := svc.EvaluateRestrictedAlerts(positions, nil)
+	if err != nil || len(alerts4) != 0 {
+		t.Fatalf("expected 0 alerts once restriction clears, got %v, err=%v", alerts4, err)
+	}
+	alerts5, err := svc.EvaluateRestrictedAlerts(positions, restricted)
+	if err != nil || len(alerts5) != 1 {
+		t.Fatalf("expected re-entry after clearing to alert again, got %v, err=%v", alerts5, err)
 	}
 }

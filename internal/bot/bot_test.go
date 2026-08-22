@@ -477,31 +477,6 @@ func TestUniverseScanChunkEmptyAndNegativeDay(t *testing.T) {
 	}
 }
 
-func TestRestrictedAlertDecision(t *testing.T) {
-	tests := []struct {
-		name         string
-		reason       string
-		prevState    string
-		wantAlert    bool
-		wantNewState string
-	}{
-		{"not restricted, never was", "", "", false, ""},
-		{"newly restricted alerts", "處置", "", true, "處置"},
-		{"same reason does not re-alert", "處置", "處置", false, "處置"},
-		{"reason changed re-alerts", "注意", "處置", true, "注意"},
-		{"restriction cleared resets state", "", "處置", false, ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			alert, newState := restrictedAlertDecision(tt.reason, tt.prevState)
-			if alert != tt.wantAlert || newState != tt.wantNewState {
-				t.Errorf("restrictedAlertDecision(%q, %q) = %v, %q; want %v, %q",
-					tt.reason, tt.prevState, alert, newState, tt.wantAlert, tt.wantNewState)
-			}
-		})
-	}
-}
-
 // suggestShares/trailingStopThreshold moved to internal/paper (Phase 11
 // PR1, see paper.SuggestShares/paper.TrailingStopThreshold) — their tests
 // moved with them to internal/paper/paper_test.go.
@@ -513,6 +488,10 @@ func TestRestrictedAlertDecision(t *testing.T) {
 // behind by Stage 1.1's RiskService extraction, unused by anything except
 // these tests; deleting the wrappers moved the tests to where the real
 // implementation lives instead of dropping the edge-case coverage.
+//
+// TestRestrictedAlertDecision moved to internal/service/risk_test.go the
+// same way (Phase 24 tech debt 2) — restrictedAlertDecision itself moved
+// into RiskService.EvaluateRestrictedAlerts.
 
 func TestComputeVsSPY(t *testing.T) {
 	tests := []struct {
