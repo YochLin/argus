@@ -41,6 +41,12 @@ entry prices, fetches current prices, selects the correct market benchmark
 absolute-direction fallback, and aggregates by source and market. Adapters
 still own localized lines, summaries, caching, and tool/command validation.
 
+`RiskService` owns all stop-loss candidate suggestions (Low10, Low20, ATR14),
+custom stop price validation and persistence, buy-alert creation/evaluation/deletion,
+two-tier stop-loss checks (custom vs percentage fallback), trailing-stop drawdown
+evaluations from peak closes, 2R target reached alerts, and MA5 trend-defense
+break checks. Adapters only handle channel-specific alert rendering and delivery.
+
 Future extraction should follow the same vertical-slice pattern:
 
 1. Define a narrow service input/result and persistence interface.

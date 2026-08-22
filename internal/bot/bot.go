@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -99,6 +100,7 @@ type Bot struct {
 	watchlist       *service.WatchlistService
 	portfolio       *service.PortfolioService
 	recommendation  *service.RecommendationTrackingService
+	riskService     *service.RiskService
 	detector        *signals.Detector
 	lang            i18n.Lang
 
@@ -298,6 +300,7 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		watchlist:              service.NewWatchlistService(cfg.DB),
 		portfolio:              service.NewPortfolioService(cfg.DB, cfg.Provider),
 		recommendation:         service.NewRecommendationTrackingService(cfg.DB, cfg.Provider),
+		riskService:            service.NewRiskService(cfg.DB, cfg.History, cfg.Provider, service.StopCandidateATRMult),
 		detector:               signals.NewDetector(cfg.Lang),
 		lang:                   cfg.Lang,
 		stopLossPct:            cfg.StopLossPct,
@@ -347,6 +350,23 @@ func (b *Bot) recommendations() *service.RecommendationTrackingService {
 		b.recommendation = service.NewRecommendationTrackingService(b.db, b.provider)
 	}
 	return b.recommendation
+}
+
+var errRiskUnavailable = errors.New("risk service unavailable")
+
+func (b *Bot) risks() *service.RiskService {
+	if b.riskService == nil && b.db != nil {
+		b.riskService = service.NewRiskService(b.db, b.history, b.provider, service.StopCandidateATRMult)
+	}
+	return b.riskService
+}
+
+func (b *Bot) risksOrErr() (*service.RiskService, error) {
+	r := b.risks()
+	if r == nil {
+		return nil, errRiskUnavailable
+	}
+	return r, nil
 }
 
 func (b *Bot) Send(text string) {
