@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/logger"
 	"argus/internal/option"
+	"argus/internal/service"
 )
 
 // parseOptionTradeArgs parses /obuy's and /osell's
@@ -259,30 +259,9 @@ func (b *Bot) sendPortfolioOptionsSection(positions []db.OptionPosition) {
 }
 
 // optionMark fetches p's live chain and returns the mark price (option.Mark)
-// and days-to-expiry for its specific contract. There's no single-contract
-// quote endpoint — Yahoo only serves a whole expiry's chain — so this costs
-// one request per distinct (underlying, expiry) position; fine at
-// single-user, few-position scale (ponytail: cache per-request if
-// /portfolio ever holds enough contracts to make that slow).
+// and days-to-expiry for its specific contract.
 func (b *Bot) optionMark(p db.OptionPosition) (mark float64, dte int, err error) {
-	if b.optionChain == nil {
-		return 0, 0, fmt.Errorf("option chain provider unavailable")
-	}
-	expiry, err := time.Parse("2006-01-02", p.Expiry)
-	if err != nil {
-		return 0, 0, err
-	}
-	quotes, err := b.optionChain.GetOptionChain(p.Underlying, expiry)
-	if err != nil {
-		return 0, 0, err
-	}
-	for _, q := range quotes {
-		if q.ContractSymbol == p.ContractSymbol {
-			dte = int(math.Ceil(time.Until(expiry).Hours() / 24))
-			return option.Mark(q.Bid, q.Ask, q.LastPrice), dte, nil
-		}
-	}
-	return 0, 0, fmt.Errorf("contract not found in chain")
+	return service.OptionMark(b.optionChain, p)
 }
 
 // optionExpiryPayload is the pending_actions.payload shape for
@@ -400,43 +379,7 @@ func (b *Bot) outstandingOptionExpirySymbols() (map[string]bool, error) {
 // same "never block the closing snapshot" convention as the rest of this
 // job.
 func (b *Bot) recordDailyATMIV(tickers []string, prices map[string]float64, date string) {
-	if b.optionChain == nil {
-		return
-	}
-	for _, ticker := range tickers {
-		spot, ok := prices[ticker]
-		if !ok || spot <= 0 {
-			continue
-		}
-		expirations, err := b.optionChain.GetOptionExpirations(ticker)
-		if err != nil || len(expirations) == 0 {
-			continue
-		}
-		expiry := expirations[0]
-		quotes, err := b.optionChain.GetOptionChain(ticker, expiry)
-		if err != nil {
-			continue
-		}
-
-		var atmIV float64
-		bestDiff := math.MaxFloat64
-		for _, q := range quotes {
-			if q.Right != "C" {
-				continue
-			}
-			if diff := math.Abs(q.Strike - spot); diff < bestDiff {
-				bestDiff = diff
-				atmIV = q.ImpliedVolatility
-			}
-		}
-		if atmIV <= 0 {
-			continue
-		}
-		dte := int(math.Ceil(time.Until(expiry).Hours() / 24))
-		if err := b.db.SaveATMIV(ticker, date, atmIV, dte); err != nil {
-			logger.Errorf("record ATM IV %s: %v", ticker, err)
-		}
-	}
+	service.RecordDailyATMIV(b.optionChain, b.db, tickers, prices, date)
 }
 
 // optionSelectMaxResults caps /option's reply — a liquid large-cap chain can
@@ -523,24 +466,5 @@ func (b *Bot) handleOption(args string) {
 // optionMark's doc comment for the same constraint) and runs
 // option.Select over the merged result.
 func (b *Bot) gatherOptionCandidates(ticker string, spot float64, profile option.Profile) ([]option.Candidate, error) {
-	expirations, err := b.optionChain.GetOptionExpirations(ticker)
-	if err != nil {
-		return nil, err
-	}
-	now := time.Now()
-
-	var chain []data.OptionQuote
-	for _, expiry := range expirations {
-		dte := int(math.Ceil(time.Until(expiry).Hours() / 24))
-		if dte < profile.DTEMin || dte > profile.DTEMax {
-			continue
-		}
-		quotes, err := b.optionChain.GetOptionChain(ticker, expiry)
-		if err != nil {
-			logger.Errorf("option select %s @ %s: %v", ticker, expiry.Format("2006-01-02"), err)
-			continue
-		}
-		chain = append(chain, quotes...)
-	}
-	return option.Select(chain, spot, now, profile), nil
+	return service.GatherOptionCandidates(b.optionChain, ticker, spot, profile, time.Now())
 }
