@@ -1114,7 +1114,7 @@ func (b *Bot) loadTheses(tickers []string) map[string]string {
 // "逐檔 vs SPY" item: a position's own holding-period return next to SPY's
 // over the same period. Split out from loadVsSPY (which owns the DB/quote
 // lookups) so the arithmetic is independently testable, same shape as
-// breachAlertDecision.
+// service.BreachAlertDecision.
 func computeVsSPY(currentPrice, avgCost, spyPrice, spyEntryClose float64, bench string) llm.VsSPYReturn {
 	return llm.VsSPYReturn{
 		TickerPct: (currentPrice - avgCost) / avgCost * 100,

@@ -496,3 +496,94 @@ func TestEvaluateTargetAndMA5Alerts(t *testing.T) {
 		t.Fatalf("expected 1 MA5 break alert, got %+v", ma5Alerts)
 	}
 }
+
+// TestBreachAlertDecision/TestStopBreachDecision/TestTargetReachedDecision
+// exercise the boundary/dedup/reset edge cases directly against the pure
+// decision functions — moved here from internal/bot/bot_test.go (Phase 24
+// tech debt 1), which tested them through now-deleted orphan wrapper
+// functions left over from this service's Stage 1.1 extraction.
+
+func TestBreachAlertDecision(t *testing.T) {
+	tests := []struct {
+		name           string
+		adverseMovePct float64
+		thresholdPct   float64
+		prevState      string
+		wantBreached   bool
+		wantAlert      bool
+		wantNewState   string
+	}{
+		{"under threshold, never breached", 5, 10, "", false, false, ""},
+		{"fresh breach alerts", 12, 10, "", true, true, "breached"},
+		{"exactly at threshold counts as breached", 10, 10, "", true, true, "breached"},
+		{"already breached does not re-alert", 15, 10, "breached", true, false, "breached"},
+		{"still under threshold with no prior breach stays quiet", 3, 10, "", false, false, ""},
+		{"recovering under threshold resets state", 8, 10, "breached", false, false, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			breached, alert, newState := BreachAlertDecision(tt.adverseMovePct, tt.thresholdPct, tt.prevState)
+			if breached != tt.wantBreached || alert != tt.wantAlert || newState != tt.wantNewState {
+				t.Errorf("BreachAlertDecision(%v, %v, %q) = %v, %v, %q; want %v, %v, %q",
+					tt.adverseMovePct, tt.thresholdPct, tt.prevState,
+					breached, alert, newState, tt.wantBreached, tt.wantAlert, tt.wantNewState)
+			}
+		})
+	}
+}
+
+func TestStopBreachDecision(t *testing.T) {
+	tests := []struct {
+		name         string
+		close        float64
+		stopPrice    float64
+		prevState    string
+		wantBreached bool
+		wantAlert    bool
+		wantNewState string
+	}{
+		{"above stop, never breached", 105, 100, "", false, false, ""},
+		{"exactly at stop does not breach (long stop is a floor, not a ceiling)", 100, 100, "", false, false, ""},
+		{"fresh breach alerts", 95, 100, "", true, true, "breached"},
+		{"already breached does not re-alert", 90, 100, "breached", true, false, "breached"},
+		{"recovering back at or above stop resets state", 100, 100, "breached", false, false, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			breached, alert, newState := StopBreachDecision(tt.close, tt.stopPrice, tt.prevState)
+			if breached != tt.wantBreached || alert != tt.wantAlert || newState != tt.wantNewState {
+				t.Errorf("StopBreachDecision(%v, %v, %q) = %v, %v, %q; want %v, %v, %q",
+					tt.close, tt.stopPrice, tt.prevState,
+					breached, alert, newState, tt.wantBreached, tt.wantAlert, tt.wantNewState)
+			}
+		})
+	}
+}
+
+func TestTargetReachedDecision(t *testing.T) {
+	tests := []struct {
+		name         string
+		close        float64
+		targetPrice  float64
+		prevState    string
+		wantReached  bool
+		wantAlert    bool
+		wantNewState string
+	}{
+		{"below target, never reached", 95, 100, "", false, false, ""},
+		{"exactly at target reaches (upward threshold, not a floor)", 100, 100, "", true, true, "hit"},
+		{"fresh reach alerts", 105, 100, "", true, true, "hit"},
+		{"already hit does not re-alert", 110, 100, "hit", true, false, "hit"},
+		{"falling back under target resets state", 95, 100, "hit", false, false, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reached, alert, newState := TargetReachedDecision(tt.close, tt.targetPrice, tt.prevState)
+			if reached != tt.wantReached || alert != tt.wantAlert || newState != tt.wantNewState {
+				t.Errorf("TargetReachedDecision(%v, %v, %q) = %v, %v, %q; want %v, %v, %q",
+					tt.close, tt.targetPrice, tt.prevState,
+					reached, alert, newState, tt.wantReached, tt.wantAlert, tt.wantNewState)
+			}
+		})
+	}
+}

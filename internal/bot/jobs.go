@@ -1071,7 +1071,8 @@ func (b *Bot) checkRestrictedAlerts(positions []db.Position, restricted map[stri
 }
 
 // restrictedAlertDecision is checkRestrictedAlerts's pure dedup core,
-// mirroring breachAlertDecision/stopBreachDecision's state-machine shape:
+// mirroring service.BreachAlertDecision/service.StopBreachDecision's
+// state-machine shape:
 // reason == "" means the ticker isn't currently restricted (resets state so
 // a future re-entry alerts again); a non-empty reason alerts once per
 // distinct reason string (so punish -> notice or a renewed period with a
@@ -1143,25 +1144,6 @@ func positionsSlice(positions map[string]db.Position) []db.Position {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Ticker < out[j].Ticker })
 	return out
-}
-
-// breachAlertDecision implements the dedup rule shared by the stop-loss and
-// trailing-stop checks: alert once when an adverse move (a positive
-// percentage — unrealized loss for stop-loss, drawdown from peak for
-// trailing-stop) first crosses thresholdPct, stay silent on later calls
-// while it remains breached, and reset once it recovers back under the
-// threshold so a later re-breach alerts again. Mirrors the RSI/MACD dedup
-// shape in checkStatefulSignals, generalized to a single scalar threshold.
-// prevState is the raw signal_states value; newState is what the caller
-// should persist back via db.SetSignalState ("" clears it, matching
-// GetSignalState's own "unset" representation) — callers should only write
-// it back when it differs from prevState, same as checkStatefulSignals does.
-func breachAlertDecision(adverseMovePct, thresholdPct float64, prevState string) (breached, shouldAlert bool, newState string) {
-	return service.BreachAlertDecision(adverseMovePct, thresholdPct, prevState)
-}
-
-func stopBreachDecision(close, stopPrice float64, prevState string) (breached, shouldAlert bool, newState string) {
-	return service.StopBreachDecision(close, stopPrice, prevState)
 }
 
 // checkStopLossAlerts is Phase 3.11 PR1's two-tier stop-loss check (§3.3).
@@ -1237,10 +1219,6 @@ const (
 	hitState             = service.HitState
 )
 
-func targetReachedDecision(close, targetPrice float64, prevState string) (reached, shouldAlert bool, newState string) {
-	return service.TargetReachedDecision(close, targetPrice, prevState)
-}
-
 // checkTargetAlerts warns once when a position with a stop price set
 // first closes at or above its 2R target.
 func (b *Bot) checkTargetAlerts(positions []db.Position, prices map[string]float64) {
@@ -1293,10 +1271,6 @@ func (b *Bot) checkMA5BreakAlerts(positions []db.Position, prices map[string]flo
 		sb.WriteString(l)
 	}
 	b.Send(sb.String())
-}
-
-func buyAlertTriggered(price float64, alert db.BuyAlert) bool {
-	return service.BuyAlertTriggered(price, alert)
 }
 
 // checkBuyAlerts is the buy-alert counterpart of checkStopLossAlerts etc.
