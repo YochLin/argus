@@ -739,91 +739,10 @@ func dbToDataSnapshot(s *db.FundamentalSnapshot) *data.FundamentalSnapshot {
 	}
 }
 
-// computeTechnicals fetches ticker's daily-candle history and reduces it to
-// the RSI/MACD/moving-average values an LLM prompt needs (see
-// llm.Technicals), plus the most recent promptCandleCount raw candles for
-// llm.StockData.Candles — both from the one GetHistory call, so the K-line
-// context costs no extra fetch. Returns nils (not an error) on a
-// history-fetch failure, so callers degrade the same way the fundamentals
-// fetch above does.
-const (
-	bollingerPeriod    = 20
-	bollingerNumStdDev = 2.0
-	promptCandleCount  = 60
-)
-
+// computeTechnicals is a thin wrapper around service.ComputeTechnicals
+// (Phase 24 Stage 1 Recommendation Pipeline Service extraction).
 func (b *Bot) computeTechnicals(ticker string, spyCloses []float64) (*llm.Technicals, []data.Candle, []llm.StrategyHitInfo) {
-	candles, err := b.history.GetHistory(ticker, "1y")
-	if err != nil {
-		logger.Errorf("history %s: %v", ticker, err)
-		return nil, nil, nil
-	}
-	closes := data.Closes(candles)
-	highs := data.Highs(candles)
-	lows := data.Lows(candles)
-	volumes := data.Volumes(candles)
-
-	t := &llm.Technicals{
-		RSI14:       signals.RSI(closes, 14),
-		MACDTrend:   signals.MACDTrend(closes),
-		MA5:         signals.MA(closes, 5),
-		MA20:        signals.MA(closes, 20),
-		MA50:        signals.MA(closes, 50),
-		MA60:        signals.MA(closes, 60),
-		MA200:       signals.MA(closes, 200),
-		VolumeRatio: signals.VolumeRatio(volumes, 20),
-		ATR14:       signals.ATR(highs, lows, closes, 14),
-		MAAlign:     signals.MAAlignment(closes),
-		VolumePrice: signals.VolumePriceSignal(closes, volumes),
-		NewHigh20:   signals.IsNewHigh(closes, 20),
-		NewHigh52w:  signals.IsNewHigh(closes, len(closes)),
-	}
-
-	if len(closes) >= 26+9 {
-		macdLine, _, _ := signals.MACD(closes)
-		t.MACDAboveZero = &macdLine
-	}
-
-	if k, d := signals.StochasticSeries(highs, lows, closes, 9, 3); k != nil && len(k) > 0 {
-		t.StochK = &k[len(k)-1]
-		t.StochD = &d[len(d)-1]
-	}
-
-	if bw := signals.BollingerBandwidthSeries(closes, bollingerPeriod, bollingerNumStdDev); bw != nil && len(bw) > 0 {
-		t.Bandwidth = &bw[len(bw)-1]
-	}
-
-	if rs, ok := signals.RelativeStrength(closes, spyCloses, 63); ok {
-		t.RS63 = &rs
-	}
-
-	if len(volumes) > 0 {
-		t.Volume = volumes[len(volumes)-1]
-	}
-	if pctB, ok := signals.BollingerPctB(closes, bollingerPeriod, bollingerNumStdDev); ok {
-		t.BollingerPctB = &pctB
-	}
-
-	screenParams := signals.DefaultScreenParams(market.Of(ticker))
-	var stratHits []llm.StrategyHitInfo
-	if hit := signals.SqueezeBreakout(candles, screenParams); hit != nil {
-		stratHits = append(stratHits, llm.StrategyHitInfo{Name: hit.Name, DaysAgo: hit.DaysAgo})
-	}
-	if hit := signals.BoxBottomRebound(candles, screenParams); hit != nil {
-		stratHits = append(stratHits, llm.StrategyHitInfo{Name: hit.Name, DaysAgo: hit.DaysAgo})
-	}
-	if hit := signals.TrendBreakout(candles, screenParams); hit != nil {
-		stratHits = append(stratHits, llm.StrategyHitInfo{Name: hit.Name, DaysAgo: hit.DaysAgo})
-	}
-	if hit := signals.TrendPullback(candles, screenParams); hit != nil {
-		stratHits = append(stratHits, llm.StrategyHitInfo{Name: hit.Name, DaysAgo: hit.DaysAgo})
-	}
-
-	recent := candles
-	if len(recent) > promptCandleCount {
-		recent = recent[len(recent)-promptCandleCount:]
-	}
-	return t, recent, stratHits
+	return service.ComputeTechnicals(b.history, ticker, spyCloses)
 }
 
 // stopCandidateATRMult is the ATR multiplier for the volatility-adaptive
@@ -872,56 +791,12 @@ func (b *Bot) accountValue(m market.MarketID) (float64, bool) {
 	return total, true
 }
 
-// computeMarketRegime builds Phase 3.7 追加項's broad-market context block
-// (see docs/phase-3.7-market-regime.md and llm.MarketContext): benchmarkFor
-// (m)'s own trend (SPY for US, 0050 for TW as of Phase 6 PR2 — last close
-// from a single GetHistory call, no separate GetQuote) and a volatility
-// reading — US gets ^VIX's latest level (via the ordinary Multi quote
-// chain — Finnhub returns an error-shaped-but-200 body for CFD indices it
-// doesn't support, which decodes as an all-zero quote and falls through to
-// Yahoo exactly like any other "no data" quote, confirmed by live testing,
-// see the design doc). TW gets VolProxyPct instead (2026-07-28 TW data-gap
-// PR): no TW volatility-index dataset exists at all, free or paid (FinMind's
-// TaiwanOptionVix live-tested behind a paid-tier wall), so this computes
-// ATR14/close as a percentage off the same 0050 candles already fetched for
-// the benchmark line above — zero extra network call, a rougher proxy than
-// an options-implied index, but the best available without one. Either half
-// failing just logs and leaves that half's fields at 0 (skipped by
-// writeMarketContext's per-field rendering); both failing returns nil so the
-// caller sees "no regime data" rather than an all-zero struct.
+// computeMarketRegime is a thin wrapper around service.ComputeMarketRegime
+// (Phase 24 Stage 1 Recommendation Pipeline Service extraction) — benchTicker/
+// vixTicker resolution (SPY/0050, ^VIX) stays a bot-layer policy choice, same
+// reasoning as rankAndTruncateCandidates' benchTicker param.
 func (b *Bot) computeMarketRegime(m market.MarketID) *llm.MarketContext {
-	var mc llm.MarketContext
-
-	bench := benchmarkFor(m)
-	mc.Bench = bench
-	candles, err := b.history.GetHistory(bench, "1y")
-	if err != nil {
-		logger.Errorf("market regime: %s history: %v", bench, err)
-	} else if len(candles) > 0 {
-		closes := data.Closes(candles)
-		mc.SPYPrice = closes[len(closes)-1]
-		mc.SPYMA50 = signals.MA(closes, 50)
-		mc.SPYMA200 = signals.MA(closes, 200)
-
-		if m == market.TW {
-			if atr := signals.ATR(data.Highs(candles), data.Lows(candles), closes, 14); atr > 0 && mc.SPYPrice > 0 {
-				mc.VolProxyPct = atr / mc.SPYPrice * 100
-			}
-		}
-	}
-
-	if m == market.US {
-		if q, err := b.provider.GetQuote(vixTicker); err != nil {
-			logger.Errorf("market regime: %s quote: %v", vixTicker, err)
-		} else {
-			mc.VIX = q.Price
-		}
-	}
-
-	if mc.SPYPrice == 0 && mc.VIX == 0 {
-		return nil
-	}
-	return &mc
+	return service.ComputeMarketRegime(b.history, b.provider, m, benchmarkFor(m), vixTicker)
 }
 
 // isBearRegime returns true if the market context indicates a weak/bear regime
