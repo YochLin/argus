@@ -102,6 +102,7 @@ type Bot struct {
 	recommendation  *service.RecommendationTrackingService
 	riskService     *service.RiskService
 	snapshotService *service.SnapshotService
+	paperService    *service.PaperService
 	detector        *signals.Detector
 	lang            i18n.Lang
 
@@ -303,6 +304,7 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		recommendation:         service.NewRecommendationTrackingService(cfg.DB, cfg.Provider),
 		riskService:            service.NewRiskService(cfg.DB, cfg.History, cfg.Provider, service.StopCandidateATRMult),
 		snapshotService:        service.NewSnapshotService(cfg.DB, cfg.Provider),
+		paperService:           newPaperService(cfg.PaperDB, cfg.Provider, cfg.PaperInitialCashUSD, cfg.PaperInitialCashTWD, cfg.PaperTakeProfitATRMult),
 		detector:               signals.NewDetector(cfg.Lang),
 		lang:                   cfg.Lang,
 		stopLossPct:            cfg.StopLossPct,
@@ -376,6 +378,22 @@ func (b *Bot) snapshots() *service.SnapshotService {
 		b.snapshotService = service.NewSnapshotService(b.db, b.provider)
 	}
 	return b.snapshotService
+}
+
+// newPaperService is nil when paperDB is nil (PAPER_DB_PATH unset), same
+// presence-of-config convention every /paper feature check already uses.
+func newPaperService(paperDB *db.DB, quotes data.Provider, initialCashUSD, initialCashTWD, takeProfitATRMult float64) *service.PaperService {
+	if paperDB == nil {
+		return nil
+	}
+	return service.NewPaperService(paperDB, quotes, initialCashUSD, initialCashTWD, takeProfitATRMult)
+}
+
+func (b *Bot) papers() *service.PaperService {
+	if b.paperService == nil && b.paperDB != nil {
+		b.paperService = service.NewPaperService(b.paperDB, b.provider, b.paperInitialCashUSD, b.paperInitialCashTWD, b.paperTakeProfitATRMult)
+	}
+	return b.paperService
 }
 
 func (b *Bot) Send(text string) {

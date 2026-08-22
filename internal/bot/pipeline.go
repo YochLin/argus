@@ -15,7 +15,6 @@ import (
 	"argus/internal/market"
 	"argus/internal/paper"
 	"argus/internal/service"
-	"argus/internal/signals"
 )
 
 // recommendationInputs bundles everything handleRecommend and RunDailyReport
