@@ -18,6 +18,7 @@ type mockRiskStore struct {
 	buyAlerts      map[int64]db.BuyAlert
 	nextAlertID    int64
 	removeAlertErr error
+	failOnAlertID  int64
 }
 
 func newMockRiskStore() *mockRiskStore {
@@ -94,6 +95,9 @@ func (m *mockRiskStore) GetBuyAlertsByTicker(ticker string) ([]db.BuyAlert, erro
 func (m *mockRiskStore) RemoveBuyAlert(id int64) error {
 	if m.removeAlertErr != nil {
 		return m.removeAlertErr
+	}
+	if m.failOnAlertID != 0 && id == m.failOnAlertID {
+		return errors.New("failed to remove specific alert")
 	}
 	delete(m.buyAlerts, id)
 	return nil
@@ -312,6 +316,88 @@ func TestBuyAlerts(t *testing.T) {
 	if len(remainingAfter) != 0 {
 		t.Fatalf("expected 0 alerts remaining, got %v", len(remainingAfter))
 	}
+}
+
+func TestRemoveBuyAlertByPrice_DuplicatesAndPartialFailure(t *testing.T) {
+	// Case 1: Multiple duplicate alerts matching same ticker and price - all removed successfully
+	t.Run("all duplicates removed successfully", func(t *testing.T) {
+		store := newMockRiskStore()
+		quotes := &mockRiskQuotes{quotes: map[string]*data.Quote{"TSLA": {Ticker: "TSLA", Price: 200}}}
+		svc := NewRiskService(store, nil, quotes, 2.0)
+
+		_, err := svc.AddBuyAlert(BuyAlertInput{Ticker: "TSLA", Price: 180})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		_, err = svc.AddBuyAlert(BuyAlertInput{Ticker: "TSLA", Price: 180})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		removed, err := svc.RemoveBuyAlertByPrice("TSLA", 180)
+		if err != nil || !removed {
+			t.Fatalf("expected removed=true, err=nil, got removed=%v, err=%v", removed, err)
+		}
+
+		remaining, err := svc.GetBuyAlerts("TSLA")
+		if err != nil || len(remaining) != 0 {
+			t.Fatalf("expected 0 remaining alerts, got %d, err=%v", len(remaining), err)
+		}
+	})
+
+	// Case 2: Duplicate alerts where one fails during removal - partial success returned with joined error
+	t.Run("partial failure with duplicates", func(t *testing.T) {
+		store := newMockRiskStore()
+		quotes := &mockRiskQuotes{quotes: map[string]*data.Quote{"TSLA": {Ticker: "TSLA", Price: 200}}}
+		svc := NewRiskService(store, nil, quotes, 2.0)
+
+		res1, err := svc.AddBuyAlert(BuyAlertInput{Ticker: "TSLA", Price: 180})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		res2, err := svc.AddBuyAlert(BuyAlertInput{Ticker: "TSLA", Price: 180})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Fail on removing res2
+		store.failOnAlertID = res2.ID
+
+		removed, err := svc.RemoveBuyAlertByPrice("TSLA", 180)
+		if err == nil {
+			t.Fatalf("expected error due to partial failure, got nil")
+		}
+		if !removed {
+			t.Fatalf("expected removed=true because res1 was removed, got removed=false")
+		}
+
+		// Verify res1 was removed and res2 remains
+		remaining, err := svc.GetBuyAlerts("TSLA")
+		if err != nil || len(remaining) != 1 || remaining[0].ID != res2.ID || remaining[0].ID == res1.ID {
+			t.Fatalf("expected only res2 (ID=%d) to remain, got %v, err=%v", res2.ID, remaining, err)
+		}
+	})
+
+	// Case 3: All matching alerts fail to remove
+	t.Run("all matches fail to remove", func(t *testing.T) {
+		store := newMockRiskStore()
+		quotes := &mockRiskQuotes{quotes: map[string]*data.Quote{"TSLA": {Ticker: "TSLA", Price: 200}}}
+		svc := NewRiskService(store, nil, quotes, 2.0)
+
+		_, err := svc.AddBuyAlert(BuyAlertInput{Ticker: "TSLA", Price: 180})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		store.removeAlertErr = errors.New("db write locked")
+		removed, err := svc.RemoveBuyAlertByPrice("TSLA", 180)
+		if err == nil {
+			t.Fatalf("expected error, got nil")
+		}
+		if removed {
+			t.Fatalf("expected removed=false when deletion fails completely, got removed=true")
+		}
+	})
 }
 
 func TestEvaluateStopLoss(t *testing.T) {

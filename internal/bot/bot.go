@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -351,11 +352,21 @@ func (b *Bot) recommendations() *service.RecommendationTrackingService {
 	return b.recommendation
 }
 
+var errRiskUnavailable = errors.New("risk service unavailable")
+
 func (b *Bot) risks() *service.RiskService {
 	if b.riskService == nil && b.db != nil {
 		b.riskService = service.NewRiskService(b.db, b.history, b.provider, service.StopCandidateATRMult)
 	}
 	return b.riskService
+}
+
+func (b *Bot) risksOrErr() (*service.RiskService, error) {
+	r := b.risks()
+	if r == nil {
+		return nil, errRiskUnavailable
+	}
+	return r, nil
 }
 
 func (b *Bot) Send(text string) {

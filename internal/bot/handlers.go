@@ -431,9 +431,9 @@ func (b *Bot) handleStop(args string) {
 // same one computeStopSuggestion already computes for the candidate display,
 // so both entry points reject against exactly the number the user would see.
 func (b *Bot) setStop(ticker string, price float64) (string, error) {
-	r := b.risks()
-	if r == nil {
-		return i18n.T(b.lang, i18n.KeyQueryFailed, "risk service unavailable"), errors.New("risk service unavailable")
+	r, err := b.risksOrErr()
+	if err != nil {
+		return i18n.T(b.lang, i18n.KeyQueryFailed, err), err
 	}
 	res, err := r.SetStop(service.SetStopInput{Ticker: ticker, Price: price})
 	if err != nil {
@@ -591,9 +591,9 @@ func (b *Bot) handleBuyAlert(args string) {
 // infers direction identically instead of duplicating the quote fetch —
 // same split as setStop/ExecuteSetStop.
 func (b *Bot) addBuyAlert(ticker string, price float64) (string, error) {
-	r := b.risks()
-	if r == nil {
-		return i18n.T(b.lang, i18n.KeyBuyAlertQueryFailed, "risk service unavailable"), errors.New("risk service unavailable")
+	r, err := b.risksOrErr()
+	if err != nil {
+		return i18n.T(b.lang, i18n.KeyBuyAlertQueryFailed, err), err
 	}
 	res, err := r.AddBuyAlert(service.BuyAlertInput{Ticker: ticker, Price: price})
 	if err != nil {
@@ -606,9 +606,9 @@ func (b *Bot) addBuyAlert(ticker string, price float64) (string, error) {
 // showBuyAlerts renders /buyalert TICKER's no-price branch: every alert
 // currently set on ticker, oldest first.
 func (b *Bot) showBuyAlerts(ticker string) {
-	r := b.risks()
-	if r == nil {
-		b.Send(i18n.T(b.lang, i18n.KeyBuyAlertQueryFailed, "risk service unavailable"))
+	r, err := b.risksOrErr()
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyBuyAlertQueryFailed, err))
 		return
 	}
 	alerts, err := r.GetBuyAlerts(ticker)
@@ -634,9 +634,9 @@ func (b *Bot) showBuyAlerts(ticker string) {
 // has (same tradeoff as most chat commands operating on human-entered
 // numbers rather than internal ids).
 func (b *Bot) removeBuyAlert(ticker string, price float64) {
-	r := b.risks()
-	if r == nil {
-		b.Send(i18n.T(b.lang, i18n.KeyBuyAlertQueryFailed, "risk service unavailable"))
+	r, err := b.risksOrErr()
+	if err != nil {
+		b.Send(i18n.T(b.lang, i18n.KeyBuyAlertQueryFailed, err))
 		return
 	}
 	removed, err := r.RemoveBuyAlertByPrice(ticker, price)

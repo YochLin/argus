@@ -299,14 +299,21 @@ func (s *RiskService) RemoveBuyAlertByPrice(ticker string, price float64) (bool,
 	if err != nil {
 		return false, err
 	}
-	removed := false
+	var (
+		removed bool
+		errs    []error
+	)
 	for _, a := range alerts {
 		if math.Abs(a.Price-price) < 1e-4 {
 			if err := s.store.RemoveBuyAlert(a.ID); err != nil {
-				return false, err
+				errs = append(errs, err)
+				continue
 			}
 			removed = true
 		}
+	}
+	if len(errs) > 0 {
+		return removed, errors.Join(errs...)
 	}
 	return removed, nil
 }
