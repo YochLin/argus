@@ -3,10 +3,36 @@ package bot
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"argus/internal/data"
 	"argus/internal/db"
 )
+
+// flatCandles builds n days of flat OHLCV at the given close/volume, oldest
+// first — enough bars for cachedValuationSnapshot's callers to run without
+// needing real market data.
+func flatCandles(n int, close float64, volume int64) []data.Candle {
+	out := make([]data.Candle, n)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < n; i++ {
+		out[i] = data.Candle{
+			Date: start.AddDate(0, 0, i),
+			Open: close, High: close, Low: close, Close: close,
+			Volume: volume,
+		}
+	}
+	return out
+}
+
+// rankHistoryStub is a data.HistoryProvider stub keyed by ticker.
+type rankHistoryStub struct {
+	byTicker map[string][]data.Candle
+}
+
+func (s rankHistoryStub) GetHistory(ticker, rangeParam string) ([]data.Candle, error) {
+	return s.byTicker[ticker], nil
+}
 
 // fakeSECProvider is a data.FundamentalHistoryProvider stub recording call
 // count, so a test can assert a cache hit skipped the network entirely.

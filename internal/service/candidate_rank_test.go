@@ -1,27 +1,26 @@
-package bot
+package service
 
 import (
 	"testing"
 	"time"
 
 	"argus/internal/data"
-	"argus/internal/market"
 )
 
 func TestNormalize01(t *testing.T) {
-	if got := normalize01(nil); len(got) != 0 {
-		t.Errorf("normalize01(nil) = %v, want empty", got)
+	if got := Normalize01(nil); len(got) != 0 {
+		t.Errorf("Normalize01(nil) = %v, want empty", got)
 	}
-	equal := normalize01([]float64{5, 5, 5})
+	equal := Normalize01([]float64{5, 5, 5})
 	for _, v := range equal {
 		if v != 0.5 {
-			t.Errorf("normalize01(equal) = %v, want all 0.5", equal)
+			t.Errorf("Normalize01(equal) = %v, want all 0.5", equal)
 			break
 		}
 	}
-	spread := normalize01([]float64{10, 20, 30})
+	spread := Normalize01([]float64{10, 20, 30})
 	if spread[0] != 0 || spread[2] != 1 || spread[1] != 0.5 {
-		t.Errorf("normalize01(spread) = %v, want [0, 0.5, 1]", spread)
+		t.Errorf("Normalize01(spread) = %v, want [0, 0.5, 1]", spread)
 	}
 }
 
@@ -41,7 +40,7 @@ func flatCandles(n int, close float64, volume int64) []data.Candle {
 	return out
 }
 
-// rankHistoryStub is a data.HistoryProvider stub keyed by ticker for
+// rankHistoryStub is a RiskHistoryReader stub keyed by ticker for
 // TestRankAndTruncateCandidates below.
 type rankHistoryStub struct {
 	byTicker map[string][]data.Candle
@@ -52,11 +51,8 @@ func (s rankHistoryStub) GetHistory(ticker, rangeParam string) ([]data.Candle, e
 }
 
 func TestRankAndTruncateCandidates(t *testing.T) {
-	b := &Bot{}
-
 	t.Run("no-op under the cap", func(t *testing.T) {
-		b.history = rankHistoryStub{}
-		got := b.rankAndTruncateCandidates([]string{"AAA", "BBB"}, market.US, 5)
+		got := RankAndTruncateCandidates(rankHistoryStub{}, []string{"AAA", "BBB"}, "SPY", 5)
 		if len(got) != 2 {
 			t.Fatalf("len = %d, want 2 (no-op)", len(got))
 		}
@@ -71,12 +67,12 @@ func TestRankAndTruncateCandidates(t *testing.T) {
 		}
 		weak := flatCandles(120, 50, 10_000) // thin, no momentum
 
-		b.history = rankHistoryStub{byTicker: map[string][]data.Candle{
+		history := rankHistoryStub{byTicker: map[string][]data.Candle{
 			"SPY":    bench,
 			"STRONG": strong,
 			"WEAK":   weak,
 		}}
-		got := b.rankAndTruncateCandidates([]string{"STRONG", "WEAK"}, market.US, 1)
+		got := RankAndTruncateCandidates(history, []string{"STRONG", "WEAK"}, "SPY", 1)
 		if len(got) != 1 {
 			t.Fatalf("len = %d, want 1", len(got))
 		}
@@ -86,11 +82,11 @@ func TestRankAndTruncateCandidates(t *testing.T) {
 	})
 
 	t.Run("unscoreable ticker (fetch failure) survives with a neutral score, not dropped outright", func(t *testing.T) {
-		b.history = rankHistoryStub{byTicker: map[string][]data.Candle{
+		history := rankHistoryStub{byTicker: map[string][]data.Candle{
 			"KNOWN": flatCandles(120, 100, 1_000_000),
 			// "MISSING" has no entry -> GetHistory returns nil, nil (unscoreable)
 		}}
-		got := b.rankAndTruncateCandidates([]string{"KNOWN", "MISSING"}, market.US, 2)
+		got := RankAndTruncateCandidates(history, []string{"KNOWN", "MISSING"}, "SPY", 2)
 		if len(got) != 2 {
 			t.Fatalf("len = %d, want 2 (both kept, under cap)", len(got))
 		}
