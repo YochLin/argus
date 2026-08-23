@@ -104,12 +104,12 @@ func newTradeTestServer(password string, trade TradeExecutor, wl watchlistWriter
 	}
 	s.mux = http.NewServeMux()
 	s.mux.HandleFunc("POST /api/login", s.requireWritable(s.handleLogin))
-	s.mux.HandleFunc("POST /api/trade/buy", s.requireWritable(s.requireAuth(s.handleTradeBuy)))
-	s.mux.HandleFunc("POST /api/trade/sell", s.requireWritable(s.requireAuth(s.handleTradeSell)))
-	s.mux.HandleFunc("POST /api/stop", s.requireWritable(s.requireAuth(s.handleSetStop)))
+	s.mux.HandleFunc("POST /api/trade/buy", s.requireWritable(s.requireAuth(s.requireTrade(s.handleTradeBuy))))
+	s.mux.HandleFunc("POST /api/trade/sell", s.requireWritable(s.requireAuth(s.requireTrade(s.handleTradeSell))))
+	s.mux.HandleFunc("POST /api/stop", s.requireWritable(s.requireAuth(s.requireTrade(s.handleSetStop))))
 	s.mux.HandleFunc("POST /api/watchlist/add", s.requireWritable(s.requireAuth(s.handleWatchlistAdd)))
 	s.mux.HandleFunc("POST /api/watchlist/remove", s.requireWritable(s.requireAuth(s.handleWatchlistRemove)))
-	s.mux.HandleFunc("POST /api/buy-alerts/add", s.requireWritable(s.requireAuth(s.handleBuyAlertAdd)))
+	s.mux.HandleFunc("POST /api/buy-alerts/add", s.requireWritable(s.requireAuth(s.requireTrade(s.handleBuyAlertAdd))))
 	s.mux.HandleFunc("POST /api/buy-alerts/remove", s.requireWritable(s.requireAuth(s.handleBuyAlertRemove)))
 	s.mux.HandleFunc("POST /api/thesis", s.requireWritable(s.requireAuth(s.handleThesisSet)))
 	return s
@@ -381,4 +381,42 @@ func TestNew_WriteRoutesGatedByPassword(t *testing.T) {
 			t.Errorf("status = %d, want 401 (route exists, no cookie)", rec.Code)
 		}
 	})
+}
+
+// Phase 17 PR1: Telegram is optional, so an authenticated write can now
+// reach a Server whose Trade is nil. The trade-backed routes must say so
+// (409) instead of panicking, while the DB-backed writes on the same gate
+// keep working — that split is the whole point of requireTrade covering
+// only four of them.
+func TestWriteRoutes_NoTelegramConfigured(t *testing.T) {
+	s := newTradeTestServer("secret", nil, &fakeWatchlistDB{})
+	cookie := loginAndGetCookie(t, s, "secret")
+
+	post := func(t *testing.T, path string, body any) int {
+		t.Helper()
+		raw, _ := json.Marshal(body)
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(raw))
+		req.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	for _, tc := range []struct {
+		path string
+		body any
+	}{
+		{"/api/trade/buy", tradeRequest{Ticker: "AAPL", Shares: 1, Price: 1}},
+		{"/api/trade/sell", tradeRequest{Ticker: "AAPL", Shares: 1, Price: 1}},
+		{"/api/stop", stopRequest{Ticker: "AAPL", Price: 1}},
+		{"/api/buy-alerts/add", buyAlertRequest{Ticker: "AAPL", Price: 1}},
+	} {
+		if got := post(t, tc.path, tc.body); got != http.StatusConflict {
+			t.Errorf("POST %s status = %d, want 409 when Trade is nil", tc.path, got)
+		}
+	}
+
+	if got := post(t, "/api/watchlist/add", tickerRequest{Ticker: "AAPL"}); got != http.StatusOK {
+		t.Errorf("POST /api/watchlist/add status = %d, want 200 (no TradeExecutor needed)", got)
+	}
 }

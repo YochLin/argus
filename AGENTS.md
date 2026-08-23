@@ -29,8 +29,10 @@ docker compose up --build    # build + run in Docker (uses .env, mounts ./data -
 
 There's no broad test suite; `internal/i18n` has the one exception (`go test ./internal/i18n/...`), which
 checks the zh/en message tables stay in sync — see that package's entry below. Setup: copy `.env.example`
-to `.env` and fill in `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` (required) and `FINNHUB_API_KEY`
-(optional). The LLM needs no API key — run `claude` once on this machine and log in with your Claude
+to `.env` and fill in `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` — since Phase 17 these may be left
+blank, in which case the process still starts with Telegram disabled entirely (no bot, no scheduled
+reports) and everything else running, so they can be filled in later from the web dashboard's Settings
+page — plus `FINNHUB_API_KEY` (optional). The LLM needs no API key — run `claude` once on this machine and log in with your Claude
 Pro/Max account first (see `internal/llm` below); Node.js (`npx`) must also be installed since the bot
 shells out to an ACP agent process.
 

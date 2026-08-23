@@ -17,6 +17,12 @@ import (
 // place that should call os.Getenv for these; everything downstream just
 // reads the struct.
 type Config struct {
+	// TelegramToken/ChatID are optional (Phase 17 PR1, see
+	// docs/phase-17-web-settings.md §3): an unset or unparseable pair leaves
+	// them zero-valued and main.go simply never constructs the bot, rather
+	// than the whole process dying before the web dashboard can come up.
+	// That's the whole point — the dashboard's Settings page is where these
+	// get filled in, so it can't be downstream of them being set already.
 	TelegramToken string
 	ChatID        int64
 	FinnhubKey    string
@@ -120,9 +126,11 @@ type Config struct {
 }
 
 // loadConfig reads .env (if present) and every env var main()'s bot
-// subcommand needs, applying defaults/validation. Missing required vars
-// (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID) or an unparseable TELEGRAM_CHAT_ID
-// exit the process via logger.Fatalf, same as before this was extracted.
+// subcommand needs, applying defaults/validation. Nothing here is fatal
+// any more (Phase 17 PR1): a missing/unparseable TELEGRAM_CHAT_ID logs and
+// leaves Telegram off instead of killing the process, so a deployment with
+// only WEB_ADDR/WEB_PASSWORD set still boots far enough to serve the
+// Settings page that configures the rest.
 func loadConfig() Config {
 	envErr := godotenv.Load()
 	logger.Configure(os.Stderr, logger.ParseLevel(os.Getenv("LOG_LEVEL")))
@@ -130,14 +138,21 @@ func loadConfig() Config {
 		logger.Info("no .env file found, reading env from environment")
 	}
 
-	chatIDStr := mustEnv("TELEGRAM_CHAT_ID")
-	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
-	if err != nil {
-		logger.Fatalf("invalid TELEGRAM_CHAT_ID: %v", err)
+	// An empty TELEGRAM_CHAT_ID is a legitimate "Telegram not configured
+	// yet" state and stays silent; a non-empty unparseable one is a typo
+	// worth an error line, since the symptom (bot never starts) is otherwise
+	// indistinguishable from not having set it at all.
+	var chatID int64
+	if raw := os.Getenv("TELEGRAM_CHAT_ID"); raw != "" {
+		parsed, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			logger.Errorf("invalid TELEGRAM_CHAT_ID %q: Telegram stays disabled until it's a number", raw)
+		}
+		chatID = parsed
 	}
 
 	return Config{
-		TelegramToken: mustEnv("TELEGRAM_BOT_TOKEN"),
+		TelegramToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
 		ChatID:        chatID,
 		FinnhubKey:    os.Getenv("FINNHUB_API_KEY"),
 		FinMindToken:  os.Getenv("FINMIND_TOKEN"),
@@ -177,14 +192,6 @@ func loadConfig() Config {
 		BackupDir:           envOr("BACKUP_DIR", "data/backups"),
 		BackupRetentionDays: envOrInt("BACKUP_RETENTION_DAYS", 14),
 	}
-}
-
-func mustEnv(key string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		logger.Fatalf("required env var %s is not set", key)
-	}
-	return v
 }
 
 func envOr(key, fallback string) string {
