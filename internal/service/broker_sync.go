@@ -75,8 +75,8 @@ func (s *BrokerSyncService) FetchTrades(ctx context.Context, skip map[string]boo
 // pending_actions (status pending or sent) — a second dedup layer alongside
 // NewTrades' TransactionExtIDExists check, needed because a trade proposed
 // but not yet confirmed hasn't reached transactions yet. extractExtID
-// decodes a pending_action's payload — its shape (bot's tradePayload /
-// mcptools' own copy) is a caller concern, not this service's.
+// decodes a pending_action's payload — its shape (TradePayload) is a caller
+// concern, not this service's.
 func (s *BrokerSyncService) QueuedExtIDs(extractExtID func(payload string) (extID string, ok bool)) (map[string]bool, error) {
 	out := make(map[string]bool)
 	for _, status := range []string{db.PendingActionStatusPending, db.PendingActionStatusSent} {

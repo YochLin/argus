@@ -8,6 +8,7 @@ import (
 
 	"argus/internal/db"
 	"argus/internal/i18n"
+	"argus/internal/service"
 )
 
 func TestRecordBuyCreatesPendingActionNotAPosition(t *testing.T) {
@@ -39,9 +40,9 @@ func TestRecordBuyCreatesPendingActionNotAPosition(t *testing.T) {
 	if a.ActionType != db.PendingActionRecordBuy {
 		t.Errorf("ActionType = %q, want %q", a.ActionType, db.PendingActionRecordBuy)
 	}
-	var payload tradePayload
+	var payload service.TradePayload
 	if err := json.Unmarshal([]byte(a.Payload), &payload); err != nil {
-		t.Fatalf("Payload didn't decode as tradePayload: %v", err)
+		t.Fatalf("Payload didn't decode as service.TradePayload: %v", err)
 	}
 	if payload.Ticker != "AAPL" || payload.Shares != 10.0 || payload.Price != 200.0 || payload.Fee == nil || *payload.Fee != 1.5 || payload.Date != "2026-01-15" {
 		t.Errorf("Payload = %+v, want ticker=AAPL shares=10 price=200 fee=1.5 date=2026-01-15", payload)
@@ -69,7 +70,7 @@ func TestRecordSellCreatesPendingAction(t *testing.T) {
 	}
 
 	// date omitted should default to today, not be left blank.
-	var payload tradePayload
+	var payload service.TradePayload
 	if err := json.Unmarshal([]byte(pending[0].Payload), &payload); err != nil {
 		t.Fatalf("Payload didn't decode: %v", err)
 	}

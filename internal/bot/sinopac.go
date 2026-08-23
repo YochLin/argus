@@ -10,6 +10,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/logger"
+	"argus/internal/service"
 	"argus/internal/sinopac"
 )
 
@@ -105,7 +106,7 @@ func (b *Bot) createSinopacPendingAction(t sinopac.Trade) error {
 	if t.Side == "SELL" {
 		actionType = db.PendingActionRecordSell
 	}
-	payload, err := json.Marshal(tradePayload{Ticker: t.Ticker, Shares: t.Shares, Price: t.Price, Date: t.Date, ExtID: t.ExtID})
+	payload, err := json.Marshal(service.TradePayload{Ticker: t.Ticker, Shares: t.Shares, Price: t.Price, Date: t.Date, ExtID: t.ExtID})
 	if err != nil {
 		return err
 	}
