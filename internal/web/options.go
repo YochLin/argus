@@ -1,15 +1,14 @@
 package web
 
 import (
-	"math"
 	"sort"
-	"time"
 
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/option"
+	"argus/internal/service"
 )
 
 // optionsResponse is /api/options's body (Phase 12 PR4, US-only —
@@ -165,39 +164,28 @@ func buildOptions(database dbReader, optionChain data.OptionChainProvider, quote
 	return resp, nil
 }
 
-// fetchOptionMarkAndGreeks fetches p's live chain and returns its mark
-// price, days-to-expiry, and Black-Scholes greeks — ok=false on any fetch
+// fetchOptionMarkAndGreeks fetches p's live chain via service.FindOptionQuote
+// (the same chain-fetch-and-match step internal/bot's Bot.optionMark uses
+// for mark/dte alone) and layers Black-Scholes greeks on top, since that IV
+// input only this package's Greeks display needs. ok=false on any fetch
 // failure or if the contract has since dropped out of the chain (e.g. the
 // expiry passed), which the caller treats as a degraded row, not a hard
-// error. Mirrors internal/bot's Bot.optionMark; not shared between the two
-// packages for the same can't-share-an-import reason as
-// cashSettingKeyFor/loadCash elsewhere in this package.
+// error.
 func fetchOptionMarkAndGreeks(optionChain data.OptionChainProvider, quotes quoteGetter, p db.OptionPosition) (mark float64, dte int, g option.Greeks, ok bool) {
-	expiry, err := time.Parse("2006-01-02", p.Expiry)
+	q, dte, err := service.FindOptionQuote(optionChain, p)
 	if err != nil {
 		return 0, 0, option.Greeks{}, false
 	}
-	chainQuotes, err := optionChain.GetOptionChain(p.Underlying, expiry)
-	if err != nil {
-		return 0, 0, option.Greeks{}, false
-	}
-	for _, q := range chainQuotes {
-		if q.ContractSymbol != p.ContractSymbol {
-			continue
-		}
-		mark = option.Mark(q.Bid, q.Ask, q.LastPrice)
-		dte = int(math.Ceil(time.Until(expiry).Hours() / 24))
+	mark = option.Mark(q.Bid, q.Ask, q.LastPrice)
 
-		var spot float64
-		if sq, err := quotes.GetQuote(p.Underlying); err == nil {
-			spot = sq.Price
-		}
-		right := option.Call
-		if p.Right == "P" {
-			right = option.Put
-		}
-		g = option.BlackScholesGreeks(spot, p.Strike, float64(dte)/365, option.RiskFreeRate, q.ImpliedVolatility, 0, right)
-		return mark, dte, g, true
+	var spot float64
+	if sq, err := quotes.GetQuote(p.Underlying); err == nil {
+		spot = sq.Price
 	}
-	return 0, 0, option.Greeks{}, false
+	right := option.Call
+	if p.Right == "P" {
+		right = option.Put
+	}
+	g = option.BlackScholesGreeks(spot, p.Strike, float64(dte)/365, option.RiskFreeRate, q.ImpliedVolatility, 0, right)
+	return mark, dte, g, true
 }
