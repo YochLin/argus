@@ -7,6 +7,7 @@ import (
 	"argus/internal/llm"
 	"argus/internal/logger"
 	"argus/internal/market"
+	"argus/internal/notification"
 	"argus/internal/paper"
 	"argus/internal/service"
 )
@@ -128,10 +129,10 @@ func (b *Bot) runPaperClose(m market.MarketID, date string, prices map[string]fl
 // so it reads as clearly distinct from a real /buy or /sell confirmation.
 func (b *Bot) sendPaperTradeAlert(t paper.Trade, cashAfter float64) {
 	if t.Side == "BUY" {
-		b.Send(i18n.T(b.lang, i18n.KeyPaperBuyAlert, b.tickerLabel(t.Ticker), t.Shares, t.Price, t.Stop, cashAfter))
+		b.publishAlert("paper_trade", notification.LevelInfo, i18n.T(b.lang, i18n.KeyPaperBuyAlert, b.tickerLabel(t.Ticker), t.Shares, t.Price, t.Stop, cashAfter))
 		return
 	}
-	b.Send(i18n.T(b.lang, i18n.KeyPaperSellAlert, b.tickerLabel(t.Ticker), t.Shares, t.Price, t.Reason, t.RealizedPnL, cashAfter))
+	b.publishAlert("paper_trade", notification.LevelInfo, i18n.T(b.lang, i18n.KeyPaperSellAlert, b.tickerLabel(t.Ticker), t.Shares, t.Price, t.Reason, t.RealizedPnL, cashAfter))
 }
 
 // handlePaper is the /paper command: no argument reports both markets'

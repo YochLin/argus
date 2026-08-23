@@ -11,6 +11,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/llm"
+	"argus/internal/notification"
 	"argus/internal/service"
 	"argus/internal/signals"
 	"argus/internal/sinopac"
@@ -53,6 +54,7 @@ const (
 
 type Bot struct {
 	channel       Channel
+	notifier      *notification.Dispatcher
 	db            *db.DB
 	provider      data.Provider
 	fundamentals  data.FundamentalsProvider       // nil if FINNHUB_API_KEY isn't set
@@ -277,8 +279,14 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 	if trailingStopPctTW == 0 {
 		trailingStopPctTW = cfg.TrailingStopPct
 	}
+	notifiers := []notification.Notifier{notification.NewTelegramNotifier(channel)}
+	if cfg.DB != nil {
+		notifiers = append(notifiers, notification.NewInAppNotificationStore(cfg.DB))
+	}
+
 	b := &Bot{
 		channel:                channel,
+		notifier:               notification.NewDispatcher(notifiers...),
 		db:                     cfg.DB,
 		provider:               cfg.Provider,
 		fundamentals:           cfg.Fundamentals,
@@ -439,6 +447,15 @@ func (b *Bot) brokerSync() *service.BrokerSyncService {
 
 func (b *Bot) Send(text string) {
 	b.channel.Send(text)
+}
+
+// publishAlert fans a background-triggered alert (stop-loss breach, price
+// event, ...) out through b.notifier's Dispatcher — Telegram delivery plus
+// the in-app store, Phase 24 Stage 2 — as opposed to Send, which stays the
+// direct path for a synchronous command reply. eventType is a short slug
+// (e.g. "stop_loss") the in-app store persists for future filtering.
+func (b *Bot) publishAlert(eventType string, level notification.Level, text string) {
+	b.notifier.Publish(context.Background(), notification.Event{Type: eventType, Text: text, Level: level})
 }
 
 func (b *Bot) Run(ctx context.Context) {
