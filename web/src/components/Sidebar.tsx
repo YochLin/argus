@@ -44,6 +44,7 @@ const links: Array<{ path: string; label: (dict: Dictionary) => string; icon: Re
 ];
 
 const importLink = { path: "/import", label: (d: Dictionary) => d.navImport, icon: <ImportIcon /> };
+const settingsLink = { path: "/settings", label: (d: Dictionary) => d.navSettings, icon: <SettingsIcon /> };
 const paperLink = { path: "/paper", label: (d: Dictionary) => d.navPaper, icon: <PaperIcon /> };
 const llmLink = { path: "/llm", label: (d: Dictionary) => d.navLlm, icon: <LlmIcon /> };
 
@@ -56,7 +57,7 @@ export function Sidebar({ path, onNavigate, dict, market, status, writable, pape
     ...links,
     ...(paperEnabled ? [paperLink] : []),
     ...(llmAuditEnabled ? [llmLink] : []),
-    ...(writable ? [importLink] : []),
+    ...(writable ? [importLink, settingsLink] : []),
   ];
   return (
     <div className="sidebar">
@@ -217,6 +218,15 @@ function LlmIcon() {
     <svg {...iconProps} aria-hidden="true">
       <circle cx="6.5" cy="6.5" r="4.5" />
       <line x1="9.8" y1="9.8" x2="14" y2="14" />
+    </svg>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <circle cx="8" cy="8" r="2.5" />
+      <path d="M8 1.5 V3 M8 13 V14.5 M1.5 8 H3 M13 8 H14.5 M3.4 3.4 L4.5 4.5 M11.5 11.5 L12.6 12.6 M12.6 3.4 L11.5 4.5 M4.5 11.5 L3.4 12.6" />
     </svg>
   );
 }

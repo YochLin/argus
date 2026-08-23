@@ -2453,3 +2453,16 @@ th {
 .flow-rank-bar.loss-bar {
   background: var(--loss);
 }
+
+/* Phase 17 settings page. .form-field is tuned for the compact modal, so a
+   column of them down a full-width card needs its own vertical rhythm —
+   this also opens the gap between a group's heading and its first field. */
+.settings-view .form-field {
+  margin-top: 14px;
+}
+
+.settings-view .settings-note {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--ink-2);
+}

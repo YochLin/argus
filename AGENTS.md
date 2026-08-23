@@ -210,7 +210,14 @@ runs the Telegram long-poll loop until SIGINT/SIGTERM.
   feature flag, unlike `/api/paper`) reuses `buildOptionCollateral` for its own collateral summary
   rather than duplicating it, and has no P&L curve — `daily_snapshots`/`DailyPnL` don't cover option
   market value (no free historical option price source), so this page only ever shows realized P&L on
-  closed trades, never a portfolio-value line that would silently omit open option exposure. Details:
+  closed trades, never a portfolio-value line that would silently omit open option exposure.
+  `settings.go`'s `/api/settings` (Phase 17) is the one endpoint that writes outside SQLite: it patches
+  the connection/credential env vars in `.env` line-by-line (never `godotenv.Write`, which would reorder
+  the file and drop every comment) and then `os.Exit(1)`s so the supervisor restarts the process into the
+  new config — there is no hot reload, matching the codebase-wide "wire everything once at boot" rule.
+  Its whitelist admits a variable on "would a wrong value still boot?", not "is it a credential":
+  `DB_PATH` and the other paths are excluded permanently, since a typo there would crash-loop before
+  `web.New` and leave no UI to fix it from. Details:
   **[docs/architecture/web.md](docs/architecture/web.md)**.
 
 ## Key behaviors to preserve

@@ -290,6 +290,22 @@ export interface Dictionary {
   eventHourDmh: string;
   eventHourUnknown: string;
   eventEstimated: string;
+  // Phase 17: the connection/credential settings page. Field labels are the
+  // env var names themselves (rendered from /api/settings), so only the
+  // section headings and the surrounding copy live here — adding a variable
+  // server-side needs no new key unless it introduces a new group.
+  navSettings: string;
+  settingsTitle: string;
+  settingsIntro: string;
+  settingsGroupTelegram: string;
+  settingsGroupData: string;
+  settingsGroupSinopac: string;
+  settingsSinopacDaemonNote: string;
+  settingsSecretSet: string;
+  settingsSecretUnset: string;
+  settingsSave: string;
+  settingsRestarting: string;
+  settingsReload: string;
   // Phase 5 §B (optional): CSV transaction import page (nav link gated on
   // status.writable, same convention as every other write-only entry point).
   navImport: string;
@@ -646,6 +662,20 @@ const en: Dictionary = {
   eventHourDmh: "during hours",
   eventHourUnknown: "time TBD",
   eventEstimated: "estimated",
+  navSettings: "Settings",
+  settingsTitle: "Connections",
+  settingsIntro:
+    "Credentials for the services Argus talks to. Saving rewrites .env and restarts the bot, which takes a few seconds.",
+  settingsGroupTelegram: "Telegram",
+  settingsGroupData: "Data sources",
+  settingsGroupSinopac: "Sinopac Securities",
+  settingsSinopacDaemonNote:
+    "SJ_API_KEY / SJ_SEC_KEY are read by the shioaji daemon, not by Argus. After saving, also run: systemctl --user restart shioaji",
+  settingsSecretSet: "Configured — leave blank to keep it",
+  settingsSecretUnset: "Not configured",
+  settingsSave: "Save & restart",
+  settingsRestarting: "Saved. The bot is restarting…",
+  settingsReload: "Reload",
   navImport: "Import",
   importTitle: "Import Transactions",
   importInstructions: "Paste or upload CSV transactions to backfill your trade history.",
@@ -988,6 +1018,19 @@ const zh: Dictionary = {
   eventHourDmh: "盤中公布",
   eventHourUnknown: "時間未定",
   eventEstimated: "推估",
+  navSettings: "設定",
+  settingsTitle: "連線設定",
+  settingsIntro: "Argus 對外連線用的憑證。存檔會改寫 .env 並重新啟動 bot，約需數秒。",
+  settingsGroupTelegram: "Telegram",
+  settingsGroupData: "資料來源",
+  settingsGroupSinopac: "永豐證券",
+  settingsSinopacDaemonNote:
+    "SJ_API_KEY／SJ_SEC_KEY 是 shioaji daemon 讀的，不是 Argus。存檔後請另外執行：systemctl --user restart shioaji",
+  settingsSecretSet: "已設定 — 留空即保留原值",
+  settingsSecretUnset: "未設定",
+  settingsSave: "儲存並重啟",
+  settingsRestarting: "已儲存，bot 重新啟動中…",
+  settingsReload: "重新整理",
   navImport: "匯入",
   importTitle: "匯入交易紀錄",
   importInstructions: "貼上或上傳 CSV 交易紀錄以補建歷史交易。",

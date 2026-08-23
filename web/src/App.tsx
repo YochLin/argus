@@ -18,6 +18,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { TradeModal, type TradeMode } from "./components/TradeModal";
 import { LoginModal } from "./components/LoginModal";
 import { ImportView } from "./components/ImportView";
+import { SettingsView } from "./components/SettingsView";
 import { SectorFlowView } from "./components/SectorFlowView";
 import { LlmRunsView } from "./components/LlmRunsView";
 
@@ -224,6 +225,12 @@ export default function App() {
         runId={params.get("id") ? Number(params.get("id")) : null}
         onOpenRun={(id) => navigate(`/llm?id=${id}`)}
       />
+    ) : null;
+  } else if (path === "/settings") {
+    // Same writable gate as /import: /api/settings 404s without WEB_PASSWORD
+    // (requireWritable), so the page would have nothing to show anyway.
+    body = status?.writable ? (
+      <SettingsView dict={dict} onUnauthorized={(retry) => setAuthRetry(() => retry)} />
     ) : null;
   } else if (path === "/import") {
     body = status?.writable ? (
