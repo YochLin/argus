@@ -13,6 +13,7 @@ import (
 	"argus/internal/llm"
 	"argus/internal/logger"
 	"argus/internal/market"
+	"argus/internal/notification"
 	"argus/internal/service"
 	"argus/internal/signals"
 )
@@ -26,7 +27,7 @@ import (
 func (b *Bot) recoverJobPanic(job string) {
 	if r := recover(); r != nil {
 		logger.Errorf("%s: panic: %v", job, r)
-		b.Send(i18n.T(b.lang, i18n.KeyJobPanic, job, r))
+		b.publishAlert("job_panic", notification.LevelCritical, i18n.T(b.lang, i18n.KeyJobPanic, job, r))
 	}
 }
 
@@ -40,7 +41,7 @@ func (b *Bot) SendSignalAlert(sigs []signals.Signal) {
 	for _, s := range sigs {
 		sb.WriteString("• " + s.Message + "\n")
 	}
-	b.Send(sb.String())
+	b.publishAlert("signal_alert", notification.LevelInfo, sb.String())
 }
 
 // benchmarkFor returns the daily-snapshot benchmark ticker for m: SPY for
@@ -168,7 +169,7 @@ func (b *Bot) recordPriceEvents(ctx context.Context, hits []signals.PriceEvent, 
 			logger.Errorf("price events: save %s: %v", ev.Ticker, err)
 			continue
 		}
-		b.Send(i18n.T(b.lang, i18n.KeyPriceEventResultTitle, ev.Ticker, summary))
+		b.publishAlert("price_event", notification.LevelInfo, i18n.T(b.lang, i18n.KeyPriceEventResultTitle, ev.Ticker, summary))
 	}
 
 	if len(overflow) == 0 {
@@ -182,7 +183,7 @@ func (b *Bot) recordPriceEvents(ctx context.Context, hits []signals.PriceEvent, 
 		}
 		sb.WriteString(i18n.T(b.lang, i18n.KeyPriceEventOverflowTickerLine, ev.Ticker, ev.GapPct, ev.ChangePct, ev.CumulativePct))
 	}
-	b.Send(i18n.T(b.lang, i18n.KeyPriceEventOverflowLine, sb.String()))
+	b.publishAlert("price_event", notification.LevelInfo, i18n.T(b.lang, i18n.KeyPriceEventOverflowLine, sb.String()))
 }
 
 // snapshotBenchmark records benchmarkFor(m)'s (SPY/0050) closing price into
@@ -710,7 +711,7 @@ func (b *Bot) checkEarningsAlerts(tickers []string, earnings map[string]data.Ear
 	for _, l := range lines {
 		sb.WriteString(l)
 	}
-	b.Send(sb.String())
+	b.publishAlert("earnings_alert", notification.LevelInfo, sb.String())
 }
 
 // checkRestrictedAlerts (Phase 16, TW only) warns once per held position
@@ -743,7 +744,7 @@ func (b *Bot) checkRestrictedAlerts(positions []db.Position, restricted map[stri
 	for _, l := range lines {
 		sb.WriteString(l)
 	}
-	b.Send(sb.String())
+	b.publishAlert("restricted_stock", notification.LevelWarning, sb.String())
 }
 
 const (
@@ -830,7 +831,7 @@ func (b *Bot) checkStopLossAlerts(positions []db.Position, prices map[string]flo
 	for _, l := range lines {
 		sb.WriteString(l)
 	}
-	b.Send(sb.String())
+	b.publishAlert("stop_loss", notification.LevelCritical, sb.String())
 }
 
 // checkTrailingStopAlerts warns about any open position whose close-price
@@ -863,7 +864,7 @@ func (b *Bot) checkTrailingStopAlerts(positions []db.Position, prices map[string
 	for _, l := range lines {
 		sb.WriteString(l)
 	}
-	b.Send(sb.String())
+	b.publishAlert("trailing_stop", notification.LevelWarning, sb.String())
 }
 
 const (
@@ -899,7 +900,7 @@ func (b *Bot) checkTargetAlerts(positions []db.Position, prices map[string]float
 	for _, l := range lines {
 		sb.WriteString(l)
 	}
-	b.Send(sb.String())
+	b.publishAlert("target_reached", notification.LevelInfo, sb.String())
 }
 
 // checkMA5BreakAlerts warns once when a position that's up at least
@@ -926,7 +927,7 @@ func (b *Bot) checkMA5BreakAlerts(positions []db.Position, prices map[string]flo
 	for _, l := range lines {
 		sb.WriteString(l)
 	}
-	b.Send(sb.String())
+	b.publishAlert("ma5_break", notification.LevelWarning, sb.String())
 }
 
 // checkBuyAlerts is the buy-alert counterpart of checkStopLossAlerts etc.
@@ -953,7 +954,7 @@ func (b *Bot) checkBuyAlerts(alerts []db.BuyAlert, prices map[string]float64) {
 	for _, l := range lines {
 		sb.WriteString(l)
 	}
-	b.Send(sb.String())
+	b.publishAlert("buy_alert", notification.LevelInfo, sb.String())
 }
 
 // weeklyNetWorthLine renders RunWeeklyReview's opening line: total position
