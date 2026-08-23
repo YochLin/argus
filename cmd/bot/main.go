@@ -338,16 +338,20 @@ func main() {
 		// isn't a separate process, and database/sql connections already
 		// support concurrent use from other goroutines.
 		webServer := web.New(web.Config{
-			DB:                  database,
-			Provider:            provider,
-			History:             yahoo,
-			Earnings:            earningsProvider,
-			Lang:                cfg.Lang,
-			CompanyNames:        companyNameProvider,
-			OptionChain:         yahoo,
-			RiskHeatPct:         cfg.RiskHeatPct,
-			Password:            cfg.WebPassword,
-			Trade:               trade,
+			DB:           database,
+			Provider:     provider,
+			History:      yahoo,
+			Earnings:     earningsProvider,
+			Lang:         cfg.Lang,
+			CompanyNames: companyNameProvider,
+			OptionChain:  yahoo,
+			RiskHeatPct:  cfg.RiskHeatPct,
+			Password:     cfg.WebPassword,
+			Trade:        trade,
+			// Phase 17 PR2: the file godotenv.Load() already read at startup
+			// — not configurable, since editing any other file would have no
+			// effect on the next boot.
+			EnvPath:             ".env",
 			PaperDB:             paperDatabase,
 			PaperInitialCashUSD: cfg.PaperInitialCashUSD,
 			PaperInitialCashTWD: cfg.PaperInitialCashTWD,
