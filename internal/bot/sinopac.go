@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -13,12 +12,6 @@ import (
 	"argus/internal/logger"
 	"argus/internal/sinopac"
 )
-
-// sinopacSyncLookbackDays is how far RunSinopacSync re-checks on every run —
-// cheap since dedup is by transactions.ext_id/pending_actions payload, not
-// by "have I run since date X", so a missed day (bot downtime, daemon
-// session drop) gets picked up for free on the next run.
-const sinopacSyncLookbackDays = 7
 
 // handleSinopac backs /sinopac (dry-run listing — status, effectively,
 // since a dry run is always cheap and idempotent to recompute) and
@@ -49,13 +42,17 @@ func (b *Bot) RunSinopacSync(ctx context.Context, dryRun bool) (msg string, foun
 		return i18n.T(b.lang, i18n.KeySinopacNotConfigured), true
 	}
 
-	trades, err := b.fetchSinopacTrades(ctx)
+	svc := b.brokerSync()
+	trades, err := svc.FetchTrades(ctx, b.sinopacSkip, time.Now().In(cst))
 	if err != nil {
 		logger.Errorf("sinopac sync: fetch trades: %v", err)
 		return i18n.T(b.lang, i18n.KeySinopacSyncFailed, err), true
 	}
 
-	queued, err := b.queuedSinopacExtIDs()
+	queued, err := svc.QueuedExtIDs(func(payload string) (string, bool) {
+		p, ok := decodeTradePayload(payload)
+		return p.ExtID, ok
+	})
 	if err != nil {
 		logger.Errorf("sinopac sync: queued ext_ids: %v", err)
 		return i18n.T(b.lang, i18n.KeySinopacSyncFailed, err), true
@@ -63,19 +60,7 @@ func (b *Bot) RunSinopacSync(ctx context.Context, dryRun bool) (msg string, foun
 
 	var lines []string
 	created := 0
-	for _, t := range trades {
-		if queued[t.ExtID] {
-			continue
-		}
-		exists, err := b.db.TransactionExtIDExists(t.ExtID)
-		if err != nil {
-			logger.Errorf("sinopac sync: check ext_id %s: %v", t.ExtID, err)
-			continue
-		}
-		if exists {
-			continue
-		}
-
+	for _, t := range svc.NewTrades(trades, queued) {
 		note := ""
 		if t.Synthetic {
 			note = " " + i18n.T(b.lang, i18n.KeySinopacSyncNoDseq)
@@ -106,57 +91,6 @@ func (b *Bot) RunSinopacSync(ctx context.Context, dryRun bool) (msg string, foun
 		sb.WriteString("\n• " + l)
 	}
 	return sb.String(), true
-}
-
-// fetchSinopacTrades pulls the current open-position lot detail (buys) and
-// the lookback window's realized sells (profit_loss) and reconstructs Trade
-// events — see internal/sinopac.Trades' doc comment for the reconstruction
-// logic and its known "still-open lots only" gap on the buy side.
-func (b *Bot) fetchSinopacTrades(ctx context.Context) ([]sinopac.Trade, error) {
-	positions, err := b.sinopac.PositionUnit(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("position_unit: %w", err)
-	}
-	var details []sinopac.PositionDetail
-	for _, p := range positions {
-		d, err := b.sinopac.PositionDetail(ctx, p.ID)
-		if err != nil {
-			return nil, fmt.Errorf("position_detail %d: %w", p.ID, err)
-		}
-		details = append(details, d...)
-	}
-
-	end := time.Now().In(cst)
-	begin := end.AddDate(0, 0, -sinopacSyncLookbackDays)
-	pnl, err := b.sinopac.ProfitLoss(ctx, begin.Format("2006-01-02"), end.Format("2006-01-02"))
-	if err != nil {
-		return nil, fmt.Errorf("profit_loss: %w", err)
-	}
-
-	return sinopac.Trades(details, pnl, b.sinopacSkip), nil
-}
-
-// queuedSinopacExtIDs collects the ExtID of every trade already sitting in
-// pending_actions (status pending or sent) — a second dedup layer alongside
-// TransactionExtIDExists, needed because a trade proposed but not yet
-// confirmed hasn't reached transactions yet.
-func (b *Bot) queuedSinopacExtIDs() (map[string]bool, error) {
-	out := make(map[string]bool)
-	for _, status := range []string{db.PendingActionStatusPending, db.PendingActionStatusSent} {
-		actions, err := b.db.GetPendingActionsByStatus(status)
-		if err != nil {
-			return nil, err
-		}
-		for _, a := range actions {
-			if a.ActionType != db.PendingActionRecordBuy && a.ActionType != db.PendingActionRecordSell {
-				continue
-			}
-			if p, ok := decodeTradePayload(a.Payload); ok && p.ExtID != "" {
-				out[p.ExtID] = true
-			}
-		}
-	}
-	return out, nil
 }
 
 // createSinopacPendingAction files t as a pending_action, exactly the
@@ -205,12 +139,5 @@ func (b *Bot) createSinopacPendingAction(t sinopac.Trade) error {
 // failure: cash balance is a reference value (see cashSettingKeyFor's doc
 // comment), not worth failing the whole confirmation over.
 func (b *Bot) syncSinopacCashBalance(ctx context.Context) {
-	bal, err := b.sinopac.AccountBalance(ctx)
-	if err != nil {
-		logger.Errorf("sinopac sync: account_balance: %v", err)
-		return
-	}
-	if err := b.db.SetSetting(cashSettingKeyTWD, strconv.FormatFloat(bal.AccBalance, 'f', 2, 64)); err != nil {
-		logger.Errorf("sinopac sync: set cash balance: %v", err)
-	}
+	b.brokerSync().SyncCashBalance(ctx)
 }

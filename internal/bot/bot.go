@@ -104,6 +104,7 @@ type Bot struct {
 	snapshotService *service.SnapshotService
 	paperService    *service.PaperService
 	scanService     *service.ScanService
+	brokerSyncSvc   *service.BrokerSyncService
 	detector        *signals.Detector
 	lang            i18n.Lang
 
@@ -306,6 +307,7 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		riskService:            service.NewRiskService(cfg.DB, cfg.History, cfg.Provider, service.StopCandidateATRMult),
 		snapshotService:        service.NewSnapshotService(cfg.DB, cfg.Provider),
 		paperService:           newPaperService(cfg.PaperDB, cfg.Provider, cfg.PaperInitialCashUSD, cfg.PaperInitialCashTWD, cfg.PaperTakeProfitATRMult),
+		brokerSyncSvc:          newBrokerSyncService(cfg.Sinopac, cfg.DB),
 		detector:               signals.NewDetector(cfg.Lang),
 		lang:                   cfg.Lang,
 		stopLossPct:            cfg.StopLossPct,
@@ -419,6 +421,20 @@ func (b *Bot) papers() *service.PaperService {
 		b.paperService = service.NewPaperService(b.paperDB, b.provider, b.paperInitialCashUSD, b.paperInitialCashTWD, b.paperTakeProfitATRMult)
 	}
 	return b.paperService
+}
+
+func newBrokerSyncService(sinopacClient *sinopac.Client, database *db.DB) *service.BrokerSyncService {
+	if database == nil {
+		return nil
+	}
+	return service.NewBrokerSyncService(sinopacClient, database)
+}
+
+func (b *Bot) brokerSync() *service.BrokerSyncService {
+	if b.brokerSyncSvc == nil && b.db != nil {
+		b.brokerSyncSvc = service.NewBrokerSyncService(b.sinopac, b.db)
+	}
+	return b.brokerSyncSvc
 }
 
 func (b *Bot) Send(text string) {
