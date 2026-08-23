@@ -103,6 +103,7 @@ type Bot struct {
 	riskService     *service.RiskService
 	snapshotService *service.SnapshotService
 	paperService    *service.PaperService
+	scanService     *service.ScanService
 	detector        *signals.Detector
 	lang            i18n.Lang
 
@@ -275,7 +276,7 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 	if trailingStopPctTW == 0 {
 		trailingStopPctTW = cfg.TrailingStopPct
 	}
-	return &Bot{
+	b := &Bot{
 		channel:                channel,
 		db:                     cfg.DB,
 		provider:               cfg.Provider,
@@ -323,6 +324,20 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		dataCache:              newTTLCache(),
 		now:                    time.Now,
 	}
+	b.scanService = newScanService(b)
+	return b
+}
+
+// newScanService builds b's ScanService, wiring the revenue-growth gate
+// through b.cachedFundamentals (cached + rate-limited, see pipeline.go)
+// only when a fundamentals provider is configured — nil leaves the gate
+// failing closed, same as the pre-extraction b.fundamentals nil-check.
+func newScanService(b *Bot) *service.ScanService {
+	var fundamentalsReader func(ticker string) (*data.Fundamentals, error)
+	if b.fundamentals != nil {
+		fundamentalsReader = b.cachedFundamentals
+	}
+	return service.NewScanService(b.db, b.detector, b.trustNet, fundamentalsReader)
 }
 
 // trading returns the shared application service used by all bot trade entry
@@ -363,6 +378,16 @@ func (b *Bot) risks() *service.RiskService {
 		b.riskService = service.NewRiskService(b.db, b.history, b.provider, service.StopCandidateATRMult)
 	}
 	return b.riskService
+}
+
+func (b *Bot) scans() *service.ScanService {
+	if b.scanService == nil && b.db != nil {
+		if b.detector == nil {
+			b.detector = signals.NewDetector(b.lang)
+		}
+		b.scanService = newScanService(b)
+	}
+	return b.scanService
 }
 
 func (b *Bot) risksOrErr() (*service.RiskService, error) {
