@@ -22,7 +22,6 @@ import (
 	"argus/internal/market"
 	"argus/internal/mcptools"
 	"argus/internal/scheduler"
-	"argus/internal/sinopac"
 	"argus/internal/web"
 )
 
@@ -109,90 +108,6 @@ func main() {
 		defer paperDatabase.Close()
 	}
 
-	// Set up multi-provider data layer (Finnhub primary, Yahoo fallback).
-	// Fundamentals/financial statements, the earnings calendar, and general
-	// market news are all Finnhub-only (Yahoo's fundamentals equivalent
-	// requires a crumb/cookie handshake we don't implement, and has no
-	// earnings-calendar or general-news-category endpoint at all), so all
-	// three providers stay nil when no Finnhub key is configured. Historical
-	// closes (for RSI/MACD) go the other way: Finnhub's free tier blocks
-	// /stock/candle entirely, so history is Yahoo-only.
-	var providers []data.Provider
-	var analystRatingProvider data.AnalystRatingProvider
-	var insiderTxProvider data.InsiderTransactionProvider
-	var earningsProvider data.EarningsProvider
-	var marketNewsProvider data.MarketNewsProvider
-	var companyNameProvider data.CompanyNameProvider
-	var trustNetProvider data.TrustNetProvider
-	var twValuationProvider data.FundamentalHistoryProvider
-	// sectorProvider/industryMapProvider back Phase 18's /api/sectorflow —
-	// US via Finnhub (per-ticker), TW via FinMind's whole-market map (see
-	// internal/web/sectorflow.go). Only web.Config reads these; the bot
-	// itself has no sector-flow surface (web-only, see PLAN.md's Phase 18
-	// entry).
-	var sectorProvider data.SectorProvider
-	var industryMapProvider data.IndustryMapProvider
-	var earningsSurpriseProvider data.EarningsSurpriseProvider
-	fundamentalsRouter := &data.FundamentalsRouter{}
-	if cfg.FinnhubKey != "" {
-		finnhub := data.NewFinnhub(cfg.FinnhubKey)
-		providers = append(providers, finnhub)
-		fundamentalsRouter.US = finnhub
-		analystRatingProvider = finnhub
-		insiderTxProvider = finnhub
-		earningsProvider = finnhub
-		marketNewsProvider = finnhub
-		sectorProvider = finnhub
-		earningsSurpriseProvider = finnhub // Phase 23 PR8
-	}
-	// FINMIND_TOKEN gates TW fundamentals the same way FINNHUB_API_KEY gates
-	// US (Phase 6 PR3) — FinMind has no Yahoo-style Multi fallback to sit
-	// behind, it's the only TW fundamentals source there is (see
-	// internal/data/finmind.go). Reused as the CompanyNameProvider too (its
-	// TaiwanStockInfo lookup, see finmind.go's GetCompanyName) — same client,
-	// not a second one, since there's nothing FinMind-specific about that
-	// call that would justify a separate instance.
-	if cfg.FinMindToken != "" {
-		finmind := data.NewFinMind(cfg.FinMindToken)
-		fundamentalsRouter.TW = finmind
-		companyNameProvider = finmind
-		trustNetProvider = finmind
-		industryMapProvider = finmind
-		twValuationProvider = finmind // Phase 23 PR7: TaiwanStockPER-derived valuation percentile
-	}
-	// fundamentalsProvider stays nil (not a router wrapping two nil fields)
-	// when neither key is set, preserving every existing `if b.fundamentals
-	// != nil` nil-check's pre-Phase-6-PR3 behavior exactly.
-	var fundamentalsProvider data.FundamentalsProvider
-	if fundamentalsRouter.US != nil || fundamentalsRouter.TW != nil {
-		fundamentalsProvider = fundamentalsRouter
-	}
-	// Shioaji sits between Finnhub and GoogleNews when SHIOAJI_ADDR is
-	// configured — broker-grade TW quotes ahead of Yahoo's unofficial,
-	// suffix-guessing chart API (see internal/data/shioaji.go). Left nil
-	// (no reference anywhere else) when unset, matching the presence-gated
-	// convention every other optional provider here follows; any daemon
-	// error/session drop falls straight through to GoogleNews/Yahoo since
-	// Multi tries providers in order until one succeeds.
-	var sinopacClient *sinopac.Client
-	if cfg.ShioajiAddr != "" {
-		sinopacClient = sinopac.New(cfg.ShioajiAddr)
-		providers = append(providers, data.NewShioaji(sinopacClient))
-	}
-	// Google News sits between Finnhub and Yahoo so TW tickers get
-	// Chinese-language per-ticker news: Finnhub's /company-news is US-only,
-	// and Yahoo's search API answers a .TW symbol with mostly English wire
-	// coverage. It answers TW tickers only (errGoogleNewsNotTW otherwise), so
-	// the US path stays Finnhub-then-Yahoo exactly as before at the cost of
-	// one no-network method call per US news lookup. Constructed after the
-	// FinMind block because it takes companyNameProvider — with a token it
-	// searches "台積電", without one the bare "2330" (see GoogleNews.GetNews
-	// for why that's materially worse but still worth having).
-	providers = append(providers, data.NewGoogleNews(companyNameProvider))
-	yahoo := data.NewYahoo()
-	providers = append(providers, yahoo)
-	multi := data.NewMulti(providers...)
-
 	// newsBlocked backs Phase 19 PR2's global news-source blacklist (see
 	// docs/phase-19-llm-transparency.md §5) — a closure reading straight from
 	// the DB, not a snapshot, so a block/unblock via the /llm page takes
@@ -209,7 +124,53 @@ func main() {
 		}
 		return blocked
 	}
-	var provider data.Provider = data.NewNewsFilter(multi, newsBlocked)
+
+	// Set up the multi-provider data layer (Finnhub primary, Yahoo fallback)
+	// shared with runMCPServer() — see newCoreProviders (Phase 24 tech debt
+	// 6). Fundamentals/financial statements, the earnings calendar, and
+	// general market news are all Finnhub-only (Yahoo's fundamentals
+	// equivalent requires a crumb/cookie handshake we don't implement, and
+	// has no earnings-calendar or general-news-category endpoint at all), so
+	// all three providers stay nil when no Finnhub key is configured.
+	// Historical closes (for RSI/MACD) go the other way: Finnhub's free tier
+	// blocks /stock/candle entirely, so history is Yahoo-only.
+	core := newCoreProviders(cfg.FinnhubKey, cfg.FinMindToken, cfg.ShioajiAddr, newsBlocked)
+	provider := core.Provider
+	yahoo := core.Yahoo
+	sinopacClient := core.Sinopac
+	fundamentalsProvider := core.Fundamentals
+	companyNameProvider := core.CompanyNames
+	insiderTxProvider := core.InsiderTx
+	earningsProvider := core.Earnings
+
+	// analystRatingProvider/marketNewsProvider/sectorProvider/
+	// earningsSurpriseProvider are Finnhub fields runMCPServer() has no use
+	// for, so newCoreProviders doesn't return them — set here directly off
+	// core.Finnhub instead. sectorProvider/industryMapProvider back Phase
+	// 18's /api/sectorflow (US via Finnhub per-ticker, TW via FinMind's
+	// whole-market map, see internal/web/sectorflow.go) — only web.Config
+	// reads these, the bot itself has no sector-flow surface (web-only, see
+	// PLAN.md's Phase 18 entry).
+	var analystRatingProvider data.AnalystRatingProvider
+	var marketNewsProvider data.MarketNewsProvider
+	var sectorProvider data.SectorProvider
+	var earningsSurpriseProvider data.EarningsSurpriseProvider
+	if core.Finnhub != nil {
+		analystRatingProvider = core.Finnhub
+		marketNewsProvider = core.Finnhub
+		sectorProvider = core.Finnhub
+		earningsSurpriseProvider = core.Finnhub // Phase 23 PR8
+	}
+	// trustNetProvider/twValuationProvider are FinMind fields runMCPServer()
+	// has no use for, same reasoning as the Finnhub block above.
+	var trustNetProvider data.TrustNetProvider
+	var industryMapProvider data.IndustryMapProvider
+	var twValuationProvider data.FundamentalHistoryProvider
+	if core.FinMind != nil {
+		trustNetProvider = core.FinMind
+		industryMapProvider = core.FinMind
+		twValuationProvider = core.FinMind // Phase 23 PR7: TaiwanStockPER-derived valuation percentile
+	}
 	if marketNewsProvider != nil {
 		marketNewsProvider = data.NewMarketNewsFilter(marketNewsProvider, newsBlocked)
 	}
@@ -448,50 +409,16 @@ func runMCPServer() {
 		defer database.Close()
 	}
 
-	// Same provider construction as main(): Finnhub-only tools
-	// (statements/earnings) stay nil without a key, same as Bot's — and
-	// fundamentalsProvider is the same US/TW FundamentalsRouter as main()
-	// (Phase 6 PR3) — mcptools.NewServer's nil-check on it only skips
-	// registering get_fundamentals/get_financial_statements when *both*
-	// keys are absent, not just Finnhub's.
-	var providers []data.Provider
-	var earningsProvider data.EarningsProvider
-	var insiderTxProvider data.InsiderTransactionProvider
-	fundamentalsRouter := &data.FundamentalsRouter{}
-	if finnhubKey != "" {
-		finnhub := data.NewFinnhub(finnhubKey)
-		providers = append(providers, finnhub)
-		fundamentalsRouter.US = finnhub
-		earningsProvider = finnhub
-		insiderTxProvider = finnhub
-	}
-	var companyNameProvider data.CompanyNameProvider
-	if finmindToken != "" {
-		finmind := data.NewFinMind(finmindToken)
-		fundamentalsRouter.TW = finmind
-		companyNameProvider = finmind
-	}
-	var fundamentalsProvider data.FundamentalsProvider
-	if fundamentalsRouter.US != nil || fundamentalsRouter.TW != nil {
-		fundamentalsProvider = fundamentalsRouter
-	}
-	// Same Shioaji-before-GoogleNews ordering as main(), for the same
-	// reason: get_quote on a TW ticker should reach broker-grade data
-	// rather than Yahoo's suffix-guessing chart API.
-	if shioajiAddr != "" {
-		providers = append(providers, data.NewShioaji(sinopac.New(shioajiAddr)))
-	}
-	// Same Google-News-before-Yahoo ordering as main(), for the same reason:
-	// get_news on a TW ticker should reach Chinese coverage rather than
-	// Yahoo's English wire stories.
-	providers = append(providers, data.NewGoogleNews(companyNameProvider))
-	yahoo := data.NewYahoo()
-	providers = append(providers, yahoo)
-	multi := data.NewMulti(providers...)
-	// Same newsBlocked wrapping as main() (Phase 19 PR2) — database is nil
-	// when the read-only open above failed, in which case nothing is ever
-	// reported blocked rather than every get_news call erroring out.
-	var provider data.Provider = data.NewNewsFilter(multi, func(source string) bool {
+	// Same provider construction as main() (see newCoreProviders, Phase 24
+	// tech debt 6): Finnhub-only tools (statements/earnings) stay nil
+	// without a key, same as Bot's — and fundamentalsProvider is the same
+	// US/TW FundamentalsRouter as main() (Phase 6 PR3) — mcptools.NewServer's
+	// nil-check on it only skips registering get_fundamentals/
+	// get_financial_statements when *both* keys are absent, not just
+	// Finnhub's. database is nil when the read-only open above failed, in
+	// which case newsBlocked never reports anything blocked rather than
+	// every get_news call erroring out.
+	core := newCoreProviders(finnhubKey, finmindToken, shioajiAddr, func(source string) bool {
 		if database == nil {
 			return false
 		}
@@ -502,6 +429,11 @@ func runMCPServer() {
 		}
 		return blocked
 	})
+	provider := core.Provider
+	yahoo := core.Yahoo
+	fundamentalsProvider := core.Fundamentals
+	earningsProvider := core.Earnings
+	insiderTxProvider := core.InsiderTx
 	// twInstitutional (TWSE T86), like main()'s twMovers, needs no API key.
 	twInstitutional := data.NewTWSE()
 
