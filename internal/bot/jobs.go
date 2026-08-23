@@ -901,33 +901,29 @@ func (b *Bot) checkEarningsAlerts(tickers []string, earnings map[string]data.Ear
 
 // checkRestrictedAlerts (Phase 16, TW only) warns once per held position
 // that enters TWSE/TPEx disposition/attention status. Same batched-title-
-// plus-lines/signal_states-dedup shape as checkStopLossAlerts above: state
-// holds the last-alerted reason string, so a changed reason re-alerts and
-// clearing the restriction resets state (a future re-entry alerts again).
+// plus-lines shape as checkStopLossAlerts above; the dedup/persistence
+// itself lives in RiskService.EvaluateRestrictedAlerts (Phase 24 tech debt
+// 2) since it's the same breach-decision pattern as the other risk checks.
 // restricted is nil (no-op) for US or when Shioaji isn't configured — see
 // restrictedTickers.
 func (b *Bot) checkRestrictedAlerts(positions []db.Position, restricted map[string]string) {
-	var lines []string
-	for _, p := range positions {
-		reason := restricted[p.Ticker]
-		prev, err := b.db.GetSignalState(p.Ticker, restrictedStockSignalFamily)
-		if err != nil {
-			logger.Errorf("restricted state %s: %v", p.Ticker, err)
-		}
-		shouldAlert, newState := restrictedAlertDecision(reason, prev)
-		if newState != prev {
-			if err := b.db.SetSignalState(p.Ticker, restrictedStockSignalFamily, newState); err != nil {
-				logger.Errorf("restricted state %s: %v", p.Ticker, err)
-			}
-		}
-		if !shouldAlert {
-			continue
-		}
-		lines = append(lines, i18n.T(b.lang, i18n.KeyRestrictedStockAlertLine, b.tickerLabel(p.Ticker), reason))
-	}
-	if len(lines) == 0 {
+	if b.risks() == nil {
 		return
 	}
+	alerts, err := b.risks().EvaluateRestrictedAlerts(positions, restricted)
+	if err != nil {
+		logger.Errorf("restricted alert evaluation: %v", err)
+		return
+	}
+	if len(alerts) == 0 {
+		return
+	}
+
+	var lines []string
+	for _, a := range alerts {
+		lines = append(lines, i18n.T(b.lang, i18n.KeyRestrictedStockAlertLine, b.tickerLabel(a.Ticker), a.Reason))
+	}
+
 	var sb strings.Builder
 	sb.WriteString(i18n.T(b.lang, i18n.KeyRestrictedStockAlertTitle))
 	for _, l := range lines {
@@ -936,29 +932,9 @@ func (b *Bot) checkRestrictedAlerts(positions []db.Position, restricted map[stri
 	b.Send(sb.String())
 }
 
-// restrictedAlertDecision is checkRestrictedAlerts's pure dedup core,
-// mirroring service.BreachAlertDecision/service.StopBreachDecision's
-// state-machine shape:
-// reason == "" means the ticker isn't currently restricted (resets state so
-// a future re-entry alerts again); a non-empty reason alerts once per
-// distinct reason string (so punish -> notice or a renewed period with a
-// different end_date each re-alert), staying silent while it repeats.
-func restrictedAlertDecision(reason, prevState string) (shouldAlert bool, newState string) {
-	if reason == "" {
-		return false, ""
-	}
-	if reason == prevState {
-		return false, prevState
-	}
-	return true, reason
-}
-
 const (
 	stopLossSignalFamily     = "stop_loss"
 	trailingStopSignalFamily = "trailing_stop"
-	// restrictedStockSignalFamily (Phase 16, TW only) dedupes
-	// checkRestrictedAlerts the same way — see that function.
-	restrictedStockSignalFamily = "restricted_stock"
 	// breachedState is the signal_states value recorded while a stop-loss/
 	// trailing-stop threshold stays breached; any other value (including "",
 	// the unset default) means "not currently breached".
