@@ -70,6 +70,46 @@ func TestDoNonSessionErrorNoRetry(t *testing.T) {
 	}
 }
 
+// TestSessionRetryBudgetCoversOutage pins the one thing that made a real
+// session drop surface as "永豐同步失敗": the backoff steps must add up to
+// the daemon's observed 1-2 minute self-heal window, not a few seconds.
+func TestSessionRetryBudgetCoversOutage(t *testing.T) {
+	var total time.Duration
+	for _, d := range sessionRetryBackoff {
+		total += d
+	}
+	if total < 90*time.Second {
+		t.Fatalf("retry budget %v is shorter than the daemon's self-heal window", total)
+	}
+}
+
+// TestDoSessionRetryHonorsContext ensures a cancelled context aborts mid-
+// backoff instead of sleeping out the (now ~2 minute) retry budget.
+func TestDoSessionRetryHonorsContext(t *testing.T) {
+	orig := sessionRetryBackoff
+	sessionRetryBackoff = []time.Duration{time.Hour}
+	defer func() { sessionRetryBackoff = orig }()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(apiError{Message: "SubCode(SessionNotEstablished)"})
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- New(srv.Listener.Addr().String()).do(ctx, http.MethodGet, "/x", nil, nil) }()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("do did not abort on context cancellation")
+	}
+}
+
 // TestRegulatoryColumnParsing covers the parallel-arrays-to-map conversion
 // (the daemon returns a DataFrame.to_dict("list") shape, not a row array —
 // see Client's doc comment) for both punish (has end_date) and notice (has
