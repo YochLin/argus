@@ -57,6 +57,15 @@ const langStorageKey = "argus-lang";
 // a per-browser display choice, no server default to fall back to. Absent
 // means dark, matching every pre-existing screenshot/expectation.
 const themeStorageKey = "argus-theme";
+// Same pattern again for the sidebar account menu's dev-mode toggle
+// (Sidebar.tsx's AccountMenu) — lifted up here rather than kept as
+// Sidebar-local state because it now also gates the /llm route below, not
+// just the nav link. devMode's purpose is hiding features that exist
+// (server-enabled) but aren't meant for the everyday view — /llm is the
+// first one; llmAuditEnabled (server) and devMode (client) are both
+// required, so turning this on client-side can't reveal a feature the
+// operator hasn't enabled server-side.
+const devModeStorageKey = "argus-dev-mode";
 
 export default function App() {
   // serverLang is /api/config's BOT_LANGUAGE default; userLang is the
@@ -71,6 +80,7 @@ export default function App() {
   // llmAuditEnabled (Phase 19, WEB_LLM_AUDIT) gates the /llm nav link and
   // route the same way — hidden entirely when unset server-side.
   const [llmAuditEnabled, setLlmAuditEnabled] = useState(false);
+  const [devMode, setDevMode] = useState<boolean>(() => localStorage.getItem(devModeStorageKey) === "1");
   const [userLang, setUserLang] = useState<Lang | null>(() => {
     const stored = localStorage.getItem(langStorageKey);
     return stored === null ? null : normalizeLang(stored);
@@ -130,6 +140,12 @@ export default function App() {
     const next = !isDark;
     localStorage.setItem(themeStorageKey, next ? "dark" : "light");
     setIsDark(next);
+  };
+
+  const toggleDevMode = () => {
+    const next = !devMode;
+    localStorage.setItem(devModeStorageKey, next ? "1" : "0");
+    setDevMode(next);
   };
 
   // :root.light (theme.css) carries every light-mode token override — see
@@ -216,7 +232,7 @@ export default function App() {
   } else if (path === "/options") {
     body = <OptionsView dict={dict} market={market} />;
   } else if (path === "/llm") {
-    body = llmAuditEnabled ? (
+    body = llmAuditEnabled && devMode ? (
       <LlmRunsView
         dict={dict}
         names={names}
@@ -308,6 +324,8 @@ export default function App() {
         writable={status?.writable ?? false}
         paperEnabled={paperEnabled}
         llmAuditEnabled={llmAuditEnabled}
+        devMode={devMode}
+        onToggleDevMode={toggleDevMode}
       />
       <div className="app-main">
         <TopBar

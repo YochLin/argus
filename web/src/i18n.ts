@@ -298,9 +298,9 @@ export interface Dictionary {
   // setNavNote/acctDevMode/acctDevNote back the account-switcher dropdown's
   // two static entries (design-canvas reference's account menu — see
   // Sidebar.tsx's sidebar-account-menu). Real multi-account switching isn't
-  // built yet, so the dropdown only ever shows these two rows; acctDevMode
-  // is a bare UI toggle with no wired behavior yet (see the ponytail note
-  // on its state in Sidebar.tsx).
+  // built yet, so the dropdown only ever shows these two rows. devMode
+  // (App.tsx, persisted client-side) gates the /llm nav link + route —
+  // App.tsx's own comment on devModeStorageKey has the full rationale.
   setNavNote: string;
   acctDevMode: string;
   acctDevNote: string;
@@ -679,7 +679,7 @@ const en: Dictionary = {
   navSettings: "Settings",
   setNavNote: "Connections & credentials",
   acctDevMode: "Dev mode",
-  acctDevNote: "Reserved for future debug tooling",
+  acctDevNote: "Show entries not meant for everyday use",
   settingsTitle: "Connections",
   settingsIntro:
     "Credentials for the services Argus talks to. Saving rewrites .env and restarts the bot, which takes a few seconds.",
@@ -1043,7 +1043,7 @@ const zh: Dictionary = {
   navSettings: "設定",
   setNavNote: "連線與憑證",
   acctDevMode: "開發者模式",
-  acctDevNote: "保留給之後的除錯功能",
+  acctDevNote: "顯示不對一般使用開放的項目",
   settingsTitle: "連線設定",
   settingsIntro: "Argus 對外連線用的憑證。存檔會改寫 .env 並重新啟動 bot，約需數秒。",
   settingsGroupTelegram: "Telegram",

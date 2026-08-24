@@ -3,10 +3,6 @@ import type { Dictionary } from "../i18n";
 import { currencySymbol, type Market, type Status } from "../api";
 import { formatValue } from "./KpiCard";
 
-// Persisted the same way as App.tsx's langStorageKey/themeStorageKey — a
-// viewer preference, not server state.
-const devModeStorageKey = "argus-dev-mode";
-
 interface Props {
   path: string;
   onNavigate: (path: string) => void;
@@ -24,8 +20,13 @@ interface Props {
   // hidden entirely when PAPER_DB_PATH isn't configured server-side.
   paperEnabled: boolean;
   // llmAuditEnabled (Phase 19, WEB_LLM_AUDIT) gates the /llm nav link the
-  // same way — hidden entirely when unset server-side.
+  // same way — hidden entirely when unset server-side. devMode (App.tsx,
+  // persisted client-side) gates it further: llmAuditEnabled decides
+  // whether the feature is configured at all, devMode decides whether the
+  // current viewer currently wants dev-only entries shown.
   llmAuditEnabled: boolean;
+  devMode: boolean;
+  onToggleDevMode: () => void;
 }
 
 // /round (the detail page reached by clicking a row in /rounds) has no nav
@@ -55,11 +56,22 @@ function isActive(linkPath: string, path: string): boolean {
   return linkPath === path;
 }
 
-export function Sidebar({ path, onNavigate, dict, market, status, writable, paperEnabled, llmAuditEnabled }: Props) {
+export function Sidebar({
+  path,
+  onNavigate,
+  dict,
+  market,
+  status,
+  writable,
+  paperEnabled,
+  llmAuditEnabled,
+  devMode,
+  onToggleDevMode,
+}: Props) {
   const navLinks = [
     ...links,
     ...(paperEnabled ? [paperLink] : []),
-    ...(llmAuditEnabled ? [llmLink] : []),
+    ...(llmAuditEnabled && devMode ? [llmLink] : []),
     ...(writable ? [importLink] : []),
   ];
   return (
@@ -84,7 +96,15 @@ export function Sidebar({ path, onNavigate, dict, market, status, writable, pape
         ))}
       </nav>
       {status && (
-        <AccountMenu dict={dict} market={market} status={status} writable={writable} onNavigate={onNavigate} />
+        <AccountMenu
+          dict={dict}
+          market={market}
+          status={status}
+          writable={writable}
+          onNavigate={onNavigate}
+          devMode={devMode}
+          onToggleDevMode={onToggleDevMode}
+        />
       )}
     </div>
   );
@@ -101,18 +121,18 @@ function AccountMenu({
   status,
   writable,
   onNavigate,
+  devMode,
+  onToggleDevMode,
 }: {
   dict: Dictionary;
   market: Market;
   status: Status;
   writable: boolean;
   onNavigate: (path: string) => void;
+  devMode: boolean;
+  onToggleDevMode: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  // ponytail: devMode is a bare viewer-side toggle with nothing wired to it
-  // yet — no debug view exists to gate on it. Add that behavior (and read
-  // this flag) when there's an actual debug view to show.
-  const [devMode, setDevMode] = useState(() => localStorage.getItem(devModeStorageKey) === "1");
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -123,14 +143,6 @@ function AccountMenu({
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
-
-  function toggleDevMode() {
-    setDevMode((v) => {
-      const next = !v;
-      localStorage.setItem(devModeStorageKey, next ? "1" : "0");
-      return next;
-    });
-  }
 
   return (
     <div className="sidebar-account-wrap" ref={ref}>
@@ -155,7 +167,7 @@ function AccountMenu({
               </span>
             </a>
           )}
-          <button className="sidebar-account-menu-item" onClick={toggleDevMode} aria-pressed={devMode}>
+          <button className="sidebar-account-menu-item" onClick={onToggleDevMode} aria-pressed={devMode}>
             <span className="sidebar-account-menu-icon">
               <DevModeIcon />
             </span>
