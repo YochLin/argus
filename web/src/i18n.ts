@@ -304,6 +304,11 @@ export interface Dictionary {
   settingsSecretSet: string;
   settingsSecretUnset: string;
   settingsSave: string;
+  settingsRevert: string;
+  settingsDirty: string;
+  settingsRulesTitle: string;
+  settingsRule1: string;
+  settingsRule2: string;
   settingsRestarting: string;
   settingsReload: string;
   // Phase 5 §B (optional): CSV transaction import page (nav link gated on
@@ -674,6 +679,11 @@ const en: Dictionary = {
   settingsSecretSet: "Configured — leave blank to keep it",
   settingsSecretUnset: "Not configured",
   settingsSave: "Save & restart",
+  settingsRevert: "Revert",
+  settingsDirty: "Unsaved changes",
+  settingsRulesTitle: "Notes",
+  settingsRule1: "A blank field keeps its current value — there's no way to clear one here.",
+  settingsRule2: "Saving any field restarts Argus to apply it.",
   settingsRestarting: "Saved. The bot is restarting…",
   settingsReload: "Reload",
   navImport: "Import",
@@ -1029,6 +1039,11 @@ const zh: Dictionary = {
   settingsSecretSet: "已設定 — 留空即保留原值",
   settingsSecretUnset: "未設定",
   settingsSave: "儲存並重啟",
+  settingsRevert: "還原",
+  settingsDirty: "有未儲存的變更",
+  settingsRulesTitle: "使用須知",
+  settingsRule1: "留空的欄位會維持原值 — 這裡沒有清除功能。",
+  settingsRule2: "任一欄位存檔後，Argus 都會重新啟動以套用設定。",
   settingsRestarting: "已儲存，bot 重新啟動中…",
   settingsReload: "重新整理",
   navImport: "匯入",

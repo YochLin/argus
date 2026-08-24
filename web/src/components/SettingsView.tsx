@@ -79,19 +79,39 @@ export function SettingsView({ dict, onUnauthorized }: Props) {
 
   return (
     <div className="settings-view">
-      <div className="card">
-        <div className="eyebrow">{dict.settingsTitle}</div>
-        <p>{dict.settingsIntro}</p>
+      <div className="settings-header">
+        <div className="settings-header-copy">
+          <div className="eyebrow">{dict.settingsTitle}</div>
+          <p>{dict.settingsIntro}</p>
+        </div>
+        {dirty && !saved && <span className="settings-dirty mono">{dict.settingsDirty}</span>}
+        {!saved && (
+          <div className="modal-actions">
+            <button disabled={!dirty || busy} onClick={() => setEdits({})}>
+              {dict.settingsRevert}
+            </button>
+            <button className="btn-primary" disabled={busy || !dirty} onClick={save}>
+              {dict.settingsSave}
+            </button>
+          </div>
+        )}
       </div>
 
       {groups.map(({ group, items }) => (
-        <div className="card" key={group}>
-          <div className="eyebrow">
-            {groupLabelKey[group] ? dict[groupLabelKey[group]] : group}
+        <div className="card settings-group" key={group}>
+          <div className="settings-group-header">
+            <span className="eyebrow">{groupLabelKey[group] ? dict[groupLabelKey[group]] : group}</span>
           </div>
           {items.map((item) => (
-            <label className="form-field" key={item.key}>
-              <span className="mono">{item.key}</span>
+            <div className="settings-row" key={item.key}>
+              <div className="settings-row-label">
+                <span className="mono">{item.key}</span>
+                {item.secret && (
+                  <span className={`tag${item.isSet ? "" : " warn"}`}>
+                    {item.isSet ? dict.settingsSecretSet : dict.settingsSecretUnset}
+                  </span>
+                )}
+              </div>
               <input
                 className="mono"
                 type={item.secret ? "password" : "text"}
@@ -101,29 +121,31 @@ export function SettingsView({ dict, onUnauthorized }: Props) {
                 value={edits[item.key] ?? (item.secret ? "" : item.value)}
                 onChange={(e) => setEdits((prev) => ({ ...prev, [item.key]: e.target.value }))}
               />
-            </label>
+            </div>
           ))}
           {group === "sinopac" && <p className="mono settings-note">{dict.settingsSinopacDaemonNote}</p>}
         </div>
       ))}
 
-      <div className="card">
-        {error && <div className="error-message">{error}</div>}
-        {saved ? (
-          <div className="modal-actions">
-            <div className="success-message">{dict.settingsRestarting}</div>
-            <button className="btn-primary" onClick={() => window.location.reload()}>
-              {dict.settingsReload}
-            </button>
-          </div>
-        ) : (
-          <div className="modal-actions">
-            <button className="btn-primary" disabled={busy || !dirty} onClick={save}>
-              {dict.settingsSave}
-            </button>
-          </div>
-        )}
+      <div className="settings-rules">
+        <span className="eyebrow">{dict.settingsRulesTitle}</span>
+        <p>{dict.settingsRule1}</p>
+        <p>{dict.settingsRule2}</p>
       </div>
+
+      {(error || saved) && (
+        <div className="card">
+          {error && <div className="error-message">{error}</div>}
+          {saved && (
+            <div className="modal-actions">
+              <div className="success-message">{dict.settingsRestarting}</div>
+              <button className="btn-primary" onClick={() => window.location.reload()}>
+                {dict.settingsReload}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
