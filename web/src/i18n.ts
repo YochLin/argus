@@ -295,6 +295,15 @@ export interface Dictionary {
   // section headings and the surrounding copy live here — adding a variable
   // server-side needs no new key unless it introduces a new group.
   navSettings: string;
+  // setNavNote/acctDevMode/acctDevNote back the account-switcher dropdown's
+  // two static entries (design-canvas reference's account menu — see
+  // Sidebar.tsx's sidebar-account-menu). Real multi-account switching isn't
+  // built yet, so the dropdown only ever shows these two rows; acctDevMode
+  // is a bare UI toggle with no wired behavior yet (see the ponytail note
+  // on its state in Sidebar.tsx).
+  setNavNote: string;
+  acctDevMode: string;
+  acctDevNote: string;
   settingsTitle: string;
   settingsIntro: string;
   settingsGroupTelegram: string;
@@ -668,6 +677,9 @@ const en: Dictionary = {
   eventHourUnknown: "time TBD",
   eventEstimated: "estimated",
   navSettings: "Settings",
+  setNavNote: "Connections & credentials",
+  acctDevMode: "Dev mode",
+  acctDevNote: "Reserved for future debug tooling",
   settingsTitle: "Connections",
   settingsIntro:
     "Credentials for the services Argus talks to. Saving rewrites .env and restarts the bot, which takes a few seconds.",
@@ -1029,6 +1041,9 @@ const zh: Dictionary = {
   eventHourUnknown: "時間未定",
   eventEstimated: "推估",
   navSettings: "設定",
+  setNavNote: "連線與憑證",
+  acctDevMode: "開發者模式",
+  acctDevNote: "保留給之後的除錯功能",
   settingsTitle: "連線設定",
   settingsIntro: "Argus 對外連線用的憑證。存檔會改寫 .env 並重新啟動 bot，約需數秒。",
   settingsGroupTelegram: "Telegram",

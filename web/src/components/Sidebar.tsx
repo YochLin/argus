@@ -1,7 +1,11 @@
-import type { MouseEvent, ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import type { Dictionary } from "../i18n";
 import { currencySymbol, type Market, type Status } from "../api";
 import { formatValue } from "./KpiCard";
+
+// Persisted the same way as App.tsx's langStorageKey/themeStorageKey — a
+// viewer preference, not server state.
+const devModeStorageKey = "argus-dev-mode";
 
 interface Props {
   path: string;
@@ -44,7 +48,6 @@ const links: Array<{ path: string; label: (dict: Dictionary) => string; icon: Re
 ];
 
 const importLink = { path: "/import", label: (d: Dictionary) => d.navImport, icon: <ImportIcon /> };
-const settingsLink = { path: "/settings", label: (d: Dictionary) => d.navSettings, icon: <SettingsIcon /> };
 const paperLink = { path: "/paper", label: (d: Dictionary) => d.navPaper, icon: <PaperIcon /> };
 const llmLink = { path: "/llm", label: (d: Dictionary) => d.navLlm, icon: <LlmIcon /> };
 
@@ -57,7 +60,7 @@ export function Sidebar({ path, onNavigate, dict, market, status, writable, pape
     ...links,
     ...(paperEnabled ? [paperLink] : []),
     ...(llmAuditEnabled ? [llmLink] : []),
-    ...(writable ? [importLink, settingsLink] : []),
+    ...(writable ? [importLink] : []),
   ];
   return (
     <div className="sidebar">
@@ -81,20 +84,104 @@ export function Sidebar({ path, onNavigate, dict, market, status, writable, pape
         ))}
       </nav>
       {status && (
-        <div className="card sidebar-account">
-          <div className="eyebrow">{dict.accountValue}</div>
-          <div className="sidebar-account-value mono">
-            {currencySymbol(market)}
-            {status.accountValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-          </div>
-          <div className={`sidebar-account-pnl mono ${status.netPnL >= 0 ? "profit" : "loss"}`}>
-            {formatValue(status.netPnL, "currency", currencySymbol(market))} {dict.netPnL}
-          </div>
-          <div className="sidebar-account-stats">
-            {status.tradeCount} {dict.trades} · {dict.winRate} {(status.winRate * 100).toFixed(1)}%
-          </div>
+        <AccountMenu dict={dict} market={market} status={status} writable={writable} onNavigate={onNavigate} />
+      )}
+    </div>
+  );
+}
+
+// The design-canvas reference's account-switcher: a click-to-open menu
+// anchored above the account card, holding a Settings entry and a dev-mode
+// toggle. Real multi-account switching (the reference's account list) isn't
+// built yet, so this menu only ever has these two static rows — Settings
+// moved here from the main nav list to match the reference's placement.
+function AccountMenu({
+  dict,
+  market,
+  status,
+  writable,
+  onNavigate,
+}: {
+  dict: Dictionary;
+  market: Market;
+  status: Status;
+  writable: boolean;
+  onNavigate: (path: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  // ponytail: devMode is a bare viewer-side toggle with nothing wired to it
+  // yet — no debug view exists to gate on it. Add that behavior (and read
+  // this flag) when there's an actual debug view to show.
+  const [devMode, setDevMode] = useState(() => localStorage.getItem(devModeStorageKey) === "1");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: globalThis.MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  function toggleDevMode() {
+    setDevMode((v) => {
+      const next = !v;
+      localStorage.setItem(devModeStorageKey, next ? "1" : "0");
+      return next;
+    });
+  }
+
+  return (
+    <div className="sidebar-account-wrap" ref={ref}>
+      {open && (
+        <div className="sidebar-account-menu">
+          {writable && (
+            <a
+              href="/settings"
+              className="sidebar-account-menu-item"
+              onClick={(e: MouseEvent) => {
+                e.preventDefault();
+                setOpen(false);
+                onNavigate("/settings");
+              }}
+            >
+              <span className="sidebar-account-menu-icon">
+                <SettingsIcon />
+              </span>
+              <span className="sidebar-account-menu-text">
+                <span>{dict.navSettings}</span>
+                <span className="sidebar-account-menu-note">{dict.setNavNote}</span>
+              </span>
+            </a>
+          )}
+          <button className="sidebar-account-menu-item" onClick={toggleDevMode} aria-pressed={devMode}>
+            <span className="sidebar-account-menu-icon">
+              <DevModeIcon />
+            </span>
+            <span className="sidebar-account-menu-text">
+              <span>{dict.acctDevMode}</span>
+              <span className="sidebar-account-menu-note">{dict.acctDevNote}</span>
+            </span>
+            <span className={`sidebar-switch${devMode ? " on" : ""}`}>
+              <span className="sidebar-switch-knob" />
+            </span>
+          </button>
         </div>
       )}
+      <button className="card sidebar-account" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <div className="eyebrow">{dict.accountValue}</div>
+        <div className="sidebar-account-value mono">
+          {currencySymbol(market)}
+          {status.accountValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+        </div>
+        <div className={`sidebar-account-pnl mono ${status.netPnL >= 0 ? "profit" : "loss"}`}>
+          {formatValue(status.netPnL, "currency", currencySymbol(market))} {dict.netPnL}
+        </div>
+        <div className="sidebar-account-stats">
+          {status.tradeCount} {dict.trades} · {dict.winRate} {(status.winRate * 100).toFixed(1)}%
+        </div>
+      </button>
     </div>
   );
 }
@@ -227,6 +314,15 @@ function SettingsIcon() {
     <svg {...iconProps} aria-hidden="true">
       <circle cx="8" cy="8" r="2.5" />
       <path d="M8 1.5 V3 M8 13 V14.5 M1.5 8 H3 M13 8 H14.5 M3.4 3.4 L4.5 4.5 M11.5 11.5 L12.6 12.6 M12.6 3.4 L11.5 4.5 M4.5 11.5 L3.4 12.6" />
+    </svg>
+  );
+}
+
+function DevModeIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <path d="M5.5 5 L2.5 8 L5.5 11" />
+      <path d="M10.5 5 L13.5 8 L10.5 11" />
     </svg>
   );
 }

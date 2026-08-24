@@ -342,10 +342,112 @@ input {
   flex-shrink: 0;
 }
 
-/* Sidebar's bottom account-overview card (Figma reference layout). Pinned
-   to the bottom via margin-top: auto in the sidebar's flex column. */
-.sidebar-account {
+/* Sidebar's bottom account-overview card, now doubling as the
+   design-canvas reference's account-switcher trigger (Sidebar.tsx's
+   AccountMenu). The wrap is the positioning root — pinned to the bottom via
+   margin-top: auto in the sidebar's flex column — and anchors the dropdown
+   panel above it. */
+.sidebar-account-wrap {
   margin-top: auto;
+  position: relative;
+}
+
+.sidebar-account {
+  display: block;
+  width: 100%;
+  border: 1px solid transparent;
+  font-family: var(--font-sans);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-account:hover {
+  border-color: var(--accent-tint-border);
+}
+
+.sidebar-account-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 50;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
+}
+
+.sidebar-account-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-decoration: none;
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-account-menu-item:hover {
+  background: var(--surface-2);
+}
+
+.sidebar-account-menu-icon {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--ink-3);
+}
+
+.sidebar-account-menu-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-account-menu-text > span:first-child {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.sidebar-account-menu-note {
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.sidebar-switch {
+  flex-shrink: 0;
+  display: block;
+  width: 28px;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--border);
+  padding: 2px;
+}
+
+.sidebar-switch.on {
+  background: var(--accent);
+}
+
+.sidebar-switch-knob {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ink);
+  transition: transform 0.15s ease;
+}
+
+.sidebar-switch.on .sidebar-switch-knob {
+  transform: translateX(12px);
+  background: #fff;
 }
 
 .sidebar-account-value {
