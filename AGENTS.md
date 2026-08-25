@@ -218,6 +218,14 @@ of it — and `cmd/server/main.go` is the server-first daemon, differing only in
   rather than duplicating it, and has no P&L curve — `daily_snapshots`/`DailyPnL` don't cover option
   market value (no free historical option price source), so this page only ever shows realized P&L on
   closed trades, never a portfolio-value line that would silently omit open option exposure.
+  `apiauth.go`/`apiv1.go`/`apiv1_resources.go`/`ws.go` (Phase 24 Stage 4) are the `/api/v1` surface
+  aimed at a future mobile app and at scripts — JWT (`JWT_SECRET`) or `X-API-Key` (`API_KEY`) auth, a
+  `{success, data, error, timestamp}` envelope on every response, and a `/api/v1/ws` WebSocket fed by
+  `internal/notification`'s `WebSocketHub`. It is registered only when `JWT_SECRET` **and**
+  `WEB_PASSWORD` are both set, and it is deliberately *separate* from `auth.go`'s Phase 10 cookie auth
+  (a browser session vs. a token-bearing client with no cookie jar; they share `WEB_PASSWORD` and
+  nothing else). The route table lives in `apiV1Handlers` as data so `openapi_test.go` can fail when
+  **[docs/openapi.yaml](docs/openapi.yaml)** drifts from it — update the spec in the same PR as a route.
   `settings.go`'s `/api/settings` (Phase 17) is the one endpoint that writes outside SQLite: it patches
   the connection/credential env vars in `.env` line-by-line (never `godotenv.Write`, which would reorder
   the file and drop every comment) and then `os.Exit(1)`s so the supervisor restarts the process into the
