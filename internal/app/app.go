@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,10 +13,14 @@ import (
 	"argus/internal/bot"
 	"argus/internal/data"
 	"argus/internal/db"
+	"argus/internal/i18n"
 	"argus/internal/llm"
 	"argus/internal/logger"
 	"argus/internal/market"
+	"argus/internal/notification"
 	"argus/internal/scheduler"
+	"argus/internal/service"
+	"argus/internal/signals"
 	"argus/internal/web"
 )
 
@@ -53,7 +58,16 @@ type App struct {
 	// state); cmd/server always has one, see DefaultWebAddr.
 	Web       *web.Server
 	Scheduler *scheduler.Scheduler
-	logFile   *lumberjack.Logger
+	// Notifier is the process-wide event bus (Phase 24 Stage 2). Built here
+	// rather than inside the bot as of Stage 3 Step 3.2, because scheduler
+	// jobs that no longer go through *Bot still need somewhere to publish —
+	// and because Stage 4's WebSocketNotifier has no *Bot to hang off at all.
+	Notifier *notification.Dispatcher
+	// Scan runs the universe scan for the scheduler. Separate from the
+	// ScanService the bot builds for its own daily-report path: they share
+	// their dedup state through signal_states, not through a struct.
+	Scan    *service.ScanService
+	logFile *lumberjack.Logger
 }
 
 // Boot wires the whole process up in dependency order — logging, DB, data
@@ -222,6 +236,36 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 		a.LLM.AddFallback(llm.AntigravityProvider{}, antigravityModel, antigravityModel, antigravityModel)
 	}
 
+	// The Dispatcher and the scheduler's ScanService are both built before
+	// the bot, and neither depends on it: that's the Stage 3 inversion in one
+	// place. The bot registers its own TelegramNotifier onto this Dispatcher
+	// when it's constructed below.
+	a.Notifier = notification.NewDispatcher(notification.NewInAppNotificationStore(database))
+	// Restricted is TW-only and needs the Shioaji daemon; core.Sinopac is a
+	// typed nil-safe pointer, so it's assigned through the interface only
+	// when actually constructed (the coreProviders footgun again).
+	var restricted service.RestrictedProvider
+	if core.Sinopac != nil {
+		restricted = core.Sinopac
+	}
+	a.Scan = service.NewScanService(service.ScanConfig{
+		Store:    database,
+		Detector: signals.NewDetector(cfg.Lang),
+		TrustNet: trustNetProvider,
+		// Uncached, unlike the bot's own ScanService: this reader only backs
+		// the revenue-growth gate, which is short-circuited to a handful of
+		// TW tickers a day (docs/phase-14-strategy-screens-2.md §4.2c), so a
+		// cache in front of it would save single-digit requests. No explicit
+		// rate limiting here either — RunUniverseScan's own 1s
+		// per-ticker delay already paces every request this reader makes,
+		// same as it paces the history/quote calls around it.
+		Fundamentals: fundamentalsReader(core.Fundamentals),
+		History:      core.Yahoo,
+		Quotes:       core.Provider,
+		Restricted:   restricted,
+		Lang:         cfg.Lang,
+	})
+
 	// Telegram is optional as of Phase 17 PR1 (docs/phase-17-web-settings.md
 	// §3): without a token/chat id — or with a pair Telegram itself rejects,
 	// which bot.New finds out synchronously via getMe — a.Bot stays nil and
@@ -267,6 +311,7 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 		PaperInitialCashTWD:    cfg.PaperInitialCashTWD,
 		PaperMaxPositionPct:    cfg.PaperMaxPositionPct,
 		PaperTakeProfitATRMult: cfg.PaperTakeProfitATRMult,
+		Notifier:               a.Notifier,
 	}); err != nil {
 		// A rejected token (bot.New's getMe call) must not be fatal either:
 		// the recovery path for a typo'd token is the Settings page, which
@@ -369,12 +414,6 @@ func (a *App) registerJobs(ctx context.Context) {
 		a.Scheduler.AddTWClosingSnapshot(ctx, func(ctx context.Context) {
 			b.RunClosingSnapshot(ctx, market.TW)
 		})
-		a.Scheduler.AddUniverseScan(ctx, func(ctx context.Context) {
-			b.RunUniverseScan(ctx)
-		})
-		a.Scheduler.AddTWUniverseScan(ctx, func(ctx context.Context) {
-			b.RunTWUniverseScan(ctx)
-		})
 		a.Scheduler.AddWeeklyReview(ctx, func(ctx context.Context) {
 			b.RunWeeklyReview(ctx)
 		})
@@ -391,6 +430,19 @@ func (a *App) registerJobs(ctx context.Context) {
 		})
 	}
 
+	// The universe scan is Phase 24 Stage 3 Step 3.2's first fully inverted
+	// job: the scheduler calls a service and gets a DTO back, with no *Bot in
+	// the path at all. It's outside the Telegram block above on purpose — the
+	// job has never sent a Telegram message (its output is scan_hits rows the
+	// daily report reads later), so there was never a reason for it to be
+	// gated on Telegram being configured, only an accident of where it lived.
+	a.Scheduler.AddUniverseScan(ctx, func(ctx context.Context) {
+		a.runScan(ctx, market.US)
+	})
+	a.Scheduler.AddTWUniverseScan(ctx, func(ctx context.Context) {
+		a.runScan(ctx, market.TW)
+	})
+
 	a.Scheduler.AddLogRotation(func() {
 		if err := a.logFile.Rotate(); err != nil {
 			logger.Errorf("log rotation: %v", err)
@@ -402,6 +454,39 @@ func (a *App) registerJobs(ctx context.Context) {
 			runBackup(a.PaperDB, a.cfg.BackupDir, a.cfg.BackupRetentionDays, "argus-paper")
 		}
 	})
+}
+
+// runScan is the universe scan's scheduler entry point: call the service,
+// log the DTO. recoverJob replaces the *Bot method that used to guard this
+// (bot.recoverJobPanic) — same log line, same job_panic alert, published
+// through the process-wide Dispatcher instead of through the bot.
+func (a *App) runScan(ctx context.Context, m market.MarketID) {
+	defer a.recoverJob("universe scan")
+	res, err := a.Scan.RunUniverseScan(ctx, m)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		logger.Errorf("universe scan: market=%s: %v", m, err)
+		return
+	}
+	if !res.Skipped {
+		logger.Infof("universe scan: market=%s checked %d tickers, %d hits", m, res.Scanned, res.Hits)
+	}
+}
+
+// recoverJob recovers from a panic inside a scheduler-invoked job, logging
+// it and alerting the user. Without this, a panic in a job would kill that
+// goroutine silently — the process keeps running and answering requests, but
+// the VPS is unattended, so a failed job would otherwise go completely
+// unnoticed. Deferred by the job wrapper, not by the service: a service
+// shouldn't have to know it's being run by cron.
+func (a *App) recoverJob(job string) {
+	if r := recover(); r != nil {
+		logger.Errorf("%s: panic: %v", job, r)
+		a.Notifier.Publish(context.Background(), notification.Event{
+			Type:  "job_panic",
+			Text:  i18n.T(a.cfg.Lang, i18n.KeyJobPanic, job, r),
+			Level: notification.LevelCritical,
+		})
+	}
 }
 
 // Run starts the HTTP server, the cron scheduler and (when configured) the
@@ -465,4 +550,14 @@ func (a *App) Close() {
 	if a.logFile != nil {
 		a.logFile.Close()
 	}
+}
+
+// fundamentalsReader adapts a data.FundamentalsProvider to the plain function
+// ScanConfig wants, staying nil when there's no provider — the gate then
+// fails closed, same as the pre-extraction nil-check in internal/bot.
+func fundamentalsReader(p data.FundamentalsProvider) func(string) (*data.Fundamentals, error) {
+	if p == nil {
+		return nil
+	}
+	return p.GetFundamentals
 }

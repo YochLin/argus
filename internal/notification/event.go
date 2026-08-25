@@ -69,6 +69,16 @@ func NewDispatcher(notifiers ...Notifier) *Dispatcher {
 	return &Dispatcher{notifiers: notifiers}
 }
 
+// Register adds n to the fan-out. Boot-time only (Phase 24 Stage 3 Step 3.2:
+// the Dispatcher is now constructed by internal/app before the Telegram
+// adapter exists, so the adapter registers itself when it's built) — there is
+// no lock here because nothing publishes until every entrypoint has finished
+// wiring, and a Notifier that could come and go at runtime would need a
+// different design than a slice anyway.
+func (d *Dispatcher) Register(n Notifier) {
+	d.notifiers = append(d.notifiers, n)
+}
+
 // Publish delivers e to every registered Notifier. e.Time defaults to now
 // when unset so callers don't need to stamp every Event themselves.
 func (d *Dispatcher) Publish(ctx context.Context, e Event) {
