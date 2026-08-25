@@ -210,7 +210,16 @@ func main() {
 	}
 	defer llmClient.Close() // kills any still-open persistent chat session's subprocess
 
-	telegramBot, err := bot.New(bot.Config{
+	// Telegram is optional as of Phase 17 PR1 (docs/phase-17-web-settings.md
+	// §3): without a token/chat id — or with a pair Telegram itself rejects,
+	// which bot.New finds out synchronously via getMe — telegramBot stays nil
+	// and the process still comes up to serve the web dashboard, whose
+	// Settings page is how the operator fills these in. Every use of
+	// telegramBot below is therefore nil-guarded.
+	var telegramBot *bot.Bot
+	if cfg.TelegramToken == "" || cfg.ChatID == 0 {
+		logger.Info("TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not configured: Telegram disabled, set them on the web dashboard's Settings page")
+	} else if telegramBot, err = bot.New(bot.Config{
 		Token:                  cfg.TelegramToken,
 		ChatID:                 cfg.ChatID,
 		DB:                     database,
@@ -247,15 +256,20 @@ func main() {
 		PaperInitialCashTWD:    cfg.PaperInitialCashTWD,
 		PaperMaxPositionPct:    cfg.PaperMaxPositionPct,
 		PaperTakeProfitATRMult: cfg.PaperTakeProfitATRMult,
-	})
-	if err != nil {
-		logger.Fatalf("init bot: %v", err)
+	}); err != nil {
+		// A rejected token (bot.New's getMe call) must not be fatal either:
+		// the recovery path for a typo'd token is the Settings page, which
+		// only exists if this process keeps running.
+		logger.Errorf("init bot: %v (Telegram disabled, dashboard still available)", err)
+		telegramBot = nil
 	}
 
 	// Phase 2.6 追加項's S&P 500 refresh (see docs/phase-2.6-universe-refresh.md):
 	// runs once per process start, right after seedSP500's fresh-install
 	// path (inside bot.New -> db.New) has already had its chance to run.
-	telegramBot.SyncUniverse()
+	if telegramBot != nil {
+		telegramBot.SyncUniverse()
+	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -266,6 +280,16 @@ func main() {
 	// registration order doesn't matter to robfig/cron, so moving this up
 	// changes nothing about the jobs registered further down.
 	sched := scheduler.New()
+
+	// trade must be assigned only when telegramBot is non-nil: handing a nil
+	// *bot.Bot straight to web.Config.Trade would produce a non-nil interface
+	// wrapping a nil pointer, which every `s.trade == nil` check in
+	// internal/web would then miss (server.go's paperDB comment names the
+	// same trap).
+	var trade web.TradeExecutor
+	if telegramBot != nil {
+		trade = telegramBot
+	}
 
 	if cfg.WebAddr != "" {
 		// In-process, not a subcommand like "mcp": the dashboard needs live
@@ -284,7 +308,7 @@ func main() {
 			OptionChain:         yahoo,
 			RiskHeatPct:         cfg.RiskHeatPct,
 			Password:            cfg.WebPassword,
-			Trade:               telegramBot,
+			Trade:               trade,
 			PaperDB:             paperDatabase,
 			PaperInitialCashUSD: cfg.PaperInitialCashUSD,
 			PaperInitialCashTWD: cfg.PaperInitialCashTWD,
@@ -308,44 +332,52 @@ func main() {
 		})
 	}
 
-	sched.AddDailyReport(ctx, func(ctx context.Context) {
-		telegramBot.RunDailyReport(ctx)
-	})
-	sched.AddMorningBriefing(ctx, func(ctx context.Context) {
-		telegramBot.RunUSMorningBriefing(ctx)
-	})
-	sched.AddTWDailyReport(ctx, func(ctx context.Context) {
-		telegramBot.RunTWDailyReport(ctx)
-	})
-	sched.AddTWMorningBriefing(ctx, func(ctx context.Context) {
-		telegramBot.RunTWMorningBriefing(ctx)
-	})
-	sched.AddClosingSnapshot(ctx, func(ctx context.Context) {
-		telegramBot.RunClosingSnapshot(ctx, market.US)
-	})
-	sched.AddTWClosingSnapshot(ctx, func(ctx context.Context) {
-		telegramBot.RunClosingSnapshot(ctx, market.TW)
-	})
-	sched.AddUniverseScan(ctx, func(ctx context.Context) {
-		telegramBot.RunUniverseScan(ctx)
-	})
-	sched.AddTWUniverseScan(ctx, func(ctx context.Context) {
-		telegramBot.RunTWUniverseScan(ctx)
-	})
-	sched.AddWeeklyReview(ctx, func(ctx context.Context) {
-		telegramBot.RunWeeklyReview(ctx)
-	})
-	sched.AddSinopacSync(ctx, func(ctx context.Context) {
-		if sinopacClient == nil {
-			return
-		}
-		if msg, found := telegramBot.RunSinopacSync(ctx, !cfg.SinopacSyncLive); found {
-			telegramBot.Send(msg)
-		}
-	})
-	sched.AddMonthlyReport(ctx, func(ctx context.Context) {
-		telegramBot.RunMonthlyReport(ctx)
-	})
+	// Every job below reports to Telegram, so the whole block is registered
+	// as one unit rather than nil-guarding twelve closures — see
+	// docs/phase-17-web-settings.md §3.1. Log rotation and backups are
+	// deliberately outside it: they're the two jobs that still matter on a
+	// Telegram-less process.
+	if telegramBot != nil {
+		sched.AddDailyReport(ctx, func(ctx context.Context) {
+			telegramBot.RunDailyReport(ctx)
+		})
+		sched.AddMorningBriefing(ctx, func(ctx context.Context) {
+			telegramBot.RunUSMorningBriefing(ctx)
+		})
+		sched.AddTWDailyReport(ctx, func(ctx context.Context) {
+			telegramBot.RunTWDailyReport(ctx)
+		})
+		sched.AddTWMorningBriefing(ctx, func(ctx context.Context) {
+			telegramBot.RunTWMorningBriefing(ctx)
+		})
+		sched.AddClosingSnapshot(ctx, func(ctx context.Context) {
+			telegramBot.RunClosingSnapshot(ctx, market.US)
+		})
+		sched.AddTWClosingSnapshot(ctx, func(ctx context.Context) {
+			telegramBot.RunClosingSnapshot(ctx, market.TW)
+		})
+		sched.AddUniverseScan(ctx, func(ctx context.Context) {
+			telegramBot.RunUniverseScan(ctx)
+		})
+		sched.AddTWUniverseScan(ctx, func(ctx context.Context) {
+			telegramBot.RunTWUniverseScan(ctx)
+		})
+		sched.AddWeeklyReview(ctx, func(ctx context.Context) {
+			telegramBot.RunWeeklyReview(ctx)
+		})
+		sched.AddSinopacSync(ctx, func(ctx context.Context) {
+			if sinopacClient == nil {
+				return
+			}
+			if msg, found := telegramBot.RunSinopacSync(ctx, !cfg.SinopacSyncLive); found {
+				telegramBot.Send(msg)
+			}
+		})
+		sched.AddMonthlyReport(ctx, func(ctx context.Context) {
+			telegramBot.RunMonthlyReport(ctx)
+		})
+	}
+
 	sched.AddLogRotation(func() {
 		if err := logFile.Rotate(); err != nil {
 			logger.Errorf("log rotation: %v", err)
@@ -361,7 +393,14 @@ func main() {
 	defer sched.Stop()
 
 	logger.Info("stock trader bot started")
-	telegramBot.Run(ctx)
+	if telegramBot != nil {
+		telegramBot.Run(ctx)
+	} else {
+		// Nothing to long-poll, but the web server, log rotation and backups
+		// are all still running on their own goroutines — block until a
+		// signal (or the Settings page's os.Exit) ends the process.
+		<-ctx.Done()
+	}
 	logger.Info("bot stopped")
 }
 
