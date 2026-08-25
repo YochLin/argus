@@ -87,6 +87,12 @@ func (s *Server) registerAPIV1() {
 	s.mux.HandleFunc("GET /api/v1/scan/hits", s.requireAPIAuth(s.handleAPIScanHits))
 	s.mux.HandleFunc("GET /api/v1/notifications", s.requireAPIAuth(s.handleAPINotifications))
 	s.mux.HandleFunc("POST /api/v1/notifications/{id}/read", s.requireAPIAuth(s.handleAPINotificationRead))
+	// The live channel authenticates itself (a browser WebSocket can't send
+	// an Authorization header), so it isn't wrapped in requireAPIAuth — see
+	// handleWS.
+	if s.events != nil {
+		s.mux.HandleFunc("GET /api/v1/ws", s.handleWS)
+	}
 }
 
 func (s *Server) handleAPIMe(w http.ResponseWriter, r *http.Request) {

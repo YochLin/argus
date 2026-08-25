@@ -63,6 +63,9 @@ type App struct {
 	// jobs that no longer go through *Bot still need somewhere to publish —
 	// and because Stage 4's WebSocketNotifier has no *Bot to hang off at all.
 	Notifier *notification.Dispatcher
+	// Events is the live-alert fan-out behind /api/v1/ws (Stage 4 Step 4.3)
+	// — Stage 2's deferred WebSocketNotifier, now that there's a subscriber.
+	Events *notification.WebSocketHub
 	// Scan runs the universe scan for the scheduler. Separate from the
 	// ScanService the bot builds for its own daily-report path: they share
 	// their dedup state through signal_states, not through a struct.
@@ -240,7 +243,12 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 	// the bot, and neither depends on it: that's the Stage 3 inversion in one
 	// place. The bot registers its own TelegramNotifier onto this Dispatcher
 	// when it's constructed below.
-	a.Notifier = notification.NewDispatcher(notification.NewInAppNotificationStore(database))
+	// Events is registered on the Dispatcher unconditionally, not gated on
+	// cfg.WebAddr: a hub with no subscribers costs one map lookup per
+	// published event, and gating it would mean the /api/v1/ws route's
+	// existence depended on two separate settings instead of one.
+	a.Events = notification.NewWebSocketHub()
+	a.Notifier = notification.NewDispatcher(notification.NewInAppNotificationStore(database), a.Events)
 	// Restricted is TW-only and needs the Shioaji daemon; core.Sinopac is a
 	// typed nil-safe pointer, so it's assigned through the interface only
 	// when actually constructed (the coreProviders footgun again).
@@ -362,6 +370,7 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 			LLMAudit:            cfg.WebLLMAudit,
 			JWTSecret:           cfg.JWTSecret,
 			APIKey:              cfg.APIKey,
+			Events:              a.Events,
 		})
 		// Phase 18's sector money-flow scan only has a consumer when the
 		// dashboard is running, so it's registered here rather than

@@ -3,6 +3,7 @@ module argus
 go 1.25.0
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/joho/godotenv v1.5.1

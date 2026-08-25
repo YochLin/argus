@@ -16,6 +16,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/logger"
+	"argus/internal/notification"
 	"argus/internal/service"
 )
 
@@ -106,6 +107,11 @@ type Config struct {
 	// scripts and cron jobs, sent as X-API-Key. Empty means only JWT is
 	// accepted; it is never matched against an empty header.
 	APIKey string
+	// Events is Phase 24 Stage 4 Step 4.3's live-alert fan-out, registered on
+	// the process's notification.Dispatcher by internal/app. nil leaves
+	// /api/v1/ws unregistered — the dashboard and the REST surface don't
+	// depend on it.
+	Events *notification.WebSocketHub
 	// LLMAudit gates Phase 19's /llm page (env WEB_LLM_AUDIT, §8.4) — unlike
 	// Paper/OptionChain/etc.'s "always register, 404/empty at request time"
 	// convention, this one skips route registration entirely when off, so
@@ -160,8 +166,9 @@ type Server struct {
 	// nil-typed-pointer-in-an-interface trap paperDB's comment above warns
 	// about, just solved the other way since this field's callers need an
 	// interface, not a concrete *db.DB.
-	apiDB apiV1Store
-	mux   *http.ServeMux
+	apiDB  apiV1Store
+	events wsHub
+	mux    *http.ServeMux
 }
 
 func New(cfg Config) *Server {
@@ -258,6 +265,9 @@ func New(cfg Config) *Server {
 	// requireWritable/requireAuth gate as every other write route — a bulk
 	// transaction write is no less a write than a single /buy.
 	s.mux.HandleFunc("POST /api/import", s.requireWritable(s.requireAuth(s.handleImport)))
+	if cfg.Events != nil {
+		s.events = cfg.Events
+	}
 	s.registerAPIV1()
 	s.mux.Handle("/", spaHandler())
 	return s
