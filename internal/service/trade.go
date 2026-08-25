@@ -54,6 +54,27 @@ type SellInput struct {
 	ExtID  string
 }
 
+// TradePayload is the JSON shape a proposed buy/sell is stored as in a
+// db.PendingAction's Payload column (Phase 4's write-gating flow) — the
+// single definition internal/mcptools' proposeTrade marshals into and
+// internal/bot's executePendingAction unmarshals back out of, replacing the
+// two packages' former hand-duplicated copies (Phase 24 tech debt 4). Fee is
+// a *float64 (nil when unspecified) so a caller can tell "not specified,
+// auto-calculate" apart from an explicit 0 — same feeSet distinction
+// validateTrade above makes for BuyInput/SellInput. ExtID is only ever set
+// by Phase 16's Shioaji sync (internal/bot/sinopac.go builds a
+// pending_actions row directly, bypassing both record_buy/record_sell and
+// this type's usual construction path) — always "" for an LLM-proposed
+// trade.
+type TradePayload struct {
+	Ticker string   `json:"ticker"`
+	Shares float64  `json:"shares"`
+	Price  float64  `json:"price"`
+	Fee    *float64 `json:"fee"`
+	Date   string   `json:"date"`
+	ExtID  string   `json:"ext_id,omitempty"`
+}
+
 // TradeResult is the transport-neutral result of a completed trade.
 type TradeResult struct {
 	Ticker      string

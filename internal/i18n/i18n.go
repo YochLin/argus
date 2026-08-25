@@ -332,7 +332,7 @@ const (
 	KeyPendingSellConfirm Key = "pending_sell_confirm"
 	// KeyPendingActionFromSinopac (Phase 16, TW only) appends a source note
 	// to a pending buy/sell confirmation when it was synced in from Shioaji
-	// (tradePayload.ExtID set) rather than proposed by the LLM.
+	// (TradePayload.ExtID set) rather than proposed by the LLM.
 	KeyPendingActionFromSinopac Key = "pending_action_from_sinopac"
 
 	// Phase 16 (TW only) /sinopac + /sinopac sync — see internal/bot/sinopac.go.

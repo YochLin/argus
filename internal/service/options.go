@@ -11,31 +11,45 @@ import (
 	"argus/internal/option"
 )
 
-// OptionMark fetches p's live chain and returns the mark price (option.Mark)
-// and days-to-expiry for its specific contract. There's no single-contract
-// quote endpoint — Yahoo only serves a whole expiry's chain — so this costs
-// one request per distinct (underlying, expiry) position; fine at
-// single-user, few-position scale (ponytail: cache per-request if
-// /portfolio ever holds enough contracts to make that slow).
-func OptionMark(chain data.OptionChainProvider, p db.OptionPosition) (mark float64, dte int, err error) {
+// FindOptionQuote fetches p's live chain and returns the data.OptionQuote
+// matching its specific contract, plus days-to-expiry. There's no
+// single-contract quote endpoint — Yahoo only serves a whole expiry's chain
+// — so this costs one request per distinct (underlying, expiry) position;
+// fine at single-user, few-position scale (ponytail: cache per-request if
+// /portfolio ever holds enough contracts to make that slow). The single
+// shared chain-fetch-and-match step behind both OptionMark (mark/dte only)
+// and internal/web's fetchOptionMarkAndGreeks (mark/dte plus Greeks, which
+// need the matched quote's ImpliedVolatility that OptionMark alone doesn't
+// expose) — Phase 24 tech debt 5's tail.
+func FindOptionQuote(chain data.OptionChainProvider, p db.OptionPosition) (data.OptionQuote, int, error) {
 	if chain == nil {
-		return 0, 0, fmt.Errorf("option chain provider unavailable")
+		return data.OptionQuote{}, 0, fmt.Errorf("option chain provider unavailable")
 	}
 	expiry, err := time.Parse("2006-01-02", p.Expiry)
 	if err != nil {
-		return 0, 0, err
+		return data.OptionQuote{}, 0, err
 	}
 	quotes, err := chain.GetOptionChain(p.Underlying, expiry)
 	if err != nil {
-		return 0, 0, err
+		return data.OptionQuote{}, 0, err
 	}
 	for _, q := range quotes {
 		if q.ContractSymbol == p.ContractSymbol {
-			dte = int(math.Ceil(time.Until(expiry).Hours() / 24))
-			return option.Mark(q.Bid, q.Ask, q.LastPrice), dte, nil
+			dte := int(math.Ceil(time.Until(expiry).Hours() / 24))
+			return q, dte, nil
 		}
 	}
-	return 0, 0, fmt.Errorf("contract not found in chain")
+	return data.OptionQuote{}, 0, fmt.Errorf("contract not found in chain")
+}
+
+// OptionMark fetches p's live chain via FindOptionQuote and returns the mark
+// price (option.Mark) and days-to-expiry for its specific contract.
+func OptionMark(chain data.OptionChainProvider, p db.OptionPosition) (mark float64, dte int, err error) {
+	q, dte, err := FindOptionQuote(chain, p)
+	if err != nil {
+		return 0, 0, err
+	}
+	return option.Mark(q.Bid, q.Ask, q.LastPrice), dte, nil
 }
 
 // GatherOptionCandidates fetches every expiry within profile's DTE band (one

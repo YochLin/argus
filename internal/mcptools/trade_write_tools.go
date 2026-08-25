@@ -10,29 +10,8 @@ import (
 
 	"argus/internal/db"
 	"argus/internal/i18n"
+	"argus/internal/service"
 )
-
-// tradePayload is the JSON shape stored in a db.PendingAction's Payload for
-// PendingActionRecordBuy/PendingActionRecordSell. internal/bot keeps its own
-// copy with matching json tags to decode this once the user confirms — the
-// two packages don't share an import for it (mcptools can't import bot, and
-// there's no third package both already depend on for this), same
-// deliberate small duplication as formatFundamentals/commaf elsewhere in
-// this package (see server.go's package doc comment).
-// Fee is a *float64 (nil when the model omits it) so internal/bot's
-// executePendingAction can tell "not specified, auto-calculate" apart from
-// an explicit 0 — same feeSet distinction as parseTradeArgs (Phase 13 §3.2).
-// ExtID is only ever set by Phase 16's Shioaji sync (internal/bot/sinopac.go
-// builds a pending_actions row directly, bypassing this package's tools
-// entirely) — always "" for an LLM-proposed trade.
-type tradePayload struct {
-	Ticker string   `json:"ticker"`
-	Shares float64  `json:"shares"`
-	Price  float64  `json:"price"`
-	Fee    *float64 `json:"fee"`
-	Date   string   `json:"date"`
-	ExtID  string   `json:"ext_id,omitempty"`
-}
 
 type tradeInput struct {
 	Ticker string   `json:"ticker" jsonschema:"US stock ticker symbol, e.g. AAPL"`
@@ -78,7 +57,7 @@ func (ts *toolset) recordSell(ctx context.Context, _ *mcp.CallToolRequest, in tr
 	return ts.proposeTrade(db.PendingActionRecordSell, in, i18n.KeyMCPTradeProposalSell)
 }
 
-// proposeTrade validates in, JSON-encodes it into a tradePayload, and files
+// proposeTrade validates in, JSON-encodes it into a service.TradePayload, and files
 // it as a db.PendingAction of actionType. Validation happens here (not left
 // to the eventual db.RecordBuy/RecordSell call) so a malformed model call
 // never even reaches the user as a confirmation prompt.
@@ -94,7 +73,7 @@ func (ts *toolset) proposeTrade(actionType string, in tradeInput, resultKey i18n
 		return nil, nil, ts.mcpErr(i18n.KeyMCPTradeInvalidInput)
 	}
 
-	payload, err := json.Marshal(tradePayload{Ticker: ticker, Shares: in.Shares, Price: in.Price, Fee: in.Fee, Date: date})
+	payload, err := json.Marshal(service.TradePayload{Ticker: ticker, Shares: in.Shares, Price: in.Price, Fee: in.Fee, Date: date})
 	if err != nil {
 		return nil, nil, ts.mcpErr(i18n.KeyMCPTradeProposalFailed, err)
 	}

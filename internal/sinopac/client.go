@@ -61,7 +61,13 @@ type apiError struct {
 // ("SessionNotEstablished") — live-observed on the after-hours simulation
 // daemon: every endpoint (even quotes) fails for 1-2 minutes after the
 // upstream session drops, then self-heals with no daemon restart needed.
-var sessionRetryBackoff = []time.Duration{time.Second, 2 * time.Second, 4 * time.Second}
+// The steps therefore have to sum to ~2 minutes, not to a few seconds:
+// anything shorter exhausts the retries mid-outage and surfaces the drop
+// to the user as a real sync failure.
+var sessionRetryBackoff = []time.Duration{
+	time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second,
+	15 * time.Second, 30 * time.Second, 30 * time.Second, 30 * time.Second,
+}
 
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
 	var lastErr error
@@ -99,7 +105,11 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 			}
 			lastErr = fmt.Errorf("sinopac: %s: %s", path, msg)
 			if strings.Contains(msg, "SessionNotEstablished") && attempt < len(sessionRetryBackoff) {
-				time.Sleep(sessionRetryBackoff[attempt])
+				select {
+				case <-ctx.Done():
+					return lastErr
+				case <-time.After(sessionRetryBackoff[attempt]):
+				}
 				continue
 			}
 			return lastErr

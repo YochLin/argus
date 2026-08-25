@@ -12,6 +12,7 @@ import (
 	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/paper"
+	"argus/internal/service"
 )
 
 // callbackConfirmPrefix/callbackRejectPrefix identify a Telegram inline
@@ -23,23 +24,10 @@ const (
 	callbackRejectPrefix  = "pa_reject:"
 )
 
-// tradePayload mirrors internal/mcptools' own copy (trade_write_tools.go) —
-// same deliberate small duplication as this codebase's other
-// can't-share-an-import cases (see that file's doc comment), since bot
-// doesn't import mcptools and mcptools can't import bot.
-type tradePayload struct {
-	Ticker string   `json:"ticker"`
-	Shares float64  `json:"shares"`
-	Price  float64  `json:"price"`
-	Fee    *float64 `json:"fee"`
-	Date   string   `json:"date"`
-	ExtID  string   `json:"ext_id,omitempty"`
-}
-
-func decodeTradePayload(payload string) (tradePayload, bool) {
-	var p tradePayload
+func decodeTradePayload(payload string) (service.TradePayload, bool) {
+	var p service.TradePayload
 	if err := json.Unmarshal([]byte(payload), &p); err != nil {
-		return tradePayload{}, false
+		return service.TradePayload{}, false
 	}
 	return p, true
 }
@@ -49,7 +37,7 @@ func decodeTradePayload(payload string) (tradePayload, bool) {
 // ExecuteBuy/ExecuteSell's nil-fee branch — the tool schema promises "omit
 // to auto-calculate", so this must match, not silently default to 0 (which
 // used to skip TW's brokerage fee entirely on an MCP-confirmed trade).
-func (b *Bot) resolvePendingFee(p tradePayload, side string) float64 {
+func (b *Bot) resolvePendingFee(p service.TradePayload, side string) float64 {
 	if p.Fee != nil {
 		return *p.Fee
 	}

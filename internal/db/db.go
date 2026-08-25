@@ -659,6 +659,24 @@ var migrations = []string{
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	`,
+
+	// 24: notifications backs Phase 24 Stage 2's in-app notification history
+	// (internal/notification's InAppNotificationStore) — the same background
+	// alerts a Telegram push shows (stop-loss, restricted-stock, price
+	// events, ...), kept so a future Web/App surface has history to read.
+	// No market/ticker column: Event.Type + Text already identify what
+	// happened, and not every event is ticker-scoped (e.g. job_panic).
+	`
+	CREATE TABLE IF NOT EXISTS notifications (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		type       TEXT NOT NULL,
+		text       TEXT NOT NULL,
+		level      TEXT NOT NULL,
+		read       INTEGER NOT NULL DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
+	`,
 }
 
 func (d *DB) migrate() error {
