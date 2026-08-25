@@ -637,6 +637,22 @@ function getMockData(urlStr: string): any {
       },
     };
   }
+  if (path === "/api/settings") {
+    return {
+      settings: [
+        { key: "TELEGRAM_BOT_TOKEN", group: "telegram", secret: true, value: "", isSet: true },
+        { key: "TELEGRAM_CHAT_ID", group: "telegram", secret: false, value: "123456789", isSet: true },
+        { key: "FINNHUB_API_KEY", group: "data", secret: true, value: "", isSet: true },
+        { key: "FINMIND_TOKEN", group: "data", secret: true, value: "", isSet: false },
+        { key: "SEC_USER_AGENT", group: "data", secret: false, value: "argus contact@example.com", isSet: true },
+        { key: "SHIOAJI_ADDR", group: "sinopac", secret: false, value: "127.0.0.1:5000", isSet: true },
+        { key: "SJ_API_KEY", group: "sinopac", secret: true, value: "", isSet: true },
+        { key: "SJ_SEC_KEY", group: "sinopac", secret: true, value: "", isSet: false },
+        { key: "SINOPAC_SKIP_TICKERS", group: "sinopac", secret: false, value: "", isSet: false },
+        { key: "SINOPAC_SYNC_LIVE", group: "sinopac", secret: false, value: "false", isSet: true },
+      ],
+    };
+  }
   if (path === "/api/news-sources/blocked") {
     return { sources: [{ source: "AdSpam Daily", createdAt: "2026-08-01 09:00:00" }] };
   }

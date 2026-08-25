@@ -290,6 +290,36 @@ export interface Dictionary {
   eventHourDmh: string;
   eventHourUnknown: string;
   eventEstimated: string;
+  // Phase 17: the connection/credential settings page. Field labels are the
+  // env var names themselves (rendered from /api/settings), so only the
+  // section headings and the surrounding copy live here — adding a variable
+  // server-side needs no new key unless it introduces a new group.
+  navSettings: string;
+  // setNavNote/acctDevMode/acctDevNote back the account-switcher dropdown's
+  // two static entries (design-canvas reference's account menu — see
+  // Sidebar.tsx's sidebar-account-menu). Real multi-account switching isn't
+  // built yet, so the dropdown only ever shows these two rows. devMode
+  // (App.tsx, persisted client-side) gates the /llm nav link + route —
+  // App.tsx's own comment on devModeStorageKey has the full rationale.
+  setNavNote: string;
+  acctDevMode: string;
+  acctDevNote: string;
+  settingsTitle: string;
+  settingsIntro: string;
+  settingsGroupTelegram: string;
+  settingsGroupData: string;
+  settingsGroupSinopac: string;
+  settingsSinopacDaemonNote: string;
+  settingsSecretSet: string;
+  settingsSecretUnset: string;
+  settingsSave: string;
+  settingsRevert: string;
+  settingsDirty: string;
+  settingsRulesTitle: string;
+  settingsRule1: string;
+  settingsRule2: string;
+  settingsRestarting: string;
+  settingsReload: string;
   // Phase 5 §B (optional): CSV transaction import page (nav link gated on
   // status.writable, same convention as every other write-only entry point).
   navImport: string;
@@ -646,6 +676,28 @@ const en: Dictionary = {
   eventHourDmh: "during hours",
   eventHourUnknown: "time TBD",
   eventEstimated: "estimated",
+  navSettings: "Settings",
+  setNavNote: "Connections & credentials",
+  acctDevMode: "Dev mode",
+  acctDevNote: "Show entries not meant for everyday use",
+  settingsTitle: "Connections",
+  settingsIntro:
+    "Credentials for the services Argus talks to. Saving rewrites .env and restarts the bot, which takes a few seconds.",
+  settingsGroupTelegram: "Telegram",
+  settingsGroupData: "Data sources",
+  settingsGroupSinopac: "Sinopac Securities",
+  settingsSinopacDaemonNote:
+    "SJ_API_KEY / SJ_SEC_KEY are read by the shioaji daemon, not by Argus. After saving, also run: systemctl --user restart shioaji",
+  settingsSecretSet: "Configured — leave blank to keep it",
+  settingsSecretUnset: "Not configured",
+  settingsSave: "Save & restart",
+  settingsRevert: "Revert",
+  settingsDirty: "Unsaved changes",
+  settingsRulesTitle: "Notes",
+  settingsRule1: "A blank field keeps its current value — there's no way to clear one here.",
+  settingsRule2: "Saving any field restarts Argus to apply it.",
+  settingsRestarting: "Saved. The bot is restarting…",
+  settingsReload: "Reload",
   navImport: "Import",
   importTitle: "Import Transactions",
   importInstructions: "Paste or upload CSV transactions to backfill your trade history.",
@@ -988,6 +1040,27 @@ const zh: Dictionary = {
   eventHourDmh: "盤中公布",
   eventHourUnknown: "時間未定",
   eventEstimated: "推估",
+  navSettings: "設定",
+  setNavNote: "連線與憑證",
+  acctDevMode: "開發者模式",
+  acctDevNote: "顯示不對一般使用開放的項目",
+  settingsTitle: "連線設定",
+  settingsIntro: "Argus 對外連線用的憑證。存檔會改寫 .env 並重新啟動 bot，約需數秒。",
+  settingsGroupTelegram: "Telegram",
+  settingsGroupData: "資料來源",
+  settingsGroupSinopac: "永豐證券",
+  settingsSinopacDaemonNote:
+    "SJ_API_KEY／SJ_SEC_KEY 是 shioaji daemon 讀的，不是 Argus。存檔後請另外執行：systemctl --user restart shioaji",
+  settingsSecretSet: "已設定 — 留空即保留原值",
+  settingsSecretUnset: "未設定",
+  settingsSave: "儲存並重啟",
+  settingsRevert: "還原",
+  settingsDirty: "有未儲存的變更",
+  settingsRulesTitle: "使用須知",
+  settingsRule1: "留空的欄位會維持原值 — 這裡沒有清除功能。",
+  settingsRule2: "任一欄位存檔後，Argus 都會重新啟動以套用設定。",
+  settingsRestarting: "已儲存，bot 重新啟動中…",
+  settingsReload: "重新整理",
   navImport: "匯入",
   importTitle: "匯入交易紀錄",
   importInstructions: "貼上或上傳 CSV 交易紀錄以補建歷史交易。",

@@ -1462,3 +1462,44 @@ export function blockNewsSource(source: string): Promise<{ message: string }> {
 export function unblockNewsSource(source: string): Promise<{ message: string }> {
   return postJSON("/api/news-sources/unblock", { source });
 }
+
+// --- Phase 17: connection/credential settings (docs/phase-17-web-settings.md) ---
+// Mirrors internal/web/settings.go. The server owns the whole key list —
+// SettingsView renders whatever comes back, grouped by `group`, so adding a
+// variable to settingKeys there needs no change here.
+
+export interface Setting {
+  key: string;
+  // group is an id ("telegram"/"data"/"sinopac"), not a heading — i18n.ts
+  // holds the display text, same split as calendar events' `kind`.
+  group: string;
+  // secret keys never send their value back; read isSet instead.
+  secret: boolean;
+  value: string;
+  isSet: boolean;
+}
+
+// Unlike every other read endpoint, this one is behind the write auth cookie,
+// so it can't go through getJSON — that helper swallows failures into mock
+// data, which would turn a 401 into a page of fake settings instead of the
+// login prompt. Same ApiError contract as postJSON.
+async function getJSONAuthed<T>(url: string): Promise<T> {
+  const res = await fetch(url);
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new ApiError(res.status, (data as { error?: string })?.error ?? `HTTP ${res.status}`);
+  }
+  return data as T;
+}
+
+export function fetchSettings(): Promise<{ settings: Setting[] }> {
+  return getJSONAuthed("/api/settings");
+}
+
+// A key omitted here (or sent empty) keeps its current value — that's what
+// lets the secret inputs render blank without a save wiping them. Success
+// means the server has written .env and is about to exit for a restart, so
+// there is no fresh state to re-fetch afterwards.
+export function saveSettings(updates: Record<string, string>): Promise<{ message: string }> {
+  return postJSON("/api/settings", updates);
+}

@@ -342,10 +342,112 @@ input {
   flex-shrink: 0;
 }
 
-/* Sidebar's bottom account-overview card (Figma reference layout). Pinned
-   to the bottom via margin-top: auto in the sidebar's flex column. */
-.sidebar-account {
+/* Sidebar's bottom account-overview card, now doubling as the
+   design-canvas reference's account-switcher trigger (Sidebar.tsx's
+   AccountMenu). The wrap is the positioning root — pinned to the bottom via
+   margin-top: auto in the sidebar's flex column — and anchors the dropdown
+   panel above it. */
+.sidebar-account-wrap {
   margin-top: auto;
+  position: relative;
+}
+
+.sidebar-account {
+  display: block;
+  width: 100%;
+  border: 1px solid transparent;
+  font-family: var(--font-sans);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-account:hover {
+  border-color: var(--accent-tint-border);
+}
+
+.sidebar-account-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 50;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
+}
+
+.sidebar-account-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-decoration: none;
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-account-menu-item:hover {
+  background: var(--surface-2);
+}
+
+.sidebar-account-menu-icon {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--ink-3);
+}
+
+.sidebar-account-menu-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-account-menu-text > span:first-child {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.sidebar-account-menu-note {
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.sidebar-switch {
+  flex-shrink: 0;
+  display: block;
+  width: 28px;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--border);
+  padding: 2px;
+}
+
+.sidebar-switch.on {
+  background: var(--accent);
+}
+
+.sidebar-switch-knob {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ink);
+  transition: transform 0.15s ease;
+}
+
+.sidebar-switch.on .sidebar-switch-knob {
+  transform: translateX(12px);
+  background: #fff;
 }
 
 .sidebar-account-value {
@@ -2452,4 +2554,102 @@ th {
 
 .flow-rank-bar.loss-bar {
   background: var(--loss);
+}
+
+/* Phase 17 settings page, restyled to match the design-canvas reference
+   (claude.ai/design "股票交易員 WebUI 設計" project's SETTINGS screen): a
+   header bar with save/revert instead of a plain button row, and grouped
+   cards with a label|input grid instead of stacked full-width fields. */
+.settings-header {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.settings-header-copy p {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin-top: 4px;
+}
+
+.settings-dirty {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+/* Pushes the button row to the far right when there's no dirty label to do
+   it (margin-left: auto on a sibling only works while that sibling exists). */
+.settings-header .modal-actions {
+  margin-left: auto;
+  margin-top: 0;
+}
+
+.settings-group + .settings-group,
+.settings-group + .settings-rules,
+.settings-rules + .card {
+  margin-top: 16px;
+}
+
+.settings-group-header {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 280px) 1fr;
+  gap: 18px;
+  padding: 14px 0;
+}
+
+.settings-row + .settings-row {
+  border-top: 1px solid var(--border);
+}
+
+.settings-row-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--ink);
+  min-width: 0;
+}
+
+.settings-row input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 11px;
+  color: var(--ink);
+  font-size: 12.5px;
+  width: 100%;
+}
+
+.settings-row input:focus-visible {
+  border-color: var(--accent);
+}
+
+.settings-view .settings-note {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.settings-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.settings-rules p {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
 }
