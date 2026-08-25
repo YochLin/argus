@@ -1,18 +1,18 @@
-package main
+package app
 
 import (
 	"argus/internal/data"
 	"argus/internal/sinopac"
 )
 
-// coreProviders is the provider bundle main() and runMCPServer() build
-// identically — see newCoreProviders' doc comment (Phase 24 tech debt 6).
+// CoreProviders is the provider bundle Boot and runMCPServer build
+// identically — see NewCoreProviders' doc comment (Phase 24 tech debt 6).
 // Each caller layers its own extra fields on top by reading Finnhub/FinMind
 // directly off this struct (nil-guarded, since assigning a nil *data.Finnhub/
 // *data.FinMind to an interface field would produce a non-nil interface
 // wrapping a nil pointer — every `if x != nil` check on that field would
 // then wrongly see it as present).
-type coreProviders struct {
+type CoreProviders struct {
 	Provider     data.Provider
 	Yahoo        *data.Yahoo
 	Finnhub      *data.Finnhub
@@ -24,7 +24,7 @@ type coreProviders struct {
 	Earnings     data.EarningsProvider
 }
 
-// newCoreProviders builds the provider chain main() and runMCPServer() both
+// NewCoreProviders builds the provider chain Boot and runMCPServer both
 // need: Finnhub (if finnhubKey set) → Shioaji (if shioajiAddr set) →
 // GoogleNews → Yahoo, merged into a Multi and wrapped in
 // data.NewNewsFilter(newsBlocked) — same ordering rationale in both
@@ -39,13 +39,13 @@ type coreProviders struct {
 //
 // Only the Finnhub/FinMind-derived fields both callers actually use
 // (InsiderTx/Earnings from Finnhub, CompanyNames from FinMind) are returned;
-// main()'s extra Finnhub fields (AnalystRating/MarketNews/Sector/
+// Boot's extra Finnhub fields (AnalystRating/MarketNews/Sector/
 // EarningsSurprise) and extra FinMind fields (TrustNet/IndustryMap/
-// TWValuation) — which runMCPServer() has no use for — are assigned by main()
+// TWValuation) — which runMCPServer has no use for — are assigned by Boot
 // itself off the returned Finnhub/FinMind pointers.
-func newCoreProviders(finnhubKey, finMindToken, shioajiAddr string, newsBlocked func(source string) bool) coreProviders {
+func NewCoreProviders(finnhubKey, finMindToken, shioajiAddr string, newsBlocked func(source string) bool) CoreProviders {
 	var providers []data.Provider
-	var cp coreProviders
+	var cp CoreProviders
 
 	fundamentalsRouter := &data.FundamentalsRouter{}
 	if finnhubKey != "" {
