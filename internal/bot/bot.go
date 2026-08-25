@@ -248,6 +248,10 @@ type Config struct {
 	PaperMaxPositionPct    float64
 	PaperTakeProfitATRMult float64
 
+	// Notifier is the process-wide notification.Dispatcher (Phase 24 Stage 3
+	// Step 3.2). nil means "build a private one" — see NewWithChannel.
+	Notifier *notification.Dispatcher
+
 	// APIEndpoint overrides tgbotapi's default https://api.telegram.org
 	// target — empty (the only value any real deployment ever sets) keeps
 	// tgbotapi.NewBotAPI's normal behavior. Its only purpose today is
@@ -279,14 +283,23 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 	if trailingStopPctTW == 0 {
 		trailingStopPctTW = cfg.TrailingStopPct
 	}
-	notifiers := []notification.Notifier{notification.NewTelegramNotifier(channel)}
-	if cfg.DB != nil {
-		notifiers = append(notifiers, notification.NewInAppNotificationStore(cfg.DB))
+	// The Dispatcher is the process's, not the bot's, as of Phase 24 Stage 3:
+	// scheduler jobs that no longer go through *Bot still need to publish
+	// alerts, so internal/app builds it and hands it in here. A nil cfg.Notifier
+	// (every test, and any caller predating Step 3.2) falls back to building a
+	// private one with the same notifiers in the same order.
+	notifier := cfg.Notifier
+	if notifier == nil {
+		notifier = notification.NewDispatcher()
+		if cfg.DB != nil {
+			notifier.Register(notification.NewInAppNotificationStore(cfg.DB))
+		}
 	}
+	notifier.Register(notification.NewTelegramNotifier(channel))
 
 	b := &Bot{
 		channel:                channel,
-		notifier:               notification.NewDispatcher(notifiers...),
+		notifier:               notifier,
 		db:                     cfg.DB,
 		provider:               cfg.Provider,
 		fundamentals:           cfg.Fundamentals,
@@ -342,12 +355,23 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 // through b.cachedFundamentals (cached + rate-limited, see pipeline.go)
 // only when a fundamentals provider is configured — nil leaves the gate
 // failing closed, same as the pre-extraction b.fundamentals nil-check.
+//
+// Only the CheckStatefulSignals half is wired here: the universe scan's own
+// dependencies (history/quotes/restricted/lang) go unset, because since
+// Phase 24 Stage 3 Step 3.2 that job is scheduled against internal/app's own
+// ScanService instead. Two instances over the same DB is fine — the dedup
+// state they share lives in signal_states, not in either struct.
 func newScanService(b *Bot) *service.ScanService {
 	var fundamentalsReader func(ticker string) (*data.Fundamentals, error)
 	if b.fundamentals != nil {
 		fundamentalsReader = b.cachedFundamentals
 	}
-	return service.NewScanService(b.db, b.detector, b.trustNet, fundamentalsReader)
+	return service.NewScanService(service.ScanConfig{
+		Store:        b.db,
+		Detector:     b.detector,
+		TrustNet:     b.trustNet,
+		Fundamentals: fundamentalsReader,
+	})
 }
 
 // trading returns the shared application service used by all bot trade entry

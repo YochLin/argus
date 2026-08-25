@@ -1,13 +1,17 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"argus/internal/data"
+	"argus/internal/db"
 	"argus/internal/i18n"
+	"argus/internal/market"
 	"argus/internal/signals"
 )
 
@@ -88,8 +92,8 @@ func TestScanServiceRevenueGrowthOK(t *testing.T) {
 // overbought RSI reading fires once and then goes silent until state
 // changes, proving the store round-trip survived the move.
 func TestScanServiceCheckStatefulSignalsRSIDedup(t *testing.T) {
-	store := newMockRiskStore()
-	s := NewScanService(store, signals.NewDetector(i18n.EN), nil, nil)
+	store := &fakeScanStore{mockRiskStore: newMockRiskStore()}
+	s := NewScanService(ScanConfig{Store: store, Detector: signals.NewDetector(i18n.EN)})
 
 	candles := make([]data.Candle, 15)
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -108,6 +112,151 @@ func TestScanServiceCheckStatefulSignalsRSIDedup(t *testing.T) {
 	second := s.CheckStatefulSignals("AAPL", candles)
 	if hasSignalType(second, "rsi_overbought") {
 		t.Errorf("CheckStatefulSignals() second call = %v, want no repeat rsi_overbought signal", second)
+	}
+}
+
+// fakeScanStore adds RunUniverseScan's universe/watchlist/scan_hits methods
+// to the existing signal_states fake, so both halves of ScanStore come from
+// one hand-written value.
+type fakeScanStore struct {
+	*mockRiskStore
+	universe  []db.UniverseEntry
+	watchlist map[market.MarketID][]string
+	hits      []string // "TICKER|date|reason"
+}
+
+func (f *fakeScanStore) GetUniverse() ([]db.UniverseEntry, error) { return f.universe, nil }
+
+func (f *fakeScanStore) GetWatchlistByMarket(m market.MarketID) ([]string, error) {
+	return f.watchlist[m], nil
+}
+
+func (f *fakeScanStore) SaveScanHit(ticker, date, reason string) error {
+	f.hits = append(f.hits, ticker+"|"+date+"|"+reason)
+	return nil
+}
+
+// fakeHistory/fakeQuotes stand in for Yahoo and the provider chain.
+type fakeHistory struct {
+	candles map[string][]data.Candle
+	asked   []string
+}
+
+func (f *fakeHistory) GetHistory(ticker, rangeParam string) ([]data.Candle, error) {
+	f.asked = append(f.asked, ticker)
+	c, ok := f.candles[ticker]
+	if !ok {
+		return nil, errors.New("no history")
+	}
+	return c, nil
+}
+
+type fakeQuotes struct{ quote data.Quote }
+
+func (f *fakeQuotes) GetQuote(ticker string) (*data.Quote, error) {
+	q := f.quote
+	q.Ticker = ticker
+	return &q, nil
+}
+
+// TestRunUniverseScanSelection pins down which tickers RunUniverseScan
+// actually fetches history for — the three filters that decide it (wrong
+// market, already on the watchlist, TW-restricted) are the whole reason this
+// job isn't just "scan everything", and getting any of them backwards would
+// silently cost either coverage or a wasted ~500 requests.
+func TestRunUniverseScanSelection(t *testing.T) {
+	// A Wednesday, so the US trading-day gate (which checks *yesterday*)
+	// sees a Tuesday and lets the scan through.
+	now := time.Date(2026, 8, 19, 5, 45, 0, 0, cst)
+	rising := make([]data.Candle, 15)
+	for i := range rising {
+		rising[i] = data.Candle{Date: now.AddDate(0, 0, i-15), Close: 100 + float64(i)}
+	}
+
+	store := &fakeScanStore{
+		mockRiskStore: newMockRiskStore(),
+		universe: []db.UniverseEntry{
+			{Ticker: "AAPL"}, {Ticker: "MSFT"}, {Ticker: "2330"},
+		},
+		watchlist: map[market.MarketID][]string{market.US: {"MSFT"}},
+	}
+	history := &fakeHistory{candles: map[string][]data.Candle{"AAPL": rising}}
+	s := NewScanService(ScanConfig{
+		Store:    store,
+		Detector: signals.NewDetector(i18n.EN),
+		History:  history,
+		Quotes:   &fakeQuotes{quote: data.Quote{Price: 100, Timestamp: now}},
+		Lang:     i18n.EN,
+		Now:      func() time.Time { return now },
+	})
+
+	res, err := s.RunUniverseScan(context.Background(), market.US)
+	if err != nil {
+		t.Fatalf("RunUniverseScan: %v", err)
+	}
+	if res.Skipped {
+		t.Fatal("scan skipped on a trading day")
+	}
+	// MSFT is on the watchlist, 2330 belongs to the TW market: only AAPL is
+	// this market's un-watched universe. SPY is the market-regime benchmark,
+	// fetched once per scan rather than per ticker, so it isn't a selection.
+	var scanned []string
+	for _, t := range history.asked {
+		if t != BenchmarkFor(market.US) {
+			scanned = append(scanned, t)
+		}
+	}
+	if len(scanned) != 1 || scanned[0] != "AAPL" {
+		t.Errorf("fetched history for %v, want [AAPL]", scanned)
+	}
+	if res.Scanned != 1 {
+		t.Errorf("Scanned = %d, want 1", res.Scanned)
+	}
+	if res.Hits != len(store.hits) {
+		t.Errorf("Hits = %d but %d rows written", res.Hits, len(store.hits))
+	}
+	for _, h := range store.hits {
+		if !strings.Contains(h, "2026-08-19") {
+			t.Errorf("scan hit %q not dated from the injected clock", h)
+		}
+	}
+}
+
+// TestRunUniverseScanSkipsClosedMarket covers the gate that keeps a holiday
+// rerun from writing a duplicate scan_hits row off stale data.
+func TestRunUniverseScanSkipsClosedMarket(t *testing.T) {
+	store := &fakeScanStore{mockRiskStore: newMockRiskStore(), universe: []db.UniverseEntry{{Ticker: "AAPL"}}}
+	history := &fakeHistory{}
+	// A Sunday: yesterday was Saturday, not a US trading day.
+	sunday := time.Date(2026, 8, 23, 5, 45, 0, 0, cst)
+	s := NewScanService(ScanConfig{
+		Store:    store,
+		Detector: signals.NewDetector(i18n.EN),
+		History:  history,
+		Now:      func() time.Time { return sunday },
+	})
+
+	res, err := s.RunUniverseScan(context.Background(), market.US)
+	if err != nil {
+		t.Fatalf("RunUniverseScan: %v", err)
+	}
+	if !res.Skipped || len(history.asked) != 0 {
+		t.Errorf("closed-market run = %+v with %d fetches, want skipped and none", res, len(history.asked))
+	}
+}
+
+func TestDecorateBearRegime(t *testing.T) {
+	sigs := []signals.Signal{{Type: "strategy_squeeze", Message: "hit"}, {Type: "rsi_overbought", Message: "rsi"}}
+	got := DecorateBearRegime(sigs, false, i18n.EN)
+	if got[0].Message != "hit" {
+		t.Errorf("non-bear regime decorated %q", got[0].Message)
+	}
+	got = DecorateBearRegime(sigs, true, i18n.EN)
+	if !strings.Contains(got[0].Message, "\n") {
+		t.Errorf("strategy hit not decorated in a bear regime: %q", got[0].Message)
+	}
+	if got[1].Message != "rsi" {
+		t.Errorf("non-strategy signal decorated: %q", got[1].Message)
 	}
 }
 
