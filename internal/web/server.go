@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -284,10 +285,19 @@ func spaHandler() http.Handler {
 func (s *Server) Run(ctx context.Context, addr string) error {
 	srv := &http.Server{Addr: addr, Handler: s.mux}
 
+	// net.Listen up front (not srv.ListenAndServe, which binds inside the
+	// goroutine below) so the "listening" log line only fires once the bind
+	// has actually succeeded — otherwise a bind failure logs "listening"
+	// followed immediately by the error, which reads backwards.
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	logger.Infof("web: dashboard listening on %s", addr)
+
 	errCh := make(chan error, 1)
 	go func() {
-		logger.Infof("web: dashboard listening on %s", addr)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 			return
 		}

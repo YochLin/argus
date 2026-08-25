@@ -12,6 +12,7 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"argus/internal/app"
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
@@ -44,8 +45,8 @@ func runEval() {
 	if err := godotenv.Load(); err != nil {
 		logger.Info("no .env file found, reading env from environment")
 	}
-	dbPath := envOr("DB_PATH", "data/argus.db")
-	lang := i18n.Parse(envOr("BOT_LANGUAGE", "zh"))
+	dbPath := app.EnvOr("DB_PATH", "data/argus.db")
+	lang := i18n.Parse(app.EnvOr("BOT_LANGUAGE", "zh"))
 
 	database, err := db.OpenReadOnly(dbPath)
 	if err != nil {
