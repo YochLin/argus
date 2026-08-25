@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"net"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // TestBootWithoutTelegram is the smoke test for the one thing Boot's wiring
@@ -49,5 +51,43 @@ func TestBootWithoutTelegram(t *testing.T) {
 				t.Error("PaperDB should be nil without PAPER_DB_PATH")
 			}
 		})
+	}
+}
+
+// TestRunExitsWhenWebListenerFails is the regression test for the zombie
+// process a bad WEB_ADDR used to cause: Run must return on its own once the
+// HTTP listener fails to bind, not hang on <-ctx.Done() forever with a
+// caller-supplied ctx that's never cancelled (systemd would see a "healthy"
+// PID with nothing listening on its port and never restart it).
+func TestRunExitsWhenWebListenerFails(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	occupied, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve a port: %v", err)
+	}
+	defer occupied.Close()
+
+	a, err := Boot(context.Background(), Config{
+		DBPath:  filepath.Join(dir, "test.db"),
+		LogPath: filepath.Join(dir, "test.log"),
+		WebAddr: occupied.Addr().String(),
+	})
+	if err != nil {
+		t.Fatalf("Boot: %v", err)
+	}
+	defer a.Close()
+
+	done := make(chan struct{})
+	go func() {
+		a.Run(context.Background())
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Run did not return after the web listener failed to bind (zombie process)")
 	}
 }

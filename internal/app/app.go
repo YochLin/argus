@@ -26,7 +26,16 @@ import (
 // would be a behavior change. cmd/server is the inverse by definition — a
 // server with no HTTP listener is not a server — so it defaults instead of
 // gating. No new env var: WEB_ADDR already names exactly this thing.
-const DefaultWebAddr = ":8080"
+//
+// Loopback-only, not "0.0.0.0:8080": internal/web/server.go says outright
+// that the dashboard "deliberately has no auth/HTTPS of its own" beyond
+// WEB_PASSWORD gating writes — every read route (portfolio, P&L, positions)
+// is wide open. cmd/bot never bound a port the operator hadn't explicitly
+// asked for; cmd/server binding all interfaces by default on a VPS with a
+// routable public IP would hand that same open read surface to anyone who
+// port-scans it. An operator who wants it reachable sets WEB_ADDR=:8080
+// themselves — a decision this default shouldn't make for them.
+const DefaultWebAddr = "127.0.0.1:8080"
 
 // App is everything Boot wired up: the long-running pieces Run drives and the
 // resources Close releases. Fields are exported so an entrypoint can reach
@@ -56,12 +65,24 @@ type App struct {
 //
 // ctx is only used for cron-job registration (scheduler.Add* takes the ctx
 // each job body will run under); nothing here blocks on it.
-func Boot(ctx context.Context, cfg Config) (*App, error) {
-	a := &App{cfg: cfg}
+func Boot(ctx context.Context, cfg Config) (a *App, err error) {
+	a = &App{cfg: cfg}
+	// Named return + this defer let every early-return below just bail with
+	// `return` instead of `return nil, err`: whatever a already holds (DB
+	// open but PaperDB failed, say) gets released instead of leaked, and
+	// Close is already nil-safe field-by-field for exactly this partial case.
+	defer func() {
+		if err != nil {
+			a.Close()
+		}
+	}()
 
-	// Ensure DB directory exists
-	if err := os.MkdirAll("data", 0o755); err != nil {
-		return nil, err
+	// cfg.DBPath's directory, not a hardcoded "data" — db.New doesn't create
+	// it (internal/db/db.go's sql.Open expects the path to already resolve),
+	// and a DB_PATH outside ./data (e.g. a VPS's /var/lib/argus) would
+	// otherwise silently create an unused ./data and then fail to open.
+	if err = os.MkdirAll(filepath.Dir(cfg.DBPath), 0o755); err != nil {
+		return
 	}
 
 	// Re-export DB_PATH as an absolute path so llm.argusMCPServer (which
@@ -91,7 +112,7 @@ func Boot(ctx context.Context, cfg Config) (*App, error) {
 
 	database, err := db.New(cfg.DBPath)
 	if err != nil {
-		return nil, err
+		return
 	}
 	a.DB = database
 
@@ -103,7 +124,7 @@ func Boot(ctx context.Context, cfg Config) (*App, error) {
 	if cfg.PaperDBPath != "" {
 		a.PaperDB, err = db.New(cfg.PaperDBPath)
 		if err != nil {
-			return nil, err
+			return
 		}
 	}
 
@@ -315,6 +336,19 @@ func Boot(ctx context.Context, cfg Config) (*App, error) {
 // in it reports to Telegram, see docs/phase-17-web-settings.md §3.1. Log
 // rotation and backups are deliberately outside it: they're the two jobs that
 // still matter on a Telegram-less process.
+//
+// Known limitation (Stage 3.2, not yet done — see
+// docs/architecture/server-refactor-plan.md §4 Step 3.2): every job here
+// still computes its result and sends it via Telegram in one method on
+// *bot.Bot, so a Telegram-less cmd/server skips all of them, not just the
+// Telegram send. The one that bites hardest is AddClosingSnapshot: its real
+// job is writing daily_snapshots/benchmark rows, which the dashboard's whole
+// P&L curve replays — a Telegram-less server silently accumulates no history
+// and the dashboard just looks broken. AddUniverseScan (scan_hits) has the
+// same problem. Fixing this means splitting each *Bot method into a
+// compute-and-persist half callable without Telegram and a
+// format-and-send half, job by job — deferred to a follow-up PR, not done
+// here.
 func (a *App) registerJobs(ctx context.Context) {
 	if b := a.Bot; b != nil {
 		a.Scheduler.AddDailyReport(ctx, func(ctx context.Context) {
@@ -376,7 +410,16 @@ func (a *App) registerJobs(ctx context.Context) {
 // web.Server.Run and bot.Bot.Run both return on ctx cancellation on their
 // own, so the WaitGroup below *is* the ordering guarantee that no request or
 // command handler is still touching the DB when Close runs.
+//
+// A local, cancellable ctx (not the caller's directly) is what a listener
+// failure needs to actually stop the process: cmd/server's HTTP listener is
+// the reason the process exists, so if it fails to bind, staying up with
+// Telegram/cron still running would leave a supervisor believing the process
+// is healthy while its port serves nothing and never gets retried.
 func (a *App) Run(ctx context.Context) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	a.Scheduler.Start()
 
 	var wg sync.WaitGroup
@@ -386,6 +429,7 @@ func (a *App) Run(ctx context.Context) {
 			defer wg.Done()
 			if err := a.Web.Run(ctx, a.cfg.WebAddr); err != nil {
 				logger.Errorf("web: server error: %v", err)
+				cancel()
 			}
 		}()
 	}
@@ -402,10 +446,12 @@ func (a *App) Run(ctx context.Context) {
 	a.Scheduler.Stop()
 }
 
-// Close releases what Boot opened, in the reverse order it opened them. The
-// LLM client goes last and unconditionally: its persistent chat session's
-// claude-agent-acp subprocess has no other way to get cleaned up if the
-// process exits mid-conversation (see AGENTS.md's "key behaviors").
+// Close releases what Boot opened. AGENTS.md's "key behaviors" only requires
+// that llmClient.Close() gets called before the process exits — not that it
+// go last — so this ordering (DBs, then LLM, then the log file) is a choice
+// made here, not one the doc mandates; llm.Client never touches the DB
+// itself (the MCP tool surface is a separate process with its own
+// connection), so there's no correctness reason to order it any differently.
 func (a *App) Close() {
 	if a.PaperDB != nil {
 		a.PaperDB.Close()
