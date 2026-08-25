@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	_ "embed"
 	"encoding/csv"
 	"flag"
@@ -16,7 +17,19 @@ import (
 	"argus/internal/market"
 	"argus/internal/paper"
 	"argus/internal/signals"
+	"argus/internal/sinopac"
 )
+
+// defaultShioajiSocket is where `shioaji server start` puts its unix socket
+// when SHIOAJI_ADDR isn't set — the daemon is the operator's, started in
+// their own shell (token decryption needs a key only they hold).
+func defaultShioajiSocket() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return home + "/.shioaji/server-8080.sock"
+}
 
 //go:embed sp500_tickers.txt
 var sp500TickersRaw string
@@ -220,6 +233,24 @@ func main() {
 	// report a crippled 網 5, which throws away the whole run including the
 	// four screens that never needed FinMind at all. This flag skips the fetch
 	// outright rather than weakening that guard.
+	// TW history via the Shioaji daemon instead of Yahoo. See
+	// history_cache.go for why this is about survivorship bias as much as
+	// about speed. Two steps on purpose: -build-history pays the fetch once,
+	// every later run reads the file and touches no network at all, which is
+	// what makes an exit-layer parameter grid affordable.
+	buildHistoryFlag := flag.String("build-history", "", "TW only: fetch whole-market daily quotes from the Shioaji daemon into this CSV cache, then exit")
+	historyFileFlag := flag.String("history-file", "", "TW only: read candles from this cache (built by -build-history) instead of Yahoo; universe becomes every listed equity in it")
+	shioajiAddrFlag := flag.String("shioaji-addr", os.Getenv("SHIOAJI_ADDR"), "Shioaji daemon unix socket path or host:port (default $SHIOAJI_ADDR)")
+	// Every screen gates on 5-day average volume, so a screen can only ever
+	// pick a liquid name — but the BASELINE has no such gate, and on the
+	// tw150/S&P universes that never mattered because every listed member was
+	// liquid anyway. The whole-market cache breaks that: ~2,000 point-in-time
+	// codes are mostly small and thin, so an ungated control is drawn from a
+	// different population than the screens can reach, and every excess number
+	// silently becomes a size/liquidity comparison rather than a screen one.
+	// -1 defers to the market's own ScreenParams.MinAvgVolume5d whenever a
+	// cache is in play (same sentinel convention as -slippage-pct above).
+	minAvgVolumeFlag := flag.Float64("min-avg-volume", -1, "liquidity floor (shares) applied to EVERY evaluated day, baseline included; -1 = ScreenParams.MinAvgVolume5d when -history-file is set, 0 (off) otherwise")
 	skipTrustFlag := flag.Bool("skip-trust", false, "TW only: don't fetch FinMind trust-net data and drop 網 5 from the study (the other four screens don't use it)")
 	flag.Parse()
 
@@ -229,6 +260,36 @@ func main() {
 	} else if *marketFlag != "us" {
 		fmt.Printf("Error: -market must be us or tw, got %q\n", *marketFlag)
 		os.Exit(1)
+	}
+
+	if *buildHistoryFlag != "" {
+		if m != market.TW {
+			fmt.Printf("Error: -build-history is TW-only (Shioaji serves no US market data)\n")
+			os.Exit(1)
+		}
+		addr := *shioajiAddrFlag
+		if addr == "" {
+			addr = defaultShioajiSocket()
+		}
+		from, to := *dateFromFlag, *dateToFlag
+		if from == "" {
+			from = time.Now().AddDate(-10, 0, 0).Format("2006-01-02")
+		}
+		if to == "" {
+			to = time.Now().Format("2006-01-02")
+		}
+		fromT, err1 := time.Parse("2006-01-02", from)
+		toT, err2 := time.Parse("2006-01-02", to)
+		if err1 != nil || err2 != nil {
+			fmt.Printf("Error: -date-from/-date-to must be YYYY-MM-DD\n")
+			os.Exit(1)
+		}
+		fmt.Printf("Building TW history cache from Shioaji at %s: %s .. %s -> %s\n", addr, from, to, *buildHistoryFlag)
+		if err := buildHistoryCache(context.Background(), sinopac.New(addr), fromT, toT, *buildHistoryFlag); err != nil {
+			fmt.Printf("Error building cache: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	if *slippagePctFlag < 0 {
@@ -282,6 +343,17 @@ func main() {
 	}
 	screenParams := signals.DefaultScreenParams(m)
 
+	if *minAvgVolumeFlag < 0 {
+		if *historyFileFlag != "" {
+			*minAvgVolumeFlag = screenParams.MinAvgVolume5d
+		} else {
+			*minAvgVolumeFlag = 0
+		}
+	}
+	if *minAvgVolumeFlag > 0 {
+		fmt.Printf("Liquidity floor: %.0f shares (5-day average), applied to baseline as well as screens\n", *minAvgVolumeFlag)
+	}
+
 	devVariants, err := parseDevSweep(*tbDevSweepFlag, screenParams)
 	if err != nil {
 		fmt.Printf("Error: -tb-dev-sweep: %v\n", err)
@@ -292,14 +364,51 @@ func main() {
 		fmt.Printf("網 3 calibration variant: %s (MaxMA20DevPct=%g, default %g)\n", v.name, v.devPct, screenParams.MaxMA20DevPct)
 	}
 
+	// getHistory is the single read path for candles, so the Yahoo and cache
+	// sources differ in exactly one place rather than at every call site.
 	yahoo := data.NewYahoo()
+	var cache map[string][]data.Candle
+	getHistory := func(ticker string) ([]data.Candle, error) {
+		time.Sleep(200 * time.Millisecond) // rate limit
+		return yahoo.GetHistory(ticker, *rangeFlag)
+	}
+	if *historyFileFlag != "" {
+		if m != market.TW {
+			fmt.Printf("Error: -history-file is TW-only\n")
+			os.Exit(1)
+		}
+		if !*skipTrustFlag {
+			fmt.Printf("Error: -history-file needs -skip-trust — the cache universe is the whole market (~2,000 tickers) and 網 5 would need one FinMind request per ticker, far past the free tier's quota.\n")
+			os.Exit(1)
+		}
+		var err error
+		if cache, err = loadHistoryCache(*historyFileFlag, 60, benchTicker); err != nil {
+			fmt.Printf("Error loading cache: %v\n", err)
+			os.Exit(1)
+		}
+		getHistory = func(ticker string) ([]data.Candle, error) {
+			c, ok := cache[ticker]
+			if !ok {
+				return nil, fmt.Errorf("%s not in cache", ticker)
+			}
+			return c, nil
+		}
+		tickers = tickers[:0]
+		for code := range cache {
+			if code != benchTicker {
+				tickers = append(tickers, code)
+			}
+		}
+		sort.Strings(tickers)
+		fmt.Printf("Universe replaced by cache: %d point-in-time listed equities (was %d from tw150_tickers.txt)\n", len(tickers), len(parseTickers(tw150TickersRaw)))
+	}
 	// docs/phase-15-trust-follow.md §4.1: FinMind's free tier serves every
 	// dataset used here unauthenticated (live-verified), so this backtest
 	// tool doesn't gate construction on FINMIND_TOKEN the way the bot does.
 	finmind := data.NewFinMind(os.Getenv("FINMIND_TOKEN"))
 
 	fmt.Printf("Fetching %s history for market regime and benchmark...\n", benchTicker)
-	benchCandles, err := yahoo.GetHistory(benchTicker, *rangeFlag)
+	benchCandles, err := getHistory(benchTicker)
 	if err != nil || len(benchCandles) < 60 {
 		fmt.Printf("Error fetching %s history: %v\n", benchTicker, err)
 		os.Exit(1)
@@ -340,8 +449,7 @@ func main() {
 			fmt.Printf("Processing %d/%d (%s)...\n", count, total, ticker)
 		}
 
-		time.Sleep(200 * time.Millisecond) // rate limit
-		candles, err := yahoo.GetHistory(ticker, *rangeFlag)
+		candles, err := getHistory(ticker)
 		if err != nil {
 			fetchFailed++
 			failedTickers = append(failedTickers, ticker)
@@ -390,6 +498,12 @@ func main() {
 			}
 			entryPrice := candles[t].Close
 			if entryPrice <= 0 {
+				continue
+			}
+			// Same window the screens use (the five bars BEFORE the trigger
+			// bar, see CheckTrendBreakoutExact) so the control population is
+			// exactly the one a screen could have drawn from.
+			if *minAvgVolumeFlag > 0 && avgVolume5(candles, t) < *minAvgVolumeFlag {
 				continue
 			}
 
@@ -576,6 +690,18 @@ func parseDevSweep(raw string, base signals.ScreenParams) ([]devVariant, error) 
 		out = append(out, devVariant{name: fmt.Sprintf("trend_breakout_dev%g", v), devPct: v, params: p})
 	}
 	return out, nil
+}
+
+// avgVolume5 is the mean volume of the five bars preceding index t.
+func avgVolume5(candles []data.Candle, t int) float64 {
+	if t < 5 {
+		return 0
+	}
+	var sum int64
+	for _, c := range candles[t-5 : t] {
+		sum += c.Volume
+	}
+	return float64(sum) / 5.0
 }
 
 func orDash(s string) string {
