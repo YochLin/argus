@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -63,9 +64,11 @@ type ScanService struct {
 	fundamentals func(ticker string) (*data.Fundamentals, error)
 
 	// The rest are RunUniverseScan's own dependencies (Phase 24 Stage 3 Step
-	// 3.2) — all optional in the sense that a zero value degrades rather than
-	// panics, so CheckStatefulSignals-only callers (and its tests) can leave
-	// them unset.
+	// 3.2). restricted/lang/now are optional in the sense that a zero value
+	// degrades rather than panics; history/quotes are not — RunUniverseScan
+	// nil-checks both up front and errors out instead — but all five can
+	// stay unset for a CheckStatefulSignals-only caller (and its tests),
+	// which never reaches that check.
 	history    RiskHistoryReader
 	quotes     QuoteReader
 	restricted RestrictedProvider
@@ -339,6 +342,17 @@ func (s *ScanService) RunUniverseScan(ctx context.Context, m market.MarketID) (U
 		return UniverseScanResult{Market: m, Skipped: true}, nil
 	}
 
+	// history/quotes are the two dependencies ScanConfig legitimately leaves
+	// nil for a CheckStatefulSignals-only caller (see ScanService's doc
+	// comment) — but ComputeMarketRegime below dereferences both
+	// unconditionally, so a caller that builds one of those degraded
+	// instances and calls RunUniverseScan anyway (on an open market — a
+	// closed one never reaches here) needs a real error, not a nil-pointer
+	// panic a few lines down.
+	if s.history == nil || s.quotes == nil {
+		return UniverseScanResult{Market: m}, errors.New("universe scan: no history/quotes provider configured")
+	}
+
 	entries, err := s.store.GetUniverse()
 	if err != nil {
 		return UniverseScanResult{Market: m}, err
@@ -401,7 +415,6 @@ func (s *ScanService) RunUniverseScan(ctx context.Context, m market.MarketID) (U
 			time.Sleep(universeScanRequestDelay)
 		}
 	}
-	logger.Infof("universe scan: market=%s checked %d tickers, %d hits", m, out.Scanned, out.Hits)
 	return out, nil
 }
 

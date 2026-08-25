@@ -212,6 +212,9 @@ func TestRunUniverseScanSelection(t *testing.T) {
 	if res.Scanned != 1 {
 		t.Errorf("Scanned = %d, want 1", res.Scanned)
 	}
+	if res.Hits == 0 {
+		t.Fatal("expected at least one scan hit from the rising AAPL fixture (RSI overbought)")
+	}
 	if res.Hits != len(store.hits) {
 		t.Errorf("Hits = %d but %d rows written", res.Hits, len(store.hits))
 	}
@@ -219,6 +222,72 @@ func TestRunUniverseScanSelection(t *testing.T) {
 		if !strings.Contains(h, "2026-08-19") {
 			t.Errorf("scan hit %q not dated from the injected clock", h)
 		}
+	}
+}
+
+// fakeRestricted is RestrictedProvider's test double.
+type fakeRestricted struct {
+	punish map[string]string
+	notice map[string]string
+}
+
+func (f *fakeRestricted) RegulatoryPunish(ctx context.Context) (map[string]string, error) {
+	return f.punish, nil
+}
+
+func (f *fakeRestricted) RegulatoryNotice(ctx context.Context) (map[string]string, error) {
+	return f.notice, nil
+}
+
+// TestRunUniverseScanRestrictedFilter covers the one selection filter
+// TestRunUniverseScanSelection's name (and the PR description) claimed but
+// never actually exercised — market.US never reaches RestrictedTickers'
+// TW-only path at all. A disposition-listed (處置) TW ticker must be
+// skipped before a history fetch, not scanned and potentially surfaced as a
+// candidate.
+func TestRunUniverseScanRestrictedFilter(t *testing.T) {
+	now := time.Date(2026, 8, 19, 5, 45, 0, 0, cst)
+	rising := make([]data.Candle, 15)
+	for i := range rising {
+		rising[i] = data.Candle{Date: now.AddDate(0, 0, i-15), Close: 100 + float64(i)}
+	}
+
+	store := &fakeScanStore{
+		mockRiskStore: newMockRiskStore(),
+		universe: []db.UniverseEntry{
+			{Ticker: "2330"}, {Ticker: "2454"},
+		},
+	}
+	history := &fakeHistory{candles: map[string][]data.Candle{"2330": rising, "2454": rising}}
+	s := NewScanService(ScanConfig{
+		Store:    store,
+		Detector: signals.NewDetector(i18n.EN),
+		History:  history,
+		// marketClosed's TW path stales this off the real wall clock
+		// (time.Since), not the injected Now above — a Timestamp pinned to
+		// the fixture's 2026-08-19 clock would read as stale relative to
+		// whenever the test actually runs.
+		Quotes:     &fakeQuotes{quote: data.Quote{Price: 100, Timestamp: time.Now()}},
+		Restricted: &fakeRestricted{punish: map[string]string{"2330": "處置"}},
+		Lang:       i18n.EN,
+		Now:        func() time.Time { return now },
+	})
+
+	res, err := s.RunUniverseScan(context.Background(), market.TW)
+	if err != nil {
+		t.Fatalf("RunUniverseScan: %v", err)
+	}
+	if res.Skipped {
+		t.Fatal("scan skipped on a trading day")
+	}
+	var scanned []string
+	for _, t := range history.asked {
+		if t != BenchmarkFor(market.TW) { // 0050, fetched once for the regime check, not a selection
+			scanned = append(scanned, t)
+		}
+	}
+	if len(scanned) != 1 || scanned[0] != "2454" {
+		t.Errorf("fetched history for %v, want [2454] (2330 is restricted)", scanned)
 	}
 }
 

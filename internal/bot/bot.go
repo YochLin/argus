@@ -287,7 +287,11 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 	// scheduler jobs that no longer go through *Bot still need to publish
 	// alerts, so internal/app builds it and hands it in here. A nil cfg.Notifier
 	// (every test, and any caller predating Step 3.2) falls back to building a
-	// private one with the same notifiers in the same order.
+	// private one with the same notifiers — but, either way, in-app now
+	// registers before Telegram (previously Telegram-then-in-app):
+	// Dispatcher.Publish runs notifiers in order, so the local DB write no
+	// longer waits on the Telegram API round trip, and still lands even if
+	// that call fails.
 	notifier := cfg.Notifier
 	if notifier == nil {
 		notifier = notification.NewDispatcher()

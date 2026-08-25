@@ -255,7 +255,10 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 		// Uncached, unlike the bot's own ScanService: this reader only backs
 		// the revenue-growth gate, which is short-circuited to a handful of
 		// TW tickers a day (docs/phase-14-strategy-screens-2.md §4.2c), so a
-		// cache in front of it would save single-digit requests.
+		// cache in front of it would save single-digit requests. No explicit
+		// rate limiting here either — RunUniverseScan's own 1s
+		// per-ticker delay already paces every request this reader makes,
+		// same as it paces the history/quote calls around it.
 		Fundamentals: fundamentalsReader(core.Fundamentals),
 		History:      core.Yahoo,
 		Quotes:       core.Provider,
@@ -459,8 +462,13 @@ func (a *App) registerJobs(ctx context.Context) {
 // through the process-wide Dispatcher instead of through the bot.
 func (a *App) runScan(ctx context.Context, m market.MarketID) {
 	defer a.recoverJob("universe scan")
-	if _, err := a.Scan.RunUniverseScan(ctx, m); err != nil && !errors.Is(err, context.Canceled) {
+	res, err := a.Scan.RunUniverseScan(ctx, m)
+	if err != nil && !errors.Is(err, context.Canceled) {
 		logger.Errorf("universe scan: market=%s: %v", m, err)
+		return
+	}
+	if !res.Skipped {
+		logger.Infof("universe scan: market=%s checked %d tickers, %d hits", m, res.Scanned, res.Hits)
 	}
 }
 
