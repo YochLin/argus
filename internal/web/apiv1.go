@@ -69,9 +69,24 @@ func (s *Server) registerAPIV1() {
 	s.mux.HandleFunc("POST /api/v1/auth/login", s.handleAPILogin)
 	s.mux.HandleFunc("POST /api/v1/auth/refresh", s.handleAPIRefresh)
 	// A trivial authenticated endpoint so a client can verify a token
-	// without side effects — and, until Step 4.2 lands the resource routes,
-	// the only thing requireAPIAuth guards.
+	// without side effects.
 	s.mux.HandleFunc("GET /api/v1/auth/me", s.requireAPIAuth(s.handleAPIMe))
+
+	// Step 4.2's resources. Unlike the pre-v1 write routes, these carry no
+	// requireWritable: registerAPIV1 already returned early if WEB_PASSWORD
+	// is unset, so reaching any of them means write auth is configured and a
+	// token was presented.
+	s.mux.HandleFunc("GET /api/v1/portfolio", s.requireAPIAuth(s.handleAPIPortfolio))
+	s.mux.HandleFunc("GET /api/v1/watchlist", s.requireAPIAuth(s.handleAPIWatchlistGet))
+	s.mux.HandleFunc("POST /api/v1/watchlist", s.requireAPIAuth(s.handleAPIWatchlistAdd))
+	s.mux.HandleFunc("POST /api/v1/watchlist/remove", s.requireAPIAuth(s.handleAPIWatchlistRemove))
+	s.mux.HandleFunc("POST /api/v1/trade/buy", s.requireAPIAuth(s.requireAPITrade(s.handleAPITradeBuy)))
+	s.mux.HandleFunc("POST /api/v1/trade/sell", s.requireAPIAuth(s.requireAPITrade(s.handleAPITradeSell)))
+	s.mux.HandleFunc("POST /api/v1/risk/stop", s.requireAPIAuth(s.requireAPITrade(s.handleAPISetStop)))
+	s.mux.HandleFunc("GET /api/v1/recommendations/latest", s.requireAPIAuth(s.handleAPIRecommendationsLatest))
+	s.mux.HandleFunc("GET /api/v1/scan/hits", s.requireAPIAuth(s.handleAPIScanHits))
+	s.mux.HandleFunc("GET /api/v1/notifications", s.requireAPIAuth(s.handleAPINotifications))
+	s.mux.HandleFunc("POST /api/v1/notifications/{id}/read", s.requireAPIAuth(s.handleAPINotificationRead))
 }
 
 func (s *Server) handleAPIMe(w http.ResponseWriter, r *http.Request) {

@@ -153,7 +153,12 @@ type Server struct {
 	llmAudit            bool
 	jwtSecret           string
 	apiKey              string
-	mux                 *http.ServeMux
+	// apiDB stays *db.DB-shaped rather than folded into dbReader: these
+	// three methods are only ever reached from /api/v1, and dbReader is
+	// already implemented by a pile of hand-built test values that have no
+	// reason to grow them.
+	apiDB apiV1Store
+	mux   *http.ServeMux
 }
 
 func New(cfg Config) *Server {
@@ -185,6 +190,7 @@ func New(cfg Config) *Server {
 		llmAudit:            cfg.LLMAudit,
 		jwtSecret:           cfg.JWTSecret,
 		apiKey:              cfg.APIKey,
+		apiDB:               cfg.DB,
 	}
 	s.recPerf = newRecPerfStore(s.db, s.history)
 	s.mux = http.NewServeMux()
