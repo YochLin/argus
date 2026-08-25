@@ -1,6 +1,7 @@
 package web
 
 import (
+	"cmp"
 	"context"
 	"embed"
 	"errors"
@@ -66,8 +67,15 @@ type Config struct {
 	Password string
 	// Trade is the write-endpoint seam onto *bot.Bot (buy/sell/stop) — nil
 	// whenever Password is empty, since New only wires the write routes up
-	// in that case.
+	// in that case, and also whenever Telegram itself isn't configured
+	// (Phase 17 PR1), which requireTrade answers with a 409.
 	Trade TradeExecutor
+	// EnvPath is the .env file /api/settings edits (Phase 17 PR2). main.go
+	// always passes ".env": godotenv.Load() reads exactly that path relative
+	// to the working directory, so anything else here would edit a file the
+	// process doesn't read. It's a field only so settings_test.go can point
+	// at a temp file. Empty defaults to ".env".
+	EnvPath string
 	// PaperDB is Phase 11 PR3's live paper account's own database — nil
 	// (PAPER_DB_PATH unset) disables /api/paper entirely (404), same
 	// presence-of-config convention as Password/Trade above. Physically
@@ -117,6 +125,7 @@ type Server struct {
 	recPerf          *recPerfStore
 	password         string
 	trade            TradeExecutor
+	envPath          string
 	csvDB            csvWriter
 	thesisDB         thesisWriter
 	// paperDB stays *db.DB (not dbReader) so nil-checking it in
@@ -150,6 +159,7 @@ func New(cfg Config) *Server {
 		heatThresholdPct:    cfg.RiskHeatPct,
 		password:            cfg.Password,
 		trade:               cfg.Trade,
+		envPath:             cmp.Or(cfg.EnvPath, ".env"),
 		csvDB:               cfg.DB,
 		thesisDB:            cfg.DB,
 		paperDB:             cfg.PaperDB,
@@ -213,6 +223,11 @@ func New(cfg Config) *Server {
 	// /api/thesis (Phase 21) is a DB write like any other above — no reason
 	// to give it a looser gate than /api/trade/*.
 	s.mux.HandleFunc("POST /api/thesis", s.requireWritable(s.requireAuth(s.handleThesisSet)))
+	// /api/settings (Phase 17 PR2) sits behind the same gate as every write
+	// route, GET included: the read side reports which credentials are
+	// configured, which is not something to hand out unauthenticated.
+	s.mux.HandleFunc("GET /api/settings", s.requireWritable(s.requireAuth(s.handleSettingsGet)))
+	s.mux.HandleFunc("POST /api/settings", s.requireWritable(s.requireAuth(s.handleSettingsSave)))
 	// /api/import (Phase 5 §B, optional CSV backfill) reuses the same
 	// requireWritable/requireAuth gate as every other write route — a bulk
 	// transaction write is no less a write than a single /buy.
