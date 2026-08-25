@@ -472,16 +472,31 @@ func (b *Bot) exploreCandidates(ctx context.Context, in *recommendationInputs) m
 
 // checkStatefulSignals is a thin wrapper around service.ScanService's
 // CheckStatefulSignals (Phase 24 Stage 1 Scan & Strategy Service extraction)
-// that adds the one piece of adapter-layer formatting the service doesn't
-// own: decorating every strategy hit (Type prefix "strategy_") with the
-// bear-regime warning when isBearRegime is set.
+// that adds the two pieces of adapter-layer formatting the service doesn't
+// own, both on strategy hits (Type prefix "strategy_"): the bear-regime
+// warning when isBearRegime is set, and 網 3's §4.4 downgrade notice.
+//
+// Both call sites (the daily report's watchlist alerts and runUniverseScan's
+// scan_hits) route through here, so decorating once here covers both.
+//
+// The bear-regime warning stays a WARNING and not a gate: the Phase 23
+// calibration study measured every screen against a same-regime random-entry
+// control and the bear-regime effect does not replicate — 網 3 is -1.50%
+// (2.4 sigma) in-sample but only -0.92% (0.9 sigma) out-of-sample, while
+// 網 4 flips to +4.16% (2.6 sigma) out-of-sample. Suppressing signals in a
+// bear regime would have LOWERED every screen's out-of-sample return
+// (cmd/strategyscan prints the same-regime control under 多空情境分組).
 func (b *Bot) checkStatefulSignals(ticker string, candles []data.Candle, isBearRegime bool) []signals.Signal {
 	sigs := b.scans().CheckStatefulSignals(ticker, candles)
-	if isBearRegime {
-		for i := range sigs {
-			if strings.HasPrefix(sigs[i].Type, "strategy_") {
-				sigs[i].Message += "\n" + i18n.T(b.lang, i18n.KeyStrategyBearRegimeWarning)
-			}
+	for i := range sigs {
+		if !strings.HasPrefix(sigs[i].Type, "strategy_") {
+			continue
+		}
+		if isBearRegime {
+			sigs[i].Message += "\n" + i18n.T(b.lang, i18n.KeyStrategyBearRegimeWarning)
+		}
+		if sigs[i].Type == signals.TypeTrendBreakout {
+			sigs[i].Message += "\n" + i18n.T(b.lang, i18n.KeyStrategyUnvalidated)
 		}
 	}
 	return sigs
