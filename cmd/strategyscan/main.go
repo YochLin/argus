@@ -213,6 +213,14 @@ func main() {
 	// default screen's hits (which would be wrong — a tighter cap lets a hit
 	// through that the 5-day dedup had swallowed).
 	tbDevSweepFlag := flag.String("tb-dev-sweep", "", "網 3 calibration: comma-separated MaxMA20DevPct values to also evaluate (e.g. 6,8,10)")
+	// FinMind's free tier has an hourly request quota, and a TW run spends one
+	// request per ticker on trust-net data that ONLY 網 5 uses. A run studying
+	// 網 1-4 (or calibrating 網 3 with -tb-dev-sweep) therefore burns the quota
+	// for nothing — and when it runs out, PR1's guard correctly refuses to
+	// report a crippled 網 5, which throws away the whole run including the
+	// four screens that never needed FinMind at all. This flag skips the fetch
+	// outright rather than weakening that guard.
+	skipTrustFlag := flag.Bool("skip-trust", false, "TW only: don't fetch FinMind trust-net data and drop 網 5 from the study (the other four screens don't use it)")
 	flag.Parse()
 
 	m := market.US
@@ -254,7 +262,9 @@ func main() {
 	if m == market.TW {
 		tickers = parseTickers(tw150TickersRaw)
 		benchTicker = "0050"
-		strategies = append(append([]string{}, baseStrategies...), trustStrategy)
+		if !*skipTrustFlag {
+			strategies = append(append([]string{}, baseStrategies...), trustStrategy)
+		}
 		fmt.Printf("Loaded %d tw150 tickers.\n", len(tickers))
 	} else if *universeFlag == "sp400" {
 		tickers = parseTickers(sp400TickersRaw)
@@ -350,7 +360,7 @@ func main() {
 		// unaffected). Both series ride the same request/rows (see
 		// data.TrustNetDay).
 		var trustAligned, foreignAligned []int64
-		if m == market.TW {
+		if m == market.TW && !*skipTrustFlag {
 			time.Sleep(200 * time.Millisecond) // rate limit
 			rows, err := finmind.GetTrustNetSeries(ticker, len(candles))
 			if err != nil {
@@ -481,7 +491,10 @@ func main() {
 		}
 		fmt.Printf("Fetch failures (first %d of %d): %s\n", len(shown), len(failedTickers), strings.Join(shown, ", "))
 	}
-	if m == market.TW {
+	if m == market.TW && *skipTrustFlag {
+		fmt.Printf("Trust-net (FinMind): skipped (-skip-trust); 網 5 is not part of this run.\n")
+	}
+	if m == market.TW && !*skipTrustFlag {
 		fmt.Printf("Trust-net (FinMind): %d fetch errors out of %d fetched tickers\n", trustFetchFailed, fetched)
 		if len(trustFailedTickers) > 0 {
 			shown := trustFailedTickers
@@ -519,7 +532,7 @@ func main() {
 	printSummary(benchTicker, "Box Bottom Rebound (網 2)", filterByStrategy(records, "box_bottom"), &ctrl)
 	printSummary(benchTicker, "Trend Breakout (網 3)", filterByStrategy(records, "trend_breakout"), &ctrl)
 	printSummary(benchTicker, "Trend Pullback (網 4)", filterByStrategy(records, "trend_pullback"), &ctrl)
-	if m == market.TW {
+	if m == market.TW && !*skipTrustFlag {
 		printSummary(benchTicker, "Trust Follow (網 5，主力跟單 v2)", filterByStrategy(records, trustStrategy), &ctrl)
 	}
 	for _, v := range devVariants {

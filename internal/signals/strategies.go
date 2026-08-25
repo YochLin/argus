@@ -89,16 +89,17 @@ type ScreenParams struct {
 // MaxMA20DevPct is the one knob here that HAS since been backtested, and the
 // result was to leave it alone. The "don't chase an extended breakout"
 // intuition says to tighten it; cmd/strategyscan's -tb-dev-sweep re-screened
-// 網 3 at 12/10/8/6 against a random-entry control under identical exit rules
-// and every tightening made things monotonically worse, in all three US
-// samples (excess return vs control, US in-sample / US out-of-sample /
-// S&P 400 mid-cap):
+// 網 3 at 12/10/8/6 against a random-entry control under identical exit rules,
+// and every tightening made things monotonically worse in all four samples.
+// Excess return vs that control (US in-sample / US OOS / S&P 400 mid-cap /
+// TW OOS; TW's own default is 12, so it has no 15 row):
 //
-//	15 (current)  -0.20% / -0.95% / -0.95%
-//	12            -0.26% / -1.05% / -1.12%
-//	10            -0.65% / -1.18% / -1.15%
-//	 8            -0.66% / -1.23% / -1.37%
-//	 6            -0.83% / -1.19% / -1.16%
+//	cap  US IS    US OOS   SP400    TW OOS
+//	15   -0.20%   -0.95%   -0.95%      n/a
+//	12   -0.26%   -1.05%   -1.12%   -1.69%
+//	10   -0.65%   -1.18%   -1.15%   -1.79%
+//	 8   -0.66%   -1.23%   -1.37%   -1.83%
+//	 6   -0.83%   -1.19%   -1.16%   -2.35%
 //
 // The extended breakouts are the ones that carry the screen; capping them out
 // removes more signal than noise. Don't re-tighten this without re-running
@@ -551,7 +552,7 @@ func (d *Detector) CheckTrendPullback(ticker string, candles []data.Candle, prev
 //
 //	strategyscan -market=us -range=10y -date-from=2016-11-01 -date-to=2021-10-31
 //	strategyscan -market=us -range=10y -universe=sp400
-//	strategyscan -market=tw -range=10y -date-from=2016-11-01 -date-to=2021-10-31
+//	strategyscan -market=tw -range=10y -date-from=2016-11-01 -date-to=2021-10-31 -skip-trust
 func (d *Detector) CheckTrendBreakout(ticker string, candles []data.Candle, prevState string) (sig *Signal, newState string) {
 	hit := TrendBreakout(candles, DefaultScreenParams(market.Of(ticker)))
 	if hit == nil {
