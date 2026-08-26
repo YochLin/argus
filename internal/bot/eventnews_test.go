@@ -43,6 +43,35 @@ func TestFilterNewsNearDate(t *testing.T) {
 	}
 }
 
+func TestDedupeHeadlines(t *testing.T) {
+	news := []data.NewsItem{
+		// The TW case: one wire story, three outlets, Google News' " - 媒體"
+		// tag being the only difference.
+		{Source: "經濟日報", Headline: "台積電法說會釋出樂觀展望 外資調高目標價 - 經濟日報"},
+		{Source: "工商時報", Headline: "台積電法說會釋出樂觀展望 外資調高目標價 - 工商時報"},
+		{Source: "鉅亨網", Headline: "台積電法說會釋出樂觀展望，外資調高目標價"},
+		// Same company, genuinely different story — must survive.
+		{Source: "中央社", Headline: "台積電宣布高雄二廠動工時程"},
+		{Source: "Reuters", Headline: "TSMC lifts capex guidance for 2026"},
+		{Source: "Bloomberg", Headline: "TSMC lifts capex guidance for 2026 - Bloomberg"},
+	}
+
+	got := dedupeHeadlines(news)
+	want := []string{"經濟日報", "中央社", "Reuters"}
+	if len(got) != len(want) {
+		t.Fatalf("kept %d items %v, want %v", len(got), headlines(got), want)
+	}
+	for i, src := range want {
+		if got[i].Source != src {
+			t.Errorf("item %d from %q, want the first copy from %q", i, got[i].Source, src)
+		}
+	}
+
+	if got := dedupeHeadlines(nil); got != nil {
+		t.Errorf("dedupeHeadlines(nil) = %v, want nil", got)
+	}
+}
+
 func headlines(news []data.NewsItem) []string {
 	out := make([]string, len(news))
 	for i, n := range news {
