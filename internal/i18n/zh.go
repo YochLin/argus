@@ -273,7 +273,7 @@ var zhMessages = map[Key]string{
 	KeyTechnicalsRSLine:          "- 相對強度 RS63：%s (超越 SPY %+.1f%%)\n",
 	KeyStrategyHitLine:           "- ⚠️ 策略觸發：%s (%s)\n",
 	KeyStrategyBearRegimeWarning: "⚠️ 警告：當前大盤趨勢為空頭/走弱，逆勢策略警報勝率較低，切勿盲目抄底/追高。",
-	KeyStrategyUnvalidated:       "ℹ️ 網 3 未通過出樣本驗證：三個獨立樣本的超額報酬皆為負、約 4σ（cmd/strategyscan）。僅供參考，勿單獨作為進場依據。",
+	KeyStrategyUnvalidated:       "ℹ️ 網 3 未通過出樣本驗證：四個獨立樣本的超額報酬皆為負、約 4σ（cmd/strategyscan）。僅供參考，勿單獨作為進場依據。",
 	KeyTechGuidanceBlock:         "\n【技術面與量價判讀指引】\n1. 支撐壓力：連續長下影線/雙重底(W底)為強支撐；爆量長紅 K 低點為主力成本支撐，跌破即棄守；突破後舊壓力轉支撐。\n2. 量價配合：量增價漲=趨勢啟動；量縮價跌=健康洗盤；量縮價漲=虛胖誘多；量增價跌=恐慌倒貨勿接刀。\n3. MACD：零軸上金叉力道較強，零軸下金叉多為弱反彈；價格創新高但柱狀體峰值遞減為頂背離警訊。\n4. KD/RSI：KD 出超賣區(翻越20/25)再動作，避免低檔鈍化接刀；RSI 50 為多空分界線，站穩 50 之拉回為強勢點。\n5. 多頭排列 (MA5 > MA20 > MA60 全朝上) 時拉回 MA20 為動態支撐點。\n6. 給出 BUY 建議時，原因中務必點名一個具體的建議停損位（結構性支撐位，如近10/20日低點，或現價減2倍ATR），並說明依據——這是給人工執行的參考，不是要你去算股數。\n",
 	KeyVolUpPriceUp:              "量增價漲 (多頭發力)",
 	KeyVolDownPriceDown:          "量縮價跌 (健康洗盤)",

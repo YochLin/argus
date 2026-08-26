@@ -155,7 +155,7 @@ func (s *RecommendationTrackingService) Track(days int) (RecommendationTrackRepo
 			Action:          displayAction(rec.Action),
 			Source:          DisplaySource(rec.Source),
 			Market:          recMarket,
-			BenchmarkTicker: benchmarkTicker(recMarket),
+			BenchmarkTicker: BenchmarkFor(recMarket),
 		}
 
 		base := rec.Price
@@ -195,7 +195,7 @@ func (s *RecommendationTrackingService) Track(days int) (RecommendationTrackRepo
 
 		if !benchmarkLoaded[recMarket] {
 			benchmarkLoaded[recMarket] = true
-			benchmark := benchmarkTicker(recMarket)
+			benchmark := BenchmarkFor(recMarket)
 			if s.quotes != nil {
 				q, quoteErr := s.quotes.GetQuote(benchmark)
 				benchmarkErrs[recMarket] = quoteErr
@@ -242,13 +242,6 @@ func displayAction(action string) string {
 		return "—"
 	}
 	return action
-}
-
-func benchmarkTicker(m market.MarketID) string {
-	if m == market.TW {
-		return "0050"
-	}
-	return "SPY"
 }
 
 // TrackHit applies the relative-to-benchmark rule used by /track.

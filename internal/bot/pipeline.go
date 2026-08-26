@@ -800,16 +800,7 @@ func (b *Bot) computeMarketRegime(m market.MarketID) *llm.MarketContext {
 // isBearRegime returns true if the market context indicates a weak/bear regime
 // (SPY below its 50-day or 200-day moving average).
 func isBearRegime(mc *llm.MarketContext) bool {
-	if mc == nil || mc.SPYPrice == 0 {
-		return false
-	}
-	if mc.SPYMA50 > 0 && mc.SPYPrice < mc.SPYMA50 {
-		return true
-	}
-	if mc.SPYMA200 > 0 && mc.SPYPrice < mc.SPYMA200 {
-		return true
-	}
-	return false
+	return service.IsBearRegime(mc)
 }
 
 // loadPositions returns every open position keyed by ticker, for attaching

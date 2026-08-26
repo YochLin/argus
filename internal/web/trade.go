@@ -3,9 +3,12 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
+
+	"argus/internal/service"
 )
 
 // TradeExecutor is web's narrow view of *bot.Bot for the write endpoints
@@ -120,18 +123,54 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 
+// errInvalidTradeDate distinguishes a bad ?date= from a rejected trade
+// (ExecuteBuy/Sell's own error) so both the dashboard's and /api/v1's
+// handlers can each write it with their own status/message convention.
+var errInvalidTradeDate = errors.New("invalid date")
+
+// execBuy/execSell/execSetStop are the actual business logic behind both
+// the dashboard's handleTradeBuy/Sell/SetStop below and /api/v1's
+// handleAPITradeBuy/Sell/SetStop (apiv1_resources.go) — the two surfaces
+// used to carry byte-for-byte copies of this logic, which meant a future
+// fix (e.g. normalizing the ticker, reconsidering the Notify-on-failure
+// call) had to be remembered twice. The two callers differ only in how they
+// decode the request and write the response envelope.
+func (s *Server) execBuy(req tradeRequest) (string, error) {
+	date, ok := resolveTradeDate(req.Date)
+	if !ok {
+		return "", errInvalidTradeDate
+	}
+	msg, err := s.trade.ExecuteBuy(req.Ticker, req.Shares, req.Price, req.Fee, date)
+	s.trade.Notify(msg)
+	return msg, err
+}
+
+func (s *Server) execSell(ctx context.Context, req tradeRequest) (string, error) {
+	date, ok := resolveTradeDate(req.Date)
+	if !ok {
+		return "", errInvalidTradeDate
+	}
+	msg, err := s.trade.ExecuteSell(ctx, req.Ticker, req.Shares, req.Price, req.Fee, date)
+	s.trade.Notify(msg)
+	return msg, err
+}
+
+func (s *Server) execSetStop(req stopRequest) (string, error) {
+	msg, err := s.trade.ExecuteSetStop(req.Ticker, req.Price)
+	s.trade.Notify(msg)
+	return msg, err
+}
+
 func (s *Server) handleTradeBuy(w http.ResponseWriter, r *http.Request) {
 	var req tradeRequest
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	date, ok := resolveTradeDate(req.Date)
-	if !ok {
+	msg, err := s.execBuy(req)
+	if errors.Is(err, errInvalidTradeDate) {
 		writeError(w, http.StatusBadRequest, "invalid date")
 		return
 	}
-	msg, err := s.trade.ExecuteBuy(req.Ticker, req.Shares, req.Price, req.Fee, date)
-	s.trade.Notify(msg)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, msg)
 		return
@@ -144,13 +183,11 @@ func (s *Server) handleTradeSell(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	date, ok := resolveTradeDate(req.Date)
-	if !ok {
+	msg, err := s.execSell(r.Context(), req)
+	if errors.Is(err, errInvalidTradeDate) {
 		writeError(w, http.StatusBadRequest, "invalid date")
 		return
 	}
-	msg, err := s.trade.ExecuteSell(r.Context(), req.Ticker, req.Shares, req.Price, req.Fee, date)
-	s.trade.Notify(msg)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, msg)
 		return
@@ -163,8 +200,7 @@ func (s *Server) handleSetStop(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	msg, err := s.trade.ExecuteSetStop(req.Ticker, req.Price)
-	s.trade.Notify(msg)
+	msg, err := s.execSetStop(req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, msg)
 		return
@@ -226,8 +262,8 @@ func (s *Server) handleWatchlistAdd(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	ticker := strings.ToUpper(strings.TrimSpace(req.Ticker))
-	if ticker == "" {
+	ticker, err := service.NormalizeTicker(req.Ticker)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, "ticker is required")
 		return
 	}
@@ -243,8 +279,8 @@ func (s *Server) handleWatchlistRemove(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	ticker := strings.ToUpper(strings.TrimSpace(req.Ticker))
-	if ticker == "" {
+	ticker, err := service.NormalizeTicker(req.Ticker)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, "ticker is required")
 		return
 	}

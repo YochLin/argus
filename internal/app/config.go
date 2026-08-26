@@ -1,4 +1,11 @@
-package main
+// Package app is the shared boot wiring behind both entrypoints: cmd/server
+// (Phase 24 Stage 3's primary daemon — HTTP always on, Telegram an optional
+// attached adapter) and cmd/bot (the original Telegram-first entrypoint, kept
+// so `go run ./cmd/bot` and every deploy unit that names it keep working).
+// Before Stage 3 this wiring lived in cmd/bot/main.go and was already
+// duplicated once inside runMCPServer (Phase 24 tech debt 6); a second
+// entrypoint copying it again would have made that three.
+package app
 
 import (
 	"os"
@@ -13,15 +20,14 @@ import (
 	"argus/internal/paper"
 )
 
-// Config holds every env-var-derived setting the Telegram bot subcommand
-// (main(), not "mcp"/"eval"/"backtest" — see their own smaller env reads)
-// needs before it starts wiring up providers/bot/web. loadConfig is the only
-// place that should call os.Getenv for these; everything downstream just
-// reads the struct.
+// Config holds every env-var-derived setting Boot needs before it starts
+// wiring up providers/bot/web (not the "mcp"/"eval"/"backtest" subcommands —
+// see their own smaller env reads). Load is the only place that should call
+// os.Getenv for these; everything downstream just reads the struct.
 type Config struct {
 	// TelegramToken/ChatID are optional (Phase 17 PR1, see
 	// docs/phase-17-web-settings.md §3): an unset or unparseable pair leaves
-	// them zero-valued and main.go simply never constructs the bot, rather
+	// them zero-valued and Boot simply never constructs the bot, rather
 	// than the whole process dying before the web dashboard can come up.
 	// That's the whole point — the dashboard's Settings page is where these
 	// get filled in, so it can't be downstream of them being set already.
@@ -66,6 +72,18 @@ type Config struct {
 	// WebAddr also set, but no extra validation beyond that: an unreachable
 	// server's password setting is simply inert.
 	WebPassword string
+	// JWTSecret (JWT_SECRET, Phase 24 Stage 4 Step 4.1) signs the /api/v1
+	// access/refresh tokens. Empty, too short (see web.minJWTSecretLen), or
+	// WebPassword left empty disables the /api/v1 surface entirely (see
+	// web.registerAPIV1) — same presence-of-config convention as
+	// WebAddr/WebPassword, and for the same reason those two are absent from
+	// the Settings page's whitelist: it is this deployment's own access
+	// credential, not a third-party service connection.
+	JWTSecret string
+	// APIKey (API_KEY) is the script/cron credential for the same surface,
+	// sent as an X-API-Key header instead of a bearer token. Empty means
+	// JWT-only.
+	APIKey string
 	// WebLLMAudit (WEB_LLM_AUDIT, Phase 19 PR1, docs/phase-19-llm-transparency.md
 	// §8.4) gates the /llm audit-trail page's API routes — llm_runs is still
 	// written on every GenerateRecommendations call regardless (that's the
@@ -127,13 +145,13 @@ type Config struct {
 	BackupRetentionDays int
 }
 
-// loadConfig reads .env (if present) and every env var main()'s bot
+// Load reads .env (if present) and every env var main()'s bot
 // subcommand needs, applying defaults/validation. Nothing here is fatal
 // any more (Phase 17 PR1): a missing/unparseable TELEGRAM_CHAT_ID logs and
 // leaves Telegram off instead of killing the process, so a deployment with
 // only WEB_ADDR/WEB_PASSWORD set still boots far enough to serve the
 // Settings page that configures the rest.
-func loadConfig() Config {
+func Load() Config {
 	exitsUS, exitsTW := paper.DefaultExits(market.US), paper.DefaultExits(market.TW)
 	envErr := godotenv.Load()
 	logger.Configure(os.Stderr, logger.ParseLevel(os.Getenv("LOG_LEVEL")))
@@ -165,16 +183,18 @@ func loadConfig() Config {
 		SinopacSkip:     parseSinopacSkip(os.Getenv("SINOPAC_SKIP_TICKERS")),
 		SinopacSyncLive: os.Getenv("SINOPAC_SYNC_LIVE") == "true",
 
-		RecommendModel: envOr("CLAUDE_RECOMMEND_MODEL", "opus"),
-		CheckModel:     envOr("CLAUDE_CHECK_MODEL", "sonnet"),
-		ChatModel:      envOr("CLAUDE_CHAT_MODEL", "sonnet"),
+		RecommendModel: EnvOr("CLAUDE_RECOMMEND_MODEL", "opus"),
+		CheckModel:     EnvOr("CLAUDE_CHECK_MODEL", "sonnet"),
+		ChatModel:      EnvOr("CLAUDE_CHAT_MODEL", "sonnet"),
 
-		DBPath: envOr("DB_PATH", "data/argus.db"),
-		Lang:   i18n.Parse(envOr("BOT_LANGUAGE", "zh")),
+		DBPath: EnvOr("DB_PATH", "data/argus.db"),
+		Lang:   i18n.Parse(EnvOr("BOT_LANGUAGE", "zh")),
 
 		WebAddr:     os.Getenv("WEB_ADDR"),
 		WebPassword: os.Getenv("WEB_PASSWORD"),
 		WebLLMAudit: os.Getenv("WEB_LLM_AUDIT") == "true",
+		JWTSecret:   os.Getenv("JWT_SECRET"),
+		APIKey:      os.Getenv("API_KEY"),
 
 		// Fallbacks come from paper.DefaultExits, not literals, so the bot
 		// and the two offline study tools cannot drift apart again — see
@@ -194,13 +214,13 @@ func loadConfig() Config {
 		PaperMaxPositionPct:    envOrFloat("PAPER_MAX_POSITION_PCT", 25),
 		PaperTakeProfitATRMult: envOrFloat("PAPER_TAKE_PROFIT_ATR_MULT", 0),
 
-		LogPath:             envOr("LOG_PATH", "data/argus.log"),
-		BackupDir:           envOr("BACKUP_DIR", "data/backups"),
+		LogPath:             EnvOr("LOG_PATH", "data/argus.log"),
+		BackupDir:           EnvOr("BACKUP_DIR", "data/backups"),
 		BackupRetentionDays: envOrInt("BACKUP_RETENTION_DAYS", 14),
 	}
 }
 
-func envOr(key, fallback string) string {
+func EnvOr(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}

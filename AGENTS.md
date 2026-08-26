@@ -21,7 +21,8 @@ rather than a quick swap.
 
 ```bash
 go build ./...              # build everything
-go run ./cmd/bot             # run locally (reads .env via godotenv)
+go run ./cmd/bot             # run locally, Telegram-first (reads .env via godotenv)
+go run ./cmd/server          # run locally, server-first (HTTP always on, Telegram attached if configured)
 go run ./cmd/bot mcp         # run as an MCP server over stdio instead (see internal/mcptools)
 go vet ./...                 # static checks
 docker compose up --build    # build + run in Docker (uses .env, mounts ./data -> /app/data)
@@ -38,9 +39,15 @@ shells out to an ACP agent process.
 
 ## Architecture
 
-Flow: `cmd/bot/main.go` wires everything together — loads env, opens SQLite, builds the data provider
-chain, constructs the LLM client, constructs the Telegram `bot.Bot`, registers the daily cron job, then
-runs the Telegram long-poll loop until SIGINT/SIGTERM.
+Flow: `internal/app`'s `Boot` wires everything together — loads env (`app.Load`), opens SQLite, builds
+the data provider chain (`app.NewCoreProviders`), constructs the LLM client, constructs the Telegram
+`bot.Bot` (only when a token/chat id is configured), constructs the web server, registers the cron jobs;
+`App.Run` then starts all of them and blocks until SIGINT/SIGTERM, and `App.Close` releases them in
+reverse order. Two entrypoints share that one wiring (Phase 24 Stage 3 Step 3.1): `cmd/bot/main.go` is
+the original Telegram-first one — plus the `mcp`/`eval`/`backtest` subcommands, which branch before any
+of it — and `cmd/server/main.go` is the server-first daemon, differing only in that it defaults
+`WEB_ADDR` to `app.DefaultWebAddr` (`:8080`) so the HTTP/API surface is always on. Deploy units and
+`docker-compose.yml` still build `./cmd/bot`; nothing about that path changed.
 
 - `internal/data` — `Provider` interface (`GetQuote`/`GetNews`/`GetMarketMovers`), implemented
   independently by `finnhub.go` (primary) and `yahoo.go` (fallback via `Multi`). Separate optional

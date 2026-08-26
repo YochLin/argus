@@ -51,10 +51,7 @@ func (b *Bot) SendSignalAlert(sigs []signals.Signal) {
 // TW watchlist/position ticker; SaveSnapshot's INSERT OR REPLACE makes a
 // same-(ticker,date) double-write from both paths safe.
 func benchmarkFor(m market.MarketID) string {
-	if m == market.TW {
-		return "0050"
-	}
-	return benchmarkTicker
+	return service.BenchmarkFor(m)
 }
 
 // RunClosingSnapshot records the just-closed session's OHLCV for every
@@ -241,7 +238,7 @@ func (b *Bot) RunTWDailyReport(ctx context.Context) {
 // quote-freshness check is used instead; it costs one extra quote fetch on
 // every run (even ordinary trading days) but correctly catches every kind of
 // closure, including ones a fixed calendar never could.
-const twMarketClosedStaleness = 12 * time.Hour
+const twMarketClosedStaleness = service.TWMarketClosedStaleness
 
 // isTWMarketClosed fetches a 0050 quote and reports whether its timestamp is
 // stale enough to mean "TW market is closed today" — see
@@ -348,7 +345,7 @@ func (b *Bot) runDailyReport(ctx context.Context, m market.MarketID) {
 	b.checkTargetAlerts(positionList, prices)
 	b.checkMA5BreakAlerts(positionList, prices, ma5s)
 	if m == market.TW {
-		b.checkRestrictedAlerts(positionList, b.restrictedTickers(ctx, m))
+		b.checkRestrictedAlerts(positionList, b.scans().RestrictedTickers(ctx, m))
 	}
 
 	// Buy alerts (unlike the exit-discipline checks above) watch tickers the
@@ -472,210 +469,11 @@ func (b *Bot) exploreCandidates(ctx context.Context, in *recommendationInputs) m
 
 // checkStatefulSignals is a thin wrapper around service.ScanService's
 // CheckStatefulSignals (Phase 24 Stage 1 Scan & Strategy Service extraction)
-// that adds the two pieces of adapter-layer formatting the service doesn't
-// own, both on strategy hits (Type prefix "strategy_"): the bear-regime
-// warning when isBearRegime is set, and 網 3's §4.4 downgrade notice.
-//
-// Both call sites (the daily report's watchlist alerts and runUniverseScan's
-// scan_hits) route through here, so decorating once here covers both.
-//
-// The bear-regime warning stays a WARNING and not a gate: the Phase 23
-// calibration study measured every screen against a same-regime random-entry
-// control and the bear-regime effect does not replicate — 網 3 is -1.50%
-// (2.4 sigma) in-sample but only -0.92% (0.9 sigma) out-of-sample, while
-// 網 4 flips to +4.16% (2.6 sigma) out-of-sample. Suppressing signals in a
-// bear regime would have LOWERED every screen's out-of-sample return
-// (cmd/strategyscan prints the same-regime control under 多空情境分組).
+// that adds the strategy-hit caveats the service owns the text of — see
+// service.DecorateStrategyHits for what they are and why they are applied
+// there rather than at render time.
 func (b *Bot) checkStatefulSignals(ticker string, candles []data.Candle, isBearRegime bool) []signals.Signal {
-	sigs := b.scans().CheckStatefulSignals(ticker, candles)
-	for i := range sigs {
-		if !strings.HasPrefix(sigs[i].Type, "strategy_") {
-			continue
-		}
-		if isBearRegime {
-			sigs[i].Message += "\n" + i18n.T(b.lang, i18n.KeyStrategyBearRegimeWarning)
-		}
-		if sigs[i].Type == signals.TypeTrendBreakout {
-			sigs[i].Message += "\n" + i18n.T(b.lang, i18n.KeyStrategyUnvalidated)
-		}
-	}
-	return sigs
-}
-
-// scanChunkCount and universeScanRequestDelay govern Phase 2.6's daily
-// candidate-pool scan. Originally the universe (~500 S&P 500 + manual
-// tickers) was split into 5 rotating slices so each day only fetched ~100
-// histories; that traded freshness for request volume, which cost more than
-// it saved — a Squeeze Breakout seen 4 days late is a chase, not an entry,
-// and the RSI/MACD state machines silently collapsed any round trip that
-// started and finished inside one rotation. Since the scan is an unattended
-// 05:45 cron with no ctx timeout, wall-clock is free where request *rate* is
-// not, so the chunking is off (chunkCount 1 = whole universe daily) and the
-// budget is spent on a longer per-request delay instead: ~500 tickers × 1s
-// is ~10 min, still well under the 06:00 backup, at a third of the old
-// requests-per-second. Both stay tunable knobs rather than inlined constants
-// — if Yahoo ever starts 429ing, raise the delay first, and only go back to
-// chunkCount 2+ if that isn't enough.
-const (
-	scanChunkCount           = 1
-	universeScanRequestDelay = 1 * time.Second
-)
-
-// RunUniverseScan is the US-market universe scan's scheduler entry point
-// (05:45 CST Tue-Sat, unchanged since before Phase 6) — a thin wrapper
-// around runUniverseScan(ctx, market.US).
-func (b *Bot) RunUniverseScan(ctx context.Context) {
-	b.runUniverseScan(ctx, market.US)
-}
-
-// RunTWUniverseScan is Phase 6 PR2's TW-market universe scan entry point
-// (14:40 CST Mon-Fri, see docs/phase-6-tw-market.md §3.3/§5.2) — the TW
-// counterpart of RunUniverseScan above, scanning the tw150 pool
-// (source='tw', seeded by db.seedTW150) instead of the S&P 500 pool.
-func (b *Bot) RunTWUniverseScan(ctx context.Context) {
-	b.runUniverseScan(ctx, market.TW)
-}
-
-// runUniverseScan is Phase 2.6's candidate-pool scan, generalized by
-// Phase 6 PR2 to run per-market: it checks market m's universe entries
-// (all of them daily as of scanChunkCount 1, see that const's comment;
-// still routed through service.UniverseScanChunk so the rotation can come back as a
-// one-line change) (filtered via market.Of(ticker) — not by
-// source, since a manually /universe add'ed TW ticker is source='manual'
-// and must still be scanned as TW, see docs/phase-6-tw-market.md §5.2)
-// excluding anything already on m's own watchlist (which gets a full
-// RSI/MACD check daily anyway) for a fresh RSI/MACD signal via the same
-// checkStatefulSignals used for the watchlist — safe to share signal_states
-// with it since the universe and watchlist ticker sets never overlap, and
-// safe to share across US/TW runs of this same function since a ticker only
-// ever belongs to one market. Any hit is logged to scan_hits for
-// runDailyReport/handleRecommend to pick up the same day and upgrade into an
-// LLM candidate. Silent background job like RunClosingSnapshot: results go
-// to the DB/log, not Telegram — the eventual daily report is the
-// user-facing surface.
-func (b *Bot) runUniverseScan(ctx context.Context, m market.MarketID) {
-	defer b.recoverJobPanic("universe scan")
-
-	// Trading-day gate (Phase 13 §8) — silent, no Telegram send, same
-	// closed-market signals RunClosingSnapshot/runDailyReport already use
-	// per market (US: NYSE calendar; TW: isTWMarketClosed's live
-	// quote-freshness heuristic, see its own doc comment for why TW has no
-	// fixed holiday calendar). Without this, a holiday rerun would scan
-	// stale/unchanged data and risk a duplicate scan_hits row for the same
-	// signal. US checks yesterday's CST date, not today's — this job runs at
-	// 05:45 CST (like RunClosingSnapshot's 05:30), which is already the next
-	// calendar day in Taiwan relative to the US session just closed, so
-	// checking today's date misjudges Saturday (a genuine trading day,
-	// Friday's session) as a weekend skip and can misjudge the day after a
-	// US holiday too.
-	if m == market.US {
-		if !market.IsTradingDay(b.now().In(cst).AddDate(0, 0, -1)) {
-			logger.Infof("universe scan: market=%s closed, skipping", m)
-			return
-		}
-	} else if b.isTWMarketClosed() {
-		logger.Infof("universe scan: market=%s closed, skipping", m)
-		return
-	}
-
-	entries, err := b.db.GetUniverse()
-	if err != nil {
-		logger.Errorf("universe scan: universe: %v", err)
-		return
-	}
-	watchlist, err := b.db.GetWatchlistByMarket(m)
-	if err != nil {
-		logger.Errorf("universe scan: watchlist: %v", err)
-		return
-	}
-	watchSet := make(map[string]bool, len(watchlist))
-	for _, t := range watchlist {
-		watchSet[t] = true
-	}
-
-	var tickers []string
-	for _, e := range entries {
-		if market.Of(e.Ticker) == m && !watchSet[e.Ticker] {
-			tickers = append(tickers, e.Ticker)
-		}
-	}
-
-	mc := b.computeMarketRegime(m)
-	isBear := isBearRegime(mc)
-
-	// Phase 16: skip TWSE/TPEx disposition (處置) or attention (注意)
-	// tickers — the bot would otherwise happily recommend a stock currently
-	// in split-auction trading with no idea anything's wrong. Fetched once
-	// per scan (not per ticker), nil when SHIOAJI_ADDR isn't set (no-op,
-	// same nil-degrade convention as every other optional provider).
-	restricted := b.restrictedTickers(ctx, m)
-
-	chunk := service.UniverseScanChunk(tickers, scanChunkCount, time.Now().In(cst).YearDay())
-	date := todayDate()
-	hits := 0
-	for i, t := range chunk {
-		select {
-		case <-ctx.Done():
-			logger.Warnf("universe scan: cancelled after %d/%d tickers", i, len(chunk))
-			return
-		default:
-		}
-
-		if reason, ok := restricted[t]; ok {
-			logger.Infof("universe scan: skipping %s: %s", t, reason)
-			continue
-		}
-
-		candles, err := b.history.GetHistory(t, "1y")
-		if err != nil {
-			logger.Errorf("universe scan: history %s: %v", t, err)
-			continue
-		}
-		for _, sig := range b.checkStatefulSignals(t, candles, isBear) {
-			if err := b.db.SaveScanHit(t, date, sig.Message); err != nil {
-				logger.Errorf("universe scan: save hit %s: %v", t, err)
-				continue
-			}
-			hits++
-		}
-
-		if i < len(chunk)-1 {
-			time.Sleep(universeScanRequestDelay)
-		}
-	}
-	logger.Infof("universe scan: market=%s checked %d tickers, %d hits", m, len(chunk), hits)
-}
-
-// restrictedTickers returns TW disposition (處置)/attention (注意) tickers
-// mapped to a human-readable reason, for runUniverseScan and
-// checkRestrictedAlerts to skip/warn about — nil for US (no such
-// classification exists there) or when b.sinopac is unset (SHIOAJI_ADDR
-// not configured), same nil-degrade convention as every other optional
-// provider. Not cached across calls: RegulatoryPunish/RegulatoryNotice are
-// each one free GET request, and this is called at most twice a day (once
-// per job).
-func (b *Bot) restrictedTickers(ctx context.Context, m market.MarketID) map[string]string {
-	if m != market.TW || b.sinopac == nil {
-		return nil
-	}
-	out := make(map[string]string)
-	if punish, err := b.sinopac.RegulatoryPunish(ctx); err != nil {
-		logger.Errorf("restricted tickers: regulatory punish: %v", err)
-	} else {
-		for code, reason := range punish {
-			out[code] = reason
-		}
-	}
-	if notice, err := b.sinopac.RegulatoryNotice(ctx); err != nil {
-		logger.Errorf("restricted tickers: regulatory notice: %v", err)
-	} else {
-		for code, reason := range notice {
-			if _, ok := out[code]; !ok {
-				out[code] = reason
-			}
-		}
-	}
-	return out
+	return service.DecorateStrategyHits(b.scans().CheckStatefulSignals(ticker, candles), isBearRegime, b.lang)
 }
 
 // checkEarningsAlerts sends one batched Telegram message warning about

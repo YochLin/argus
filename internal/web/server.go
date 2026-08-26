@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/logger"
+	"argus/internal/notification"
 	"argus/internal/service"
 )
 
@@ -95,6 +97,21 @@ type Config struct {
 	// IndustryMap backs /api/sectorflow's TW classification (FinMind's
 	// whole-market GetIndustryMap) — nil when FINMIND_TOKEN isn't set.
 	IndustryMap data.IndustryMapProvider
+	// JWTSecret (env JWT_SECRET, Phase 24 Stage 4) signs the /api/v1 access
+	// and refresh tokens. Empty disables the whole /api/v1 surface — see
+	// registerAPIV1 — which is the right default: an API with no signing key
+	// has no safe degraded mode. Rotating it invalidates every issued token,
+	// which is also how you log every client out.
+	JWTSecret string
+	// APIKey (env API_KEY) is the alternative credential for personal
+	// scripts and cron jobs, sent as X-API-Key. Empty means only JWT is
+	// accepted; it is never matched against an empty header.
+	APIKey string
+	// Events is Phase 24 Stage 4 Step 4.3's live-alert fan-out, registered on
+	// the process's notification.Dispatcher by internal/app. nil leaves
+	// /api/v1/ws unregistered — the dashboard and the REST surface don't
+	// depend on it.
+	Events *notification.WebSocketHub
 	// LLMAudit gates Phase 19's /llm page (env WEB_LLM_AUDIT, §8.4) — unlike
 	// Paper/OptionChain/etc.'s "always register, 404/empty at request time"
 	// convention, this one skips route registration entirely when off, so
@@ -140,7 +157,18 @@ type Server struct {
 	sectorFlow          *sectorFlowCache
 	newsSourceDB        newsSourceWriter
 	llmAudit            bool
-	mux                 *http.ServeMux
+	jwtSecret           string
+	apiKey              string
+	// apiDB is a narrow interface (not folded into dbReader: these three
+	// methods are only ever reached from /api/v1, and dbReader is already
+	// implemented by a pile of hand-built test values that have no reason
+	// to grow them) — assigned in New only when cfg.DB != nil, same
+	// nil-typed-pointer-in-an-interface trap paperDB's comment above warns
+	// about, just solved the other way since this field's callers need an
+	// interface, not a concrete *db.DB.
+	apiDB  apiV1Store
+	events wsHub
+	mux    *http.ServeMux
 }
 
 func New(cfg Config) *Server {
@@ -170,6 +198,11 @@ func New(cfg Config) *Server {
 		sectorFlow:          newSectorFlowCache(),
 		newsSourceDB:        cfg.DB,
 		llmAudit:            cfg.LLMAudit,
+		jwtSecret:           cfg.JWTSecret,
+		apiKey:              cfg.APIKey,
+	}
+	if cfg.DB != nil {
+		s.apiDB = cfg.DB
 	}
 	s.recPerf = newRecPerfStore(s.db, s.history)
 	s.mux = http.NewServeMux()
@@ -232,6 +265,10 @@ func New(cfg Config) *Server {
 	// requireWritable/requireAuth gate as every other write route — a bulk
 	// transaction write is no less a write than a single /buy.
 	s.mux.HandleFunc("POST /api/import", s.requireWritable(s.requireAuth(s.handleImport)))
+	if cfg.Events != nil {
+		s.events = cfg.Events
+	}
+	s.registerAPIV1()
 	s.mux.Handle("/", spaHandler())
 	return s
 }
@@ -284,10 +321,19 @@ func spaHandler() http.Handler {
 func (s *Server) Run(ctx context.Context, addr string) error {
 	srv := &http.Server{Addr: addr, Handler: s.mux}
 
+	// net.Listen up front (not srv.ListenAndServe, which binds inside the
+	// goroutine below) so the "listening" log line only fires once the bind
+	// has actually succeeded — otherwise a bind failure logs "listening"
+	// followed immediately by the error, which reads backwards.
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	logger.Infof("web: dashboard listening on %s", addr)
+
 	errCh := make(chan error, 1)
 	go func() {
-		logger.Infof("web: dashboard listening on %s", addr)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 			return
 		}
