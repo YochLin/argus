@@ -1,0 +1,711 @@
+# Argus /api/v1 — OpenAPI 3.1 (Phase 24 Stage 4 Step 4.4).
+#
+# Hand-written, not generated: Go has no annotation-driven generator in this
+# codebase and adding one would mean a build step and a set of struct tags to
+# keep in sync, for a surface of fifteen routes. This file is the contract a
+# mobile client generates its SDK from (Flutter/React Native/Swift all read
+# OpenAPI 3.x), so it must be updated in the same PR as any change to
+# internal/web/apiv1*.go.
+#
+# Scope: /api/v1 only. The pre-v1 /api/* dashboard routes are internal to the
+# bundled SPA, use a bare-object response shape, and are deliberately not
+# described here.
+openapi: 3.1.0
+
+info:
+  title: Argus API
+  version: "1.0.0"
+  description: |
+    Personal, single-user stock-monitoring API. There is no user model: every
+    token authenticates the one operator who owns the deployment, and no
+    request body or response carries a user id.
+
+    The whole surface is unavailable unless both `JWT_SECRET` and
+    `WEB_PASSWORD` are set — the routes are not registered at all in that
+    case, so an unconfigured deployment answers the SPA shell rather than a
+    401.
+
+    Deployments are expected to be private (Tailscale or an SSH tunnel);
+    the server terminates plain HTTP and has no TLS of its own.
+
+servers:
+  - url: http://localhost:8080
+    description: cmd/server's default bind address (WEB_ADDR overrides it)
+
+tags:
+  - name: auth
+  - name: portfolio
+  - name: watchlist
+  - name: trading
+  - name: signals
+  - name: notifications
+
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+
+paths:
+  /api/v1/auth/login:
+    post:
+      tags: [auth]
+      summary: Exchange the operator password for a token pair
+      description: The password is `WEB_PASSWORD` — the same one the web dashboard's login uses.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/TokenPair"
+        "401":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [auth]
+      summary: Trade a refresh token for a fresh pair
+      description: |
+        Returns a new access **and** refresh token, sliding the 30-day expiry —
+        an actively used app never gets logged out. An access token is not
+        accepted here.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/TokenPair"
+        "401":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/auth/me:
+    get:
+      tags: [auth]
+      summary: Verify a credential without side effects
+      responses:
+        "200":
+          description: The credential is valid
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          subject:
+                            type: string
+                          authenticated:
+                            type: boolean
+        "401":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/portfolio:
+    get:
+      tags: [portfolio]
+      summary: Open positions, cash and account value for one market
+      parameters:
+        - $ref: "#/components/parameters/Market"
+      responses:
+        "200":
+          description: Portfolio snapshot
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Portfolio"
+        "401":
+          $ref: "#/components/responses/Error"
+        "500":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/watchlist:
+    get:
+      tags: [watchlist]
+      summary: List the watchlist for one market
+      parameters:
+        - $ref: "#/components/parameters/Market"
+      responses:
+        "200":
+          description: Watchlist tickers
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          tickers:
+                            type: array
+                            items:
+                              type: string
+        "401":
+          $ref: "#/components/responses/Error"
+    post:
+      tags: [watchlist]
+      summary: Add a ticker
+      description: The ticker is normalized (trimmed, upper-cased) server-side; the normalized value comes back.
+      requestBody:
+        $ref: "#/components/requestBodies/Ticker"
+      responses:
+        "200":
+          $ref: "#/components/responses/TickerResult"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/watchlist/remove:
+    post:
+      tags: [watchlist]
+      summary: Remove a ticker
+      description: |
+        A POST rather than `DELETE /api/v1/watchlist/{ticker}` so it matches
+        the add route's body shape, and because a TW ticker is all digits —
+        a path segment there reads worse than it looks.
+      requestBody:
+        $ref: "#/components/requestBodies/Ticker"
+      responses:
+        "200":
+          $ref: "#/components/responses/TickerResult"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/trade/buy:
+    post:
+      tags: [trading]
+      summary: Record a buy
+      description: |
+        Writes to `positions`/`transactions` with weighted-average cost, adds
+        the ticker to the watchlist, and pushes the same confirmation to
+        Telegram that `/buy` would.
+      requestBody:
+        $ref: "#/components/requestBodies/Trade"
+      responses:
+        "200":
+          $ref: "#/components/responses/Message"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/TelegramNotConfigured"
+
+  /api/v1/trade/sell:
+    post:
+      tags: [trading]
+      summary: Record a sell
+      description: Realized P&L is computed against the position's average cost.
+      requestBody:
+        $ref: "#/components/requestBodies/Trade"
+      responses:
+        "200":
+          $ref: "#/components/responses/Message"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/TelegramNotConfigured"
+
+  /api/v1/risk/stop:
+    post:
+      tags: [trading]
+      summary: Set a position's stop price
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ticker, price]
+              properties:
+                ticker:
+                  type: string
+                price:
+                  type: number
+                  format: double
+      responses:
+        "200":
+          $ref: "#/components/responses/Message"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/TelegramNotConfigured"
+
+  /api/v1/recommendations/latest:
+    get:
+      tags: [signals]
+      summary: Recent stored LLM recommendations, newest first
+      description: |
+        Reads the last 90 days of history. There is no trigger endpoint: a new
+        recommendation still comes from the Telegram bot's pipeline, which has
+        not been extracted into a service yet.
+      parameters:
+        - $ref: "#/components/parameters/Market"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Recommendations
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          recommendations:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/Recommendation"
+        "401":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/scan/hits:
+    get:
+      tags: [signals]
+      summary: Strategy-screen hits from the universe scan for one day
+      parameters:
+        - name: date
+          in: query
+          description: YYYY-MM-DD; defaults to today.
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Scan hits, sorted by ticker
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          date:
+                            type: string
+                            format: date
+                          hits:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                ticker:
+                                  type: string
+                                reason:
+                                  type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/notifications:
+    get:
+      tags: [notifications]
+      summary: Alert history, newest first
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: Notifications
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          notifications:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/Notification"
+        "401":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/notifications/{id}/read:
+    post:
+      tags: [notifications]
+      summary: Mark one notification read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Marked read
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                            format: int64
+                          read:
+                            type: boolean
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/ws:
+    get:
+      tags: [notifications]
+      summary: Live alert stream (WebSocket)
+      description: |
+        A WebSocket upgrade, not a normal GET — OpenAPI has no way to describe
+        the post-upgrade message stream, so the frame schema is documented here
+        instead: each server frame is a JSON `WSEvent`.
+
+        Authentication is `?token=<access token>` because the browser
+        WebSocket API cannot set request headers; native clients may send
+        `X-API-Key` instead. `?types=a,b` subscribes to those event types
+        only; omitting it delivers everything.
+
+        A client that stops reading has its events dropped after 32 buffered
+        frames rather than stalling delivery to the other channels.
+      security: []
+      parameters:
+        - name: token
+          in: query
+          description: An access token from /api/v1/auth/login.
+          schema:
+            type: string
+        - name: types
+          in: query
+          description: Comma-separated event types to subscribe to.
+          schema:
+            type: string
+          examples:
+            stops:
+              value: stop_loss,trailing_stop
+      responses:
+        "101":
+          description: Switching Protocols — the stream carries WSEvent frames
+        "401":
+          $ref: "#/components/responses/Error"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: An access token from /api/v1/auth/login. Expires in 30 minutes.
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        The `API_KEY` env value, for personal scripts and cron jobs that have
+        nowhere sensible to run a login/refresh cycle. Not accepted when
+        `API_KEY` is unset.
+
+  parameters:
+    Market:
+      name: market
+      in: query
+      description: "`us` (default) or `tw`. Anything else is read as `us`."
+      schema:
+        type: string
+        enum: [us, tw]
+        default: us
+
+  requestBodies:
+    Ticker:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [ticker]
+            properties:
+              ticker:
+                type: string
+    Trade:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [ticker, shares, price]
+            properties:
+              ticker:
+                type: string
+              shares:
+                type: number
+                format: double
+              price:
+                type: number
+                format: double
+              fee:
+                type: number
+                format: double
+                description: Omit to auto-calculate (TW) or default to zero (US).
+              date:
+                type: string
+                format: date
+                description: YYYY-MM-DD; defaults to today.
+
+  responses:
+    Error:
+      description: Failure — the envelope's `success` is false and `error` carries the reason.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Envelope"
+    TelegramNotConfigured:
+      description: |
+        Telegram isn't configured, so no trade executor exists. Distinct from
+        a rejected trade (400) on purpose: the request was fine, the server's
+        configuration isn't ready.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Envelope"
+    TokenPair:
+      description: A fresh access/refresh pair
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/TokenPair"
+    Message:
+      description: The same confirmation text the equivalent Telegram command would show
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+    TickerResult:
+      description: The normalized ticker
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      ticker:
+                        type: string
+
+  schemas:
+    Envelope:
+      type: object
+      description: |
+        Every /api/v1 response, success or failure, is this shape — one
+        response type for a generated client to unwrap instead of one per
+        endpoint.
+      required: [success, timestamp]
+      properties:
+        success:
+          type: boolean
+        data:
+          description: Endpoint-specific payload; null on failure.
+        error:
+          type: string
+          description: Present only when `success` is false.
+        timestamp:
+          type: integer
+          format: int64
+          description: Unix seconds.
+
+    TokenPair:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+          description: Access-token lifetime in seconds.
+
+    Position:
+      type: object
+      properties:
+        ticker:
+          type: string
+        shares:
+          type: number
+          format: double
+        avgPrice:
+          type: number
+          format: double
+          description: Weighted-average cost basis.
+        stopPrice:
+          type: number
+          format: double
+          description: 0 when no per-trade stop is set.
+        price:
+          type: number
+          format: double
+          description: Latest quote; 0 when `stale` is true.
+        marketValue:
+          type: number
+          format: double
+        unrealizedPnl:
+          type: number
+          format: double
+        unrealizedPnlPct:
+          type: number
+          format: double
+        stale:
+          type: boolean
+          description: The quote couldn't be fetched — render the row as unknown, not as zero.
+
+    Portfolio:
+      type: object
+      properties:
+        market:
+          type: string
+          enum: [us, tw]
+        positions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Position"
+        totalMarketValue:
+          type: number
+          format: double
+        realizedPnl:
+          type: number
+          format: double
+        cash:
+          type: number
+          format: double
+        hasCash:
+          type: boolean
+          description: False when no cash balance has ever been recorded for this market.
+        accountValue:
+          type: number
+          format: double
+
+    Recommendation:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        ticker:
+          type: string
+        action:
+          type: string
+          enum: [BUY, SELL, HOLD, ""]
+        reason:
+          type: string
+        price:
+          type: number
+          format: double
+          description: Price at recommendation time; 0 for rows predating the column.
+        source:
+          type: string
+          enum: [watchlist, movers, scan, ""]
+        market:
+          type: string
+          enum: [us, tw]
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        type:
+          type: string
+          description: Event slug, e.g. stop_loss, trailing_stop, price_event, job_panic.
+        text:
+          type: string
+          description: The fully rendered message — the same text the Telegram push showed.
+        level:
+          type: string
+          enum: [info, warning, critical]
+        read:
+          type: boolean
+        createdAt:
+          type: string
+
+    WSEvent:
+      type: object
+      description: One frame on /api/v1/ws.
+      properties:
+        type:
+          type: string
+        text:
+          type: string
+        level:
+          type: string
+          enum: [info, warning, critical]
+        time:
+          type: integer
+          format: int64
+          description: Unix seconds.
