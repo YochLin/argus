@@ -403,7 +403,7 @@ func (s *ScanService) RunUniverseScan(ctx context.Context, m market.MarketID) (U
 			logger.Errorf("universe scan: history %s: %v", t, err)
 			continue
 		}
-		for _, sig := range DecorateBearRegime(s.CheckStatefulSignals(t, candles), isBear, s.lang) {
+		for _, sig := range DecorateStrategyHits(s.CheckStatefulSignals(t, candles), isBear, s.lang) {
 			if err := s.store.SaveScanHit(t, date, sig.Message); err != nil {
 				logger.Errorf("universe scan: save hit %s: %v", t, err)
 				continue
@@ -482,19 +482,38 @@ func (s *ScanService) RestrictedTickers(ctx context.Context, m market.MarketID) 
 	return out
 }
 
-// DecorateBearRegime appends the bear-regime caveat to every strategy hit's
-// message when the market is weak. It stays a formatting concern, but not an
+// DecorateStrategyHits appends every caveat a strategy hit (Type prefix
+// "strategy_") carries. It stays a formatting concern, but not an
 // adapter-only one: RunUniverseScan persists the decorated text into
 // scan_hits, which is read back by the daily report and the LLM pipeline —
 // so the decoration has to happen before the write, not at render time.
 // Returns sigs itself (decorating in place); callers own the slice.
-func DecorateBearRegime(sigs []signals.Signal, isBear bool, lang i18n.Lang) []signals.Signal {
-	if !isBear {
-		return sigs
-	}
+//
+// Both caveats live in this one function on purpose: it is the single point
+// the two call sites (this package's own RunUniverseScan and the bot's
+// checkStatefulSignals) route through, so a third caveat cannot end up
+// decorating only one of them.
+//
+//   - The bear-regime warning stays a WARNING and not a gate. The Phase 23
+//     calibration study measured every screen against a same-regime
+//     random-entry control and the effect does not replicate: 網 3 is -1.50%
+//     (2.4 sigma) in-sample but only -0.92% (0.9 sigma) out-of-sample, while
+//     網 4 flips to +4.16% (2.6 sigma) out-of-sample. Suppressing signals in
+//     a bear regime LOWERED every screen's out-of-sample return.
+//   - 網 3 (Trend Breakout) carries its §4.4 downgrade notice unconditionally:
+//     negative excess at ~4 sigma in four independent out-of-sample slices.
+//     Downgraded to reference material, deliberately not delisted — see
+//     signals.CheckTrendBreakout for the numbers and the repro commands.
+func DecorateStrategyHits(sigs []signals.Signal, isBear bool, lang i18n.Lang) []signals.Signal {
 	for i := range sigs {
-		if strings.HasPrefix(sigs[i].Type, "strategy_") {
+		if !strings.HasPrefix(sigs[i].Type, "strategy_") {
+			continue
+		}
+		if isBear {
 			sigs[i].Message += "\n" + i18n.T(lang, i18n.KeyStrategyBearRegimeWarning)
+		}
+		if sigs[i].Type == signals.TypeTrendBreakout {
+			sigs[i].Message += "\n" + i18n.T(lang, i18n.KeyStrategyUnvalidated)
 		}
 	}
 	return sigs

@@ -414,6 +414,7 @@ const (
 	KeyTechnicalsRSLine          Key = "technicals_rs_line"
 	KeyStrategyHitLine           Key = "strategy_hit_line"
 	KeyStrategyBearRegimeWarning Key = "strategy_bear_regime_warning"
+	KeyStrategyUnvalidated       Key = "strategy_unvalidated"
 	KeyTechGuidanceBlock         Key = "tech_guidance_block"
 	KeyVolUpPriceUp              Key = "vol_up_price_up"
 	KeyVolDownPriceDown          Key = "vol_down_price_down"

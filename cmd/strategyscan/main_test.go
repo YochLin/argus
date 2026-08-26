@@ -7,6 +7,7 @@ import (
 	"argus/internal/data"
 	"argus/internal/market"
 	"argus/internal/paper"
+	"argus/internal/signals"
 )
 
 var defaultExitCfg = paper.Config{
@@ -107,5 +108,43 @@ func TestSimulateTrade_SlippageWidensCost(t *testing.T) {
 	withSlip, _ := simulateTrade(candles, entryIdx, defaultExitCfg, 0.5, 60)
 	if withSlip.ExitRet >= noSlip.ExitRet {
 		t.Errorf("ExitRet with 0.5%% slippage/side (%.4f) should be lower than with none (%.4f)", withSlip.ExitRet, noSlip.ExitRet)
+	}
+}
+
+func TestParseDevSweep(t *testing.T) {
+	base := signals.DefaultScreenParams(market.US) // MaxMA20DevPct 15
+	got, err := parseDevSweep(" 8, 10 ,", base)
+	if err != nil {
+		t.Fatalf("parseDevSweep: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("want 2 variants, got %d", len(got))
+	}
+	if got[0].name != "trend_breakout_dev8" || got[0].params.MaxMA20DevPct != 8 {
+		t.Errorf("variant 0 = %+v", got[0])
+	}
+	// Every other knob must be inherited, not reset — a variant that silently
+	// dropped e.g. MinAvgVolume5d would screen a different population and its
+	// excess would be uninterpretable.
+	if got[1].params.MinAvgVolume5d != base.MinAvgVolume5d || got[1].params.BreakoutVolMA20 != base.BreakoutVolMA20 {
+		t.Errorf("variant 1 lost inherited params: %+v", got[1].params)
+	}
+	if v, err := parseDevSweep("", base); err != nil || v != nil {
+		t.Errorf("empty sweep: got %v, %v", v, err)
+	}
+	if _, err := parseDevSweep("abc", base); err == nil {
+		t.Error("want error on non-numeric sweep value")
+	}
+	if _, err := parseDevSweep("0", base); err == nil {
+		t.Error("want error on non-positive sweep value")
+	}
+}
+
+func TestSplitRegime(t *testing.T) {
+	bull, bear := splitRegime([]TriggerRecord{
+		{MarketRegime: "bull"}, {MarketRegime: "bear"}, {MarketRegime: "bull"},
+	})
+	if len(bull) != 2 || len(bear) != 1 {
+		t.Fatalf("want 2 bull / 1 bear, got %d / %d", len(bull), len(bear))
 	}
 }

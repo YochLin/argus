@@ -25,6 +25,12 @@ const (
 	FamilyStrategyTrust = "strategy_trust"
 )
 
+// TypeTrendBreakout is 網 3's Signal.Type. Exported (unlike the other
+// four screens' types, which nothing outside this package matches on)
+// because internal/bot has to single it out for the §4.4 downgrade
+// notice — see CheckTrendBreakout's doc comment.
+const TypeTrendBreakout = "strategy_trend_breakout"
+
 // ScreenParams holds the market-calibrated thresholds CheckSqueezeBreakoutExact/
 // CheckBoxBottomReboundExact screen against (Phase 13 §7) — a struct param
 // rather than fields on Detector because SqueezeBreakout/BoxBottomRebound are
@@ -80,6 +86,25 @@ type ScreenParams struct {
 // reason BoxMaxRangePct is wider; RequireRevenueGrowth is TW-only since
 // Finnhub has no monthly-revenue concept (data.Fundamentals.MonthRevenueYoYPct
 // is TW-only, see that field's doc comment).
+// MaxMA20DevPct is the one knob here that HAS since been backtested, and the
+// result was to leave it alone. The "don't chase an extended breakout"
+// intuition says to tighten it; cmd/strategyscan's -tb-dev-sweep re-screened
+// 網 3 at 12/10/8/6 against a random-entry control under identical exit rules,
+// and every tightening made things monotonically worse in all four samples.
+// Excess return vs that control (US in-sample / US OOS / S&P 400 mid-cap /
+// TW OOS; TW's own default is 12, so it has no 15 row):
+//
+//	cap  US IS    US OOS   SP400    TW OOS
+//	15   -0.20%   -0.95%   -0.95%      n/a
+//	12   -0.26%   -1.05%   -1.12%   -1.69%
+//	10   -0.65%   -1.18%   -1.15%   -1.79%
+//	 8   -0.66%   -1.23%   -1.37%   -1.83%
+//	 6   -0.83%   -1.19%   -1.16%   -2.35%
+//
+// The extended breakouts are the ones that carry the screen; capping them out
+// removes more signal than noise. Don't re-tighten this without re-running
+// that sweep — and note the whole screen is downgraded anyway (see
+// Detector.CheckTrendBreakout).
 func DefaultScreenParams(m market.MarketID) ScreenParams {
 	if m == market.TW {
 		return ScreenParams{
@@ -516,6 +541,18 @@ func (d *Detector) CheckTrendPullback(ticker string, candles []data.Candle, prev
 	}, newState
 }
 
+// CheckTrendBreakout screens 網 3【趨勢突破】. Phase 23's calibration study
+// (cmd/strategyscan) found this screen's excess return over a random entry
+// under identical exit rules to be NEGATIVE at ~4 sigma in three independent
+// out-of-sample slices — US time-slice, US S&P 400 mid-caps, and TW
+// time-slice — so it is downgraded under the pre-registration's §4.4 rule to
+// briefing material: still emitted (§4.4 是「不下架」), but internal/bot tags
+// it with i18n.KeyStrategyUnvalidated so it never reads as an entry
+// trigger. Reproduce with:
+//
+//	strategyscan -market=us -range=10y -date-from=2016-11-01 -date-to=2021-10-31
+//	strategyscan -market=us -range=10y -universe=sp400
+//	strategyscan -market=tw -range=10y -date-from=2016-11-01 -date-to=2021-10-31 -skip-trust
 func (d *Detector) CheckTrendBreakout(ticker string, candles []data.Candle, prevState string) (sig *Signal, newState string) {
 	hit := TrendBreakout(candles, DefaultScreenParams(market.Of(ticker)))
 	if hit == nil {
@@ -533,7 +570,7 @@ func (d *Detector) CheckTrendBreakout(ticker string, candles []data.Candle, prev
 
 	return &Signal{
 		Ticker:  ticker,
-		Type:    "strategy_trend_breakout",
+		Type:    TypeTrendBreakout,
 		Message: i18n.T(d.lang, i18n.KeyStrategyTrendBreakout, ticker, daysAgoStr),
 	}, newState
 }

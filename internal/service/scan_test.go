@@ -314,18 +314,32 @@ func TestRunUniverseScanSkipsClosedMarket(t *testing.T) {
 	}
 }
 
-func TestDecorateBearRegime(t *testing.T) {
+func TestDecorateStrategyHits(t *testing.T) {
 	sigs := []signals.Signal{{Type: "strategy_squeeze", Message: "hit"}, {Type: "rsi_overbought", Message: "rsi"}}
-	got := DecorateBearRegime(sigs, false, i18n.EN)
+	got := DecorateStrategyHits(sigs, false, i18n.EN)
 	if got[0].Message != "hit" {
 		t.Errorf("non-bear regime decorated %q", got[0].Message)
 	}
-	got = DecorateBearRegime(sigs, true, i18n.EN)
+	got = DecorateStrategyHits(sigs, true, i18n.EN)
 	if !strings.Contains(got[0].Message, "\n") {
 		t.Errorf("strategy hit not decorated in a bear regime: %q", got[0].Message)
 	}
 	if got[1].Message != "rsi" {
 		t.Errorf("non-strategy signal decorated: %q", got[1].Message)
+	}
+}
+
+// 網 3's §4.4 downgrade notice is unconditional — it is not a market-regime
+// caveat, so a bull regime must not silence it.
+func TestDecorateStrategyHitsTrendBreakoutAlwaysDowngraded(t *testing.T) {
+	sigs := []signals.Signal{{Type: signals.TypeTrendBreakout, Message: "hit"}, {Type: "strategy_squeeze", Message: "other"}}
+	got := DecorateStrategyHits(sigs, false, i18n.EN)
+	want := i18n.T(i18n.EN, i18n.KeyStrategyUnvalidated)
+	if !strings.Contains(got[0].Message, want) {
+		t.Errorf("trend breakout missing the downgrade notice in a bull regime: %q", got[0].Message)
+	}
+	if strings.Contains(got[1].Message, want) {
+		t.Errorf("downgrade notice leaked onto another screen: %q", got[1].Message)
 	}
 }
 

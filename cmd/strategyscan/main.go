@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	_ "embed"
 	"encoding/csv"
 	"flag"
@@ -8,6 +9,7 @@ import (
 	"math"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,13 +17,28 @@ import (
 	"argus/internal/market"
 	"argus/internal/paper"
 	"argus/internal/signals"
+	"argus/internal/sinopac"
 )
+
+// defaultShioajiSocket is where `shioaji server start` puts its unix socket
+// when SHIOAJI_ADDR isn't set — the daemon is the operator's, started in
+// their own shell (token decryption needs a key only they hold).
+func defaultShioajiSocket() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return home + "/.shioaji/server-8080.sock"
+}
 
 //go:embed sp500_tickers.txt
 var sp500TickersRaw string
 
 //go:embed tw150_tickers.txt
 var tw150TickersRaw string
+
+//go:embed sp400_tickers.txt
+var sp400TickersRaw string
 
 // baseStrategies are the four technical screens common to both markets;
 // twStrategies adds Phase 15's 網 5 (TW only — no US equivalent, see
@@ -165,11 +182,13 @@ func main() {
 	// TRAILING_STOP_ATR_MULT/PAPER_TAKE_PROFIT_ATR_MULT in .env.example, and
 	// cmd/bot/backtest.go's own flags) — same names as that tool's flags on
 	// purpose, so a user familiar with one recognizes the other.
-	stopATRFlag := flag.Float64("stop-atr", 2, "full-trade replay: ATR(14) multiple below entry for the initial stop")
-	stopPctFlag := flag.Float64("stop-pct", 10, "full-trade replay: fixed %% stop fallback when ATR is unavailable")
-	trailingPctFlag := flag.Float64("trailing-pct", 15, "full-trade replay: fixed trailing-stop distance, %%; 0 disables")
-	trailingATRFlag := flag.Float64("trailing-atr", 0, "full-trade replay: ATR-based trailing distance multiple; <=0 = fixed %% only")
-	takeProfitATRFlag := flag.Float64("take-profit-atr", 0, "full-trade replay: ATR(14) multiple above entry for the take-profit target; <=0 = disabled")
+	// -1 (not a literal) so the default can depend on -market, which is not
+	// known until Parse. 0 stays meaningful for the three that it disables.
+	stopATRFlag := flag.Float64("stop-atr", -1, "full-trade replay: ATR(14) multiple below entry for the initial stop; -1 = paper.DefaultExits")
+	stopPctFlag := flag.Float64("stop-pct", -1, "full-trade replay: fixed %% stop fallback when ATR is unavailable; -1 = paper.DefaultExits")
+	trailingPctFlag := flag.Float64("trailing-pct", -1, "full-trade replay: fixed trailing-stop distance, %%; 0 disables, -1 = paper.DefaultExits")
+	trailingATRFlag := flag.Float64("trailing-atr", -1, "full-trade replay: ATR-based trailing distance multiple; 0 = fixed %% only, -1 = paper.DefaultExits")
+	takeProfitATRFlag := flag.Float64("take-profit-atr", -1, "full-trade replay: ATR(14) multiple above entry for the take-profit target; 0 = disabled, -1 = paper.DefaultExits")
 	maxHoldDaysFlag := flag.Int("max-hold-days", 60, "full-trade replay: max holding days before a timeout exit (§11.9/PR3: 20 -> 60, matching the 數週到數月 position style)")
 	// PR2 friction cost: -1 sentinel means "use the market's default" (US
 	// 0.1%, TW 0.15%, live-verified as a reasonable one-side slippage guess)
@@ -188,6 +207,61 @@ func main() {
 	// (today's unbounded behavior, unchanged default).
 	dateFromFlag := flag.String("date-from", "", "out-of-sample: only evaluate/record triggers on or after this date (YYYY-MM-DD)")
 	dateToFlag := flag.String("date-to", "", "out-of-sample: only evaluate/record triggers on or before this date (YYYY-MM-DD)")
+	// The control group the §11.10 profit-factor table never had: replay the
+	// SAME exit rules from every Nth (ticker, day) regardless of any screen,
+	// so "網 X 盈虧比 1.9" can be read against "隨便哪天進場也是 1.9". Every
+	// day would be ~600k replays of noise-on-noise; every 10th is already a
+	// far larger sample than any screen's hit count.
+	baselineTradeSampleFlag := flag.Int("baseline-trade-sample", 10, "full-trade replay for baseline: sample every Nth evaluated day (0 = off)")
+	// The 標的切 half of PR4's out-of-sample plan, which was never done — only
+	// the time-slice was. Both committed lists are TODAY's index members, so a
+	// clean time-slice still can't tell an edge from survivorship bias; the
+	// S&P 400 mid-caps are a disjoint universe (an index is either 500 or 400,
+	// never both) drawn from the same market, which is the cheap way to ask
+	// "does this screen work on stocks it wasn't tuned on".
+	universeFlag := flag.String("universe", "", "US only: alternate ticker universe — sp400 (mid-cap) instead of the default S&P 500")
+	// 網 3 calibration. Evaluated as extra pseudo-strategies in the SAME run
+	// rather than by re-running with a different -flag: the run cost is the
+	// per-ticker history fetch, and CheckTrendBreakoutExact is pure and cheap,
+	// so N thresholds cost ~nothing extra. Each variant keeps its own dedup
+	// state, so these are exact re-screens, not a post-hoc filter of the
+	// default screen's hits (which would be wrong — a tighter cap lets a hit
+	// through that the 5-day dedup had swallowed).
+	tbDevSweepFlag := flag.String("tb-dev-sweep", "", "網 3 calibration: comma-separated MaxMA20DevPct values to also evaluate (e.g. 6,8,10)")
+	// FinMind's free tier has an hourly request quota, and a TW run spends one
+	// request per ticker on trust-net data that ONLY 網 5 uses. A run studying
+	// 網 1-4 (or calibrating 網 3 with -tb-dev-sweep) therefore burns the quota
+	// for nothing — and when it runs out, PR1's guard correctly refuses to
+	// report a crippled 網 5, which throws away the whole run including the
+	// four screens that never needed FinMind at all. This flag skips the fetch
+	// outright rather than weakening that guard.
+	// TW history via the Shioaji daemon instead of Yahoo. See
+	// history_cache.go for why this is about survivorship bias as much as
+	// about speed. Two steps on purpose: -build-history pays the fetch once,
+	// every later run reads the file and touches no network at all, which is
+	// what makes an exit-layer parameter grid affordable.
+	buildHistoryFlag := flag.String("build-history", "", "fetch history into this CSV cache, then exit (TW: whole-market point-in-time from the Shioaji daemon; US: one Yahoo pass over the index list)")
+	historyFileFlag := flag.String("history-file", "", "read candles from this cache (built by -build-history) instead of Yahoo; the cache's contents become the universe")
+	shioajiAddrFlag := flag.String("shioaji-addr", os.Getenv("SHIOAJI_ADDR"), "Shioaji daemon unix socket path or host:port (default $SHIOAJI_ADDR)")
+	// Every screen gates on 5-day average volume, so a screen can only ever
+	// pick a liquid name — but the BASELINE has no such gate, and on the
+	// tw150/S&P universes that never mattered because every listed member was
+	// liquid anyway. The whole-market cache breaks that: ~2,000 point-in-time
+	// codes are mostly small and thin, so an ungated control is drawn from a
+	// different population than the screens can reach, and every excess number
+	// silently becomes a size/liquidity comparison rather than a screen one.
+	// -1 defers to the market's own ScreenParams.MinAvgVolume5d whenever a
+	// cache is in play (same sentinel convention as -slippage-pct above).
+	minAvgVolumeFlag := flag.Float64("min-avg-volume", -1, "liquidity floor (shares) applied to EVERY evaluated day, baseline included; -1 = ScreenParams.MinAvgVolume5d when -history-file is set, 0 (off) otherwise")
+	// Every aggregate this tool prints is a MEAN, which answers "is this
+	// config better" but never "by more than noise". Comparing two exit
+	// configs is a PAIRED question — both replay the identical entries, so
+	// only the trades whose exit actually moved carry information, and a
+	// two-sample test on the printed means throws that pairing away. Dumping
+	// the per-trade rows lets the comparison be done properly (same
+	// date-clustered bootstrap the excess numbers use) outside this tool.
+	dumpTradesFlag := flag.String("dump-trades", "", "write the baseline's per-trade replay rows to this CSV, for paired comparison between two exit configs")
+	skipTrustFlag := flag.Bool("skip-trust", false, "TW only: don't fetch FinMind trust-net data and drop 網 5 from the study (the other four screens don't use it)")
 	flag.Parse()
 
 	m := market.US
@@ -196,6 +270,67 @@ func main() {
 	} else if *marketFlag != "us" {
 		fmt.Printf("Error: -market must be us or tw, got %q\n", *marketFlag)
 		os.Exit(1)
+	}
+
+	// Resolve the exit-parameter sentinels now that -market is known. These
+	// come from paper.DefaultExits so this tool always studies whatever the
+	// bot is actually running — the banner below claims "live-aligned" and
+	// this is what makes that true. Overriding a flag on the command line
+	// (as the exit-layer grid does) still wins.
+	exitDefaults := paper.DefaultExits(m)
+	for f, v := range map[*float64]float64{
+		stopATRFlag: exitDefaults.StopATRMult, stopPctFlag: exitDefaults.StopLossPct,
+		trailingPctFlag: exitDefaults.TrailingPct, trailingATRFlag: exitDefaults.TrailingATRMult,
+		takeProfitATRFlag: exitDefaults.TakeProfitATRMult,
+	} {
+		if *f < 0 {
+			*f = v
+		}
+	}
+
+	if *buildHistoryFlag != "" && m != market.TW {
+		var us []string
+		if *universeFlag == "sp400" {
+			us = parseTickers(sp400TickersRaw)
+		} else {
+			us = parseTickers(sp500TickersRaw)
+		}
+		us = append(us, "SPY") // the benchmark has to be in its own cache
+		fmt.Printf("Building US history cache from Yahoo: %d tickers, range=%s -> %s\n", len(us), *rangeFlag, *buildHistoryFlag)
+		if err := buildHistoryCacheYahoo(data.NewYahoo(), us, *rangeFlag, *buildHistoryFlag); err != nil {
+			fmt.Printf("Error building cache: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *buildHistoryFlag != "" {
+		if m != market.TW {
+			fmt.Printf("Error: -build-history is TW-only (Shioaji serves no US market data)\n")
+			os.Exit(1)
+		}
+		addr := *shioajiAddrFlag
+		if addr == "" {
+			addr = defaultShioajiSocket()
+		}
+		from, to := *dateFromFlag, *dateToFlag
+		if from == "" {
+			from = time.Now().AddDate(-10, 0, 0).Format("2006-01-02")
+		}
+		if to == "" {
+			to = time.Now().Format("2006-01-02")
+		}
+		fromT, err1 := time.Parse("2006-01-02", from)
+		toT, err2 := time.Parse("2006-01-02", to)
+		if err1 != nil || err2 != nil {
+			fmt.Printf("Error: -date-from/-date-to must be YYYY-MM-DD\n")
+			os.Exit(1)
+		}
+		fmt.Printf("Building TW history cache from Shioaji at %s: %s .. %s -> %s\n", addr, from, to, *buildHistoryFlag)
+		if err := buildHistoryCache(context.Background(), sinopac.New(addr), fromT, toT, *buildHistoryFlag); err != nil {
+			fmt.Printf("Error building cache: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	if *slippagePctFlag < 0 {
@@ -229,22 +364,97 @@ func main() {
 	if m == market.TW {
 		tickers = parseTickers(tw150TickersRaw)
 		benchTicker = "0050"
-		strategies = append(append([]string{}, baseStrategies...), trustStrategy)
+		if !*skipTrustFlag {
+			strategies = append(append([]string{}, baseStrategies...), trustStrategy)
+		}
 		fmt.Printf("Loaded %d tw150 tickers.\n", len(tickers))
+	} else if *universeFlag == "sp400" {
+		tickers = parseTickers(sp400TickersRaw)
+		fmt.Printf("Loaded %d S&P 400 mid-cap tickers (out-of-sample universe).\n", len(tickers))
+	} else if *universeFlag != "" {
+		fmt.Printf("Error: -universe must be empty or sp400, got %q\n", *universeFlag)
+		os.Exit(1)
 	} else {
 		tickers = parseTickers(sp500TickersRaw)
 		fmt.Printf("Loaded %d S&P 500 tickers.\n", len(tickers))
 	}
+	if m == market.TW && *universeFlag != "" {
+		fmt.Printf("Error: -universe is US-only (no committed TW mid-cap list)\n")
+		os.Exit(1)
+	}
 	screenParams := signals.DefaultScreenParams(m)
 
+	if *minAvgVolumeFlag < 0 {
+		// US caches are built from an index list whose members are liquid by
+		// construction, so the floor would be a no-op that nonetheless made
+		// these runs incomparable to the uncached US runs already reported.
+		if *historyFileFlag != "" && m == market.TW {
+			*minAvgVolumeFlag = screenParams.MinAvgVolume5d
+		} else {
+			*minAvgVolumeFlag = 0
+		}
+	}
+	if *minAvgVolumeFlag > 0 {
+		fmt.Printf("Liquidity floor: %.0f shares (5-day average), applied to baseline as well as screens\n", *minAvgVolumeFlag)
+	}
+
+	devVariants, err := parseDevSweep(*tbDevSweepFlag, screenParams)
+	if err != nil {
+		fmt.Printf("Error: -tb-dev-sweep: %v\n", err)
+		os.Exit(1)
+	}
+	for _, v := range devVariants {
+		strategies = append(strategies, v.name)
+		fmt.Printf("網 3 calibration variant: %s (MaxMA20DevPct=%g, default %g)\n", v.name, v.devPct, screenParams.MaxMA20DevPct)
+	}
+
+	// getHistory is the single read path for candles, so the Yahoo and cache
+	// sources differ in exactly one place rather than at every call site.
 	yahoo := data.NewYahoo()
+	var cache map[string][]data.Candle
+	getHistory := func(ticker string) ([]data.Candle, error) {
+		time.Sleep(200 * time.Millisecond) // rate limit
+		return yahoo.GetHistory(ticker, *rangeFlag)
+	}
+	if *historyFileFlag != "" {
+		if m == market.TW && !*skipTrustFlag {
+			fmt.Printf("Error: -history-file needs -skip-trust — the cache universe is the whole market (~2,000 tickers) and 網 5 would need one FinMind request per ticker, far past the free tier's quota.\n")
+			os.Exit(1)
+		}
+		// TW's cache is the whole market and needs the equity filter; US's
+		// was built from a committed index list and needs none.
+		keepCode := func(string) bool { return true }
+		if m == market.TW {
+			keepCode = func(c string) bool { return isOrdinaryEquity(c) || c == benchTicker }
+		}
+		var err error
+		if cache, err = loadHistoryCache(*historyFileFlag, 60, keepCode); err != nil {
+			fmt.Printf("Error loading cache: %v\n", err)
+			os.Exit(1)
+		}
+		getHistory = func(ticker string) ([]data.Candle, error) {
+			c, ok := cache[ticker]
+			if !ok {
+				return nil, fmt.Errorf("%s not in cache", ticker)
+			}
+			return c, nil
+		}
+		tickers = tickers[:0]
+		for code := range cache {
+			if code != benchTicker {
+				tickers = append(tickers, code)
+			}
+		}
+		sort.Strings(tickers)
+		fmt.Printf("Universe replaced by cache: %d tickers\n", len(tickers))
+	}
 	// docs/phase-15-trust-follow.md §4.1: FinMind's free tier serves every
 	// dataset used here unauthenticated (live-verified), so this backtest
 	// tool doesn't gate construction on FINMIND_TOKEN the way the bot does.
 	finmind := data.NewFinMind(os.Getenv("FINMIND_TOKEN"))
 
 	fmt.Printf("Fetching %s history for market regime and benchmark...\n", benchTicker)
-	benchCandles, err := yahoo.GetHistory(benchTicker, *rangeFlag)
+	benchCandles, err := getHistory(benchTicker)
 	if err != nil || len(benchCandles) < 60 {
 		fmt.Printf("Error fetching %s history: %v\n", benchTicker, err)
 		os.Exit(1)
@@ -285,8 +495,7 @@ func main() {
 			fmt.Printf("Processing %d/%d (%s)...\n", count, total, ticker)
 		}
 
-		time.Sleep(200 * time.Millisecond) // rate limit
-		candles, err := yahoo.GetHistory(ticker, *rangeFlag)
+		candles, err := getHistory(ticker)
 		if err != nil {
 			fetchFailed++
 			failedTickers = append(failedTickers, ticker)
@@ -305,7 +514,7 @@ func main() {
 		// unaffected). Both series ride the same request/rows (see
 		// data.TrustNetDay).
 		var trustAligned, foreignAligned []int64
-		if m == market.TW {
+		if m == market.TW && !*skipTrustFlag {
 			time.Sleep(200 * time.Millisecond) // rate limit
 			rows, err := finmind.GetTrustNetSeries(ticker, len(candles))
 			if err != nil {
@@ -335,6 +544,12 @@ func main() {
 			}
 			entryPrice := candles[t].Close
 			if entryPrice <= 0 {
+				continue
+			}
+			// Same window the screens use (the five bars BEFORE the trigger
+			// bar, see CheckTrendBreakoutExact) so the control population is
+			// exactly the one a screen could have drawn from.
+			if *minAvgVolumeFlag > 0 && avgVolume5(candles, t) < *minAvgVolumeFlag {
 				continue
 			}
 
@@ -375,6 +590,14 @@ func main() {
 
 			baseline := baseRec
 			baseline.Strategy = baselineStrategy
+			if *baselineTradeSampleFlag > 0 && t%*baselineTradeSampleFlag == 0 {
+				if outcome, ok := simulateTrade(candles, t, exitCfg, *slippagePctFlag, *maxHoldDaysFlag); ok {
+					baseline.HasTrade = true
+					baseline.TradeExitRet = outcome.ExitRet
+					baseline.TradeExitReason = outcome.ExitReason
+					baseline.TradeHoldDays = outcome.HoldDays
+				}
+			}
 			records = append(records, baseline)
 
 			hits := map[string]bool{
@@ -385,6 +608,9 @@ func main() {
 			}
 			if trustAligned != nil {
 				hits[trustStrategy] = signals.CheckTrustFollowExact(sub, trustAligned[:t+1], foreignAligned[:t+1], screenParams)
+			}
+			for _, v := range devVariants {
+				hits[v.name] = signals.CheckTrendBreakoutExact(sub, v.params)
 			}
 
 			for _, strat := range strategies {
@@ -425,7 +651,10 @@ func main() {
 		}
 		fmt.Printf("Fetch failures (first %d of %d): %s\n", len(shown), len(failedTickers), strings.Join(shown, ", "))
 	}
-	if m == market.TW {
+	if m == market.TW && *skipTrustFlag {
+		fmt.Printf("Trust-net (FinMind): skipped (-skip-trust); 網 5 is not part of this run.\n")
+	}
+	if m == market.TW && !*skipTrustFlag {
 		fmt.Printf("Trust-net (FinMind): %d fetch errors out of %d fetched tickers\n", trustFetchFailed, fetched)
 		if len(trustFailedTickers) > 0 {
 			shown := trustFailedTickers
@@ -458,19 +687,70 @@ func main() {
 	// Output summary statistics — baseline first as the reading reference.
 	baselineRecs := filterByStrategy(records, baselineStrategy)
 	printSummary(benchTicker, "Baseline（全樣本，未篩選）", baselineRecs, nil)
-	baseline5, baseline10, baseline20 := summaryStats5d10d20d(baselineRecs)
-	base := &baseline5x10x20{baseline5, baseline10, baseline20}
-	printSummary(benchTicker, "Squeeze Breakout (網 1)", filterByStrategy(records, "squeeze_breakout"), base)
-	printSummary(benchTicker, "Box Bottom Rebound (網 2)", filterByStrategy(records, "box_bottom"), base)
-	printSummary(benchTicker, "Trend Breakout (網 3)", filterByStrategy(records, "trend_breakout"), base)
-	printSummary(benchTicker, "Trend Pullback (網 4)", filterByStrategy(records, "trend_pullback"), base)
-	if m == market.TW {
-		printSummary(benchTicker, "Trust Follow (網 5，主力跟單 v2)", filterByStrategy(records, trustStrategy), base)
+	ctrl := computeControl(baselineRecs)
+	printSummary(benchTicker, "Squeeze Breakout (網 1)", filterByStrategy(records, "squeeze_breakout"), &ctrl)
+	printSummary(benchTicker, "Box Bottom Rebound (網 2)", filterByStrategy(records, "box_bottom"), &ctrl)
+	printSummary(benchTicker, "Trend Breakout (網 3)", filterByStrategy(records, "trend_breakout"), &ctrl)
+	printSummary(benchTicker, "Trend Pullback (網 4)", filterByStrategy(records, "trend_pullback"), &ctrl)
+	if m == market.TW && !*skipTrustFlag {
+		printSummary(benchTicker, "Trust Follow (網 5，主力跟單 v2)", filterByStrategy(records, trustStrategy), &ctrl)
+	}
+	for _, v := range devVariants {
+		printSummary(benchTicker, fmt.Sprintf("Trend Breakout 校準：MaxMA20DevPct=%g (網 3)", v.devPct), filterByStrategy(records, v.name), &ctrl)
 	}
 
 	// §11.2 point 1: baseline aggregate stats as their own CSV so anyone can
 	// independently re-derive every excess number above.
 	writeBaselineSummaryCSV(fmt.Sprintf("strategyscan_baseline_%s.csv", m), baselineRecs)
+	if *dumpTradesFlag != "" {
+		writeTradeDumpCSV(*dumpTradesFlag, baselineRecs)
+	}
+}
+
+// devVariant is one 網 3 re-screen at a different MaxMA20DevPct, carried as
+// its own pseudo-strategy name so it flows through the same dedup / record /
+// summary path as a real screen.
+type devVariant struct {
+	name   string
+	devPct float64
+	params signals.ScreenParams
+}
+
+func parseDevSweep(raw string, base signals.ScreenParams) ([]devVariant, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	var out []devVariant
+	for _, field := range strings.Split(raw, ",") {
+		field = strings.TrimSpace(field)
+		if field == "" {
+			continue
+		}
+		v, err := strconv.ParseFloat(field, 64)
+		if err != nil {
+			return nil, fmt.Errorf("%q is not a number", field)
+		}
+		if v <= 0 {
+			return nil, fmt.Errorf("%g must be > 0", v)
+		}
+		p := base
+		p.MaxMA20DevPct = v
+		out = append(out, devVariant{name: fmt.Sprintf("trend_breakout_dev%g", v), devPct: v, params: p})
+	}
+	return out, nil
+}
+
+// avgVolume5 is the mean volume of the five bars preceding index t.
+func avgVolume5(candles []data.Candle, t int) float64 {
+	if t < 5 {
+		return 0
+	}
+	var sum int64
+	for _, c := range candles[t-5 : t] {
+		sum += c.Volume
+	}
+	return float64(sum) / 5.0
 }
 
 func orDash(s string) string {
@@ -539,11 +819,41 @@ type windowStats struct {
 	medRet  float64
 }
 
-// baseline5x10x20 carries the baseline's 5d/10d/20d stats so a strategy's
-// summary can print its excess (§10.3 point 4) — the only number that
-// actually says whether a screen beats picking any (ticker, day) at random.
-type baseline5x10x20 struct {
-	d5, d10, d20 windowStats
+// control is the random-entry baseline every strategy line is read against
+// (§10.3 point 4) — the only number that actually says whether a screen beats
+// picking any (ticker, day) at random. It carries the bull/bear split too:
+// without it "網 X 在空頭比較差" can't be told apart from "空頭本來就比較差",
+// which is the whole question behind gating signals on market regime.
+type control struct {
+	d5, d10, d20         windowStats
+	trade                tradeStats
+	bull10, bear10       windowStats // 10d forward return, regime-split
+	bullTrade, bearTrade tradeStats
+}
+
+func computeControl(recs []TriggerRecord) control {
+	var c control
+	c.d5, c.d10, c.d20 = summaryStats5d10d20d(recs)
+	c.trade = computeTradeStats(recs)
+	bull, bear := splitRegime(recs)
+	_, c.bull10, _ = summaryStats5d10d20d(bull)
+	_, c.bear10, _ = summaryStats5d10d20d(bear)
+	c.bullTrade, c.bearTrade = computeTradeStats(bull), computeTradeStats(bear)
+	return c
+}
+
+// splitRegime partitions by the benchmark's regime at entry (MarketRegime,
+// set once per evaluated day in the scan loop), not by anything about the
+// trade itself.
+func splitRegime(recs []TriggerRecord) (bull, bear []TriggerRecord) {
+	for _, r := range recs {
+		if r.MarketRegime == "bull" {
+			bull = append(bull, r)
+		} else {
+			bear = append(bear, r)
+		}
+	}
+	return bull, bear
 }
 
 // summaryStats5d10d20d returns win rate / mean / median for the 5d/10d/20d
@@ -584,8 +894,8 @@ func summaryStats5d10d20d(recs []TriggerRecord) (d5, d10, d20 windowStats) {
 	return d5, d10, d20
 }
 
-func printSummary(benchTicker, title string, recs []TriggerRecord, base *baseline5x10x20) {
-	isBaseline := base == nil
+func printSummary(benchTicker, title string, recs []TriggerRecord, ctrl *control) {
+	isBaseline := ctrl == nil
 	fmt.Printf("\n=======================================================\n")
 	fmt.Printf(" 策略統計：%s\n", title)
 	fmt.Printf("=======================================================\n")
@@ -603,9 +913,9 @@ func printSummary(benchTicker, title string, recs []TriggerRecord, base *baselin
 		fmt.Printf("  • 跑贏 %s 勝率: %.1f%%\n", benchTicker, d5.winRate)
 		fmt.Printf("  • 平均 5d 報酬: %+.2f%%\n", d5.meanRet)
 		fmt.Printf("  • 中位數 5d 報酬: %+.2f%%\n", d5.medRet)
-		if base != nil && base.d5.n > 0 {
+		if ctrl != nil && ctrl.d5.n > 0 {
 			fmt.Printf("  • 超額 vs baseline: 勝率 %+.1f 個百分點, 平均報酬 %+.2f%%\n",
-				d5.winRate-base.d5.winRate, d5.meanRet-base.d5.meanRet)
+				d5.winRate-ctrl.d5.winRate, d5.meanRet-ctrl.d5.meanRet)
 		}
 	}
 
@@ -614,9 +924,9 @@ func printSummary(benchTicker, title string, recs []TriggerRecord, base *baselin
 		fmt.Printf("  • 跑贏 %s 勝率: %.1f%%\n", benchTicker, d10.winRate)
 		fmt.Printf("  • 平均 10d 報酬: %+.2f%%\n", d10.meanRet)
 		fmt.Printf("  • 中位數 10d 報酬: %+.2f%%\n", d10.medRet)
-		if base != nil && base.d10.n > 0 {
+		if ctrl != nil && ctrl.d10.n > 0 {
 			fmt.Printf("  • 超額 vs baseline: 勝率 %+.1f 個百分點, 平均報酬 %+.2f%%\n",
-				d10.winRate-base.d10.winRate, d10.meanRet-base.d10.meanRet)
+				d10.winRate-ctrl.d10.winRate, d10.meanRet-ctrl.d10.meanRet)
 		}
 	}
 
@@ -625,33 +935,34 @@ func printSummary(benchTicker, title string, recs []TriggerRecord, base *baselin
 		fmt.Printf("  • 跑贏 %s 勝率: %.1f%%\n", benchTicker, d20.winRate)
 		fmt.Printf("  • 平均 20d 報酬: %+.2f%%\n", d20.meanRet)
 		fmt.Printf("  • 中位數 20d 報酬: %+.2f%%\n", d20.medRet)
-		if base != nil && base.d20.n > 0 {
+		if ctrl != nil && ctrl.d20.n > 0 {
 			fmt.Printf("  • 超額 vs baseline: 勝率 %+.1f 個百分點, 平均報酬 %+.2f%%\n",
-				d20.winRate-base.d20.winRate, d20.meanRet-base.d20.meanRet)
+				d20.winRate-ctrl.d20.winRate, d20.meanRet-ctrl.d20.meanRet)
 		}
 	}
 
-	// §11.9: full-trade replay stats — not run for baseline (see simulateTrade
-	// call site, main loop only replays strategy hits).
-	if !isBaseline {
-		printTradeStats(recs)
+	// §11.9: full-trade replay stats. Baseline gets them too when
+	// -baseline-trade-sample is on (printTradeStats no-ops at n=0), so every
+	// strategy's numbers have a same-exit-rules control to be read against.
+	var baseTrade *tradeStats
+	if ctrl != nil {
+		baseTrade = &ctrl.trade
 	}
+	printTradeStats(recs, baseTrade)
 
-	// Market Regime breakdown (10d)
-	var bull10s, bear10s []TriggerRecord
-	for _, r := range recs {
-		if !r.Has10d {
-			continue
-		}
-		if r.MarketRegime == "bull" {
-			bull10s = append(bull10s, r)
-		} else {
-			bear10s = append(bear10s, r)
-		}
+	// Market regime breakdown. Each side gets the SAME-regime slice of the
+	// control, not the all-days one — a screen only deserves to be gated on
+	// regime if it underperforms a random entry made on those same bad days.
+	bull, bear := splitRegime(recs)
+	fmt.Printf("\n[多空情境分組]\n")
+	var bullCtrl10, bearCtrl10 *windowStats
+	var bullCtrlTrade, bearCtrlTrade *tradeStats
+	if ctrl != nil {
+		bullCtrl10, bearCtrl10 = &ctrl.bull10, &ctrl.bear10
+		bullCtrlTrade, bearCtrlTrade = &ctrl.bullTrade, &ctrl.bearTrade
 	}
-	fmt.Printf("\n[多空情境分組 10d 表現]\n")
-	printRegimeGroup(benchTicker, fmt.Sprintf("多頭情境 (%s >= MA50)", benchTicker), bull10s)
-	printRegimeGroup(benchTicker, fmt.Sprintf("空頭情境 (%s < MA50)", benchTicker), bear10s)
+	printRegimeGroup(benchTicker, fmt.Sprintf("多頭情境 (%s >= MA50)", benchTicker), bull, bullCtrl10, bullCtrlTrade)
+	printRegimeGroup(benchTicker, fmt.Sprintf("空頭情境 (%s < MA50)", benchTicker), bear, bearCtrl10, bearCtrlTrade)
 
 	// §10.6: baseline's worst-case list has no diagnostic value at hundreds of
 	// thousands of rows and just floods the output — skip it.
@@ -676,65 +987,115 @@ func printSummary(benchTicker, title string, recs []TriggerRecord, base *baselin
 	}
 }
 
-// printTradeStats reports the §11.9 full-trade replay: exit-reason mix,
-// average outcome, and profit factor (avg win / abs(avg loss)) — the number
-// that actually answers whether a right-skewed signal like 網 4 is worth
-// trading once a stop/target replace "hold N days, count wins".
-func printTradeStats(recs []TriggerRecord) {
-	var stopRets, targetRets, timeoutRets, allRets []float64
+// tradeStats is one strategy's §11.9 full-trade replay aggregated. Kept as a
+// value (not printed straight from the loop) so the baseline's own replay can
+// be passed back in as the control every strategy line is read against.
+type tradeStats struct {
+	n                               int
+	stop, trailing, target, timeout int
+	mean, median, winRate           float64
+	profitFactor                    float64 // sum(wins) / |sum(losses)|, 0 = undefined
+	avgHold                         float64
+}
+
+func computeTradeStats(recs []TriggerRecord) tradeStats {
+	var ts tradeStats
+	var rets []float64
+	var sumWin, sumLoss, sumHold float64
+	var wins int
 	for _, r := range recs {
 		if !r.HasTrade {
 			continue
 		}
-		allRets = append(allRets, r.TradeExitRet)
+		rets = append(rets, r.TradeExitRet)
+		sumHold += float64(r.TradeHoldDays)
+		if r.TradeExitRet > 0 {
+			wins++
+			sumWin += r.TradeExitRet
+		} else {
+			sumLoss += r.TradeExitRet
+		}
 		switch r.TradeExitReason {
 		case "stop":
-			stopRets = append(stopRets, r.TradeExitRet)
+			ts.stop++
+		case "trailing":
+			ts.trailing++
 		case "target":
-			targetRets = append(targetRets, r.TradeExitRet)
+			ts.target++
 		case "timeout":
-			timeoutRets = append(timeoutRets, r.TradeExitRet)
+			ts.timeout++
 		}
 	}
-	n := len(allRets)
-	if n == 0 {
+	ts.n = len(rets)
+	if ts.n == 0 {
+		return ts
+	}
+	ts.mean, ts.median = mean(rets), median(rets)
+	ts.winRate = float64(wins) / float64(ts.n) * 100.0
+	ts.avgHold = sumHold / float64(ts.n)
+	if sumLoss < 0 {
+		// Profit factor over ALL trades, not 停利平均/|停損平均| — PR3's
+		// live-aligned exit model has no take-profit by default, so the old
+		// target-vs-stop ratio was structurally N/A (and, before that,
+		// degenerated to target%/stop% by construction — §11.10).
+		ts.profitFactor = sumWin / math.Abs(sumLoss)
+	}
+	return ts
+}
+
+func printTradeStats(recs []TriggerRecord, base *tradeStats) {
+	ts := computeTradeStats(recs)
+	if ts.n == 0 {
 		return
 	}
-	fmt.Printf("\n[完整交易統計（停損/停利/超時，§11.9）] (有效樣本: %d 筆)\n", n)
-	fmt.Printf("  • 出場分布: 停損 %d (%.1f%%) / 停利 %d (%.1f%%) / 超時 %d (%.1f%%)\n",
-		len(stopRets), float64(len(stopRets))/float64(n)*100.0,
-		len(targetRets), float64(len(targetRets))/float64(n)*100.0,
-		len(timeoutRets), float64(len(timeoutRets))/float64(n)*100.0)
-	fmt.Printf("  • 平均報酬（含超時出場）: %+.2f%%\n", mean(allRets))
-	if len(stopRets) > 0 && len(targetRets) > 0 {
-		avgWin := mean(targetRets)
-		avgLoss := mean(stopRets)
-		fmt.Printf("  • 盈虧比 (停利平均 / |停損平均|): %.2f\n", avgWin/math.Abs(avgLoss))
+	pct := func(c int) float64 { return float64(c) / float64(ts.n) * 100.0 }
+	fmt.Printf("\n[完整交易統計（live 出場規則，§11.9）] (有效樣本: %d 筆)\n", ts.n)
+	fmt.Printf("  • 出場分布: 停損 %d (%.1f%%) / 移動停利 %d (%.1f%%) / 停利 %d (%.1f%%) / 超時 %d (%.1f%%)\n",
+		ts.stop, pct(ts.stop), ts.trailing, pct(ts.trailing), ts.target, pct(ts.target), ts.timeout, pct(ts.timeout))
+	fmt.Printf("  • 平均報酬 %+.2f%% / 中位數 %+.2f%% / 賺錢比例 %.1f%% / 平均持有 %.1f 天\n",
+		ts.mean, ts.median, ts.winRate, ts.avgHold)
+	if ts.profitFactor > 0 {
+		fmt.Printf("  • 盈虧比 (總獲利 / |總虧損|): %.2f\n", ts.profitFactor)
 	} else {
-		fmt.Printf("  • 盈虧比: N/A（缺停損或停利樣本）\n")
+		fmt.Printf("  • 盈虧比: N/A（無虧損樣本）\n")
+	}
+	if base != nil && base.n > 0 {
+		fmt.Printf("  • 超額 vs baseline 同出場規則: 平均報酬 %+.2f%% / 賺錢比例 %+.1f 個百分點 / 盈虧比 %+.2f\n",
+			ts.mean-base.mean, ts.winRate-base.winRate, ts.profitFactor-base.profitFactor)
 	}
 }
 
-func printRegimeGroup(benchTicker, name string, recs []TriggerRecord) {
+// printRegimeGroup prints one regime's 10d forward return and full-trade
+// stats. ctrl10/ctrlTrade are the control's SAME-regime numbers (nil for the
+// control's own printout), so the excess columns answer "does this screen add
+// anything on these days", not "are these days bad" — the latter is true for
+// every screen in a bear market and says nothing about the screen.
+func printRegimeGroup(benchTicker, name string, recs []TriggerRecord, ctrl10 *windowStats, ctrlTrade *tradeStats) {
 	if len(recs) == 0 {
 		fmt.Printf("  • %s: 無觸發筆數\n", name)
 		return
 	}
-	var beatCount int
-	var rets []float64
-	for _, r := range recs {
-		if r.BeatBench10d {
-			beatCount++
-		}
-		rets = append(rets, r.Ret10d)
-	}
-	winRate := float64(beatCount) / float64(len(recs)) * 100.0
+	_, d10, _ := summaryStats5d10d20d(recs)
 	suffix := ""
-	if len(recs) < 20 {
+	if d10.n < 20 {
 		suffix = "（樣本數過小，不下結論）"
 	}
 	fmt.Printf("  • %s (%d 筆): 跑贏 %s 勝率 %.1f%%, 平均 10d 報酬 %+.2f%%%s\n",
-		name, len(recs), benchTicker, winRate, mean(rets), suffix)
+		name, d10.n, benchTicker, d10.winRate, d10.meanRet, suffix)
+	if ctrl10 != nil && ctrl10.n > 0 {
+		fmt.Printf("      超額 vs 同情境 baseline: 勝率 %+.1f 個百分點, 平均 10d %+.2f%%\n",
+			d10.winRate-ctrl10.winRate, d10.meanRet-ctrl10.meanRet)
+	}
+	ts := computeTradeStats(recs)
+	if ts.n == 0 {
+		return
+	}
+	fmt.Printf("      完整交易 (%d 筆): 平均 %+.2f%% / 賺錢比例 %.1f%% / 盈虧比 %.2f\n",
+		ts.n, ts.mean, ts.winRate, ts.profitFactor)
+	if ctrlTrade != nil && ctrlTrade.n > 0 {
+		fmt.Printf("      超額 vs 同情境 baseline: 平均 %+.2f%% / 賺錢比例 %+.1f 個百分點 / 盈虧比 %+.2f\n",
+			ts.mean-ctrlTrade.mean, ts.winRate-ctrlTrade.winRate, ts.profitFactor-ctrlTrade.profitFactor)
+	}
 }
 
 func mean(vals []float64) float64 {
@@ -816,6 +1177,42 @@ func writeCSV(path string, recs []TriggerRecord) {
 // would defeat the "CSV is for manual spot-checks" purpose (§10.3 point 3).
 // This lets anyone independently re-derive every excess number in §8 without
 // re-fetching a baseline themselves.
+// writeTradeDumpCSV writes one row per replayed baseline trade. Date and
+// Ticker are what make it joinable against another run's dump, which is the
+// whole point — the pairing is by entry, not by row order.
+func writeTradeDumpCSV(path string, recs []TriggerRecord) {
+	f, err := os.Create(path)
+	if err != nil {
+		fmt.Printf("Error writing trade dump: %v\n", err)
+		return
+	}
+	defer f.Close()
+	w := csv.NewWriter(f)
+	defer w.Flush()
+	if err := w.Write([]string{"Date", "Ticker", "ExitRet", "ExitReason", "HoldDays"}); err != nil {
+		fmt.Printf("Error writing trade dump: %v\n", err)
+		return
+	}
+	var n int
+	for _, r := range recs {
+		if !r.HasTrade {
+			continue
+		}
+		if err := w.Write([]string{
+			r.Date, r.Ticker,
+			strconv.FormatFloat(r.TradeExitRet, 'f', 6, 64),
+			r.TradeExitReason,
+			strconv.Itoa(r.TradeHoldDays),
+		}); err != nil {
+			fmt.Printf("Error writing trade dump: %v\n", err)
+			return
+		}
+		n++
+	}
+	w.Flush()
+	fmt.Printf("Trade dump written: %s (%d trades)\n", path, n)
+}
+
 func writeBaselineSummaryCSV(path string, baselineRecs []TriggerRecord) {
 	f, err := os.Create(path)
 	if err != nil {

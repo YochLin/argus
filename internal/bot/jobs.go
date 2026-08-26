@@ -469,11 +469,11 @@ func (b *Bot) exploreCandidates(ctx context.Context, in *recommendationInputs) m
 
 // checkStatefulSignals is a thin wrapper around service.ScanService's
 // CheckStatefulSignals (Phase 24 Stage 1 Scan & Strategy Service extraction)
-// that adds the one piece of adapter-layer formatting the service doesn't
-// own: decorating every strategy hit (Type prefix "strategy_") with the
-// bear-regime warning when isBearRegime is set.
+// that adds the strategy-hit caveats the service owns the text of — see
+// service.DecorateStrategyHits for what they are and why they are applied
+// there rather than at render time.
 func (b *Bot) checkStatefulSignals(ticker string, candles []data.Candle, isBearRegime bool) []signals.Signal {
-	return service.DecorateBearRegime(b.scans().CheckStatefulSignals(ticker, candles), isBearRegime, b.lang)
+	return service.DecorateStrategyHits(b.scans().CheckStatefulSignals(ticker, candles), isBearRegime, b.lang)
 }
 
 // checkEarningsAlerts sends one batched Telegram message warning about

@@ -270,6 +270,7 @@ var enMessages = map[Key]string{
 	KeyTechnicalsRSLine:          "- Relative Strength RS63: %s (vs SPY %+.1f%%)\n",
 	KeyStrategyHitLine:           "- ⚠️ Strategy Hit: %s (%s)\n",
 	KeyStrategyBearRegimeWarning: "⚠️ Warning: Broad market is in a bearish/weak regime. Counter-trend strategy signals carry lower win rates.",
+	KeyStrategyUnvalidated:       "ℹ️ Screen 3 failed out-of-sample validation: negative excess return at ~4σ across four independent samples (cmd/strategyscan). Reference only — not an entry trigger on its own.",
 	KeyTechGuidanceBlock:         "\n[Technical & Volume-Price Guidance]\n1. Support & Resistance: Long wicks/double bottoms are strong support; breakout candle low is institutional support; broken resistance turns into support.\n2. Volume & Price: Vol Up + Price Up = Trend Start; Vol Down + Price Down = Healthy Correction; Vol Down + Price Up = Weak Rally; Vol Up + Price Down = Panic Dumping.\n3. MACD: Golden crosses above zero line are stronger; price higher high with lower MACD peak indicates bearish divergence.\n4. KD/RSI: Act when KD leaves oversold (>20/25); RSI 50 is bullish/bearish watershed; pullback to 50 is a strong entry.\n5. Moving Averages: Bullish alignment (MA5 > MA20 > MA60 all sloping up) makes 20MA pullback dynamic support.\n6. When giving a BUY, your reasoning must name a specific suggested stop level (a structural support — e.g. the 10/20-day low — or price minus 2x ATR) and why. This is a reference for the human executing the trade, not something you need to size a position around.\n",
 	KeyVolUpPriceUp:              "Vol Up Price Up (Bullish)",
 	KeyVolDownPriceDown:          "Vol Down Price Down (Healthy Correction)",
@@ -454,7 +455,7 @@ Keep the reply concise — under 300 words total.
 `,
 	KeyLessonMarker: "Lesson:",
 
-	KeyPriceEventPromptIntro: "You are a stock analyst. *%s* triggered a price event worth recording today — based on the data below, summarize what happened.\n\n",
+	KeyPriceEventPromptIntro:    "You are a stock analyst. *%s* triggered a price event worth recording today — based on the data below, summarize what happened.\n\n",
 	KeyPriceEventGapLine:        "Opening gap: %+.1f%% (vs prior close)\n",
 	KeyPriceEventChangeLine:     "Day's change: %+.1f%% (close vs prior close)\n",
 	KeyPriceEventCumulativeLine: "Recent cumulative decline: %+.1f%%\n",
