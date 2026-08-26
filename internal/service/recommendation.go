@@ -6,6 +6,7 @@ import (
 
 	"argus/internal/data"
 	"argus/internal/db"
+	"argus/internal/llm"
 	"argus/internal/market"
 )
 
@@ -314,4 +315,110 @@ func SortedSourceKeys(bySource map[string]RecommendationTrackStats) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// MergeCandidates combines the market-movers list with today's Phase 2.6
+// universe-scan hits into the final candidate ticker list: movers first
+// (existing behavior preserved), then any scan-hit ticker not already
+// present, finally excluding anything already on the watchlist (exclude).
+func MergeCandidates(movers []string, scanHits map[string]string, exclude []string) []string {
+	seen := make(map[string]bool, len(movers)+len(scanHits))
+	excluded := make(map[string]bool, len(exclude))
+	for _, t := range exclude {
+		excluded[t] = true
+	}
+
+	var out []string
+	add := func(t string) {
+		if seen[t] || excluded[t] {
+			return
+		}
+		seen[t] = true
+		out = append(out, t)
+	}
+	for _, t := range movers {
+		add(t)
+	}
+	for t := range scanHits {
+		add(t)
+	}
+	return out
+}
+
+// RecommendationSources maps every ticker eligible for today's LLM call to
+// where it came from ("watchlist"/"scan"/"explore"/"movers"), for Phase
+// 3.8's /track breakdown by candidate-sourcing path. candidates is the
+// already-deduped list returned by MergeCandidates, with Phase 2.6 解凍's
+// exploreCandidates results already appended by RunDailyReport (nil/empty
+// explore for handleRecommend, which doesn't run that step — see
+// docs/phase-2.6-two-stage-llm-exploration.md). Priority is watchlist > scan
+// > explore > movers: a ticker present in both scanHits and that list is
+// attributed to "scan" rather than "movers" or "explore" — that's the most
+// specific signal that actually surfaced it with a stated reason (see
+// llm.StockData.ScanReason), even if it also happened to be trending or
+// LLM-nominated; scan beats explore because scan hit is our own concrete
+// technical signal, explore is just a one-line model nomination (in
+// practice these shouldn't overlap at all — exploreCandidates' dedup step
+// already excludes anything already a candidate — this ordering is a
+// defensive guard, not an expected case).
+func RecommendationSources(watchlist, candidates []string, scanHits map[string]string, explore map[string]string) map[string]string {
+	out := make(map[string]string, len(watchlist)+len(candidates))
+	for _, t := range watchlist {
+		out[t] = "watchlist"
+	}
+	for _, t := range candidates {
+		// MergeCandidates already excludes watchlist tickers from candidates
+		// in normal use, so this shouldn't fire in practice — kept as a
+		// defensive guard so "watchlist" always wins over "movers"/"scan"/
+		// "explore" for a ticker present in both, rather than depending on
+		// which loop ran last.
+		if out[t] == "watchlist" {
+			continue
+		}
+		if _, ok := scanHits[t]; ok {
+			out[t] = "scan"
+		} else if _, ok := explore[t]; ok {
+			out[t] = "explore"
+		} else {
+			out[t] = "movers"
+		}
+	}
+	return out
+}
+
+// CountCandleGaps counts, across every stock's Candles, how many consecutive
+// bar pairs skip more than one trading day — a stand-in for "Yahoo's chart
+// API silently dropped a bar" (see internal/data's GetHistory doc comment
+// for a documented instance of that). US uses internal/market.IsTradingDay's
+// real NYSE calendar; TW falls back to a weekday-only check since
+// internal/market doesn't cover the TWSE calendar (same limitation the prior
+// client-side TS heuristic had for both markets — see the /llm audit page's
+// data-quality panel).
+func CountCandleGaps(stocks []llm.StockData, m market.MarketID) int {
+	gaps := 0
+	for _, s := range stocks {
+		for i := 1; i < len(s.Candles); i++ {
+			if tradingDaysBetween(s.Candles[i-1].Date, s.Candles[i].Date, m) > 1 {
+				gaps++
+			}
+		}
+	}
+	return gaps
+}
+
+// tradingDaysBetween counts trading days in (from, to], matching the
+// semantics of the TS heuristic it replaces: exactly 1 for two consecutive
+// trading days, >1 whenever a bar is missing in between.
+func tradingDaysBetween(from, to time.Time, m market.MarketID) int {
+	n := 0
+	for d := from.AddDate(0, 0, 1); !d.After(to); d = d.AddDate(0, 0, 1) {
+		if m == market.US {
+			if market.IsTradingDay(d) {
+				n++
+			}
+		} else if wd := d.Weekday(); wd != time.Saturday && wd != time.Sunday {
+			n++
+		}
+	}
+	return n
 }

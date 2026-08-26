@@ -416,7 +416,7 @@ func (b *Bot) runDailyReport(ctx context.Context, m market.MarketID) {
 		return
 	}
 
-	sources := recommendationSources(in.watchlistTickers, in.candidateTickers, in.scanHits, explore)
+	sources := service.RecommendationSources(in.watchlistTickers, in.candidateTickers, in.scanHits, explore)
 	b.sendAndSaveRecommendations(summary, recs, sources, m, len(in.candidateTickers), in.watchlist, in.candidates)
 }
 
@@ -436,7 +436,7 @@ func (b *Bot) runDailyReport(ctx context.Context, m market.MarketID) {
 // Valid nominations are appended directly into in's candidate fields so
 // GenerateRecommendations/sendAndSaveRecommendations need zero changes to
 // pick them up, and returned as a ticker->reason map for
-// recommendationSources to label "explore".
+// service.RecommendationSources to label "explore".
 func (b *Bot) exploreCandidates(ctx context.Context, in *recommendationInputs) map[string]string {
 	if len(in.marketNews) == 0 {
 		return nil
