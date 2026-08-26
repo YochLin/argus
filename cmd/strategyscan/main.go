@@ -87,10 +87,20 @@ type TriggerRecord struct {
 }
 
 // TradeOutcome is one trigger's full-trade replay result.
+//
+// Entry and Stop are the entry price and the initial stop the live sizing
+// rules put under it. They are carried so a stop-width study can express a
+// trade in R — (exit-entry)/(entry-stop), the P&L per unit of risk actually
+// taken. Percentage return cannot compare two stop widths: paper.Suggest-
+// Shares sizes a position so a stop-out loses a fixed share of equity, so a
+// wider stop buys fewer shares, and the same +5% move is a different amount
+// of money. R is what stays comparable.
 type TradeOutcome struct {
 	ExitRet    float64
 	ExitReason string
 	HoldDays   int
+	Entry      float64
+	Stop       float64
 }
 
 // simulatedAccountCash is a huge starting balance for simulateTrade's
@@ -200,7 +210,7 @@ func simulateTradeHorizons(candles []data.Candle, entryIdx int, cfg paper.Config
 			sell := trades[0]
 			feePct := (buyTrade.Fee + sell.Fee) / notional * 100.0
 			exitRet := (sell.Price-entry)/entry*100.0 - feePct - slippageRoundTripPct
-			ruleExit = &TradeOutcome{ExitRet: exitRet, ExitReason: sell.Reason, HoldDays: i}
+			ruleExit = &TradeOutcome{ExitRet: exitRet, ExitReason: sell.Reason, HoldDays: i, Entry: entry, Stop: buyTrade.Stop}
 			break
 		}
 	}
@@ -226,7 +236,7 @@ func simulateTradeHorizons(candles []data.Candle, entryIdx int, cfg paper.Config
 			continue
 		}
 		exitRet := (candles[entryIdx+days].Close-entry)/entry*100.0 - timeoutFeePct - slippageRoundTripPct
-		out[h] = TradeOutcome{ExitRet: exitRet, ExitReason: "timeout", HoldDays: days}
+		out[h] = TradeOutcome{ExitRet: exitRet, ExitReason: "timeout", HoldDays: days, Entry: entry, Stop: buyTrade.Stop}
 	}
 	return out
 }
@@ -300,6 +310,17 @@ func main() {
 	// would be fitted to whichever half of the data was looked at first.
 	holdSweepFlag := flag.String("hold-sweep", "", "exit calibration: comma-separated max-holding-periods to also replay every entry at (e.g. 10,20,40,60,90,120), written to -hold-sweep-out")
 	holdSweepOutFlag := flag.String("hold-sweep-out", "", "where -hold-sweep writes its per-(entry, horizon) rows; default strategyscan_holds_<market>.csv")
+	// Unlike -hold-sweep, this cannot share one replay: a different stop
+	// changes WHEN the trade exits, which moves the trailing peak and every
+	// bar after it. Each width is a full independent replay.
+	//
+	// Read the output with stop_study.py, not by eye, and read its CAPPED R
+	// column: this tool replays with MaxPositionPct = 0 so the simulated BUY
+	// always fills, which makes raw R describe an account that can put 39%
+	// of itself into one name. See paper.DefaultExits for the resulting
+	// curve and why StopATRMult stayed at 2.
+	stopSweepFlag := flag.String("stop-sweep", "", "exit calibration: comma-separated ATR(14) stop multiples to replay every entry at (e.g. 1,1.5,2,3,4), written to -stop-sweep-out with the entry and stop prices needed to express each trade in R")
+	stopSweepOutFlag := flag.String("stop-sweep-out", "", "where -stop-sweep writes its per-(entry, stop width) rows; default strategyscan_stops_<market>.csv")
 	// PR2 friction cost: -1 sentinel means "use the market's default" (US
 	// 0.1%, TW 0.15%, live-verified as a reasonable one-side slippage guess)
 	// since flag.Float64 can't default on a value (-market) not known until
@@ -489,6 +510,29 @@ func main() {
 		fmt.Printf("Hold sweep: replaying every entry at %v days -> %s\n", holdSweep, path)
 	}
 
+	stopSweep, err := parseFloatList(*stopSweepFlag)
+	if err != nil {
+		fmt.Printf("Error: -stop-sweep %v\n", err)
+		os.Exit(1)
+	}
+	var stopW *csv.Writer
+	if len(stopSweep) > 0 {
+		path := *stopSweepOutFlag
+		if path == "" {
+			path = fmt.Sprintf("strategyscan_stops_%s.csv", m)
+		}
+		f, err := os.Create(path)
+		if err != nil {
+			fmt.Printf("Error opening -stop-sweep-out: %v\n", err)
+			os.Exit(1)
+		}
+		defer f.Close()
+		stopW = csv.NewWriter(f)
+		defer stopW.Flush()
+		stopW.Write([]string{"Strategy", "Date", "Ticker", "StopATR", "ExitRet", "ExitReason", "HoldDays", "Entry", "Stop"})
+		fmt.Printf("Stop sweep: replaying every entry at ATR multiples %v -> %s\n", stopSweep, path)
+	}
+
 	fmt.Printf("=== Argus Strategy Historical Study Tool (cmd/strategyscan, market=%s, range=%s) ===\n", m, *rangeFlag)
 
 	var tickers []string
@@ -645,6 +689,30 @@ func main() {
 		return o, ok
 	}
 
+	// stopReplay writes one entry's outcome at each swept stop width. It is
+	// deliberately separate from replay's return value: the summaries stay
+	// built from the live stop width, so turning this on never moves a
+	// number in the printed report.
+	stopReplay := func(strat, ticker string, candles []data.Candle, t int) {
+		if stopW == nil {
+			return
+		}
+		date := candles[t].Date.Format("2006-01-02")
+		for _, mult := range stopSweep {
+			cfg := exitCfg
+			cfg.StopATRMult = mult
+			o, ok := simulateTrade(candles, t, cfg, *slippagePctFlag, *maxHoldDaysFlag)
+			if !ok {
+				continue
+			}
+			stopW.Write([]string{
+				strat, date, ticker, strconv.FormatFloat(mult, 'f', 2, 64),
+				strconv.FormatFloat(o.ExitRet, 'f', 6, 64), o.ExitReason, strconv.Itoa(o.HoldDays),
+				strconv.FormatFloat(o.Entry, 'f', 4, 64), strconv.FormatFloat(o.Stop, 'f', 4, 64),
+			})
+		}
+	}
+
 	count := 0
 	total := len(tickers)
 	for _, ticker := range tickers {
@@ -753,6 +821,7 @@ func main() {
 			baseline := baseRec
 			baseline.Strategy = baselineStrategy
 			if *baselineTradeSampleFlag > 0 && t%*baselineTradeSampleFlag == 0 {
+				stopReplay(baselineStrategy, ticker, candles, t)
 				if outcome, ok := replay(baselineStrategy, ticker, candles, t); ok {
 					baseline.HasTrade = true
 					baseline.TradeExitRet = outcome.ExitRet
@@ -797,6 +866,7 @@ func main() {
 
 				rec := baseRec
 				rec.Strategy = strat
+				stopReplay(strat, ticker, candles, t)
 				if outcome, ok := replay(strat, ticker, candles, t); ok {
 					rec.HasTrade = true
 					rec.TradeExitRet = outcome.ExitRet
@@ -1462,6 +1532,32 @@ func parseHoldSweep(raw string) ([]int, error) {
 			continue
 		}
 		seen[v] = true
+		out = append(out, v)
+	}
+	return out, nil
+}
+
+// parseFloatList parses -stop-sweep's comma-separated ATR multiples. Empty
+// means the sweep is off; every value must be positive, since a stop at or
+// below zero ATR is not a stop.
+func parseFloatList(raw string) ([]float64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	var out []float64
+	for _, field := range strings.Split(raw, ",") {
+		field = strings.TrimSpace(field)
+		if field == "" {
+			continue
+		}
+		v, err := strconv.ParseFloat(field, 64)
+		if err != nil {
+			return nil, fmt.Errorf("%q is not a number", field)
+		}
+		if v <= 0 {
+			return nil, fmt.Errorf("%g must be > 0", v)
+		}
 		out = append(out, v)
 	}
 	return out, nil
