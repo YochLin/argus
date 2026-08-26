@@ -4,7 +4,25 @@ import (
 	"time"
 
 	"argus/internal/data"
+	"argus/internal/llm"
+	"argus/internal/signals"
 )
+
+// priceEventFacts converts a detected event into the fact sheet the LLM
+// prompt takes. Two structs rather than one shared type is deliberate:
+// internal/llm doesn't import internal/signals (see llm.StrategyHitInfo for
+// the same split), so this three-line copy is what keeps that boundary.
+func priceEventFacts(ev signals.PriceEvent) llm.PriceEventFacts {
+	return llm.PriceEventFacts{
+		Ticker:              ev.Ticker,
+		GapPct:              ev.GapPct,
+		ChangePct:           ev.ChangePct,
+		CumulativePct:       ev.CumulativePct,
+		GapTriggered:        ev.GapTriggered,
+		ChangeTriggered:     ev.ChangeTriggered,
+		CumulativeTriggered: ev.CumulativeTriggered,
+	}
+}
 
 // eventNewsWindow is how far from the event's own trading date a news item
 // may be published and still be offered to ExplainPriceEvent as a possible
