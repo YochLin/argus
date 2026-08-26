@@ -101,6 +101,39 @@ func TestAPINotificationsLimit(t *testing.T) {
 	}
 }
 
+// TestAPIRecommendationsLatest pins this file's one handler with real logic
+// beyond parse-call-wrap: GetRecommendationsSince returns oldest-first, so
+// the handler must walk backwards for newest-first order, skip the other
+// market, and stop at the limit — all three in the same loop.
+func TestAPIRecommendationsLatest(t *testing.T) {
+	s := testAPIServer()
+	s.db = &fakeDB{recs: []db.Recommendation{
+		{Date: "2026-08-18", Ticker: "AAPL", Market: "us"},
+		{Date: "2026-08-18", Ticker: "2330", Market: "tw"},
+		{Date: "2026-08-19", Ticker: "MSFT", Market: "us"},
+		{Date: "2026-08-20", Ticker: "TSLA", Market: "us"},
+	}}
+
+	rec := authedGet(t, s, "/api/v1/recommendations/latest?limit=2")
+	var body struct {
+		Data struct {
+			Recommendations []apiRecommendation `json:"recommendations"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	want := []string{"TSLA", "MSFT"}
+	if len(body.Data.Recommendations) != len(want) {
+		t.Fatalf("got %d recommendations, want %d: %v", len(body.Data.Recommendations), len(want), body.Data.Recommendations)
+	}
+	for i, w := range want {
+		if body.Data.Recommendations[i].Ticker != w {
+			t.Errorf("recommendations = %v, want newest-first, us-only %v", body.Data.Recommendations, want)
+		}
+	}
+}
+
 // TestAPILimitBounds covers the guard on the one query parameter that can ask
 // this process to allocate: garbage and negatives fall back to the default,
 // and an absurd value is capped rather than honored.
@@ -164,8 +197,11 @@ func TestAPITradeWithoutExecutor(t *testing.T) {
 	}
 }
 
-// TestAPIResourcesRequireAuth: every v1 resource route must be behind
-// requireAPIAuth. A route added without the wrapper would answer 200 here.
+// TestAPIResourcesRequireAuth: every v1 resource route in this hand-written
+// list must be behind requireAPIAuth — catches someone removing the wrapper
+// from an existing route. It can't catch a new route that skips both the
+// wrapper and this list (http.ServeMux has no way to enumerate registered
+// patterns to check against), which is the more likely way to drift.
 func TestAPIResourcesRequireAuth(t *testing.T) {
 	s := testAPIServer()
 	s.apiDB = &fakeAPIStore{}

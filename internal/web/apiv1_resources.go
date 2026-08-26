@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"net/http"
 	"slices"
 	"strconv"
@@ -26,6 +27,13 @@ import (
 // is what an app actually needs to render; add /trigger when there's a
 // RecommendationService to call.
 
+// cst pins the deployment's dating zone the same way internal/scheduler,
+// internal/bot, and internal/service do (see those packages' own `cst` —
+// Alpine's Docker image has no tzdata, so time.Local is UTC in prod, not
+// CST). handleAPIScanHits' default date must use this, not time.Now()'s
+// process-local zone, to land on the same day scan.go dates scan_hits rows.
+var cst = time.FixedZone("CST", 8*3600)
+
 // apiV1Store is the narrow slice of *db.DB the v1 read endpoints need beyond
 // dbReader's existing methods.
 type apiV1Store interface {
@@ -34,9 +42,11 @@ type apiV1Store interface {
 	MarkNotificationRead(id int64) error
 }
 
-// apiLimit reads a ?limit= bounded to [1, max], defaulting to def. A bare
-// LIMIT off a query parameter is the one place a client can ask this process
-// to allocate an unbounded slice.
+// apiLimit reads a ?limit= bounded to [1, max], defaulting to def. For
+// handleAPINotifications this bounds a real DB LIMIT; handleAPIRecommendationsLatest
+// only applies it to GetRecommendationsSince's already-in-memory 90-day
+// result, not the query itself — small at this table's current size, but not
+// the allocation guard the name might suggest there.
 func apiLimit(r *http.Request, def, max int) int {
 	n, err := strconv.Atoi(r.URL.Query().Get("limit"))
 	if err != nil || n <= 0 {
@@ -115,9 +125,12 @@ func (s *Server) handleAPIWatchlistGet(w http.ResponseWriter, r *http.Request) {
 	writeAPIOK(w, map[string]any{"tickers": tickers})
 }
 
-// handleAPIWatchlistAdd/Remove normalize through service.NormalizeTicker
-// rather than repeating the dashboard handlers' inline ToUpper — one
-// definition of what a ticker looks like, shared with the bot and MCP.
+// handleAPIWatchlistAdd/Remove normalize through service.NormalizeTicker —
+// the dashboard's own handleWatchlistAdd/Remove (trade.go) call the same
+// function, so there's exactly one definition of what a ticker looks like,
+// shared with the bot and MCP too. apiTickerBody's own empty check below
+// means NormalizeTicker's ErrInvalidTicker branch is unreachable from here,
+// but it's kept as the single source of truth rather than duplicated.
 func (s *Server) handleAPIWatchlistAdd(w http.ResponseWriter, r *http.Request) {
 	ticker, ok := s.apiTickerBody(w, r)
 	if !ok {
@@ -166,21 +179,20 @@ func (s *Server) apiTickerBody(w http.ResponseWriter, r *http.Request) (string, 
 	return body.Ticker, true
 }
 
+// handleAPITradeBuy/Sell/SetStop are the /api/v1 translation of trade.go's
+// execBuy/execSell/execSetStop — same business logic (including the
+// explicit post-call Notify, Phase 24 tech debt 3: a trade booked from an
+// app should still show up in Telegram), different decode/envelope only.
 func (s *Server) handleAPITradeBuy(w http.ResponseWriter, r *http.Request) {
 	var req tradeRequest
 	if !decodeAPIJSON(w, r, &req) {
 		return
 	}
-	date, ok := resolveTradeDate(req.Date)
-	if !ok {
+	msg, err := s.execBuy(req)
+	if errors.Is(err, errInvalidTradeDate) {
 		writeAPIError(w, http.StatusBadRequest, "invalid date")
 		return
 	}
-	msg, err := s.trade.ExecuteBuy(req.Ticker, req.Shares, req.Price, req.Fee, date)
-	// Same explicit Notify as the dashboard's own trade routes (Phase 24
-	// tech debt 3): a trade booked from an app should still show up in
-	// Telegram, and that's this layer's decision to make, not the executor's.
-	s.trade.Notify(msg)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, msg)
 		return
@@ -193,13 +205,11 @@ func (s *Server) handleAPITradeSell(w http.ResponseWriter, r *http.Request) {
 	if !decodeAPIJSON(w, r, &req) {
 		return
 	}
-	date, ok := resolveTradeDate(req.Date)
-	if !ok {
+	msg, err := s.execSell(r.Context(), req)
+	if errors.Is(err, errInvalidTradeDate) {
 		writeAPIError(w, http.StatusBadRequest, "invalid date")
 		return
 	}
-	msg, err := s.trade.ExecuteSell(r.Context(), req.Ticker, req.Shares, req.Price, req.Fee, date)
-	s.trade.Notify(msg)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, msg)
 		return
@@ -212,8 +222,7 @@ func (s *Server) handleAPISetStop(w http.ResponseWriter, r *http.Request) {
 	if !decodeAPIJSON(w, r, &req) {
 		return
 	}
-	msg, err := s.trade.ExecuteSetStop(req.Ticker, req.Price)
-	s.trade.Notify(msg)
+	msg, err := s.execSetStop(req)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, msg)
 		return
@@ -270,12 +279,12 @@ type apiScanHit struct {
 }
 
 // handleAPIScanHits is GET /api/v1/scan/hits?date=YYYY-MM-DD, defaulting to
-// today in the process's own zone — the same shape resolveTradeDate uses, and
-// the deployment runs on CST, which is what the scan job dates rows in.
+// today in CST — matching scan.go's own s.now().In(cst) dating, not the
+// process's zone (see the cst var above).
 func (s *Server) handleAPIScanHits(w http.ResponseWriter, r *http.Request) {
 	date := r.URL.Query().Get("date")
 	if date == "" {
-		date = time.Now().Format("2006-01-02")
+		date = time.Now().In(cst).Format("2006-01-02")
 	} else if _, err := time.Parse("2006-01-02", date); err != nil {
 		writeAPIError(w, http.StatusBadRequest, "invalid date")
 		return
@@ -320,6 +329,13 @@ func (s *Server) handleAPINotifications(w http.ResponseWriter, r *http.Request) 
 // handleAPINotificationRead is POST /api/v1/notifications/{id}/read. A path
 // parameter rather than a body: marking one row read is addressing a
 // resource, and net/http's pattern matcher already parses it.
+//
+// db.MarkNotificationRead is an UPDATE with no RowsAffected check, so an id
+// that doesn't exist (already deleted, or never existed) is a silent no-op
+// that still answers {"read": true} — deliberate, not overlooked: this is a
+// single-user system and changing the db method's signature to distinguish
+// "updated" from "nothing to update" isn't worth it for a client that would
+// only ever hit this by racing itself.
 func (s *Server) handleAPINotificationRead(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
