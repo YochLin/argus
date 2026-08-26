@@ -182,11 +182,13 @@ func main() {
 	// TRAILING_STOP_ATR_MULT/PAPER_TAKE_PROFIT_ATR_MULT in .env.example, and
 	// cmd/bot/backtest.go's own flags) — same names as that tool's flags on
 	// purpose, so a user familiar with one recognizes the other.
-	stopATRFlag := flag.Float64("stop-atr", 2, "full-trade replay: ATR(14) multiple below entry for the initial stop")
-	stopPctFlag := flag.Float64("stop-pct", 10, "full-trade replay: fixed %% stop fallback when ATR is unavailable")
-	trailingPctFlag := flag.Float64("trailing-pct", 15, "full-trade replay: fixed trailing-stop distance, %%; 0 disables")
-	trailingATRFlag := flag.Float64("trailing-atr", 0, "full-trade replay: ATR-based trailing distance multiple; <=0 = fixed %% only")
-	takeProfitATRFlag := flag.Float64("take-profit-atr", 0, "full-trade replay: ATR(14) multiple above entry for the take-profit target; <=0 = disabled")
+	// -1 (not a literal) so the default can depend on -market, which is not
+	// known until Parse. 0 stays meaningful for the three that it disables.
+	stopATRFlag := flag.Float64("stop-atr", -1, "full-trade replay: ATR(14) multiple below entry for the initial stop; -1 = paper.DefaultExits")
+	stopPctFlag := flag.Float64("stop-pct", -1, "full-trade replay: fixed %% stop fallback when ATR is unavailable; -1 = paper.DefaultExits")
+	trailingPctFlag := flag.Float64("trailing-pct", -1, "full-trade replay: fixed trailing-stop distance, %%; 0 disables, -1 = paper.DefaultExits")
+	trailingATRFlag := flag.Float64("trailing-atr", -1, "full-trade replay: ATR-based trailing distance multiple; 0 = fixed %% only, -1 = paper.DefaultExits")
+	takeProfitATRFlag := flag.Float64("take-profit-atr", -1, "full-trade replay: ATR(14) multiple above entry for the take-profit target; 0 = disabled, -1 = paper.DefaultExits")
 	maxHoldDaysFlag := flag.Int("max-hold-days", 60, "full-trade replay: max holding days before a timeout exit (§11.9/PR3: 20 -> 60, matching the 數週到數月 position style)")
 	// PR2 friction cost: -1 sentinel means "use the market's default" (US
 	// 0.1%, TW 0.15%, live-verified as a reasonable one-side slippage guess)
@@ -268,6 +270,22 @@ func main() {
 	} else if *marketFlag != "us" {
 		fmt.Printf("Error: -market must be us or tw, got %q\n", *marketFlag)
 		os.Exit(1)
+	}
+
+	// Resolve the exit-parameter sentinels now that -market is known. These
+	// come from paper.DefaultExits so this tool always studies whatever the
+	// bot is actually running — the banner below claims "live-aligned" and
+	// this is what makes that true. Overriding a flag on the command line
+	// (as the exit-layer grid does) still wins.
+	exitDefaults := paper.DefaultExits(m)
+	for f, v := range map[*float64]float64{
+		stopATRFlag: exitDefaults.StopATRMult, stopPctFlag: exitDefaults.StopLossPct,
+		trailingPctFlag: exitDefaults.TrailingPct, trailingATRFlag: exitDefaults.TrailingATRMult,
+		takeProfitATRFlag: exitDefaults.TakeProfitATRMult,
+	} {
+		if *f < 0 {
+			*f = v
+		}
 	}
 
 	if *buildHistoryFlag != "" && m != market.TW {

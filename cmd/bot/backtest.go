@@ -29,17 +29,35 @@ import (
 // have looked like so far" today, off data that already exists (see
 // docs/phase-11-paper-account.md §5). Never invoked by the bot itself; same
 // minimal-env, read-only-DB startup shape as runEval.
+// applyExitDefaults resolves the -1 sentinels once -market is known. Shared
+// with nothing — cmd/strategyscan has its own copy because the two are
+// separate main packages — but both read the same paper.DefaultExits, which
+// is the part that must not diverge.
+func applyExitDefaults(m market.MarketID, stopATR, stopPct, trailing, trailingATR, takeProfit *float64) {
+	d := paper.DefaultExits(m)
+	for f, v := range map[*float64]float64{
+		stopATR: d.StopATRMult, stopPct: d.StopLossPct, trailing: d.TrailingPct,
+		trailingATR: d.TrailingATRMult, takeProfit: d.TakeProfitATRMult,
+	} {
+		if *f < 0 {
+			*f = v
+		}
+	}
+}
+
 func runBacktest() {
 	fs := flag.NewFlagSet("backtest", flag.ExitOnError)
 	marketFlag := fs.String("market", "us", "us|tw — one market per run, the two books never mix (see docs/phase-11-paper-account.md §5.1)")
 	cashFlag := fs.Float64("cash", 0, "starting cash; 0 = market default ($100,000 US / NT$1,000,000 TW)")
 	riskFlag := fs.Float64("risk", 1, "risk %% of equity per trade")
 	maxPosFlag := fs.Float64("maxpos", 25, "single-position notional cap, %% of equity")
-	stopATRFlag := fs.Float64("stop-atr", 2, "ATR(14) multiple below entry for the initial stop")
-	stopPctFlag := fs.Float64("stop-pct", 10, "fixed %% stop fallback when ATR is unavailable")
-	trailingFlag := fs.Float64("trailing", 15, "fixed trailing-stop distance, %%; 0 disables")
-	trailingATRFlag := fs.Float64("trailing-atr", 0, "ATR-based trailing distance multiple; <=0 = fixed %% only")
-	takeProfitATRFlag := fs.Float64("take-profit-atr", 0, "ATR(14) multiple above entry for the take-profit target; <=0 = disabled")
+	// -1 (not a literal) so the default can depend on -market, which is not
+	// known until Parse. 0 stays meaningful for the three that it disables.
+	stopATRFlag := fs.Float64("stop-atr", -1, "ATR(14) multiple below entry for the initial stop; -1 = paper.DefaultExits")
+	stopPctFlag := fs.Float64("stop-pct", -1, "fixed %% stop fallback when ATR is unavailable; -1 = paper.DefaultExits")
+	trailingFlag := fs.Float64("trailing", -1, "fixed trailing-stop distance, %%; 0 disables, -1 = paper.DefaultExits")
+	trailingATRFlag := fs.Float64("trailing-atr", -1, "ATR-based trailing distance multiple; 0 = fixed %% only, -1 = paper.DefaultExits")
+	takeProfitATRFlag := fs.Float64("take-profit-atr", -1, "ATR(14) multiple above entry for the take-profit target; 0 = disabled, -1 = paper.DefaultExits")
 	rangeFlag := fs.String("range", "2y", "Yahoo history range to fetch per ticker")
 	csvFlag := fs.String("csv", "", "optional path to write a per-trade CSV")
 	fs.Parse(os.Args[2:])
@@ -53,6 +71,8 @@ func runBacktest() {
 	default:
 		logger.Fatalf("backtest: -market must be us or tw")
 	}
+
+	applyExitDefaults(m, stopATRFlag, stopPctFlag, trailingFlag, trailingATRFlag, takeProfitATRFlag)
 
 	cash := *cashFlag
 	if cash <= 0 {

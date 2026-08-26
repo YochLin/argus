@@ -9,6 +9,8 @@ import (
 
 	"argus/internal/i18n"
 	"argus/internal/logger"
+	"argus/internal/market"
+	"argus/internal/paper"
 )
 
 // Config holds every env-var-derived setting the Telegram bot subcommand
@@ -132,6 +134,7 @@ type Config struct {
 // only WEB_ADDR/WEB_PASSWORD set still boots far enough to serve the
 // Settings page that configures the rest.
 func loadConfig() Config {
+	exitsUS, exitsTW := paper.DefaultExits(market.US), paper.DefaultExits(market.TW)
 	envErr := godotenv.Load()
 	logger.Configure(os.Stderr, logger.ParseLevel(os.Getenv("LOG_LEVEL")))
 	if envErr != nil {
@@ -173,11 +176,14 @@ func loadConfig() Config {
 		WebPassword: os.Getenv("WEB_PASSWORD"),
 		WebLLMAudit: os.Getenv("WEB_LLM_AUDIT") == "true",
 
-		StopLossPct:         envOrFloat("STOP_LOSS_PCT", 10),
-		TrailingStopPct:     envOrFloat("TRAILING_STOP_PCT", 18), // 18 not 15 since 2026-08-26; measured, see .env.example
-		StopLossPctTW:       envOrFloat("STOP_LOSS_PCT_TW", 12),
-		TrailingStopPctTW:   envOrFloat("TRAILING_STOP_PCT_TW", 18),
-		TrailingStopATRMult: envOrFloat("TRAILING_STOP_ATR_MULT", 0),
+		// Fallbacks come from paper.DefaultExits, not literals, so the bot
+		// and the two offline study tools cannot drift apart again — see
+		// that function's doc comment for what happened when they could.
+		StopLossPct:         envOrFloat("STOP_LOSS_PCT", exitsUS.StopLossPct),
+		TrailingStopPct:     envOrFloat("TRAILING_STOP_PCT", exitsUS.TrailingPct),
+		StopLossPctTW:       envOrFloat("STOP_LOSS_PCT_TW", exitsTW.StopLossPct),
+		TrailingStopPctTW:   envOrFloat("TRAILING_STOP_PCT_TW", exitsTW.TrailingPct),
+		TrailingStopATRMult: envOrFloat("TRAILING_STOP_ATR_MULT", exitsUS.TrailingATRMult),
 		RiskPctPerTrade:     envOrFloat("RISK_PCT_PER_TRADE", 0),
 		TWFeeDiscount:       envOrFloat("TW_BROKER_FEE_DISCOUNT", 1.0),
 		RiskHeatPct:         envOrFloat("RISK_HEAT_PCT", 6.0),
