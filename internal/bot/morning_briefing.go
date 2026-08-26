@@ -57,6 +57,11 @@ func (b *Bot) fetchIndexQuotes(idx []struct {
 	return out
 }
 
+// briefingNewsSlots is how many news items each briefing section gets —
+// fewer than tickerNewsSlots because the briefing covers the watchlist and
+// ~20 movers in one narrative recap, not a per-ticker decision.
+const briefingNewsSlots = 3
+
 // loadQuoteHighlights is a lighter sibling of fetchStockData for the morning
 // briefing's watchlist/mover sections: quote + a few news items + company
 // name + position (if held), deliberately skipping computeTechnicals'
@@ -67,14 +72,15 @@ func (b *Bot) fetchIndexQuotes(idx []struct {
 // StockData's per-field degradation convention).
 func (b *Bot) loadQuoteHighlights(tickers []string, positions map[string]db.Position) []llm.StockData {
 	var result []llm.StockData
+	picker := &newsPicker{}
 	for _, t := range tickers {
 		q, err := b.provider.GetQuote(t)
 		if err != nil {
 			logger.Errorf("morning briefing: quote %s: %v", t, err)
 			continue
 		}
-		news, _ := b.provider.GetNews(t, 3)
-		stock := llm.StockData{Quote: q, News: news, CompanyName: b.companyName(t)}
+		fetched, _ := b.provider.GetNews(t, tickerNewsFetch)
+		stock := llm.StockData{Quote: q, News: picker.pick(fetched, briefingNewsSlots), CompanyName: b.companyName(t)}
 		if p, ok := positions[t]; ok {
 			stock.Position = &llm.Position{Shares: p.Shares, AvgCost: p.AvgCost}
 		}

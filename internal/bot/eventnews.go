@@ -35,16 +35,18 @@ func priceEventFacts(ev signals.PriceEvent) llm.PriceEventFacts {
 // session being explained.
 const eventNewsWindow = 24 * time.Hour
 
-// eventNewsSlots is how many news items an event summary is given, and
-// eventNewsFetch how many are pulled to fill them. The gap between the two
-// is the room the date filter and the syndication dedupe need: asking for
-// exactly five and then throwing three away leaves the model with two, so
-// the fetch is widened rather than the filters loosened. Both filters run
+// tickerNewsSlots is how many news items a per-ticker prompt section is
+// given, and tickerNewsFetch how many are pulled to fill them. The gap
+// between the two is the room the date filter and the dedupe need: asking
+// for exactly five and then throwing three away leaves the model with two,
+// so the fetch is widened rather than the filters loosened. Both filters run
 // before the truncation, so the five that survive are the five freshest
-// distinct stories.
+// distinct stories. Shared by the event summary and the daily report /
+// morning briefing (see newsPicker) — a wasted slot costs the same wherever
+// it happens.
 const (
-	eventNewsSlots = 5
-	eventNewsFetch = 10
+	tickerNewsSlots = 5
+	tickerNewsFetch = 10
 )
 
 // filterNewsNearDate keeps only the news published within eventNewsWindow of
@@ -88,25 +90,43 @@ func filterNewsNearDate(news []data.NewsItem, date string) []data.NewsItem {
 // above where two genuinely different stories about the same company land.
 const headlineDupThreshold = 0.8
 
-// dedupeHeadlines drops news whose headline is a near-copy of an earlier
-// one's, keeping the first (the feed is newest-first, so the first is the
-// freshest). Phase 20 後續 PR4: TW news comes from Google News RSS, which
-// returns the same story from several outlets — one of ten sampled TW
-// tickers had the same headline three times inside its top five — and TW
-// items carry no Summary at all (KeyNewsSummaryLine never fires there, 50/50
-// sampled items were empty), so the headline is the only thing the model
-// gets. With only five slots and nothing but titles in them, spending three
-// on one story is most of the ticker's evidence gone.
+// newsPicker fills prompt news slots for one run, skipping any item whose
+// headline is a near-copy of one already picked. Two things it catches, both
+// measured on live /llm audit runs:
 //
-// Not TW-gated: a duplicate headline is noise in any market, and the check
-// is a few string comparisons over at most a handful of items.
-func dedupeHeadlines(news []data.NewsItem) []data.NewsItem {
+// Within a ticker — TW news comes from Google News RSS, which returns the
+// same story from several outlets, and TW items carry no Summary at all
+// (KeyNewsSummaryLine never fires there), so the headline is the only thing
+// the model gets. With five slots and nothing but titles in them, spending
+// three on one story is most of the ticker's evidence gone.
+//
+// Across the tickers of the same run — Finnhub tags a generic market piece
+// onto every symbol it name-drops ("The Deep Unknowns Of AI" filled a slot
+// under five different tickers in one US report; 45 of 229 news slots in
+// that run went to a story an earlier ticker had already shown). The
+// duplicate never looks like one from inside a single ticker's five, which
+// is why the seen set outlives the call.
+//
+// Zero value is ready to use. One picker per prompt, never one per process:
+// yesterday's headlines must not block today's. Not TW-gated — a duplicate
+// is noise in any market — and the linear scan over the few hundred
+// headlines one run keeps is nothing next to the network calls it sits
+// between.
+type newsPicker struct{ seen []string }
+
+// pick returns up to slots items from news (newest first, as every
+// data.Provider hands it over), skipping near-duplicates of anything this
+// picker has already returned. Fewer than slots is a valid answer: no news
+// beats the same news twice.
+func (p *newsPicker) pick(news []data.NewsItem, slots int) []data.NewsItem {
 	var out []data.NewsItem
-	var kept []string
 	for _, n := range news {
+		if len(out) >= slots {
+			break
+		}
 		norm := normalizeHeadline(n.Headline)
 		dup := false
-		for _, k := range kept {
+		for _, k := range p.seen {
 			if diceSimilarity(norm, k) >= headlineDupThreshold {
 				dup = true
 				break
@@ -116,7 +136,7 @@ func dedupeHeadlines(news []data.NewsItem) []data.NewsItem {
 			continue
 		}
 		out = append(out, n)
-		kept = append(kept, norm)
+		p.seen = append(p.seen, norm)
 	}
 	return out
 }
