@@ -456,12 +456,13 @@ Keep the reply concise — under 300 words total.
 	KeyLessonMarker: "Lesson:",
 
 	KeyPriceEventPromptIntro:    "You are a stock analyst. *%s* triggered a price event worth recording today — based on the data below, summarize what happened.\n\n",
-	KeyPriceEventGapLine:        "Opening gap: %+.1f%% (vs prior close)\n",
-	KeyPriceEventChangeLine:     "Day's change: %+.1f%% (close vs prior close)\n",
-	KeyPriceEventCumulativeLine: "Recent cumulative decline: %+.1f%%\n",
+	KeyPriceEventGapLine:        "Opening gap: %+.1f%% (vs prior close)%s\n",
+	KeyPriceEventChangeLine:     "Day's change: %+.1f%% (close vs prior close)%s\n",
+	KeyPriceEventCumulativeLine: "Recent cumulative change: %+.1f%%%s\n",
+	KeyPriceEventTriggerSuffix:  "  (threshold crossed)",
 	KeyPriceEventPromptTask: `
 Write 3–5 sentences:
-1. State the gap/change/cumulative-decline numbers above as fact.
+1. State the gap/change/cumulative numbers above as fact. Only the one marked "threshold crossed" is why this was recorded; the others are same-day context worth contrasting (a near-flat close after a violent gap means buyers absorbed it intraday).
 2. If news is attached above, infer a likely cause from it (the date in parentheses is when it was published); if no news is attached, say plainly "no related news, cause unknown" — don't guess.
 3. This is a factual description, not trading advice — don't recommend any action.
 `,

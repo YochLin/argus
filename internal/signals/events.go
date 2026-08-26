@@ -35,61 +35,73 @@ func DefaultEventThresholds(m market.MarketID) EventThresholds {
 	return EventThresholds{GapPct: 5.0, BigMovePct: 7.0, CumulativeDeclinePct: 8.0, CumulativeWindowDays: 5}
 }
 
-// PriceEvent is one ticker's triggered gap and/or big-move and/or cumulative-
-// decline event for a single closing snapshot. GapPct/ChangePct/CumulativePct
-// are only non-zero for the threshold(s) actually crossed, so a caller can
-// tell a pure gap apart from a pure big move (or a cumulative decline) or
-// several firing together — the same-day dedup/merge that folds them into
-// one price_events row happens one layer up (internal/bot).
+// PriceEvent is one ticker's triggered price event for a single closing
+// snapshot — distinct from db.PriceEvent (same name, different package,
+// same convention as db.DailySnapshot vs this package staying independent
+// of each other).
+//
+// All three percentages carry the day's real value whenever it could be
+// computed at all, not only when its own threshold fired (Phase 20 後續 PR3);
+// which threshold actually fired is what the *Triggered flags say. Before
+// that split, "gapped -6% but closed down only 1%" (opened weak, bought all
+// day — the most interesting thing that can happen) and "gapped -6%, closed
+// -8%" reached the LLM as byte-identical prompts, because the non-triggering
+// number was zeroed out. A summary whose entire job is stating facts was
+// missing exactly the facts.
+//
+// 0 still means "unavailable" for GapPct (no open price) and CumulativePct
+// (not enough daily_snapshots history) — a value that genuinely rounds to
+// 0.0% carries nothing a reader or a model would miss.
 type PriceEvent struct {
-	Ticker        string
-	GapPct        float64
-	ChangePct     float64
-	CumulativePct float64
+	Ticker              string
+	GapPct              float64
+	ChangePct           float64
+	CumulativePct       float64
+	GapTriggered        bool
+	ChangeTriggered     bool
+	CumulativeTriggered bool
 }
 
-// CheckPriceEvent screens q against t and returns the triggered event, or
-// nil if neither the gap nor the big-move threshold was crossed.
-// q.PrevClose == 0 (no prior-close data, e.g. a ticker's first session on
-// record) skips both checks. q.Open == 0 (data.Quote's documented "has a
-// close but no open" edge case) skips only the gap check — the big-move
-// check doesn't depend on Open and still runs.
-func CheckPriceEvent(q *data.Quote, t EventThresholds) *PriceEvent {
-	if q.PrevClose == 0 {
-		return nil
-	}
+// Triggered reports whether any threshold fired — the "is this an event at
+// all" question, kept next to the flags so no caller has to re-OR them.
+func (e PriceEvent) Triggered() bool {
+	return e.GapTriggered || e.ChangeTriggered || e.CumulativeTriggered
+}
 
-	var ev PriceEvent
-	if q.Open != 0 {
-		gapPct := (q.Open - q.PrevClose) / q.PrevClose * 100
-		if math.Abs(gapPct) >= t.GapPct {
-			ev.GapPct = gapPct
+// CheckPriceEvent screens q against t and returns the day's numbers, or nil
+// if no threshold was crossed. windowAgoClose is the close
+// t.CumulativeWindowDays sessions ago (0 when the caller has no such
+// history yet), covering the multi-day decline the single-day checks can't
+// see; only a decline triggers it, never a rally — "累積跌幅" per its name,
+// unlike the bidirectional gap/big-move checks.
+//
+// Each of the three checks degrades on its own: q.PrevClose == 0 (no prior
+// close on record, e.g. a ticker's first session) skips both single-day
+// checks, q.Open == 0 (data.Quote's documented "has a close but no open"
+// case) skips only the gap one, and windowAgoClose <= 0 skips the
+// cumulative one. Gap and cumulative decline were two functions until Phase
+// 20 後續 PR3 folded them together — with every number computed every time,
+// a caller merging two partial results back into one row (price_events is
+// one row per ticker per day) was pure ceremony.
+func CheckPriceEvent(q *data.Quote, windowAgoClose float64, t EventThresholds) *PriceEvent {
+	ev := PriceEvent{Ticker: q.Ticker}
+
+	if q.PrevClose != 0 {
+		if q.Open != 0 {
+			ev.GapPct = (q.Open - q.PrevClose) / q.PrevClose * 100
+			ev.GapTriggered = math.Abs(ev.GapPct) >= t.GapPct
 		}
-	}
-	if math.Abs(q.ChangePercent) >= t.BigMovePct {
 		ev.ChangePct = q.ChangePercent
+		ev.ChangeTriggered = math.Abs(ev.ChangePct) >= t.BigMovePct
 	}
-	if ev.GapPct == 0 && ev.ChangePct == 0 {
-		return nil
-	}
-	ev.Ticker = q.Ticker
-	return &ev
-}
 
-// CheckCumulativeDecline screens todayClose against windowAgoClose (the
-// close t.CumulativeWindowDays sessions ago) for a decline of at least
-// t.CumulativeDeclinePct — the multi-day case CheckPriceEvent's single-day
-// checks can't see. windowAgoClose <= 0 (not enough daily_snapshots history
-// yet for a new ticker) skips the check. Only fires on a decline, not a
-// rally — "累積跌幅" per its name, unlike GapPct/ChangePct which are
-// bidirectional.
-func CheckCumulativeDecline(ticker string, windowAgoClose, todayClose float64, t EventThresholds) *PriceEvent {
-	if windowAgoClose <= 0 {
+	if windowAgoClose > 0 {
+		ev.CumulativePct = (q.Price - windowAgoClose) / windowAgoClose * 100
+		ev.CumulativeTriggered = ev.CumulativePct <= -t.CumulativeDeclinePct
+	}
+
+	if !ev.Triggered() {
 		return nil
 	}
-	pct := (todayClose - windowAgoClose) / windowAgoClose * 100
-	if pct > -t.CumulativeDeclinePct {
-		return nil
-	}
-	return &PriceEvent{Ticker: ticker, CumulativePct: pct}
+	return &ev
 }

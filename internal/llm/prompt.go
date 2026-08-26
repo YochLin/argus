@@ -979,25 +979,51 @@ func tradeEntryPrice(legs []TradeLeg) (price, shares float64) {
 	return totalCost / totalShares, totalShares
 }
 
-// buildPriceEventPrompt is Phase 20's gap/big-move event-summary prompt (see
-// docs/phase-20-price-event-log.md §4.3): the day's triggered gap%/change%
-// numbers plus ticker-only news (reusing KeyNewsItem/KeyNewsSummaryLine, same
-// convention as buildExplorePrompt) — no market-wide news, per §2's "LLM
-// 素材" decision. gapPct/changePct are 0 when that particular threshold
-// didn't fire (see signals.PriceEvent), so only the ones that are non-zero
-// get rendered rather than always naming both.
-func buildPriceEventPrompt(lang i18n.Lang, ticker string, gapPct, changePct, cumulativePct float64, news []data.NewsItem) string {
-	var sb strings.Builder
-	sb.WriteString(i18n.T(lang, i18n.KeyPriceEventPromptIntro, ticker))
+// PriceEventFacts is one price event's fact sheet as ExplainPriceEvent sees
+// it — the mirror of signals.PriceEvent, redeclared here for the same reason
+// StrategyHitInfo is (this package stays independent of internal/signals).
+// All three percentages carry the day's real value whenever it could be
+// computed, and the *Triggered flags say which threshold actually fired; see
+// signals.PriceEvent for why the two are separate.
+type PriceEventFacts struct {
+	Ticker              string
+	GapPct              float64
+	ChangePct           float64
+	CumulativePct       float64
+	GapTriggered        bool
+	ChangeTriggered     bool
+	CumulativeTriggered bool
+}
 
-	if gapPct != 0 {
-		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyPriceEventGapLine, gapPct))
+// buildPriceEventPrompt is Phase 20's gap/big-move event-summary prompt (see
+// docs/phase-20-price-event-log.md §4.3): the day's gap/change/cumulative
+// numbers plus ticker-only news (via writeNewsItem, same convention as
+// buildExplorePrompt) — no market-wide news, per §2's "LLM 素材" decision.
+//
+// Every number that could be computed is rendered, with the threshold that
+// actually fired marked (Phase 20 後續 PR3) — a summary asked to state facts
+// was previously handed only the triggering one, which made "gapped -6%,
+// closed down 1%" indistinguishable from "gapped -6%, closed -8%". The
+// day's change is the one line rendered unconditionally: a flat close after
+// a violent gap is exactly the case worth reading, so a 0.0% there must not
+// be mistaken for missing data.
+func buildPriceEventPrompt(lang i18n.Lang, ev PriceEventFacts, news []data.NewsItem) string {
+	trigger := func(fired bool) string {
+		if !fired {
+			return ""
+		}
+		return i18n.T(lang, i18n.KeyPriceEventTriggerSuffix)
 	}
-	if changePct != 0 {
-		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyPriceEventChangeLine, changePct))
+
+	var sb strings.Builder
+	sb.WriteString(i18n.T(lang, i18n.KeyPriceEventPromptIntro, ev.Ticker))
+
+	if ev.GapPct != 0 {
+		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyPriceEventGapLine, ev.GapPct, trigger(ev.GapTriggered)))
 	}
-	if cumulativePct != 0 {
-		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyPriceEventCumulativeLine, cumulativePct))
+	fmt.Fprint(&sb, i18n.T(lang, i18n.KeyPriceEventChangeLine, ev.ChangePct, trigger(ev.ChangeTriggered)))
+	if ev.CumulativePct != 0 {
+		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyPriceEventCumulativeLine, ev.CumulativePct, trigger(ev.CumulativeTriggered)))
 	}
 
 	if len(news) > 0 {

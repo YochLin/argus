@@ -253,8 +253,8 @@ func (c *Client) ReviewTrade(ctx context.Context, trade ClosedTrade) (result str
 // model/latencyMs are returned for the same reason GenerateRecommendations
 // returns them: bot.recordPriceEvents files this call into Phase 19's
 // llm_runs audit trail (kind "price_event").
-func (c *Client) ExplainPriceEvent(ctx context.Context, ticker string, gapPct, changePct, cumulativePct float64, news []data.NewsItem) (reply, model string, latencyMs int64, err error) {
-	prompt := buildPriceEventPrompt(c.lang, ticker, gapPct, changePct, cumulativePct, news)
+func (c *Client) ExplainPriceEvent(ctx context.Context, ev PriceEventFacts, news []data.NewsItem) (reply, model string, latencyMs int64, err error) {
+	prompt := buildPriceEventPrompt(c.lang, ev, news)
 	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
 }
 

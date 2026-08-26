@@ -77,15 +77,14 @@ func (s *SnapshotService) FetchClosingQuotes(tickers []string, m market.MarketID
 			continue
 		}
 		prices[t] = q.Price
-		if ev := signals.CheckPriceEvent(q, thresholds); ev != nil {
-			hits = mergePriceEventHit(hits, *ev)
-		}
+		var windowAgoClose float64
 		if closes, err := s.store.GetRecentCloses(t, thresholds.CumulativeWindowDays); err != nil {
 			logger.Errorf("closing snapshot: recent closes %s: %v", t, err)
 		} else if len(closes) == thresholds.CumulativeWindowDays {
-			if ev := signals.CheckCumulativeDecline(t, closes[0], q.Price, thresholds); ev != nil {
-				hits = mergePriceEventHit(hits, *ev)
-			}
+			windowAgoClose = closes[0]
+		}
+		if ev := signals.CheckPriceEvent(q, windowAgoClose, thresholds); ev != nil {
+			hits = append(hits, *ev)
 		}
 		snap := db.DailySnapshot{
 			Ticker:        t,
@@ -184,12 +183,25 @@ func (s *SnapshotService) priceFor(ticker string, prices map[string]float64) (fl
 }
 
 // priceEventMoveSize is recordPriceEvents' writeup-priority ranking key —
-// the largest of gap/change/cumulative-decline magnitude, so a ticker with
-// only a big cumulative decline still competes fairly against one with a
-// large single-day move. Exported for bot.recordPriceEvents' LLM-writeup
+// the largest magnitude among the thresholds that actually fired, so a
+// ticker with only a big cumulative decline still competes fairly against
+// one with a large single-day move. Only triggered numbers count: since
+// Phase 20 後續 PR3 a PriceEvent also carries the day's non-triggering
+// values, and ranking on those would let an untriggered move decide who
+// gets one of the run's LLM writeups. Exported for bot.recordPriceEvents'
 // ranking step, which stays in the adapter (Telegram/LLM side effects).
 func PriceEventMoveSize(ev signals.PriceEvent) float64 {
-	return math.Max(math.Max(math.Abs(ev.GapPct), math.Abs(ev.ChangePct)), math.Abs(ev.CumulativePct))
+	var size float64
+	if ev.GapTriggered {
+		size = math.Max(size, math.Abs(ev.GapPct))
+	}
+	if ev.ChangeTriggered {
+		size = math.Max(size, math.Abs(ev.ChangePct))
+	}
+	if ev.CumulativeTriggered {
+		size = math.Max(size, math.Abs(ev.CumulativePct))
+	}
+	return size
 }
 
 // SortPriceEventsByMoveSize orders events by PriceEventMoveSize descending,
@@ -198,27 +210,4 @@ func SortPriceEventsByMoveSize(events []signals.PriceEvent) {
 	sort.Slice(events, func(i, j int) bool {
 		return PriceEventMoveSize(events[i]) > PriceEventMoveSize(events[j])
 	})
-}
-
-// mergePriceEventHit adds ev to hits, merging into an existing same-ticker
-// entry instead of appending a duplicate — price_events' (ticker, date)
-// unique index means a single-day and cumulative-decline hit for the same
-// ticker on the same day must become one row, not two.
-func mergePriceEventHit(hits []signals.PriceEvent, ev signals.PriceEvent) []signals.PriceEvent {
-	for i := range hits {
-		if hits[i].Ticker != ev.Ticker {
-			continue
-		}
-		if ev.GapPct != 0 {
-			hits[i].GapPct = ev.GapPct
-		}
-		if ev.ChangePct != 0 {
-			hits[i].ChangePct = ev.ChangePct
-		}
-		if ev.CumulativePct != 0 {
-			hits[i].CumulativePct = ev.CumulativePct
-		}
-		return hits
-	}
-	return append(hits, ev)
 }
