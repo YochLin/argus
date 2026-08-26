@@ -462,7 +462,7 @@ Keep the reply concise — under 300 words total.
 	KeyPriceEventPromptTask: `
 Write 3–5 sentences:
 1. State the gap/change/cumulative-decline numbers above as fact.
-2. If news is attached above, infer a likely cause from it; if no news is attached, say plainly "no related news, cause unknown" — don't guess.
+2. If news is attached above, infer a likely cause from it (the date in parentheses is when it was published); if no news is attached, say plainly "no related news, cause unknown" — don't guess.
 3. This is a factual description, not trading advice — don't recommend any action.
 `,
 	KeyPriceEventResultTitle:        "📊 *Price Event: %s*\n\n%s",
@@ -548,7 +548,7 @@ Write only from the data actually provided above — omit any section you have n
 	KeyVolumeLine:              "- Volume: %d  Prev Close: $%.2f\n",
 	KeyQuoteTimeLine:           "- Quote Time: %s\n",
 	KeyNewsHeader:              "- Recent News:\n",
-	KeyNewsItem:                "  %d. [%s] %s\n",
+	KeyNewsItem:                "  %d. [%s] %s (%s)\n",
 	KeyNewsSummaryLine:         "     %s\n",
 	KeyFundamentalsSummaryLine: "- Fundamentals: P/E %.1f | P/B %.1f | ROE %.1f%% | Gross Margin %.1f%% | Operating Margin %.1f%% | Net Margin %.1f%% | Debt/Equity %.2f | Revenue YoY %.1f%% | EPS YoY %.1f%% | Dividend Yield %.2f%% | Beta %.2f | EPS(TTM) %.2f | Current Ratio %.2f | Market Cap $%.0fM | From 52W High %+.1f%% | From 52W Low %+.1f%%\n",
 	KeyMonthRevenueYoYLine:     "- Month Revenue YoY: %+.1f%%\n",
