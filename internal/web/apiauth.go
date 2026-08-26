@@ -146,8 +146,13 @@ func (s *Server) requireAPIAuth(next http.HandlerFunc) http.HandlerFunc {
 			next(w, r)
 			return
 		}
-		bearer, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if !ok || s.parseAPIToken(strings.TrimSpace(bearer), apiTokenAccess) != nil {
+		// RFC 7235 §2.1 makes the auth-scheme case-insensitive; some HTTP
+		// clients and proxies normalize it, and hand-written scripts often
+		// send "bearer" outright.
+		const bearerPrefix = "Bearer "
+		authz := r.Header.Get("Authorization")
+		if len(authz) < len(bearerPrefix) || !strings.EqualFold(authz[:len(bearerPrefix)], bearerPrefix) ||
+			s.parseAPIToken(strings.TrimSpace(authz[len(bearerPrefix):]), apiTokenAccess) != nil {
 			writeAPIError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}

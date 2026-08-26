@@ -10,7 +10,7 @@ import (
 )
 
 func testAPIServer() *Server {
-	return New(Config{Password: "hunter2", JWTSecret: "test-secret", APIKey: "script-key"})
+	return New(Config{Password: "hunter2", JWTSecret: "test-secret-at-least-32-characters-long", APIKey: "script-key"})
 }
 
 func postJSON(t *testing.T, s *Server, path, body string) *httptest.ResponseRecorder {
@@ -136,13 +136,30 @@ func TestAPITokenRejectsForeignSecret(t *testing.T) {
 	}
 }
 
-// TestAPIV1UnregisteredWithoutSecret: with no JWT_SECRET the routes must not
-// exist at all, which spaHandler's catch-all turns into a 200 SPA shell —
-// never an unauthenticated JSON response.
-func TestAPIV1UnregisteredWithoutSecret(t *testing.T) {
+// TestAPIV1DisabledWithoutSecret: with no JWT_SECRET the real routes must
+// not exist, and every /api/v1/* path must answer with a 404 in the
+// standard envelope — never spaHandler's catch-all 200 SPA shell, which a
+// token-bearing client (no fallback of its own) can't tell apart from the
+// surface actually being up.
+func TestAPIV1DisabledWithoutSecret(t *testing.T) {
 	s := New(Config{Password: "hunter2"})
 	rec := postJSON(t, s, "/api/v1/auth/login", `{"password":"hunter2"}`)
-	if strings.Contains(rec.Body.String(), "accessToken") {
-		t.Errorf("login answered with a token while JWT_SECRET is unset: %s", rec.Body.String())
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("disabled /api/v1 answered %d, want 404", rec.Code)
+	}
+	env := decodeEnvelope(t, rec)
+	if env.Success {
+		t.Errorf("disabled /api/v1 envelope has success=true: %+v", env)
+	}
+}
+
+// TestAPIV1DisabledWithShortSecret pins the fail-closed floor on JWT_SECRET
+// length: a key long enough to be "set" but too short to resist offline
+// brute force must disable the surface exactly like an unset one.
+func TestAPIV1DisabledWithShortSecret(t *testing.T) {
+	s := New(Config{Password: "hunter2", JWTSecret: "too-short"})
+	rec := postJSON(t, s, "/api/v1/auth/login", `{"password":"hunter2"}`)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("short-secret /api/v1 answered %d, want 404", rec.Code)
 	}
 }

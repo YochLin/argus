@@ -71,8 +71,9 @@ type Config struct {
 	// server's password setting is simply inert.
 	WebPassword string
 	// JWTSecret (JWT_SECRET, Phase 24 Stage 4 Step 4.1) signs the /api/v1
-	// access/refresh tokens. Empty disables the /api/v1 surface entirely
-	// (see web.registerAPIV1) — same presence-of-config convention as
+	// access/refresh tokens. Empty, too short (see web.minJWTSecretLen), or
+	// WebPassword left empty disables the /api/v1 surface entirely (see
+	// web.registerAPIV1) — same presence-of-config convention as
 	// WebAddr/WebPassword, and for the same reason those two are absent from
 	// the Settings page's whitelist: it is this deployment's own access
 	// credential, not a third-party service connection.

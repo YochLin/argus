@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"argus/internal/logger"
 )
 
 // apiResponse is Step 4.2's standardized envelope. Every /api/v1 route
@@ -37,14 +39,31 @@ func decodeAPIJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 
+// minJWTSecretLen is HS256's entropy floor here: a token's signature is only
+// as hard to forge as this key. Anyone who ever sees one signed token can
+// brute-force a short key offline and mint their own 30-day refresh token —
+// unlike WEB_PASSWORD (a private-network cookie HMAC), this key protects
+// tokens meant to leave the machine with a future mobile app. Fail-closed
+// rather than warn-and-continue: an operator who sets a weak secret and sees
+// the API working fine has no reason to go check the log.
+const minJWTSecretLen = 32
+
 // registerAPIV1 mounts the token-authenticated /api/v1 surface (Phase 24
-// Stage 4). It is skipped entirely — not 404'd per route — when JWT_SECRET
-// or WEB_PASSWORD is unset, following Config.LLMAudit's precedent: an API
-// whose auth isn't configured has no safe degraded mode, and registering
-// unauthenticated routes to return 401 would still expose the route table.
-// Callers of New see this reflected in /api/config.
+// Stage 4). It is skipped — every route replying with a 404 in the standard
+// envelope, not the SPA catch-all's 200 HTML — when JWT_SECRET is too short
+// or unset, or WEB_PASSWORD is unset, following Config.LLMAudit's precedent
+// that an API whose auth isn't configured has no safe degraded mode. Unlike
+// LLMAudit's consumer (the SPA, which reads /api/config first), this
+// surface's consumers are mobile apps and scripts with no fallback of their
+// own — a 200 they can't parse as JSON is worse than a 404 they can.
 func (s *Server) registerAPIV1() {
-	if s.jwtSecret == "" || s.password == "" {
+	if len(s.jwtSecret) < minJWTSecretLen || s.password == "" {
+		if s.jwtSecret != "" && len(s.jwtSecret) < minJWTSecretLen {
+			logger.Errorf("web: JWT_SECRET is too short (%d chars, need >= %d); /api/v1 disabled", len(s.jwtSecret), minJWTSecretLen)
+		}
+		s.mux.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) {
+			writeAPIError(w, http.StatusNotFound, "api v1 is not configured")
+		})
 		return
 	}
 	s.mux.HandleFunc("POST /api/v1/auth/login", s.handleAPILogin)
