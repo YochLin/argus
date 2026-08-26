@@ -153,7 +153,15 @@ type Server struct {
 	llmAudit            bool
 	jwtSecret           string
 	apiKey              string
-	mux                 *http.ServeMux
+	// apiDB is a narrow interface (not folded into dbReader: these three
+	// methods are only ever reached from /api/v1, and dbReader is already
+	// implemented by a pile of hand-built test values that have no reason
+	// to grow them) — assigned in New only when cfg.DB != nil, same
+	// nil-typed-pointer-in-an-interface trap paperDB's comment above warns
+	// about, just solved the other way since this field's callers need an
+	// interface, not a concrete *db.DB.
+	apiDB apiV1Store
+	mux   *http.ServeMux
 }
 
 func New(cfg Config) *Server {
@@ -185,6 +193,9 @@ func New(cfg Config) *Server {
 		llmAudit:            cfg.LLMAudit,
 		jwtSecret:           cfg.JWTSecret,
 		apiKey:              cfg.APIKey,
+	}
+	if cfg.DB != nil {
+		s.apiDB = cfg.DB
 	}
 	s.recPerf = newRecPerfStore(s.db, s.history)
 	s.mux = http.NewServeMux()
