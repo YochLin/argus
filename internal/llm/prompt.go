@@ -421,10 +421,7 @@ func buildMorningBriefingPrompt(lang i18n.Lang, date string, indices []IndexQuot
 	if len(marketNews) > 0 {
 		sb.WriteString(i18n.T(lang, i18n.KeyMorningBriefingNewsHeader))
 		for i, n := range marketNews {
-			fmt.Fprint(&sb, i18n.T(lang, i18n.KeyNewsItem, i+1, n.Source, n.Headline))
-			if n.Summary != "" {
-				fmt.Fprint(&sb, i18n.T(lang, i18n.KeyNewsSummaryLine, n.Summary))
-			}
+			writeNewsItem(&sb, lang, i+1, n)
 		}
 		sb.WriteString("\n")
 	}
@@ -470,10 +467,7 @@ func buildRecommendationPrompt(lang i18n.Lang, watchlist []StockData, candidates
 	if len(marketNews) > 0 {
 		sb.WriteString(i18n.T(lang, i18n.KeyRecMarketNewsHeader))
 		for i, n := range marketNews {
-			fmt.Fprint(&sb, i18n.T(lang, i18n.KeyNewsItem, i+1, n.Source, n.Headline))
-			if n.Summary != "" {
-				fmt.Fprint(&sb, i18n.T(lang, i18n.KeyNewsSummaryLine, n.Summary))
-			}
+			writeNewsItem(&sb, lang, i+1, n)
 		}
 		sb.WriteString("\n")
 	}
@@ -641,10 +635,7 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 			if i >= 5 {
 				break
 			}
-			fmt.Fprint(sb, i18n.T(lang, i18n.KeyNewsItem, i+1, n.Source, n.Headline))
-			if n.Summary != "" {
-				fmt.Fprint(sb, i18n.T(lang, i18n.KeyNewsSummaryLine, n.Summary))
-			}
+			writeNewsItem(sb, lang, i+1, n)
 		}
 	}
 
@@ -818,10 +809,7 @@ func buildExplorePrompt(lang i18n.Lang, marketNews []data.NewsItem, exclude []st
 	var sb strings.Builder
 	sb.WriteString(i18n.T(lang, i18n.KeyExplorePromptIntro))
 	for i, n := range marketNews {
-		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyNewsItem, i+1, n.Source, n.Headline))
-		if n.Summary != "" {
-			fmt.Fprint(&sb, i18n.T(lang, i18n.KeyNewsSummaryLine, n.Summary))
-		}
+		writeNewsItem(&sb, lang, i+1, n)
 	}
 	sb.WriteString("\n")
 	sb.WriteString(i18n.T(lang, i18n.KeyExploreExcludeLine, strings.Join(exclude, ", ")))
@@ -1015,16 +1003,46 @@ func buildPriceEventPrompt(lang i18n.Lang, ticker string, gapPct, changePct, cum
 	if len(news) > 0 {
 		sb.WriteString(i18n.T(lang, i18n.KeyNewsHeader))
 		for i, n := range news {
-			fmt.Fprint(&sb, i18n.T(lang, i18n.KeyNewsItem, i+1, n.Source, n.Headline))
-			if n.Summary != "" {
-				fmt.Fprint(&sb, i18n.T(lang, i18n.KeyNewsSummaryLine, n.Summary))
-			}
+			writeNewsItem(&sb, lang, i+1, n)
 		}
 	}
 
 	sb.WriteString(i18n.T(lang, i18n.KeyPriceEventPromptTask))
 	return sb.String()
 }
+
+// writeNewsItem renders one news item into sb: the numbered
+// "[source] headline (date)" line plus, when the provider supplied one, its
+// summary line. Every prompt that shows news goes through here, so what a
+// news line carries stays identical across all of them — Phase 20 後續 PR2
+// added the publish date in one place instead of to five drifting call
+// sites (see newsDate for why the date had to be there at all).
+func writeNewsItem(sb *strings.Builder, lang i18n.Lang, idx int, n data.NewsItem) {
+	fmt.Fprint(sb, i18n.T(lang, i18n.KeyNewsItem, idx, n.Source, n.Headline, newsDate(n)))
+	if n.Summary != "" {
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyNewsSummaryLine, n.Summary))
+	}
+}
+
+// newsDate formats n's publish timestamp for a prompt news line, in CST
+// (same convention as internal/mcptools' get_news) — "?" when the provider
+// didn't supply one, which is honest about the gap rather than printing
+// Go's zero time as if it were a real date. Phase 20 後續 PR2's finding: the
+// news feed is ordered newest-first but a third of a ticker's top-5 was
+// over two days old, and the prompts ask the model to infer a cause from
+// news it had no way to date — so it hung last week's story on today's move.
+func newsDate(n data.NewsItem) string {
+	if n.PublishedAt.IsZero() {
+		return "?"
+	}
+	return n.PublishedAt.In(newsDateZone).Format("2006-01-02")
+}
+
+// newsDateZone is CST/Taiwan time — the user's own timezone, so "today" in
+// a news line means the same thing as "today" everywhere else the bot
+// speaks. A fixed zone rather than a tzdata lookup, same reasoning as
+// internal/scheduler's.
+var newsDateZone = time.FixedZone("CST", 8*3600)
 
 // maLabel renders whether price sits above or below a moving average as an
 // already-localized string, so writeStockSection never builds display text

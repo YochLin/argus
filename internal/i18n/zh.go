@@ -450,7 +450,7 @@ var zhMessages = map[Key]string{
 	KeyPriceEventPromptTask: `
 請用繁體中文，依下列要求寫 3–5 句話：
 1. 先陳述上方跳空／漲跌／累積跌幅的事實數字
-2. 若上方附有相關新聞，依新聞推測可能原因；若沒有附上任何新聞，請直接說「無對應新聞，原因不明」，不要憑空臆測
+2. 若上方附有相關新聞，依新聞推測可能原因（括號內為發佈日期）；若沒有附上任何新聞，請直接說「無對應新聞，原因不明」，不要憑空臆測
 3. 這是事實性描述，不要給任何買賣操作建議或語氣
 `,
 	KeyPriceEventResultTitle:        "📊 *價格事件：%s*\n\n%s",
@@ -536,7 +536,7 @@ var zhMessages = map[Key]string{
 	KeyVolumeLine:              "- 成交量: %d　前收: $%.2f\n",
 	KeyQuoteTimeLine:           "- 報價時間: %s\n",
 	KeyNewsHeader:              "- 近期新聞:\n",
-	KeyNewsItem:                "  %d. [%s] %s\n",
+	KeyNewsItem:                "  %d. [%s] %s（%s）\n",
 	KeyNewsSummaryLine:         "     %s\n",
 	KeyFundamentalsSummaryLine: "- 基本面：本益比 %.1f｜股價淨值比 %.1f｜ROE %.1f%%｜毛利率 %.1f%%｜營業利益率 %.1f%%｜淨利率 %.1f%%｜負債權益比 %.2f｜營收年增率 %.1f%%｜EPS年增率 %.1f%%｜股息殖利率 %.2f%%｜Beta %.2f｜EPS(TTM) %.2f｜流動比率 %.2f｜市值 $%.0fM｜距52週高點 %+.1f%%｜距52週低點 %+.1f%%\n",
 	KeyMonthRevenueYoYLine:     "- 月營收年增率：%+.1f%%\n",
