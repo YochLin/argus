@@ -967,7 +967,7 @@ func (b *Bot) runWeeklyReviewMarket(ctx context.Context, m market.MarketID, posi
 func (b *Bot) RunMonthlyReport(ctx context.Context) {
 	defer b.recoverJobPanic("monthly report")
 
-	from, to := monthRange(time.Now().In(cst))
+	from, to := service.MonthRange(time.Now().In(cst))
 
 	usBlock, usOK := b.buildMonthlyReportBlock(market.US, from, to)
 	twBlock, twOK := b.buildMonthlyReportBlock(market.TW, from, to)
@@ -995,81 +995,50 @@ func (b *Bot) RunMonthlyReport(ctx context.Context) {
 // count, benchmark move, cash) — Phase 6 PR2's per-market split of what used
 // to be RunMonthlyReport's single US-only body (§5.3). ok is false when m
 // has no net_worth_snapshots row anywhere in [from, to], meaning the whole
-// block should be skipped rather than shown empty; every other input inside
-// the block is independently optional and just omits its own line, same
-// degrade-per-field convention as the rest of this file. Content lines
-// deliberately keep their pre-Phase-6 "$"-formatted keys (KeyMonthlyReportChangeLine
-// et al., reused unchanged for the TW block too) rather than gaining a TWD
-// variant each — the caller's KeyPortfolioSectionUS/TW header is what
-// establishes which currency a block's numbers are in, matching this
-// project's accepted "只有新增的聚合行 key 直接把幣別做進文案" simplification
-// (see docs/phase-6-tw-market.md §3.2); only the genuinely new benchmark
-// line (SPY vs. 0050 — a different benchmark name, not just a currency
-// symbol) gets its own TW-specific key.
+// block should be skipped rather than shown empty; every other line is
+// independently optional (guarded by the corresponding Have* field) and
+// just omitted, same degrade-per-field convention as the rest of this file.
+// The actual data gathering/derivation lives in
+// service.BuildMonthlyReportBlock (Phase 24 Stage 3) — this function is
+// just the i18n rendering of its result. Content lines deliberately keep
+// their pre-Phase-6 "$"-formatted keys (KeyMonthlyReportChangeLine et al.,
+// reused unchanged for the TW block too) rather than gaining a TWD variant
+// each — the caller's KeyPortfolioSectionUS/TW header is what establishes
+// which currency a block's numbers are in, matching this project's accepted
+// "只有新增的聚合行 key 直接把幣別做進文案" simplification (see
+// docs/phase-6-tw-market.md §3.2); only the genuinely new benchmark line
+// (SPY vs. 0050 — a different benchmark name, not just a currency symbol)
+// gets its own TW-specific key.
 func (b *Bot) buildMonthlyReportBlock(m market.MarketID, from, to string) (string, bool) {
-	points, err := b.db.GetNetWorthRange(from, to, m)
+	cash, haveCash, err := b.loadCash(m)
 	if err != nil {
-		logger.Errorf("monthly report: net worth range (%s): %v", m, err)
-		return "", false
-	}
-	if len(points) == 0 {
-		return "", false
+		logger.Errorf("monthly report: load cash (%s): %v", m, err)
 	}
 
-	values := make([]float64, len(points))
-	for i, p := range points {
-		values[i] = p.Total
+	block, ok := service.BuildMonthlyReportBlock(b.db, m, from, to, cash, haveCash)
+	if !ok {
+		return "", false
 	}
-	latest := values[len(values)-1]
 
 	var sb strings.Builder
-	sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportSparklineLine, sparkline(values)))
-
-	// Monthly return convention is "prior month-end vs. this month-end" (not
-	// this month's first row, which would miss the change on the very first
-	// trading day of the month). Falls back to this month's own first value
-	// when there's no prior-month baseline yet (e.g. the first month on
-	// record); if that's the only point too, there's nothing to diff
-	// against, so the line is skipped entirely.
-	fromDate, _ := time.Parse("2006-01-02", from)
-	priorMonthEnd := fromDate.AddDate(0, 0, -1).Format("2006-01-02")
-	baseline, haveBaseline, err := b.db.GetNetWorthOnOrBefore(priorMonthEnd, m)
-	if err != nil {
-		logger.Errorf("monthly report: baseline net worth (%s): %v", m, err)
+	sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportSparklineLine, service.Sparkline(block.Values)))
+	if block.HaveChange {
+		sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportChangeLine, block.Latest, block.ChangePct))
 	}
-	if !haveBaseline && len(values) > 1 {
-		baseline, haveBaseline = values[0], true
+	sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportDrawdownLine, block.DrawdownPct))
+	if block.SellCount > 0 {
+		sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportRealizedLine, block.Realized))
 	}
-	if haveBaseline && baseline != 0 {
-		sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportChangeLine, latest, (latest-baseline)/baseline*100))
-	}
-
-	sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportDrawdownLine, maxDrawdownPct(values)))
-
-	if count, sellCount, realized, err := b.db.GetTransactionStatsByMarket(from, to, m); err != nil {
-		logger.Errorf("monthly report: transaction stats (%s): %v", m, err)
-	} else {
-		if sellCount > 0 {
-			sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportRealizedLine, realized))
-		}
-		sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportTxCountLine, count))
-	}
-
-	if first, last, ok, err := b.db.GetSnapshotCloseRange(benchmarkFor(m), from, to); err != nil {
-		logger.Errorf("monthly report: benchmark range (%s): %v", m, err)
-	} else if ok && first != 0 {
-		pct := (last - first) / first * 100
+	sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportTxCountLine, block.TxCount))
+	if block.HaveBenchmark {
 		if m == market.TW {
-			sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportTWBenchmarkLine, pct))
+			sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportTWBenchmarkLine, block.BenchmarkPct))
 		} else {
-			sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportSPYLine, pct))
+			sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportSPYLine, block.BenchmarkPct))
 		}
 	}
-
-	if cash, haveCash, err := b.loadCash(m); err != nil {
-		logger.Errorf("monthly report: load cash (%s): %v", m, err)
-	} else if haveCash {
-		sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportCashLine, latest+cash, cash))
+	if block.HaveCash {
+		sb.WriteString(i18n.T(b.lang, i18n.KeyMonthlyReportCashLine, block.Latest+block.Cash, block.Cash))
 	}
 
 	return sb.String(), true
