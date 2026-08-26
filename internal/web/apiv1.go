@@ -66,33 +66,46 @@ func (s *Server) registerAPIV1() {
 		})
 		return
 	}
-	s.mux.HandleFunc("POST /api/v1/auth/login", s.handleAPILogin)
-	s.mux.HandleFunc("POST /api/v1/auth/refresh", s.handleAPIRefresh)
-	// A trivial authenticated endpoint so a client can verify a token
-	// without side effects.
-	s.mux.HandleFunc("GET /api/v1/auth/me", s.requireAPIAuth(s.handleAPIMe))
-
-	// Step 4.2's resources. Unlike the pre-v1 write routes, these carry no
-	// requireWritable: registerAPIV1 already returned early if WEB_PASSWORD
-	// is unset, so reaching any of them means write auth is configured and a
-	// token was presented.
-	s.mux.HandleFunc("GET /api/v1/portfolio", s.requireAPIAuth(s.handleAPIPortfolio))
-	s.mux.HandleFunc("GET /api/v1/watchlist", s.requireAPIAuth(s.handleAPIWatchlistGet))
-	s.mux.HandleFunc("POST /api/v1/watchlist", s.requireAPIAuth(s.handleAPIWatchlistAdd))
-	s.mux.HandleFunc("POST /api/v1/watchlist/remove", s.requireAPIAuth(s.handleAPIWatchlistRemove))
-	s.mux.HandleFunc("POST /api/v1/trade/buy", s.requireAPIAuth(s.requireAPITrade(s.handleAPITradeBuy)))
-	s.mux.HandleFunc("POST /api/v1/trade/sell", s.requireAPIAuth(s.requireAPITrade(s.handleAPITradeSell)))
-	s.mux.HandleFunc("POST /api/v1/risk/stop", s.requireAPIAuth(s.requireAPITrade(s.handleAPISetStop)))
-	s.mux.HandleFunc("GET /api/v1/recommendations/latest", s.requireAPIAuth(s.handleAPIRecommendationsLatest))
-	s.mux.HandleFunc("GET /api/v1/scan/hits", s.requireAPIAuth(s.handleAPIScanHits))
-	s.mux.HandleFunc("GET /api/v1/notifications", s.requireAPIAuth(s.handleAPINotifications))
-	s.mux.HandleFunc("POST /api/v1/notifications/{id}/read", s.requireAPIAuth(s.handleAPINotificationRead))
-	// The live channel authenticates itself (a browser WebSocket can't send
-	// an Authorization header), so it isn't wrapped in requireAPIAuth — see
-	// handleWS.
-	if s.events != nil {
-		s.mux.HandleFunc("GET /api/v1/ws", s.handleWS)
+	for pattern, handler := range s.apiV1Handlers() {
+		s.mux.HandleFunc(pattern, handler)
 	}
+}
+
+// apiV1Handlers is the v1 route table, built as data rather than as a run of
+// mux.HandleFunc calls so openapi_test.go can walk it and fail when a route
+// is added without a matching entry in docs/openapi.yaml. A spec nobody
+// checks drifts within one PR.
+//
+// Unlike the pre-v1 write routes, none of these carry requireWritable:
+// registerAPIV1 has already returned early if WEB_PASSWORD is unset, so
+// reaching any of them means write auth is configured and a credential was
+// presented. /api/v1/ws is the one exception to requireAPIAuth — a browser
+// WebSocket can't send an Authorization header, so handleWS does its own
+// check (see there).
+func (s *Server) apiV1Handlers() map[string]http.HandlerFunc {
+	routes := map[string]http.HandlerFunc{
+		"POST /api/v1/auth/login":   s.handleAPILogin,
+		"POST /api/v1/auth/refresh": s.handleAPIRefresh,
+		// A trivial authenticated endpoint so a client can verify a token
+		// without side effects.
+		"GET /api/v1/auth/me": s.requireAPIAuth(s.handleAPIMe),
+
+		"GET /api/v1/portfolio":                s.requireAPIAuth(s.handleAPIPortfolio),
+		"GET /api/v1/watchlist":                s.requireAPIAuth(s.handleAPIWatchlistGet),
+		"POST /api/v1/watchlist":               s.requireAPIAuth(s.handleAPIWatchlistAdd),
+		"POST /api/v1/watchlist/remove":        s.requireAPIAuth(s.handleAPIWatchlistRemove),
+		"POST /api/v1/trade/buy":               s.requireAPIAuth(s.requireAPITrade(s.handleAPITradeBuy)),
+		"POST /api/v1/trade/sell":              s.requireAPIAuth(s.requireAPITrade(s.handleAPITradeSell)),
+		"POST /api/v1/risk/stop":               s.requireAPIAuth(s.requireAPITrade(s.handleAPISetStop)),
+		"GET /api/v1/recommendations/latest":   s.requireAPIAuth(s.handleAPIRecommendationsLatest),
+		"GET /api/v1/scan/hits":                s.requireAPIAuth(s.handleAPIScanHits),
+		"GET /api/v1/notifications":            s.requireAPIAuth(s.handleAPINotifications),
+		"POST /api/v1/notifications/{id}/read": s.requireAPIAuth(s.handleAPINotificationRead),
+	}
+	if s.events != nil {
+		routes["GET /api/v1/ws"] = s.handleWS
+	}
+	return routes
 }
 
 func (s *Server) handleAPIMe(w http.ResponseWriter, r *http.Request) {
