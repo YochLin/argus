@@ -993,6 +993,15 @@ type PriceEventFacts struct {
 	GapTriggered        bool
 	ChangeTriggered     bool
 	CumulativeTriggered bool
+
+	// ATRMultiple is the day's move as a multiple of ATR(14) and VolumeRatio
+	// its volume against the 20-day average — the "how unusual is this
+	// really" scale a bare percentage can't carry, since 7% is not the same
+	// event for NVDA as for KO. 0 means "not enough history to say", and the
+	// line is then left out entirely. Thresholds are untouched by this: the
+	// scale is context for the writeup, never a gate.
+	ATRMultiple float64
+	VolumeRatio float64
 }
 
 // buildPriceEventPrompt is Phase 20's gap/big-move event-summary prompt (see
@@ -1024,6 +1033,9 @@ func buildPriceEventPrompt(lang i18n.Lang, ev PriceEventFacts, news []data.NewsI
 	fmt.Fprint(&sb, i18n.T(lang, i18n.KeyPriceEventChangeLine, ev.ChangePct, trigger(ev.ChangeTriggered)))
 	if ev.CumulativePct != 0 {
 		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyPriceEventCumulativeLine, ev.CumulativePct, trigger(ev.CumulativeTriggered)))
+	}
+	if ev.ATRMultiple > 0 && ev.VolumeRatio > 0 {
+		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyPriceEventScaleLine, ev.ATRMultiple, ev.VolumeRatio))
 	}
 
 	if len(news) > 0 {

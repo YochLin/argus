@@ -526,6 +526,7 @@ const (
 	// non-zero" convention (see buildPriceEventPrompt).
 	KeyPriceEventCumulativeLine Key = "price_event_cumulative_line"
 	KeyPriceEventTriggerSuffix  Key = "price_event_trigger_suffix"
+	KeyPriceEventScaleLine      Key = "price_event_scale_line"
 	KeyPriceEventPromptTask     Key = "price_event_prompt_task"
 	KeyPriceEventResultTitle    Key = "price_event_result_title"
 	// KeyPriceEventOverflowLine wraps the whole overflow-notice message

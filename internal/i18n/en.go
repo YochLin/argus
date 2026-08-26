@@ -460,11 +460,13 @@ Keep the reply concise — under 300 words total.
 	KeyPriceEventChangeLine:     "Day's change: %+.1f%% (close vs prior close)%s\n",
 	KeyPriceEventCumulativeLine: "Recent cumulative change: %+.1f%%%s\n",
 	KeyPriceEventTriggerSuffix:  "  (threshold crossed)",
+	KeyPriceEventScaleLine:      "Scale: the day's move is about %.1fx ATR(14), on %.1fx the 20-day average volume\n",
 	KeyPriceEventPromptTask: `
 Write 3–5 sentences:
 1. State the gap/change/cumulative numbers above as fact. Only the one marked "threshold crossed" is why this was recorded; the others are same-day context worth contrasting (a near-flat close after a violent gap means buyers absorbed it intraday).
 2. If news is attached above, infer a likely cause from it (the date in parentheses is when it was published); if no news is attached, say plainly "no related news, cause unknown" — don't guess.
-3. This is a factual description, not trading advice — don't recommend any action.
+3. If a scale line is attached above, use it to say how unusual the move really is (e.g. "about 3x ATR on 2.4x volume") rather than restating the percentage.
+4. This is a factual description, not trading advice — don't recommend any action.
 `,
 	KeyPriceEventResultTitle:        "📊 *Price Event: %s*\n\n%s",
 	KeyPriceEventOverflowLine:       "The following tickers also triggered a price event today (over this run's cap, no writeup):\n%sSee /events for the full log",
