@@ -156,8 +156,11 @@ func (b *Bot) recordPriceEvents(ctx context.Context, hits []signals.PriceEvent, 
 	}
 
 	for _, ev := range writeup {
-		news, _ := b.provider.GetNews(ev.Ticker, 5)
-		news = filterNewsNearDate(news, date)
+		news, _ := b.provider.GetNews(ev.Ticker, eventNewsFetch)
+		news = dedupeHeadlines(filterNewsNearDate(news, date))
+		if len(news) > eventNewsSlots {
+			news = news[:eventNewsSlots]
+		}
 		summary, model, latencyMs, err := b.llm.ExplainPriceEvent(ctx, priceEventFacts(ev), news)
 		b.recordPriceEventLLMRun(ev, m, news, summary, model, latencyMs)
 		if err != nil {
