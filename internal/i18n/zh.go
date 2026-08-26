@@ -448,11 +448,13 @@ var zhMessages = map[Key]string{
 	KeyPriceEventChangeLine:     "當日漲跌：%+.1f%%（收盤相對前收）%s\n",
 	KeyPriceEventCumulativeLine: "近期累積漲跌：%+.1f%%%s\n",
 	KeyPriceEventTriggerSuffix:  "　← 本次觸發門檻",
+	KeyPriceEventScaleLine:      "波動尺度：當日變動約為 ATR(14) 的 %.1f 倍，成交量為近 20 日均量的 %.1f 倍\n",
 	KeyPriceEventPromptTask: `
 請用繁體中文，依下列要求寫 3–5 句話：
 1. 先陳述上方跳空／漲跌／累積的事實數字；標「← 本次觸發門檻」的那一項才是這次記錄的原因，其餘是同一天的背景事實（例如跳空後收盤幾乎持平，代表盤中買盤把跌幅收了回來，這種對比值得講）
 2. 若上方附有相關新聞，依新聞推測可能原因（括號內為發佈日期）；若沒有附上任何新聞，請直接說「無對應新聞，原因不明」，不要憑空臆測
-3. 這是事實性描述，不要給任何買賣操作建議或語氣
+3. 若上方附有波動尺度，請用它說明這次變動有多異常（例如「約 3 倍 ATR、量能 2.4 倍」），不要只重複百分比
+4. 這是事實性描述，不要給任何買賣操作建議或語氣
 `,
 	KeyPriceEventResultTitle:        "📊 *價格事件：%s*\n\n%s",
 	KeyPriceEventOverflowLine:       "另有以下標的今日也觸發價格事件（超過本次上限，未附摘要）：\n%s完整記錄請見 /events",

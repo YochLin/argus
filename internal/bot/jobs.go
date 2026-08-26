@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"errors"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -161,7 +162,9 @@ func (b *Bot) recordPriceEvents(ctx context.Context, hits []signals.PriceEvent, 
 		if len(news) > eventNewsSlots {
 			news = news[:eventNewsSlots]
 		}
-		summary, model, latencyMs, err := b.llm.ExplainPriceEvent(ctx, priceEventFacts(ev), news)
+		facts := priceEventFacts(ev)
+		facts.ATRMultiple, facts.VolumeRatio = b.priceEventScale(ev.Ticker, ev.ChangePct)
+		summary, model, latencyMs, err := b.llm.ExplainPriceEvent(ctx, facts, news)
 		b.recordPriceEventLLMRun(ev, m, news, summary, model, latencyMs)
 		if err != nil {
 			logger.Errorf("price events: LLM %s: %v", ev.Ticker, err)
@@ -186,6 +189,30 @@ func (b *Bot) recordPriceEvents(ctx context.Context, hits []signals.PriceEvent, 
 		sb.WriteString(i18n.T(b.lang, i18n.KeyPriceEventOverflowTickerLine, ev.Ticker, ev.GapPct, ev.ChangePct, ev.CumulativePct))
 	}
 	b.publishAlert("price_event", notification.LevelInfo, i18n.T(b.lang, i18n.KeyPriceEventOverflowLine, sb.String()))
+}
+
+// priceEventScale gives the event summary a sense of how unusual the move
+// actually is: the day's change as a multiple of ATR(14), and volume against
+// its 20-day average (Phase 20 後續 PR5). 7% is a routine day for NVDA and a
+// once-a-year one for KO, and a percentage alone can't say which this was.
+//
+// The day's change is the numerator even when the cumulative-decline
+// threshold is what fired — ATR measures a single session's range, so
+// comparing a five-day slide against it would be a category error. Costs one
+// GetHistory per writeup ticker, at most priceEventWriteupCap a day, and
+// reuses computeTechnicals rather than recomputing ATR here (spyCloses is
+// nil: relative strength isn't part of this). Returns 0, 0 on any missing
+// piece — the prompt then simply omits the line rather than printing a
+// multiple derived from a partial series.
+func (b *Bot) priceEventScale(ticker string, changePct float64) (atrMultiple, volumeRatio float64) {
+	t, candles, _ := b.computeTechnicals(ticker, nil)
+	if t == nil || len(candles) == 0 {
+		return 0, 0
+	}
+	if close := candles[len(candles)-1].Close; t.ATR14 > 0 && close > 0 {
+		atrMultiple = math.Abs(changePct) / (t.ATR14 / close * 100)
+	}
+	return atrMultiple, t.VolumeRatio
 }
 
 // snapshotBenchmark records benchmarkFor(m)'s (SPY/0050) closing price into

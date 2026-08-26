@@ -13,6 +13,36 @@ import (
 	"argus/internal/market"
 )
 
+func TestPriceEventScale(t *testing.T) {
+	// 60 sessions of a $2 daily range on a $100 close: ATR(14) is 2, i.e. 2%
+	// of price, so a -6% day is a 3x-ATR day. The last session's volume is
+	// 2.4x the 20-day baseline.
+	candles := make([]data.Candle, 60)
+	start := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	for i := range candles {
+		candles[i] = data.Candle{Date: start.AddDate(0, 0, i), Open: 100, High: 101, Low: 99, Close: 100, Volume: 1000}
+	}
+	candles[len(candles)-1].Volume = 2400
+	b := &Bot{history: rankHistoryStub{byTicker: map[string][]data.Candle{"AAPL": candles}}}
+
+	atrMultiple, volumeRatio := b.priceEventScale("AAPL", -6)
+	if !almostEqualPct(atrMultiple, 3) {
+		t.Errorf("atrMultiple = %v, want 3 (a 6%% move against a 2%% ATR)", atrMultiple)
+	}
+	if !almostEqualPct(volumeRatio, 2.4) {
+		t.Errorf("volumeRatio = %v, want 2.4", volumeRatio)
+	}
+
+	t.Run("no history yields no scale line", func(t *testing.T) {
+		b := &Bot{history: rankHistoryStub{}}
+		if atr, vol := b.priceEventScale("AAPL", -6); atr != 0 || vol != 0 {
+			t.Errorf("priceEventScale() = %v, %v, want 0, 0", atr, vol)
+		}
+	})
+}
+
+func almostEqualPct(a, b float64) bool { return a-b < 0.01 && b-a < 0.01 }
+
 // quoteProvider is a data.Provider stub that returns a fixed quote per
 // ticker (or "no data" for anything else) — RunClosingSnapshot's market
 // filtering/date-semantics tests need real, distinguishable quotes per
