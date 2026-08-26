@@ -39,7 +39,7 @@ func TestWSTypeFilter(t *testing.T) {
 
 func TestWSRejectsUnauthenticated(t *testing.T) {
 	hub := notification.NewWebSocketHub()
-	s := New(Config{Password: "hunter2", JWTSecret: "test-secret", APIKey: "script-key", Events: hub})
+	s := New(Config{Password: "hunter2", JWTSecret: "test-secret-at-least-32-characters-long", APIKey: "script-key", Events: hub})
 	rec := httptest.NewRecorder()
 	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/ws", nil))
 	if rec.Code != http.StatusUnauthorized {
@@ -53,7 +53,7 @@ func TestWSRejectsUnauthenticated(t *testing.T) {
 // and getting it inverted would be invisible without an end-to-end check.
 func TestWSStreamsFilteredEvents(t *testing.T) {
 	hub := notification.NewWebSocketHub()
-	s := New(Config{Password: "hunter2", JWTSecret: "test-secret", APIKey: "script-key", Events: hub})
+	s := New(Config{Password: "hunter2", JWTSecret: "test-secret-at-least-32-characters-long", APIKey: "script-key", Events: hub})
 	srv := httptest.NewServer(s.mux)
 	defer srv.Close()
 
