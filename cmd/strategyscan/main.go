@@ -78,6 +78,12 @@ type TriggerRecord struct {
 	TradeExitRet    float64
 	TradeExitReason string // "stop" | "target" | "timeout"
 	TradeHoldDays   int
+
+	// Candidate-ranking factors, populated only on the baseline rows that
+	// get a trade replay — they are what -dump-trades exists to carry, and
+	// computing PriceLevels on every one of the few hundred thousand
+	// evaluated days would dominate the run for rows nothing reads.
+	Factors rankFactors
 }
 
 // TradeOutcome is one trigger's full-trade replay result.
@@ -553,9 +559,13 @@ func main() {
 				continue
 			}
 
-			// Broad market regime at evalDate
+			// Broad market regime at evalDate. sIdx is hoisted out of the
+			// condition because the ranking factors need the same
+			// benchmark alignment — both must read the benchmark AS OF
+			// evalDate, never its latest bar.
+			sIdx, hasBench := benchDateIdx[evalDateStr]
 			marketRegime := "bull"
-			if sIdx, ok := benchDateIdx[evalDateStr]; ok && sIdx >= 49 {
+			if hasBench && sIdx >= 49 {
 				benchSub := benchCandles[:sIdx+1]
 				benchMA50 := signals.MA(data.Closes(benchSub), 50)
 				if benchMA50 > 0 && benchCandles[sIdx].Close < benchMA50 {
@@ -596,6 +606,15 @@ func main() {
 					baseline.TradeExitRet = outcome.ExitRet
 					baseline.TradeExitReason = outcome.ExitReason
 					baseline.TradeHoldDays = outcome.HoldDays
+					// Always compute: a missing benchmark must leave the
+					// benchmark-relative factors NaN, not the zero value
+					// rankFactors would otherwise carry into the CSV as a
+					// real 0.
+					var benchSub []data.Candle
+					if hasBench {
+						benchSub = benchCandles[:sIdx+1]
+					}
+					baseline.Factors = computeRankFactors(sub, benchSub)
 				}
 			}
 			records = append(records, baseline)
@@ -1189,7 +1208,10 @@ func writeTradeDumpCSV(path string, recs []TriggerRecord) {
 	defer f.Close()
 	w := csv.NewWriter(f)
 	defer w.Flush()
-	if err := w.Write([]string{"Date", "Ticker", "ExitRet", "ExitReason", "HoldDays"}); err != nil {
+	if err := w.Write([]string{
+		"Date", "Ticker", "ExitRet", "ExitReason", "HoldDays",
+		"RS63", "RS252", "Mom12_1", "DollarVol20", "SupportDist", "AbsLevelDist",
+	}); err != nil {
 		fmt.Printf("Error writing trade dump: %v\n", err)
 		return
 	}
@@ -1203,6 +1225,12 @@ func writeTradeDumpCSV(path string, recs []TriggerRecord) {
 			strconv.FormatFloat(r.TradeExitRet, 'f', 6, 64),
 			r.TradeExitReason,
 			strconv.Itoa(r.TradeHoldDays),
+			fmtFactor(r.Factors.RS63),
+			fmtFactor(r.Factors.RS252),
+			fmtFactor(r.Factors.Mom12_1),
+			fmtFactor(r.Factors.DollarVol20),
+			fmtFactor(r.Factors.SupportDist),
+			fmtFactor(r.Factors.AbsLevelDist),
 		}); err != nil {
 			fmt.Printf("Error writing trade dump: %v\n", err)
 			return
@@ -1211,6 +1239,19 @@ func writeTradeDumpCSV(path string, recs []TriggerRecord) {
 	}
 	w.Flush()
 	fmt.Printf("Trade dump written: %s (%d trades)\n", path, n)
+}
+
+// fmtFactor writes an uncomputable factor as an empty cell rather than a
+// number. Every consumer of this dump groups by date and sorts by a factor,
+// so a 0 standing in for "unknown" would not be ignored — it would rank,
+// and rank near the middle of a signed factor or at the bottom of a
+// positive one. An empty cell reads as NaN in pandas and drops out of the
+// sort instead.
+func fmtFactor(v float64) string {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return ""
+	}
+	return strconv.FormatFloat(v, 'f', 6, 64)
 }
 
 func writeBaselineSummaryCSV(path string, baselineRecs []TriggerRecord) {

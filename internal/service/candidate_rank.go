@@ -16,6 +16,45 @@ import (
 // MarketID param: resolving "which ticker is the benchmark" (SPY vs. 0050)
 // is a bot-layer policy choice (see bot.benchmarkFor, still used by several
 // other callers), not something this service needs to know.
+//
+// # What has actually been measured (2026-08-26)
+//
+// This layer went unbacktested until then. cmd/strategyscan's -dump-trades
+// now carries each replayed trade's factor values, so the ranking can be
+// replayed offline over the random-entry control: 246 US cross-sections,
+// ~465 names each, 2016-11..2026-08, split at 2021-11 (the earlier slice is
+// the holdout — the screens were designed against the later one). Excess is
+// the kept names' mean exit return minus the whole pool's, with a
+// date-clustered bootstrap.
+//
+// Three results, and none of them says to add a factor:
+//
+//   - The support-side fix is return-NEUTRAL. Paired on identical pools,
+//     old (both-sides distance) -> new (support only) is +0.00% in the
+//     holdout (0.0 sigma), -0.07% from 2021-11 on (0.7 sigma), -0.03% full
+//     sample (0.6 sigma). It was made because the factor did not measure
+//     what its name said, not because it pays; don't let a future study
+//     "restore" the old behavior on a stray positive number either.
+//   - Nothing replicates across the two slices. Ranking on 63-day relative
+//     strength is worth +0.98% at 3.9 sigma in the holdout (top 10% kept)
+//     and +0.15% at 0.4 sigma after 2021-11. Swapping in 252-day RS or
+//     12-1 momentum gives the exact mirror image: 0.9/1.1 sigma in the
+//     holdout, 3.1/2.8 sigma after. Two factor sets that each work in only
+//     one half are one factor set that works in neither, so 12-1 momentum
+//     was NOT adopted despite the literature behind it.
+//   - Dollar volume as a liquidity gate (drop the thinnest 20-50% of the
+//     pool, then rank on RS alone) improves excess-vs-pool but not the
+//     portfolio: holdout, top 20% kept, the gated book returns +2.78%
+//     against +2.86% ungated. The excess only widened because gating
+//     lowered the pool it is measured against. Left as a score.
+//
+// The one pattern that does hold everywhere is selectivity: excess grows
+// monotonically as the kept fraction shrinks (top 50% beats nothing at all
+// in any slice; top 10% is where every scheme's edge appears). n is
+// therefore the knob most likely to matter here, not the factor list — but
+// the study's pools are ~465 names deep and the live one is dozens, so that
+// has to be measured against a real candidate pool before it is touched.
+// See cmd/strategyscan/factors.go for the dumped columns.
 func RankAndTruncateCandidates(history RiskHistoryReader, tickers []string, benchTicker string, n int) []string {
 	if len(tickers) <= n {
 		return tickers
