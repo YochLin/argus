@@ -96,6 +96,16 @@ type Config struct {
 	// IndustryMap backs /api/sectorflow's TW classification (FinMind's
 	// whole-market GetIndustryMap) — nil when FINMIND_TOKEN isn't set.
 	IndustryMap data.IndustryMapProvider
+	// JWTSecret (env JWT_SECRET, Phase 24 Stage 4) signs the /api/v1 access
+	// and refresh tokens. Empty disables the whole /api/v1 surface — see
+	// registerAPIV1 — which is the right default: an API with no signing key
+	// has no safe degraded mode. Rotating it invalidates every issued token,
+	// which is also how you log every client out.
+	JWTSecret string
+	// APIKey (env API_KEY) is the alternative credential for personal
+	// scripts and cron jobs, sent as X-API-Key. Empty means only JWT is
+	// accepted; it is never matched against an empty header.
+	APIKey string
 	// LLMAudit gates Phase 19's /llm page (env WEB_LLM_AUDIT, §8.4) — unlike
 	// Paper/OptionChain/etc.'s "always register, 404/empty at request time"
 	// convention, this one skips route registration entirely when off, so
@@ -141,6 +151,8 @@ type Server struct {
 	sectorFlow          *sectorFlowCache
 	newsSourceDB        newsSourceWriter
 	llmAudit            bool
+	jwtSecret           string
+	apiKey              string
 	mux                 *http.ServeMux
 }
 
@@ -171,6 +183,8 @@ func New(cfg Config) *Server {
 		sectorFlow:          newSectorFlowCache(),
 		newsSourceDB:        cfg.DB,
 		llmAudit:            cfg.LLMAudit,
+		jwtSecret:           cfg.JWTSecret,
+		apiKey:              cfg.APIKey,
 	}
 	s.recPerf = newRecPerfStore(s.db, s.history)
 	s.mux = http.NewServeMux()
@@ -233,6 +247,7 @@ func New(cfg Config) *Server {
 	// requireWritable/requireAuth gate as every other write route — a bulk
 	// transaction write is no less a write than a single /buy.
 	s.mux.HandleFunc("POST /api/import", s.requireWritable(s.requireAuth(s.handleImport)))
+	s.registerAPIV1()
 	s.mux.Handle("/", spaHandler())
 	return s
 }

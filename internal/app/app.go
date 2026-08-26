@@ -360,6 +360,8 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 			Sector:              sectorProvider,
 			IndustryMap:         industryMapProvider,
 			LLMAudit:            cfg.WebLLMAudit,
+			JWTSecret:           cfg.JWTSecret,
+			APIKey:              cfg.APIKey,
 		})
 		// Phase 18's sector money-flow scan only has a consumer when the
 		// dashboard is running, so it's registered here rather than

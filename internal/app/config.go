@@ -70,6 +70,18 @@ type Config struct {
 	// WebAddr also set, but no extra validation beyond that: an unreachable
 	// server's password setting is simply inert.
 	WebPassword string
+	// JWTSecret (JWT_SECRET, Phase 24 Stage 4 Step 4.1) signs the /api/v1
+	// access/refresh tokens. Empty, too short (see web.minJWTSecretLen), or
+	// WebPassword left empty disables the /api/v1 surface entirely (see
+	// web.registerAPIV1) — same presence-of-config convention as
+	// WebAddr/WebPassword, and for the same reason those two are absent from
+	// the Settings page's whitelist: it is this deployment's own access
+	// credential, not a third-party service connection.
+	JWTSecret string
+	// APIKey (API_KEY) is the script/cron credential for the same surface,
+	// sent as an X-API-Key header instead of a bearer token. Empty means
+	// JWT-only.
+	APIKey string
 	// WebLLMAudit (WEB_LLM_AUDIT, Phase 19 PR1, docs/phase-19-llm-transparency.md
 	// §8.4) gates the /llm audit-trail page's API routes — llm_runs is still
 	// written on every GenerateRecommendations call regardless (that's the
@@ -178,6 +190,8 @@ func Load() Config {
 		WebAddr:     os.Getenv("WEB_ADDR"),
 		WebPassword: os.Getenv("WEB_PASSWORD"),
 		WebLLMAudit: os.Getenv("WEB_LLM_AUDIT") == "true",
+		JWTSecret:   os.Getenv("JWT_SECRET"),
+		APIKey:      os.Getenv("API_KEY"),
 
 		StopLossPct:         envOrFloat("STOP_LOSS_PCT", 10),
 		TrailingStopPct:     envOrFloat("TRAILING_STOP_PCT", 15),

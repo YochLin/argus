@@ -26,10 +26,14 @@ import (
 // TELEGRAM_* qualify only because Phase 17 PR1 made them non-fatal.
 //
 // Also deliberately absent: WEB_ADDR/WEB_PASSWORD (this page is unreachable
-// without them, so it can't bootstrap itself), SJ_PRODUCTION (the paper vs.
-// real-money switch for the Shioaji daemon — worth the friction of an SSH
-// session), and the strategy-tuning numbers, which would pass the boot test
-// but aren't part of "connect a service."
+// without them, so it can't bootstrap itself), JWT_SECRET/API_KEY (Phase 24
+// Stage 4 — same family as WEB_PASSWORD: this deployment's own access
+// credentials rather than a third-party service connection, and rotating
+// either one silently logs out every app and script that already has a
+// token), SJ_PRODUCTION (the paper vs. real-money switch for the Shioaji
+// daemon — worth the friction of an SSH session), and the strategy-tuning
+// numbers, which would pass the boot test but aren't part of "connect a
+// service."
 type settingKey struct {
 	name string
 	// group is an id, not a display string (see handlers.go's calendarEvent
