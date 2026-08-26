@@ -130,9 +130,41 @@ const atrPeriod = 14
 // sell) — same "somebody has to eventually exit" convention the old model
 // used for its timeout branch.
 func simulateTrade(candles []data.Candle, entryIdx int, cfg paper.Config, slippagePct float64, maxHoldDays int) (TradeOutcome, bool) {
+	out := simulateTradeHorizons(candles, entryIdx, cfg, slippagePct, []int{maxHoldDays})
+	o, ok := out[maxHoldDays]
+	return o, ok
+}
+
+// simulateTradeHorizons is simulateTrade evaluated at several maximum
+// holding periods at once. A trade has exactly one forward price path, and
+// a shorter horizon can only ever truncate it: if the stop/trailing/target
+// fired on day d, every horizon >= d sees that same exit, and every shorter
+// one sees a forced close at its own last day. So one replay answers all of
+// them — which matters both for speed (the state machine and its ATR
+// recomputation run once instead of once per horizon) and for correctness
+// of the comparison, since the horizons are then paired by construction
+// rather than by joining separate runs on (ticker, date).
+//
+// holds need not be sorted and may contain duplicates. Horizons that run
+// past the end of the data are clamped to the last available bar, so a
+// trade opened near the end of the series contributes the same (shorter)
+// outcome to every horizon beyond it rather than dropping out of the long
+// ones — dropping it would make the long horizons quietly survivorship-
+// biased toward trades that had room to run.
+func simulateTradeHorizons(candles []data.Candle, entryIdx int, cfg paper.Config, slippagePct float64, holds []int) map[int]TradeOutcome {
+	if len(holds) == 0 {
+		return nil
+	}
+	maxHold := holds[0]
+	for _, h := range holds {
+		if h > maxHold {
+			maxHold = h
+		}
+	}
+
 	entry := candles[entryIdx].Close
 	if entry <= 0 {
-		return TradeOutcome{}, false
+		return nil
 	}
 	highs, lows, closes := data.Highs(candles), data.Lows(candles), data.Closes(candles)
 	atrAt := func(idx int) float64 {
@@ -149,13 +181,14 @@ func simulateTrade(candles []data.Candle, entryIdx int, cfg paper.Config, slippa
 	entryDate := candles[entryIdx].Date.Format("2006-01-02")
 	buyTrade, ok := acct.ApplySignal(paper.Signal{Date: entryDate, Ticker: ticker, Action: "BUY", Price: entry}, entry, atrAt(entryIdx), sizingCfg)
 	if !ok {
-		return TradeOutcome{}, false
+		return nil
 	}
 	notional := buyTrade.Price * buyTrade.Shares
 	slippageRoundTripPct := 2 * slippagePct
 
+	var ruleExit *TradeOutcome
 	last := entryIdx
-	for i := 1; i <= maxHoldDays; i++ {
+	for i := 1; i <= maxHold; i++ {
 		idx := entryIdx + i
 		if idx >= len(candles) {
 			break
@@ -167,16 +200,35 @@ func simulateTrade(candles []data.Candle, entryIdx int, cfg paper.Config, slippa
 			sell := trades[0]
 			feePct := (buyTrade.Fee + sell.Fee) / notional * 100.0
 			exitRet := (sell.Price-entry)/entry*100.0 - feePct - slippageRoundTripPct
-			return TradeOutcome{ExitRet: exitRet, ExitReason: sell.Reason, HoldDays: i}, true
+			ruleExit = &TradeOutcome{ExitRet: exitRet, ExitReason: sell.Reason, HoldDays: i}
+			break
 		}
 	}
 	if last == entryIdx {
-		return TradeOutcome{}, false
+		return nil
 	}
+	maxDays := last - entryIdx
+
 	sellFeeAtTimeout := paper.FeeFor(cfg.Market, "SELL", notional, cfg.FeeDiscount)
-	feePct := (buyTrade.Fee + sellFeeAtTimeout) / notional * 100.0
-	exitRet := (candles[last].Close-entry)/entry*100.0 - feePct - slippageRoundTripPct
-	return TradeOutcome{ExitRet: exitRet, ExitReason: "timeout", HoldDays: last - entryIdx}, true
+	timeoutFeePct := (buyTrade.Fee + sellFeeAtTimeout) / notional * 100.0
+
+	out := make(map[int]TradeOutcome, len(holds))
+	for _, h := range holds {
+		days := h
+		if days > maxDays {
+			days = maxDays
+		}
+		if days < 1 {
+			continue
+		}
+		if ruleExit != nil && ruleExit.HoldDays <= days {
+			out[h] = *ruleExit
+			continue
+		}
+		exitRet := (candles[entryIdx+days].Close-entry)/entry*100.0 - timeoutFeePct - slippageRoundTripPct
+		out[h] = TradeOutcome{ExitRet: exitRet, ExitReason: "timeout", HoldDays: days}
+	}
+	return out
 }
 
 func main() {
@@ -195,7 +247,59 @@ func main() {
 	trailingPctFlag := flag.Float64("trailing-pct", -1, "full-trade replay: fixed trailing-stop distance, %%; 0 disables, -1 = paper.DefaultExits")
 	trailingATRFlag := flag.Float64("trailing-atr", -1, "full-trade replay: ATR-based trailing distance multiple; 0 = fixed %% only, -1 = paper.DefaultExits")
 	takeProfitATRFlag := flag.Float64("take-profit-atr", -1, "full-trade replay: ATR(14) multiple above entry for the take-profit target; 0 = disabled, -1 = paper.DefaultExits")
-	maxHoldDaysFlag := flag.Int("max-hold-days", 60, "full-trade replay: max holding days before a timeout exit (§11.9/PR3: 20 -> 60, matching the 數週到數月 position style)")
+	// 60 was chosen to match the 數週到數月 position style, and the sweep
+	// below confirms it is a safe place to sit rather than a tuned one.
+	// Replaying every entry at 5/10/20/30/40/60/90/120 days (US, 10y, ~59k
+	// control trades per slice) gives annualized returns that are FLAT from
+	// 20 days out, in both time slices:
+	//
+	//	slice      5     10     20     30     40     60     90    120
+	//	holdout  -6.6  +12.7  +15.3  +15.9  +15.9  +15.6  +15.4  +15.4
+	//	in-samp  +0.8   +6.4   +8.1   +9.0   +9.1   +8.4   +8.0   +7.7
+	//
+	// Per-trade return keeps climbing with the horizon (holdout: -0.13% at
+	// 5 days to +3.62% at 120) but only because the trade stays in the
+	// market longer; per unit of capital-time there is nothing to choose
+	// between 20 and 120. Below 20 there is: a short time stop destroys
+	// return outright.
+	//
+	// Win rate moves the other way the whole distance — 50.6% at 5 days
+	// down to 34.6% at 120 while the expectancy triples. Same lesson the
+	// take-profit sweep taught (see paper.DefaultExits): here too, win rate
+	// and expected value point in opposite directions, and win rate is the
+	// one that can be bought.
+	maxHoldDaysFlag := flag.Int("max-hold-days", 60, "full-trade replay: max holding days before a timeout exit (§11.9/PR3: 20 -> 60, matching the 數週到數月 position style; annualized return is flat from 20 to 120, see the doc comment)")
+	// The time stop is the one exit rule that exists ONLY in this tool —
+	// paper.Config has no max-holding-period field, so the live paper
+	// account holds until a stop/trailing/target fires. This sweep therefore
+	// asks whether a time stop is worth adding at all, and whether the
+	// answer differs per screen; it is not calibrating a live parameter.
+	//
+	// Run 2026-08-26 (US, 10y). The answer to both is no. The per-screen
+	// optimum does not survive the time split — annualized %, best horizon
+	// on the right:
+	//
+	//	screen             slice       20     30     40     60     90    120   best
+	//	box_bottom         holdout  +20.7  +23.0  +23.1  +19.9  +16.5  +15.8    40
+	//	box_bottom         in-samp   +9.9   +6.5   +0.7   +0.6   +3.8   +5.7    20
+	//	squeeze_breakout   holdout   +6.0   +7.0  +10.0  +13.4  +12.9  +12.3    60
+	//	squeeze_breakout   in-samp   +8.6  +10.0   +9.7  +19.2  +18.3  +14.7    60
+	//	trend_breakout     holdout   +2.9   +5.7   +7.0   +9.0   +9.7  +10.7   120
+	//	trend_breakout     in-samp   +3.1   +3.2   +5.9   +7.2   +5.8   +5.2    60
+	//	trend_pullback     holdout  +18.9  +21.1  +19.6  +18.4  +17.0  +15.5    30
+	//	trend_pullback     in-samp   +0.4   +3.5   +3.2   +2.9   +3.9   +6.2   120
+	//
+	// 網 4 was the reason this sweep was run — a pullback bounce looked like
+	// it was being dragged by a 60-day ceiling, and in the holdout it peaks
+	// at 30 exactly as predicted. In-sample it peaks at 120, the opposite
+	// end. 網 1 lands on 60 twice, but its excess over the control flips
+	// sign between the slices (+13.4 against a control of +15.6, then +19.2
+	// against +8.4), so that is not a replication either.
+	//
+	// Nothing was changed on this. A per-screen time stop calibrated here
+	// would be fitted to whichever half of the data was looked at first.
+	holdSweepFlag := flag.String("hold-sweep", "", "exit calibration: comma-separated max-holding-periods to also replay every entry at (e.g. 10,20,40,60,90,120), written to -hold-sweep-out")
+	holdSweepOutFlag := flag.String("hold-sweep-out", "", "where -hold-sweep writes its per-(entry, horizon) rows; default strategyscan_holds_<market>.csv")
 	// PR2 friction cost: -1 sentinel means "use the market's default" (US
 	// 0.1%, TW 0.15%, live-verified as a reasonable one-side slippage guess)
 	// since flag.Float64 can't default on a value (-market) not known until
@@ -362,6 +466,29 @@ func main() {
 			orDash(*dateFromFlag), orDash(*dateToFlag), orDash(*dateFromFlag))
 	}
 
+	holdSweep, err := parseHoldSweep(*holdSweepFlag)
+	if err != nil {
+		fmt.Printf("Error: -hold-sweep %v\n", err)
+		os.Exit(1)
+	}
+	var holdW *csv.Writer
+	if len(holdSweep) > 0 {
+		path := *holdSweepOutFlag
+		if path == "" {
+			path = fmt.Sprintf("strategyscan_holds_%s.csv", m)
+		}
+		f, err := os.Create(path)
+		if err != nil {
+			fmt.Printf("Error opening -hold-sweep-out: %v\n", err)
+			os.Exit(1)
+		}
+		defer f.Close()
+		holdW = csv.NewWriter(f)
+		defer holdW.Flush()
+		holdW.Write([]string{"Strategy", "Date", "Ticker", "Hold", "ExitRet", "ExitReason", "HoldDays"})
+		fmt.Printf("Hold sweep: replaying every entry at %v days -> %s\n", holdSweep, path)
+	}
+
 	fmt.Printf("=== Argus Strategy Historical Study Tool (cmd/strategyscan, market=%s, range=%s) ===\n", m, *rangeFlag)
 
 	var tickers []string
@@ -493,6 +620,31 @@ func main() {
 	rawHitCounts := make(map[string]int)
 	dedupedHitCounts := make(map[string]int)
 
+	// replay runs one entry's exit replay. With -hold-sweep on it replays
+	// every horizon in a single pass and writes them all, returning the one
+	// the summaries are built from (-max-hold-days) so the printed report is
+	// byte-identical to a run without the sweep.
+	sweepHolds := append(append([]int{}, holdSweep...), *maxHoldDaysFlag)
+	replay := func(strat, ticker string, candles []data.Candle, t int) (TradeOutcome, bool) {
+		if holdW == nil {
+			return simulateTrade(candles, t, exitCfg, *slippagePctFlag, *maxHoldDaysFlag)
+		}
+		outs := simulateTradeHorizons(candles, t, exitCfg, *slippagePctFlag, sweepHolds)
+		date := candles[t].Date.Format("2006-01-02")
+		for _, h := range holdSweep {
+			o, ok := outs[h]
+			if !ok {
+				continue
+			}
+			holdW.Write([]string{
+				strat, date, ticker, strconv.Itoa(h),
+				strconv.FormatFloat(o.ExitRet, 'f', 6, 64), o.ExitReason, strconv.Itoa(o.HoldDays),
+			})
+		}
+		o, ok := outs[*maxHoldDaysFlag]
+		return o, ok
+	}
+
 	count := 0
 	total := len(tickers)
 	for _, ticker := range tickers {
@@ -601,7 +753,7 @@ func main() {
 			baseline := baseRec
 			baseline.Strategy = baselineStrategy
 			if *baselineTradeSampleFlag > 0 && t%*baselineTradeSampleFlag == 0 {
-				if outcome, ok := simulateTrade(candles, t, exitCfg, *slippagePctFlag, *maxHoldDaysFlag); ok {
+				if outcome, ok := replay(baselineStrategy, ticker, candles, t); ok {
 					baseline.HasTrade = true
 					baseline.TradeExitRet = outcome.ExitRet
 					baseline.TradeExitReason = outcome.ExitReason
@@ -645,7 +797,7 @@ func main() {
 
 				rec := baseRec
 				rec.Strategy = strat
-				if outcome, ok := simulateTrade(candles, t, exitCfg, *slippagePctFlag, *maxHoldDaysFlag); ok {
+				if outcome, ok := replay(strat, ticker, candles, t); ok {
 					rec.HasTrade = true
 					rec.TradeExitRet = outcome.ExitRet
 					rec.TradeExitReason = outcome.ExitReason
@@ -1282,4 +1434,35 @@ func writeBaselineSummaryCSV(path string, baselineRecs []TriggerRecord) {
 		})
 	}
 	fmt.Printf("Saved baseline summary CSV to %s\n", path)
+}
+
+// parseHoldSweep parses -hold-sweep's comma-separated day counts. Empty
+// means the sweep is off, which is the default: it multiplies the output by
+// the number of horizons and nothing but the calibration study reads it.
+func parseHoldSweep(raw string) ([]int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	seen := map[int]bool{}
+	var out []int
+	for _, field := range strings.Split(raw, ",") {
+		field = strings.TrimSpace(field)
+		if field == "" {
+			continue
+		}
+		v, err := strconv.Atoi(field)
+		if err != nil {
+			return nil, fmt.Errorf("%q is not a whole number of days", field)
+		}
+		if v < 1 {
+			return nil, fmt.Errorf("%d must be >= 1", v)
+		}
+		if seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	return out, nil
 }

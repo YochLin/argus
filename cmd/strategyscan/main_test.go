@@ -1,6 +1,8 @@
 package main
 
 import (
+	"math"
+	"reflect"
 	"testing"
 	"time"
 
@@ -147,4 +149,82 @@ func TestSplitRegime(t *testing.T) {
 	if len(bull) != 2 || len(bear) != 1 {
 		t.Fatalf("want 2 bull / 1 bear, got %d / %d", len(bull), len(bear))
 	}
+}
+
+func TestParseHoldSweep(t *testing.T) {
+	got, err := parseHoldSweep(" 20, 60 ,20, 10 ")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if want := []int{20, 60, 10}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v (input order kept, duplicate dropped)", got, want)
+	}
+	if got, err := parseHoldSweep(""); got != nil || err != nil {
+		t.Errorf("empty = (%v, %v), want (nil, nil) — the sweep is off by default", got, err)
+	}
+	for _, bad := range []string{"0", "-5", "20,abc"} {
+		if _, err := parseHoldSweep(bad); err == nil {
+			t.Errorf("parseHoldSweep(%q) = nil error, want one", bad)
+		}
+	}
+}
+
+// sweepCandles builds a deterministic path from per-day percentage moves.
+func sweepCandles(moves []float64) []data.Candle {
+	price := 100.0
+	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	out := make([]data.Candle, 0, len(moves)+1)
+	out = append(out, data.Candle{Date: start, Open: price, High: price, Low: price, Close: price, Volume: 1_000_000})
+	for i, mv := range moves {
+		price *= 1 + mv/100
+		out = append(out, data.Candle{
+			Date: start.AddDate(0, 0, i+1),
+			Open: price, High: price, Low: price, Close: price,
+			Volume: 1_000_000,
+		})
+	}
+	return out
+}
+
+// The multi-horizon replay must agree exactly with the single-horizon one it
+// replaced, for every horizon and on both branches (a rule exit fired, and a
+// forced close at the horizon). One replay serving many horizons is only
+// worth having if it is the same replay.
+func TestSimulateTradeHorizonsMatchesSingleHorizon(t *testing.T) {
+	cfg := paper.Config{StopATRMult: 2, StopLossPct: 10, TrailingPct: 18, Market: market.US}
+	holds := []int{5, 10, 20, 40, 60}
+
+	paths := map[string][]float64{
+		"grind up (forced close at every horizon)": repeatMove(+0.4, 80),
+		"straight down (stop fires early)":         repeatMove(-1.5, 80),
+		"up then collapse (trailing fires late)":   append(repeatMove(+1.2, 40), repeatMove(-2.0, 40)...),
+	}
+
+	for name, moves := range paths {
+		t.Run(name, func(t *testing.T) {
+			candles := sweepCandles(moves)
+			multi := simulateTradeHorizons(candles, 0, cfg, 0.1, holds)
+			for _, h := range holds {
+				want, wantOK := simulateTrade(candles, 0, cfg, 0.1, h)
+				got, gotOK := multi[h]
+				if gotOK != wantOK {
+					t.Fatalf("h=%d: ok = %v, want %v", h, gotOK, wantOK)
+				}
+				if !wantOK {
+					continue
+				}
+				if math.Abs(got.ExitRet-want.ExitRet) > 1e-9 || got.ExitReason != want.ExitReason || got.HoldDays != want.HoldDays {
+					t.Errorf("h=%d: got %+v, want %+v", h, got, want)
+				}
+			}
+		})
+	}
+}
+
+func repeatMove(pct float64, n int) []float64 {
+	out := make([]float64, n)
+	for i := range out {
+		out[i] = pct
+	}
+	return out
 }

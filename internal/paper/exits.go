@@ -47,6 +47,14 @@ type ExitDefaults struct {
 // halving mean return — it buys the appearance of winning often and sells
 // the returns.
 //
+// There is deliberately no maximum-holding-period field: the live account
+// holds until a stop, trailing stop, or target fires. cmd/strategyscan's
+// -hold-sweep replayed the control at 5 through 120 days and annualized
+// return is flat from 20 days out in both time slices, so a time stop in
+// that range buys nothing, and no screen's preferred horizon replicated
+// across the split. Only very short caps (5-10 days) move the number, and
+// they move it down. See that flag's doc comment for the tables.
+//
 // StopATRMult/StopLossPct are NOT calibrated: changing the stop distance
 // changes SuggestShares' position size, so two stop widths produce different
 // notional exposure and their percentage returns are not comparable without
