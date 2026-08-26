@@ -10,7 +10,7 @@ import (
 
 // RankAndTruncateCandidates keeps only the top n of tickers by a rule score
 // blending relative strength vs. benchTicker, 20-day average dollar volume,
-// and proximity to a nearby support/resistance level — Phase 24 Stage 1's
+// and proximity to the nearest support level below the close — Phase 24 Stage 1's
 // first Recommendation Pipeline Service slice, moved verbatim from
 // bot.rankAndTruncateCandidates except benchTicker replaces the market.
 // MarketID param: resolving "which ticker is the benchmark" (SPY vs. 0050)
@@ -56,16 +56,7 @@ func RankAndTruncateCandidates(history RiskHistoryReader, tickers []string, benc
 			dollarSum += closes[i] * float64(volumes[i])
 		}
 		row.avgDollarVol = dollarSum / float64(tail)
-		lastClose := closes[len(closes)-1]
-		if levels := signals.PriceLevels(candles); len(levels) > 0 && lastClose > 0 {
-			best := math.MaxFloat64
-			for _, lvl := range levels {
-				if d := math.Abs(lastClose-lvl.Price) / lastClose; d < best {
-					best = d
-				}
-			}
-			row.distToLevel, row.hasDistToLevel = best, true
-		}
+		row.distToLevel, row.hasDistToLevel = nearestSupportDist(candles)
 		rows = append(rows, row)
 	}
 
@@ -137,4 +128,44 @@ func Normalize01(vals []float64) []float64 {
 		out[i] = (v - lo) / (hi - lo)
 	}
 	return out
+}
+
+// nearestSupportDist returns the distance from the latest close down to the
+// nearest support level, as a fraction of the close, and whether one was
+// found at all.
+//
+// The support/resistance classification has to happen here rather than in
+// signals.PriceLevels: a PriceLevel deliberately carries no side, because a
+// level's role flips when price crosses it (old resistance becomes
+// support), so that package's doc comment tells callers to compare against
+// the latest close themselves. RankAndTruncateCandidates did not, until
+// 2026-08-26: it scored math.Abs over every level, which gave "sitting on
+// support" and "capped by overhead supply" an identical score. For a
+// long-only screen those are opposite readings, so the two halves cancelled
+// and the factor contributed noise at best.
+//
+// ok=false when there is no level below the close — the caller scores that
+// neutral rather than penalizing it, since "no level found" is missing
+// information, not a bad level.
+func nearestSupportDist(candles []data.Candle) (dist float64, ok bool) {
+	if len(candles) == 0 {
+		return 0, false
+	}
+	lastClose := candles[len(candles)-1].Close
+	if lastClose <= 0 {
+		return 0, false
+	}
+	best := math.MaxFloat64
+	for _, lvl := range signals.PriceLevels(candles) {
+		if lvl.Price >= lastClose {
+			continue
+		}
+		if d := (lastClose - lvl.Price) / lastClose; d < best {
+			best = d
+		}
+	}
+	if best == math.MaxFloat64 {
+		return 0, false
+	}
+	return best, true
 }

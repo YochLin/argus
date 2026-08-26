@@ -1,6 +1,7 @@
 package service
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -91,4 +92,60 @@ func TestRankAndTruncateCandidates(t *testing.T) {
 			t.Fatalf("len = %d, want 2 (both kept, under cap)", len(got))
 		}
 	})
+}
+
+// zigzagCandles oscillates between 90 and 110 on a 20-bar cycle, which gives
+// signals.PriceLevels two clean clusters to find (support ~90, resistance
+// ~110) with enough touches to survive minLevelTouches.
+func zigzagCandles(n int) []data.Candle {
+	out := make([]data.Candle, n)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < n; i++ {
+		phase := i % 20
+		c := 90 + float64(phase)*2 // 90 -> 108 on the way up
+		if phase >= 10 {
+			c = 110 - float64(phase-10)*2 // 110 -> 92 on the way down
+		}
+		out[i] = data.Candle{
+			Date: start.AddDate(0, 0, i),
+			Open: c, High: c, Low: c, Close: c,
+			Volume: 1_000_000,
+		}
+	}
+	return out
+}
+
+// A close parked just under overhead resistance must not score as though it
+// were sitting on support. Before 2026-08-26 this measured math.Abs to the
+// nearest level of either side, so the 5-point gap up to resistance at 110
+// (4.8%) won over the 15-point drop to support at 90 (14.3%) — the two
+// opposite readings were indistinguishable to the ranker.
+func TestNearestSupportDistIgnoresResistance(t *testing.T) {
+	candles := zigzagCandles(120)
+	for i := len(candles) - 5; i < len(candles); i++ {
+		candles[i].Open, candles[i].High, candles[i].Low, candles[i].Close = 105, 105, 105, 105
+	}
+
+	got, ok := nearestSupportDist(candles)
+	if !ok {
+		t.Fatal("ok = false, want the support cluster at ~90 to be found")
+	}
+	if want := (105.0 - 90.0) / 105.0; math.Abs(got-want) > 0.02 {
+		t.Errorf("dist = %.4f, want ~%.4f (distance down to support, not up to resistance at 110)", got, want)
+	}
+}
+
+// No level below the close is missing information, not a bad level: the
+// caller scores ok=false the same neutral 0.5 as an unscoreable ticker.
+func TestNearestSupportDistNoSupportBelow(t *testing.T) {
+	candles := zigzagCandles(120)
+	for i := len(candles) - 5; i < len(candles); i++ {
+		candles[i].Open, candles[i].High, candles[i].Low, candles[i].Close = 60, 60, 60, 60
+	}
+	if _, ok := nearestSupportDist(candles); ok {
+		t.Error("ok = true, want false — every level sits above a close of 60")
+	}
+	if _, ok := nearestSupportDist(nil); ok {
+		t.Error("ok = true for no candles, want false")
+	}
 }
