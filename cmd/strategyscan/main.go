@@ -238,8 +238,8 @@ func main() {
 	// about speed. Two steps on purpose: -build-history pays the fetch once,
 	// every later run reads the file and touches no network at all, which is
 	// what makes an exit-layer parameter grid affordable.
-	buildHistoryFlag := flag.String("build-history", "", "TW only: fetch whole-market daily quotes from the Shioaji daemon into this CSV cache, then exit")
-	historyFileFlag := flag.String("history-file", "", "TW only: read candles from this cache (built by -build-history) instead of Yahoo; universe becomes every listed equity in it")
+	buildHistoryFlag := flag.String("build-history", "", "fetch history into this CSV cache, then exit (TW: whole-market point-in-time from the Shioaji daemon; US: one Yahoo pass over the index list)")
+	historyFileFlag := flag.String("history-file", "", "read candles from this cache (built by -build-history) instead of Yahoo; the cache's contents become the universe")
 	shioajiAddrFlag := flag.String("shioaji-addr", os.Getenv("SHIOAJI_ADDR"), "Shioaji daemon unix socket path or host:port (default $SHIOAJI_ADDR)")
 	// Every screen gates on 5-day average volume, so a screen can only ever
 	// pick a liquid name — but the BASELINE has no such gate, and on the
@@ -251,6 +251,14 @@ func main() {
 	// -1 defers to the market's own ScreenParams.MinAvgVolume5d whenever a
 	// cache is in play (same sentinel convention as -slippage-pct above).
 	minAvgVolumeFlag := flag.Float64("min-avg-volume", -1, "liquidity floor (shares) applied to EVERY evaluated day, baseline included; -1 = ScreenParams.MinAvgVolume5d when -history-file is set, 0 (off) otherwise")
+	// Every aggregate this tool prints is a MEAN, which answers "is this
+	// config better" but never "by more than noise". Comparing two exit
+	// configs is a PAIRED question — both replay the identical entries, so
+	// only the trades whose exit actually moved carry information, and a
+	// two-sample test on the printed means throws that pairing away. Dumping
+	// the per-trade rows lets the comparison be done properly (same
+	// date-clustered bootstrap the excess numbers use) outside this tool.
+	dumpTradesFlag := flag.String("dump-trades", "", "write the baseline's per-trade replay rows to this CSV, for paired comparison between two exit configs")
 	skipTrustFlag := flag.Bool("skip-trust", false, "TW only: don't fetch FinMind trust-net data and drop 網 5 from the study (the other four screens don't use it)")
 	flag.Parse()
 
@@ -262,6 +270,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	if *buildHistoryFlag != "" && m != market.TW {
+		var us []string
+		if *universeFlag == "sp400" {
+			us = parseTickers(sp400TickersRaw)
+		} else {
+			us = parseTickers(sp500TickersRaw)
+		}
+		us = append(us, "SPY") // the benchmark has to be in its own cache
+		fmt.Printf("Building US history cache from Yahoo: %d tickers, range=%s -> %s\n", len(us), *rangeFlag, *buildHistoryFlag)
+		if err := buildHistoryCacheYahoo(data.NewYahoo(), us, *rangeFlag, *buildHistoryFlag); err != nil {
+			fmt.Printf("Error building cache: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *buildHistoryFlag != "" {
 		if m != market.TW {
 			fmt.Printf("Error: -build-history is TW-only (Shioaji serves no US market data)\n")
@@ -344,7 +367,10 @@ func main() {
 	screenParams := signals.DefaultScreenParams(m)
 
 	if *minAvgVolumeFlag < 0 {
-		if *historyFileFlag != "" {
+		// US caches are built from an index list whose members are liquid by
+		// construction, so the floor would be a no-op that nonetheless made
+		// these runs incomparable to the uncached US runs already reported.
+		if *historyFileFlag != "" && m == market.TW {
 			*minAvgVolumeFlag = screenParams.MinAvgVolume5d
 		} else {
 			*minAvgVolumeFlag = 0
@@ -373,16 +399,18 @@ func main() {
 		return yahoo.GetHistory(ticker, *rangeFlag)
 	}
 	if *historyFileFlag != "" {
-		if m != market.TW {
-			fmt.Printf("Error: -history-file is TW-only\n")
-			os.Exit(1)
-		}
-		if !*skipTrustFlag {
+		if m == market.TW && !*skipTrustFlag {
 			fmt.Printf("Error: -history-file needs -skip-trust — the cache universe is the whole market (~2,000 tickers) and 網 5 would need one FinMind request per ticker, far past the free tier's quota.\n")
 			os.Exit(1)
 		}
+		// TW's cache is the whole market and needs the equity filter; US's
+		// was built from a committed index list and needs none.
+		keepCode := func(string) bool { return true }
+		if m == market.TW {
+			keepCode = func(c string) bool { return isOrdinaryEquity(c) || c == benchTicker }
+		}
 		var err error
-		if cache, err = loadHistoryCache(*historyFileFlag, 60, benchTicker); err != nil {
+		if cache, err = loadHistoryCache(*historyFileFlag, 60, keepCode); err != nil {
 			fmt.Printf("Error loading cache: %v\n", err)
 			os.Exit(1)
 		}
@@ -400,7 +428,7 @@ func main() {
 			}
 		}
 		sort.Strings(tickers)
-		fmt.Printf("Universe replaced by cache: %d point-in-time listed equities (was %d from tw150_tickers.txt)\n", len(tickers), len(parseTickers(tw150TickersRaw)))
+		fmt.Printf("Universe replaced by cache: %d tickers\n", len(tickers))
 	}
 	// docs/phase-15-trust-follow.md §4.1: FinMind's free tier serves every
 	// dataset used here unauthenticated (live-verified), so this backtest
@@ -656,6 +684,9 @@ func main() {
 	// §11.2 point 1: baseline aggregate stats as their own CSV so anyone can
 	// independently re-derive every excess number above.
 	writeBaselineSummaryCSV(fmt.Sprintf("strategyscan_baseline_%s.csv", m), baselineRecs)
+	if *dumpTradesFlag != "" {
+		writeTradeDumpCSV(*dumpTradesFlag, baselineRecs)
+	}
 }
 
 // devVariant is one 網 3 re-screen at a different MaxMA20DevPct, carried as
@@ -1128,6 +1159,42 @@ func writeCSV(path string, recs []TriggerRecord) {
 // would defeat the "CSV is for manual spot-checks" purpose (§10.3 point 3).
 // This lets anyone independently re-derive every excess number in §8 without
 // re-fetching a baseline themselves.
+// writeTradeDumpCSV writes one row per replayed baseline trade. Date and
+// Ticker are what make it joinable against another run's dump, which is the
+// whole point — the pairing is by entry, not by row order.
+func writeTradeDumpCSV(path string, recs []TriggerRecord) {
+	f, err := os.Create(path)
+	if err != nil {
+		fmt.Printf("Error writing trade dump: %v\n", err)
+		return
+	}
+	defer f.Close()
+	w := csv.NewWriter(f)
+	defer w.Flush()
+	if err := w.Write([]string{"Date", "Ticker", "ExitRet", "ExitReason", "HoldDays"}); err != nil {
+		fmt.Printf("Error writing trade dump: %v\n", err)
+		return
+	}
+	var n int
+	for _, r := range recs {
+		if !r.HasTrade {
+			continue
+		}
+		if err := w.Write([]string{
+			r.Date, r.Ticker,
+			strconv.FormatFloat(r.TradeExitRet, 'f', 6, 64),
+			r.TradeExitReason,
+			strconv.Itoa(r.TradeHoldDays),
+		}); err != nil {
+			fmt.Printf("Error writing trade dump: %v\n", err)
+			return
+		}
+		n++
+	}
+	w.Flush()
+	fmt.Printf("Trade dump written: %s (%d trades)\n", path, n)
+}
+
 func writeBaselineSummaryCSV(path string, baselineRecs []TriggerRecord) {
 	f, err := os.Create(path)
 	if err != nil {

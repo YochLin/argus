@@ -174,7 +174,7 @@ func loadConfig() Config {
 		WebLLMAudit: os.Getenv("WEB_LLM_AUDIT") == "true",
 
 		StopLossPct:         envOrFloat("STOP_LOSS_PCT", 10),
-		TrailingStopPct:     envOrFloat("TRAILING_STOP_PCT", 15),
+		TrailingStopPct:     envOrFloat("TRAILING_STOP_PCT", 18), // 18 not 15 since 2026-08-26; measured, see .env.example
 		StopLossPctTW:       envOrFloat("STOP_LOSS_PCT_TW", 12),
 		TrailingStopPctTW:   envOrFloat("TRAILING_STOP_PCT_TW", 18),
 		TrailingStopATRMult: envOrFloat("TRAILING_STOP_ATR_MULT", 0),

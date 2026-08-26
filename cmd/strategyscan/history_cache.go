@@ -107,6 +107,61 @@ func buildHistoryCache(ctx context.Context, c *sinopac.Client, from, to time.Tim
 	return w.Error()
 }
 
+// buildHistoryCacheYahoo is the US half of the same idea, minus the
+// point-in-time property Sinopac gives for free: the ticker list is still
+// today's index membership, so this fixes the SPEED problem only and the
+// survivorship caveat stays. That is still the difference between one
+// 20-minute Yahoo pass and one such pass per grid point.
+func buildHistoryCacheYahoo(y *data.Yahoo, tickers []string, rangeParam, path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	w := csv.NewWriter(f)
+	defer w.Flush()
+	if err := w.Write([]string{"Date", "Code", "Open", "High", "Low", "Close", "Volume"}); err != nil {
+		return err
+	}
+
+	var ok, failed, rows int
+	for i, ticker := range tickers {
+		time.Sleep(200 * time.Millisecond) // same rate limit the live path uses
+		candles, err := y.GetHistory(ticker, rangeParam)
+		if err != nil || len(candles) == 0 {
+			// One dead ticker must not cost the whole pass; the loader's
+			// minBars check drops whatever ends up short anyway.
+			fmt.Printf("  %s: %v (skipped)\n", ticker, err)
+			failed++
+			continue
+		}
+		for _, c := range candles {
+			if c.Close <= 0 {
+				continue
+			}
+			if err := w.Write([]string{
+				c.Date.Format("2006-01-02"), ticker,
+				strconv.FormatFloat(c.Open, 'f', 4, 64),
+				strconv.FormatFloat(c.High, 'f', 4, 64),
+				strconv.FormatFloat(c.Low, 'f', 4, 64),
+				strconv.FormatFloat(c.Close, 'f', 4, 64),
+				strconv.FormatInt(c.Volume, 10),
+			}); err != nil {
+				return err
+			}
+			rows++
+		}
+		ok++
+		if (i+1)%50 == 0 {
+			fmt.Printf("  cached %d/%d tickers, %d rows...\n", i+1, len(tickers), rows)
+			w.Flush()
+		}
+	}
+	w.Flush()
+	fmt.Printf("Cache built: %s — %d tickers ok, %d failed, %d rows\n", path, ok, failed, rows)
+	return w.Error()
+}
+
 // isOrdinaryEquity keeps 4-digit listed equities (1000-9999) and drops
 // everything else the whole-market feed carries: ETFs and their leveraged
 // variants (00xx, and the 5-6 character codes with a B/L/R/U suffix),
@@ -126,17 +181,14 @@ func isOrdinaryEquity(code string) bool {
 	return code[0] != '0'
 }
 
-// loadHistoryCache reads a cache written by buildHistoryCache into per-ticker
+// loadHistoryCache reads a cache written by either builder into per-ticker
 // candle series, oldest first. Tickers with fewer than minBars rows are
 // dropped, matching the "too short" accounting the Yahoo path already does.
-// keep lists codes to load regardless of isOrdinaryEquity — in practice the
-// benchmark, which is an ETF (0050) and would otherwise be filtered out of
-// its own study.
-func loadHistoryCache(path string, minBars int, keep ...string) (map[string][]data.Candle, error) {
-	keepSet := make(map[string]bool, len(keep))
-	for _, k := range keep {
-		keepSet[k] = true
-	}
+// keepCode decides which codes survive: TW passes isOrdinaryEquity (plus the
+// benchmark, which is an ETF and would otherwise be filtered out of its own
+// study), US passes everything, since its cache was built from a committed
+// index list that needed no filtering in the first place.
+func loadHistoryCache(path string, minBars int, keepCode func(string) bool) (map[string][]data.Candle, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -161,7 +213,7 @@ func loadHistoryCache(path string, minBars int, keep ...string) (map[string][]da
 			return nil, err
 		}
 		code := rec[1]
-		if !isOrdinaryEquity(code) && !keepSet[code] {
+		if !keepCode(code) {
 			skipped++
 			continue
 		}
@@ -187,6 +239,6 @@ func loadHistoryCache(path string, minBars int, keep ...string) (map[string][]da
 		// out-of-order series instead of erroring.
 		sort.Slice(candles, func(i, j int) bool { return candles[i].Date.Before(candles[j].Date) })
 	}
-	fmt.Printf("Loaded cache %s: %d tickers with >=%d bars (%d non-equity rows skipped)\n", path, len(out), minBars, skipped)
+	fmt.Printf("Loaded cache %s: %d tickers with >=%d bars (%d filtered rows skipped)\n", path, len(out), minBars, skipped)
 	return out, nil
 }
