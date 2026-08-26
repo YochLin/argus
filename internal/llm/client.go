@@ -250,10 +250,12 @@ func (c *Client) ReviewTrade(ctx context.Context, trade ClosedTrade) (result str
 // same reasoning as ReviewTrade/InsightPortfolio. Returns the model's reply
 // verbatim (no marker parsing, same convention as MorningBriefing) — the
 // caller (bot.RunClosingSnapshot) stores it as-is via db.SavePriceEvent.
-func (c *Client) ExplainPriceEvent(ctx context.Context, ticker string, gapPct, changePct, cumulativePct float64, news []data.NewsItem) (string, error) {
+// model/latencyMs are returned for the same reason GenerateRecommendations
+// returns them: bot.recordPriceEvents files this call into Phase 19's
+// llm_runs audit trail (kind "price_event").
+func (c *Client) ExplainPriceEvent(ctx context.Context, ticker string, gapPct, changePct, cumulativePct float64, news []data.NewsItem) (reply, model string, latencyMs int64, err error) {
 	prompt := buildPriceEventPrompt(c.lang, ticker, gapPct, changePct, cumulativePct, news)
-	reply, _, _, err := c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
-	return reply, err
+	return c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
 }
 
 // ExploreNomination is one candidate proposed by Phase 2.6 解凍's two-stage

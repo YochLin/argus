@@ -15,6 +15,7 @@ import (
 	"argus/internal/market"
 	"argus/internal/paper"
 	"argus/internal/service"
+	"argus/internal/signals"
 )
 
 // recommendationInputs bundles everything handleRecommend and RunDailyReport
@@ -154,6 +155,40 @@ func (b *Bot) recordLLMRun(kind string, m market.MarketID, in recommendationInpu
 
 	if err := b.db.InsertLLMRun(kind, m, model, latencyMs, string(inputJSON), raw, len(in.watchlist), len(in.candidates), newsCount, gapCount); err != nil {
 		logger.Errorf("llm run: insert: %v", err)
+	}
+}
+
+// recordPriceEventLLMRun files one ExplainPriceEvent call into Phase 19's
+// llm_runs audit trail under kind "price_event" — the price-event path's
+// counterpart of recordLLMRun above, which can't be reused directly because
+// its payload is a recommendationInputs (watchlist/candidates/market
+// context), none of which exists here. Same "log, never block" contract as
+// recordLLMRun, and called before the caller's LLM error check so a failed
+// call is recorded too — the case where seeing what the model actually
+// replied matters most. watchlist_count/candidate_count/candle_gap_count go
+// in as 0: they have no meaning for a single-ticker event summary, and
+// minting columns for a second kind of run would defeat the point of one
+// shared table.
+func (b *Bot) recordPriceEventLLMRun(ev signals.PriceEvent, m market.MarketID, news []data.NewsItem, summary, model string, latencyMs int64) {
+	if summary == "" && model == "" {
+		return
+	}
+
+	payload := struct {
+		Ticker        string          `json:"ticker"`
+		GapPct        float64         `json:"gapPct"`
+		ChangePct     float64         `json:"changePct"`
+		CumulativePct float64         `json:"cumulativePct"`
+		News          []data.NewsItem `json:"news"`
+	}{ev.Ticker, ev.GapPct, ev.ChangePct, ev.CumulativePct, news}
+	inputJSON, err := json.Marshal(payload)
+	if err != nil {
+		logger.Errorf("llm run: marshal price event input: %v", err)
+		return
+	}
+
+	if err := b.db.InsertLLMRun("price_event", m, model, latencyMs, string(inputJSON), summary, 0, 0, len(news), 0); err != nil {
+		logger.Errorf("llm run: insert price event: %v", err)
 	}
 }
 

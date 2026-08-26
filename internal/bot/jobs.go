@@ -157,7 +157,8 @@ func (b *Bot) recordPriceEvents(ctx context.Context, hits []signals.PriceEvent, 
 
 	for _, ev := range writeup {
 		news, _ := b.provider.GetNews(ev.Ticker, 5)
-		summary, err := b.llm.ExplainPriceEvent(ctx, ev.Ticker, ev.GapPct, ev.ChangePct, ev.CumulativePct, news)
+		summary, model, latencyMs, err := b.llm.ExplainPriceEvent(ctx, ev.Ticker, ev.GapPct, ev.ChangePct, ev.CumulativePct, news)
+		b.recordPriceEventLLMRun(ev, m, news, summary, model, latencyMs)
 		if err != nil {
 			logger.Errorf("price events: LLM %s: %v", ev.Ticker, err)
 			continue

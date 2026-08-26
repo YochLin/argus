@@ -113,6 +113,12 @@ type dbReader interface {
 	// "low-quality source" check (Phase 19 §8.2) — the block/unblock writes
 	// themselves go through the separate newsSourceWriter interface.
 	ListBlockedNewsSources() ([]db.BlockedNewsSource, error)
+	// GetRecentPriceEvents/GetPriceEventsForTicker back events.go's GET
+	// /api/events — the same two reads bot.handleEvents' /events command
+	// already uses, so the web view and the Telegram command can never
+	// disagree about what was recorded.
+	GetRecentPriceEvents(limit int) ([]db.PriceEvent, error)
+	GetPriceEventsForTicker(ticker string, limit int) ([]db.PriceEvent, error)
 }
 
 // netWorthBaseline resolves the capital base for a period starting at

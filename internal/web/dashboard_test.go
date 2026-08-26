@@ -59,6 +59,9 @@ type fakeDB struct {
 	llmRunByID map[int64]db.LLMRunDetail
 	// blockedSources backs ListBlockedNewsSources for newssources_test.go.
 	blockedSources []db.BlockedNewsSource
+	// priceEvents backs GetRecentPriceEvents/GetPriceEventsForTicker for
+	// events_test.go.
+	priceEvents []db.PriceEvent
 }
 
 func (f *fakeDB) GetPositions() ([]db.Position, error)          { return f.positions, nil }
@@ -134,6 +137,21 @@ func (f *fakeDB) GetLLMRun(id int64) (db.LLMRunDetail, bool, error) {
 	return run, ok, nil
 }
 func (f *fakeDB) ListBlockedNewsSources() ([]db.BlockedNewsSource, error) { return f.blockedSources, nil }
+func (f *fakeDB) GetRecentPriceEvents(limit int) ([]db.PriceEvent, error) {
+	if limit < len(f.priceEvents) {
+		return f.priceEvents[:limit], nil
+	}
+	return f.priceEvents, nil
+}
+func (f *fakeDB) GetPriceEventsForTicker(ticker string, limit int) ([]db.PriceEvent, error) {
+	var out []db.PriceEvent
+	for _, ev := range f.priceEvents {
+		if ev.Ticker == ticker && len(out) < limit {
+			out = append(out, ev)
+		}
+	}
+	return out, nil
+}
 
 // BlockNewsSource/UnblockNewsSource let fakeDB double as a newsSourceWriter
 // in newssources_test.go, mutating blockedSources the same way a real DB

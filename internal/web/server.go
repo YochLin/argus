@@ -223,6 +223,7 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /api/rec-performance", s.handleRecPerformance)
 	s.mux.HandleFunc("GET /api/paper", s.handlePaper)
 	s.mux.HandleFunc("GET /api/options", s.handleOptions)
+	s.mux.HandleFunc("GET /api/events", s.handleEvents)
 	s.mux.HandleFunc("GET /api/sectorflow", s.handleSectorFlow)
 	s.mux.HandleFunc("POST /api/sectorflow/refresh", s.handleSectorFlowRefresh)
 	// Phase 19's /llm page (§4.4/§5.3) — see Config.LLMAudit's doc comment
