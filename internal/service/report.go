@@ -86,6 +86,41 @@ func MonthRange(now time.Time) (from, to string) {
 	return firstOfLastMonth.Format("2006-01-02"), lastOfLastMonth.Format("2006-01-02")
 }
 
+// WeeklyNetWorthStore is the persistence boundary WeeklyNetWorthChange
+// needs — narrowed to the two reads it performs, same convention as
+// MonthlyReportStore/RiskStore/SnapshotStore.
+type WeeklyNetWorthStore interface {
+	GetLatestNetWorth(m market.MarketID) (date string, total float64, ok bool, err error)
+	GetNetWorthOnOrBefore(date string, m market.MarketID) (float64, bool, error)
+}
+
+// WeeklyNetWorthChange is RunWeeklyReview's opening line's business logic:
+// market m's latest total position value and its % change from ~7 days ago.
+// ok is false when there's no snapshot yet, or no baseline from roughly a
+// week ago to compare against (e.g. a fresh install, or a holding period
+// under a week) — the caller skips the line entirely rather than show a
+// misleading 0%, same "ok=false means skip" pattern
+// BuildMonthlyReportBlock's own baseline lookup uses.
+func WeeklyNetWorthChange(store WeeklyNetWorthStore, m market.MarketID) (latest, pctChange float64, ok bool, err error) {
+	latestDateStr, latest, ok, err := store.GetLatestNetWorth(m)
+	if err != nil || !ok {
+		return 0, 0, false, err
+	}
+
+	latestDate, err := time.Parse("2006-01-02", latestDateStr)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	weekAgo := latestDate.AddDate(0, 0, -7).Format("2006-01-02")
+
+	prior, ok, err := store.GetNetWorthOnOrBefore(weekAgo, m)
+	if err != nil || !ok || prior == 0 {
+		return 0, 0, false, err
+	}
+
+	return latest, (latest - prior) / prior * 100, true, nil
+}
+
 // MonthlyReportStore is the persistence boundary BuildMonthlyReportBlock
 // needs — narrowed to the reads it performs, same convention as
 // RiskStore/SnapshotStore/ATMIVStore.

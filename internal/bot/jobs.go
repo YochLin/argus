@@ -805,18 +805,13 @@ func (b *Bot) checkBuyAlerts(alerts []db.BuyAlert, prices map[string]float64) {
 // weeklyNetWorthLine renders RunWeeklyReview's opening line: total position
 // value and its % change from about a week ago — net_worth_snapshots' first
 // reader since RunClosingSnapshot's recordNetWorthSnapshot started writing
-// it in Phase 2 (Phase 3.6 PR2). Returns "" (not an error) when there's no
-// snapshot yet, or no baseline from roughly a week ago to compare against
-// (e.g. a fresh install, or a holding period under a week) — skip the line
-// rather than show a misleading 0%, same "ok=false means skip" pattern
-// GetPeakClose's callers use.
-// weeklyNetWorthLine reports market m's total position value and its %
-// change from about a week ago. Phase 6 PR2 threads m through (PR1 only
-// added the signature without a TW caller yet — see
-// docs/phase-6-tw-market.md §5.3) and picks the TWD-labeled key pair for
-// market.TW, same precedent as sendPortfolioSection's US/TW key selection.
+// it in Phase 2 (Phase 3.6 PR2). The business logic (which baseline to
+// compare against, when to skip) lives in service.WeeklyNetWorthChange
+// (Phase 24 Stage 3); this is just the i18n rendering of its result,
+// picking the TWD-labeled key pair for market.TW, same precedent as
+// sendPortfolioSection's US/TW key selection.
 func (b *Bot) weeklyNetWorthLine(m market.MarketID, cash float64, haveCash bool) (string, error) {
-	latestDateStr, latest, ok, err := b.db.GetLatestNetWorth(m)
+	latest, pctChange, ok, err := service.WeeklyNetWorthChange(b.db, m)
 	if err != nil {
 		return "", err
 	}
@@ -824,21 +819,6 @@ func (b *Bot) weeklyNetWorthLine(m market.MarketID, cash float64, haveCash bool)
 		return "", nil
 	}
 
-	latestDate, err := time.Parse("2006-01-02", latestDateStr)
-	if err != nil {
-		return "", err
-	}
-	weekAgo := latestDate.AddDate(0, 0, -7).Format("2006-01-02")
-
-	prior, ok, err := b.db.GetNetWorthOnOrBefore(weekAgo, m)
-	if err != nil {
-		return "", err
-	}
-	if !ok || prior == 0 {
-		return "", nil
-	}
-
-	pctChange := (latest - prior) / prior * 100
 	if m == market.TW {
 		if haveCash {
 			return i18n.T(b.lang, i18n.KeyWeeklyNetWorthLineWithCashTWD, latest, pctChange, latest+cash), nil
