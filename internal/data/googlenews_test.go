@@ -138,6 +138,53 @@ func TestGoogleNewsGetNews_LimitKeepsNewest(t *testing.T) {
 	}
 }
 
+// Phase 19 後續 PR4: a headline that never names the company sorts behind
+// ones that do, even when it's newer — but still comes back rather than
+// being dropped, so a ticker with only unnamed coverage doesn't lose slots.
+const relevanceFeedXML = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+	<title>"廣達 when:7d" - Google 新聞</title>
+	<item>
+		<title>投信近5日賣超個股 - 財訊快報</title>
+		<link>https://news.google.com/rss/articles/newest-unrelated</link>
+		<pubDate>Fri, 31 Jul 2026 07:03:00 GMT</pubDate>
+		<source url="https://example.com">財訊快報</source>
+	</item>
+	<item>
+		<title>廣達法說會釋出樂觀展望 - 經濟日報</title>
+		<link>https://news.google.com/rss/articles/older-relevant</link>
+		<pubDate>Wed, 29 Jul 2026 12:58:00 GMT</pubDate>
+		<source url="https://example.com">經濟日報</source>
+	</item>
+</channel>
+</rss>`
+
+func TestGoogleNewsGetNews_RelevanceBeforeRecency(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		w.Write([]byte(relevanceFeedXML))
+	}))
+	defer srv.Close()
+
+	g := NewGoogleNews(fakeCompanyNames{name: "廣達"})
+	g.baseURL = srv.URL
+
+	items, err := g.GetNews("2382", 10)
+	if err != nil {
+		t.Fatalf("GetNews: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("GetNews() = %d items, want 2", len(items))
+	}
+	if want := "廣達法說會釋出樂觀展望"; items[0].Headline != want {
+		t.Errorf("items[0].Headline = %q, want the older but company-naming item sorted first (%q)", items[0].Headline, want)
+	}
+	if want := "投信近5日賣超個股"; items[1].Headline != want {
+		t.Errorf("items[1].Headline = %q, want the newer but unnamed item kept, sorted last (%q)", items[1].Headline, want)
+	}
+}
+
 // A US ticker must fail before any request goes out: GoogleNews sits ahead
 // of Yahoo in the Multi chain, so answering one would change the existing
 // Finnhub-then-Yahoo US news path.
