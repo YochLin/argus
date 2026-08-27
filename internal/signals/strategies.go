@@ -67,6 +67,10 @@ type ScreenParams struct {
 	RequireRevenueGrowth bool    // TW true / US false
 	MinRevenueGrowthPct  float64 // 10.0
 
+	// 網 6 財報後漂移（Phase 25 §2）
+	GapUpPct   float64 // 跳空開高門檻 %，US 5.0 / TW 7.0（台股 ±10% 漲跌幅，5% 太鬆）
+	GapVolMult float64 // 跳空日量 >= N x MA20 均量，3.0
+
 	// 網 5 主力跟單（Phase 15 v2，TW only）
 	TrustNetVolPctMin         float64 // 短窗（3或5日）投信買超 / 該窗成交量 下限 %，3.0
 	TrustForeignSellVolPctMax float64 // 當日外資賣超 / 當日成交量 下限（負值，跌破即排除「土洋對作」），-3.0
@@ -111,6 +115,7 @@ func DefaultScreenParams(m market.MarketID) ScreenParams {
 			MinAvgVolume5d: 1_000_000, BoxMaxRangePct: 18.0, BoxFloorPct: 2.0, BreakoutVolMult: 2.0,
 			NewHighLookback: 60, BreakoutVolMA20: 1.5, MaxMA20DevPct: 12.0, MaxUpperWickRatio: 0.5,
 			PullbackMA20DevPct: 2.0, PullbackVolRatio: 0.8, PullbackKDLevel: 30.0, MA60SlopeLookback: 10,
+			GapUpPct: 7.0, GapVolMult: 3.0,
 			RequireRevenueGrowth: true, MinRevenueGrowthPct: 10.0,
 			TrustNetVolPctMin: 3.0, TrustForeignSellVolPctMax: -3.0, RequireTrustData: true,
 		}
@@ -119,6 +124,7 @@ func DefaultScreenParams(m market.MarketID) ScreenParams {
 		MinAvgVolume5d: 500_000, BoxMaxRangePct: 15.0, BoxFloorPct: 2.0, BreakoutVolMult: 2.0,
 		NewHighLookback: 60, BreakoutVolMA20: 1.5, MaxMA20DevPct: 15.0, MaxUpperWickRatio: 0.5,
 		PullbackMA20DevPct: 2.0, PullbackVolRatio: 0.8, PullbackKDLevel: 30.0, MA60SlopeLookback: 10,
+		GapUpPct: 5.0, GapVolMult: 3.0,
 		RequireRevenueGrowth: false, MinRevenueGrowthPct: 10.0,
 		RequireTrustData: false,
 	}
@@ -232,6 +238,21 @@ func CheckSqueezeBreakoutExact(candles []data.Candle, p ScreenParams) bool {
 	return true
 }
 
+// CheckBoxBottomReboundExact evaluates candles' last bar (網 2【箱底反彈】).
+//
+// Phase 25 §4.6 note — this is not 網 2's own study, it is what fell out of
+// the 網 6 runs, which measured all five screens against the same control on
+// a universe 網 2 had not been checked against before. On S&P 400 mid-caps
+// 網 2's excess return is negative in BOTH time slices and significant in
+// both: -3.35% at 2.3 sigma (holdout) and -2.45% at 2.9 sigma (in-sample),
+// the strongest negative of any screen in those runs. On S&P 500 large caps
+// it is +0.66%/-1.03%, i.e. noise, which is why this never showed up before.
+//
+// Deliberately NOT acted on here: a §4.4 downgrade is a separate decision
+// from shipping 網 6, and folding it into that PR would mean changing a live
+// screen on the strength of a study that was pre-registered for something
+// else. The honest next step is a run whose stated purpose is 網 2 on
+// mid-caps. Until then, treat this as a flag, not a verdict.
 func CheckBoxBottomReboundExact(candles []data.Candle, p ScreenParams) bool {
 	n := len(candles)
 	if n < 60+p.MA60SlopeLookback {
@@ -573,4 +594,151 @@ func (d *Detector) CheckTrendBreakout(ticker string, candles []data.Candle, prev
 		Type:    TypeTrendBreakout,
 		Message: i18n.T(d.lang, i18n.KeyStrategyTrendBreakout, ticker, daysAgoStr),
 	}, newState
+}
+
+// PostGapDrift evaluates candles for Post-Earnings-Announcement-Drift (網 6)
+// triggers within the last strategyLookbackDays. Returns the most recent hit
+// (smallest DaysAgo) or nil if none triggered.
+func PostGapDrift(candles []data.Candle, p ScreenParams) *StrategyHit {
+	n := len(candles)
+	for offset := 0; offset < strategyLookbackDays; offset++ {
+		evalIdx := n - 1 - offset
+		if evalIdx < 60 {
+			break
+		}
+		sub := candles[:evalIdx+1]
+		if CheckPostGapDriftExact(sub, p) {
+			return &StrategyHit{
+				Name:    "post_gap_drift",
+				DaysAgo: offset,
+			}
+		}
+	}
+	return nil
+}
+
+// CheckPostGapDriftExact evaluates candles' last bar (網 6【財報後漂移】):
+// a stock that gapped up hard on heavy volume, held the gap into the close,
+// and did it at a new high. Phase 25 §2.
+//
+// The premise is post-earnings-announcement drift: after a genuine positive
+// surprise a stock keeps drifting the same way for weeks, because analysts
+// anchor on stale estimates, institutional accumulation is spread over days,
+// and not everyone reads the filing on the day. That is an
+// information-diffusion story, not a "the market is dumb" story, which is why
+// it has survived 60 years and every out-of-sample retest thrown at it.
+//
+// Note what this screen does NOT do: look up an earnings date, or an analyst
+// estimate. The gap itself is the surprise proxy — for an index constituent
+// the four earnings days a year dominate the list of largest overnight moves,
+// and the market's own reaction is a fresher aggregate of the news than a
+// consensus estimate that may be weeks stale. "Earnings-day return" is a
+// standard surprise proxy in the literature. The practical consequence is
+// that this screen needs price and volume only, so it backtests against the
+// existing OHLCV cache with no new data source (Phase 23 PR8's finding that
+// Finnhub's free tier caps at 4 quarters is what makes that matter).
+//
+// Conditions 3 and 4 are the two that stop this from being "buy anything that
+// gapped", and neither is optional:
+//
+//   - Without 3 (close in the upper half of the day's range), a stock that
+//     gapped +7% and was sold all the way back to the low qualifies. That is
+//     the news being sold into, and it drifts DOWN — the opposite trade.
+//   - Without 4 (new high), a sharp bounce inside a downtrend qualifies. A
+//     gap off a base is not drift; drift is a repricing to a new level.
+//
+// # Result: measured, did NOT pass, deliberately NOT wired to the bot
+//
+// Phase 25 §2.5 pre-registered the bar before any of this was run: excess
+// return over the random-entry control under identical exit rules had to
+// clear 1 SE in BOTH time slices of the primary sample (S&P 400 mid-caps,
+// where §2.6 argued PEAD should be strongest because attention is scarcest).
+// It did not. Date-clustered bootstrap, 400 resamples of dates (not trades —
+// same-day entries co-move), split at 2021-11-01, the earlier slice being the
+// holdout:
+//
+//	sample                    n     excess     SE   sigma
+//	SP400 holdout  [primary] 208     +2.30%   2.54    0.9
+//	SP400 in-samp  [primary] 270     +0.72%   1.13    0.6
+//	SP500 holdout            288     +0.85%   0.91    0.9
+//	SP500 in-samp            323     +1.94%   1.43    1.4
+//
+// So this screen exists for cmd/strategyscan to keep measuring, and for the
+// record above to be reproducible. It is NOT in i18n, NOT in
+// service.CheckStatefulSignals, and must not be added there on the strength
+// of the numbers above — §4.4's whole point is that the bar does not move
+// after seeing the result.
+//
+// What is genuinely interesting, and why this is "underpowered" rather than
+// "disproven": it is the only screen here whose excess is positive-signed in
+// all four samples. Every other screen flips sign between universes. Four of
+// four is p≈0.06 under a coin-flip null, which is suggestive and not
+// conclusive — and the four are not independent, since SP400 and SP500 span
+// the same calendar. The blocker is sample size, not effect size: the screen
+// fires ~200-320 times per slice because a >=5% gap on >=3x volume at a
+// 60-day high is rare. Resolving it needs more names (Russell-2000 scale),
+// not more tuning of the thresholds, and re-tuning them against these same
+// slices would just fit the noise.
+//
+// Two secondary findings from the same runs:
+//
+//   - Entry timing is not the problem. The T+1 variant (same signal, entered
+//     one bar later — see gapDriftT1Strategy in cmd/strategyscan) tracks T+0
+//     within 0.6pp in every sample, so the effect is not a one-session
+//     continuation that a real fill would miss.
+//   - §2.6's slippage worry does not apply to the excess. Slippage is a
+//     constant charge per round trip, it does not move the exit, and the
+//     control pays it too — so tripling it to 0.3%/side leaves every excess
+//     figure above identical to the cent. (The sigmas wobble by ~0.03
+//     between those two runs only because the bootstrap RNG has advanced;
+//     the underlying returns differ by a constant.) What it does cost is
+//     0.40pp of ABSOLUTE return (SP400 holdout +5.47% -> +5.07%), small only
+//     because the average hold is ~37 days. Slippage can make the trade
+//     unprofitable; it cannot manufacture or destroy an edge over a control
+//     that trades the same way. Worth remembering before running that
+//     sensitivity again on any screen measured against this control.
+func CheckPostGapDriftExact(candles []data.Candle, p ScreenParams) bool {
+	n := len(candles)
+	if n < 60 {
+		return false
+	}
+	closes := data.Closes(candles)
+	volumes := data.Volumes(candles)
+	bar := candles[n-1]
+
+	// 1. The event: an opening gap up of at least GapUpPct.
+	prevClose := closes[n-2]
+	if prevClose <= 0 || (bar.Open-prevClose)/prevClose*100.0 < p.GapUpPct {
+		return false
+	}
+
+	// 2. Volume confirms news, not a thin print on a quiet tape.
+	volRatio := VolumeRatio(volumes, 20)
+	if volRatio == 0 || volRatio < p.GapVolMult {
+		return false
+	}
+
+	// 3. Held the gap into the close. No guard for High == Low is needed: a
+	// bar that never moved (a TW limit-up locked at the open, the strongest
+	// hold there is) has Close == mid, which passes.
+	if bar.Close < (bar.High+bar.Low)/2 {
+		return false
+	}
+
+	// 4. Repricing, not a bounce: the gap has to make a new high.
+	if !IsNewHigh(closes, p.NewHighLookback) {
+		return false
+	}
+
+	// 5. Liquidity: same gate, same window as the other four screens.
+	window5v := volumes[n-6 : n-1]
+	var sumV int64
+	for _, v := range window5v {
+		sumV += v
+	}
+	if float64(sumV)/5.0 < p.MinAvgVolume5d {
+		return false
+	}
+
+	return true
 }
