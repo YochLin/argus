@@ -68,9 +68,52 @@ function countStale(news: LLMNewsItem[], createdAt: string): number {
   return news.filter((n) => isStale(n, createdAt)).length;
 }
 
-function countDuplicateTitles(news: LLMNewsItem[]): number {
-  const dupes = duplicateTitleSet(news);
-  return news.filter((n) => dupes.has(normTitle(n.Headline))).length;
+function countNoSummary(news: LLMNewsItem[]): number {
+  return news.filter((n) => !n.Summary).length;
+}
+
+// newsWithScope pairs every news item with the "slot list" it came from: a
+// ticker's own News array, or a per-item scope for marketNews (which isn't
+// bound to any one ticker's five slots). Phase 19 後續 PR6 needs this to
+// tell apart two very different things the flat duplicate count used to
+// conflate — see countDuplicateTitlesByScope.
+function newsWithScope(detail: LLMRunDetail): { item: LLMNewsItem; scope: string }[] {
+  const stocks = [...detail.input.watchlist, ...detail.input.candidates];
+  const out: { item: LLMNewsItem; scope: string }[] = [];
+  stocks.forEach((s, i) => {
+    const ticker = (s.Quote?.Ticker as string | undefined) ?? `stock-${i}`;
+    for (const n of s.News ?? []) out.push({ item: n, scope: ticker });
+  });
+  detail.input.marketNews.forEach((n, i) => out.push({ item: n, scope: `marketNews-${i}` }));
+  return out;
+}
+
+// countDuplicateTitlesByScope replaces the old single "duplicate titles"
+// count, which read as "a ticker's own picker returned a repeat" but was
+// actually almost entirely the opposite failure: the same wire story
+// syndicated onto many different tickers' news, invisible from any one
+// ticker's five-slot list. crossTicker=false counts a title repeating
+// within one ticker's own News (or a single marketNews item repeating,
+// which can't happen); crossTicker=true counts a title whose occurrences
+// span more than one such scope — the 2026-08-27 audit finding.
+function countDuplicateTitlesByScope(detail: LLMRunDetail, crossTicker: boolean): number {
+  const entries = newsWithScope(detail);
+  const countByTitle = new Map<string, number>();
+  const scopesByTitle = new Map<string, Set<string>>();
+  for (const { item, scope } of entries) {
+    const t = normTitle(item.Headline);
+    countByTitle.set(t, (countByTitle.get(t) ?? 0) + 1);
+    if (!scopesByTitle.has(t)) scopesByTitle.set(t, new Set());
+    scopesByTitle.get(t)!.add(scope);
+  }
+  let total = 0;
+  for (const { item } of entries) {
+    const t = normTitle(item.Headline);
+    if ((countByTitle.get(t) ?? 0) <= 1) continue;
+    const spansMultipleScopes = (scopesByTitle.get(t)?.size ?? 0) > 1;
+    if (spansMultipleScopes === crossTicker) total++;
+  }
+  return total;
 }
 
 // Renders MarketContext's flat key/value struct (Bench/SPYPrice/VIX/...) as
@@ -126,7 +169,7 @@ function StatBlock({ label, value }: { label: string; value: string | number }) 
 // Design mockup's per-metric warn thresholds (its llmModel()'s `flags`
 // array) — a source name found in the blacklist or a candle gap is bad at
 // any count, stale/duplicate news only stands out past a couple of items.
-function QualityBlock({ label, value, warn }: { label: string; value: number; warn: boolean }) {
+function QualityBlock({ label, value, warn }: { label: string; value: string | number; warn: boolean }) {
   return (
     <div className={`llm-quality-item${warn ? " warn" : ""}`}>
       <span className="llm-quality-value">{value}</span>
@@ -377,11 +420,21 @@ function RunDetail({
             warn={countStale(news, detail.createdAt) > 2}
           />
           <QualityBlock
-            label={dict.llmDuplicateTitles}
-            value={countDuplicateTitles(news)}
-            warn={countDuplicateTitles(news) > 0}
+            label={dict.llmDuplicateTitlesSameTicker}
+            value={countDuplicateTitlesByScope(detail, false)}
+            warn={countDuplicateTitlesByScope(detail, false) > 0}
+          />
+          <QualityBlock
+            label={dict.llmDuplicateTitlesCrossTicker}
+            value={countDuplicateTitlesByScope(detail, true)}
+            warn={countDuplicateTitlesByScope(detail, true) > 0}
           />
           <QualityBlock label={dict.llmCandleGaps} value={detail.candleGapCount} warn={detail.candleGapCount > 0} />
+          <QualityBlock
+            label={dict.llmNoSummaryRate}
+            value={`${countNoSummary(news)}/${news.length}`}
+            warn={news.length > 0 && countNoSummary(news) / news.length > 0.3}
+          />
         </div>
       </div>
 

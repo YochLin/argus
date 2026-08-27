@@ -209,7 +209,8 @@ func (b *Bot) handleCheck(ctx context.Context, ticker string) {
 		b.Send(i18n.T(b.lang, i18n.KeyQuoteFailed, label, err))
 		return
 	}
-	news, _ := b.provider.GetNews(ticker, 5)
+	fetched, _ := b.provider.GetNews(ticker, tickerNewsFetch)
+	news := (&newsPicker{}).pick(fetched, tickerNewsSlots)
 
 	stock := llm.StockData{Quote: q, News: news, CompanyName: b.companyName(ticker)}
 	if b.fundamentals != nil {

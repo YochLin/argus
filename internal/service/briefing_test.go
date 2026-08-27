@@ -91,3 +91,27 @@ func TestCompanyNameForResolvesTWTicker(t *testing.T) {
 		t.Errorf("companyNameFor(_, 2330) = %q, want 台積電", got)
 	}
 }
+
+func TestLoadQuoteHighlightsDedupesNewsAcrossTickers(t *testing.T) {
+	quotes := &mockBriefingQuotes{
+		quotes: map[string]*data.Quote{
+			"AAPL": {Ticker: "AAPL", Price: 200},
+			"MSFT": {Ticker: "MSFT", Price: 300},
+		},
+		news: map[string][]data.NewsItem{
+			"AAPL": {{Headline: "The Deep Unknowns Of AI"}},
+			"MSFT": {{Headline: "The Deep Unknowns Of AI"}, {Headline: "MSFT earnings beat"}},
+		},
+	}
+
+	got := LoadQuoteHighlights(quotes, nil, []string{"AAPL", "MSFT"}, nil)
+	if len(got) != 2 {
+		t.Fatalf("LoadQuoteHighlights() returned %d entries, want 2", len(got))
+	}
+	if len(got[0].News) != 1 {
+		t.Fatalf("AAPL News = %+v, want 1 item", got[0].News)
+	}
+	if len(got[1].News) != 1 || got[1].News[0].Headline != "MSFT earnings beat" {
+		t.Errorf("MSFT News = %+v, want just the distinct story (shared headline already used by AAPL)", got[1].News)
+	}
+}

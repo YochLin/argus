@@ -245,49 +245,65 @@ func candle(date string) data.Candle {
 	return data.Candle{Date: d}
 }
 
+func stockWithCandles(dates ...string) llm.StockData {
+	candles := make([]data.Candle, len(dates))
+	for i, d := range dates {
+		candles[i] = candle(d)
+	}
+	return llm.StockData{Candles: candles}
+}
+
 func TestCountCandleGaps(t *testing.T) {
 	cases := []struct {
-		name   string
-		stocks []llm.StockData
-		market market.MarketID
-		want   int
+		name  string
+		lists [][]llm.StockData
+		want  int
 	}{
 		{
-			name:   "consecutive trading days, no gap",
-			stocks: []llm.StockData{{Candles: []data.Candle{candle("2026-08-17"), candle("2026-08-18")}}}, // Mon -> Tue
-			market: market.US,
-			want:   0,
+			name:  "single ticker has no peers to attest a gap against",
+			lists: [][]llm.StockData{{stockWithCandles("2026-08-17", "2026-08-19")}}, // Mon -> Wed, Tue missing
+			want:  0,
 		},
 		{
-			name:   "weekend between Friday and Monday is not a gap",
-			stocks: []llm.StockData{{Candles: []data.Candle{candle("2026-08-14"), candle("2026-08-17")}}}, // Fri -> Mon
-			market: market.US,
-			want:   0,
+			name: "peer traded on the missing day: real gap",
+			lists: [][]llm.StockData{{
+				stockWithCandles("2026-08-17", "2026-08-19"),               // Mon -> Wed, Tue missing
+				stockWithCandles("2026-08-17", "2026-08-18", "2026-08-19"), // peer has the Tue bar
+			}},
+			want: 1,
 		},
 		{
-			name:   "missing bar mid-week is a gap",
-			stocks: []llm.StockData{{Candles: []data.Candle{candle("2026-08-17"), candle("2026-08-19")}}}, // Mon -> Wed, Tue missing
-			market: market.US,
-			want:   1,
+			name: "weekend between Friday and Monday, no peer bars either: not a gap",
+			lists: [][]llm.StockData{{
+				stockWithCandles("2026-08-14", "2026-08-17"), // Fri -> Mon
+				stockWithCandles("2026-08-14", "2026-08-17"),
+			}},
+			want: 0,
 		},
 		{
-			name: "US holiday (Labor Day) does not count as a gap",
-			// 2026-09-04 Fri -> 2026-09-08 Tue, skipping weekend + Labor Day (Mon 2026-09-07).
-			stocks: []llm.StockData{{Candles: []data.Candle{candle("2026-09-04"), candle("2026-09-08")}}},
-			market: market.US,
-			want:   0,
+			name: "TW holiday nobody in the batch traded through: not a gap",
+			// Dragon Boat Festival 2026-06-19 — every ticker in the batch
+			// skips it, so it never enters the calendar union.
+			lists: [][]llm.StockData{{
+				stockWithCandles("2026-06-18", "2026-06-22"),
+				stockWithCandles("2026-06-18", "2026-06-22"),
+				stockWithCandles("2026-06-18", "2026-06-22"),
+			}},
+			want: 0,
 		},
 		{
-			name:   "TW has no holiday calendar, so it falls back to weekday-only",
-			stocks: []llm.StockData{{Candles: []data.Candle{candle("2026-08-17"), candle("2026-08-19")}}},
-			market: market.TW,
-			want:   1,
+			name: "candle gap spans watchlist and candidates lists together",
+			lists: [][]llm.StockData{
+				{stockWithCandles("2026-08-17", "2026-08-19")},               // watchlist: Tue missing
+				{stockWithCandles("2026-08-17", "2026-08-18", "2026-08-19")}, // candidates: has Tue
+			},
+			want: 1,
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := CountCandleGaps(c.stocks, c.market); got != c.want {
+			if got := CountCandleGaps(c.lists...); got != c.want {
 				t.Errorf("CountCandleGaps() = %d, want %d", got, c.want)
 			}
 		})
