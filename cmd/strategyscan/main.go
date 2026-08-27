@@ -417,7 +417,33 @@ func main() {
 	// date-clustered bootstrap the excess numbers use) outside this tool.
 	dumpTradesFlag := flag.String("dump-trades", "", "write the baseline's per-trade replay rows to this CSV, for paired comparison between two exit configs")
 	skipTrustFlag := flag.Bool("skip-trust", false, "TW only: don't fetch FinMind trust-net data and drop 網 5 from the study (the other four screens don't use it)")
+	// Phase 25 §3.3: a single paper.Account replayed chronologically across
+	// every strategy's deduped entries (never the baseline, which is a
+	// random-sampling control, not a set of positions), instead of
+	// simulateTrade's disposable one-ticker account per trade — produces an
+	// equity curve, max drawdown, Sharpe and annualized return in place of a
+	// per-trade average. Off by default and additive: with this flag unset,
+	// nothing in portfolio.go runs and the rest of this tool's output is
+	// unchanged (see that file's doc comment).
+	portfolioBacktestFlag := flag.Bool("portfolio-backtest", false, "Phase 25 §3.3: replay one paper.Account chronologically across every strategy's entries, producing an equity-curve CSV + drawdown/Sharpe/annualized return instead of a per-trade average")
+	portfolioCashFlag := flag.Float64("portfolio-cash", 100000, "portfolio backtest: starting cash")
+	portfolioRiskPctFlag := flag.Float64("portfolio-risk-pct", 1.0, "portfolio backtest: RiskPct per trade (matches the live default RISK_PCT_PER_TRADE=1.0)")
+	portfolioMaxPositionPctFlag := flag.Float64("portfolio-max-position-pct", 25.0, "portfolio backtest: MaxPositionPct cap, ACTUALLY enforced here (unlike simulateTrade's disposable account, which zeroes it to guarantee fills) — matches the live default PAPER_MAX_POSITION_PCT=25")
+	portfolioEquityOutFlag := flag.String("portfolio-equity-out", "", "portfolio backtest: where the daily equity-curve CSV is written; default strategyscan_equity_<market>.csv")
+	portfolioTradesOutFlag := flag.String("portfolio-trades-out", "", "portfolio backtest: where the closed round-trip trades CSV is written; default strategyscan_portfolio_trades_<market>.csv")
+	// Phase 25 §3: the vol-targeted exposure overlay built ON TOP of the
+	// portfolio backtest — requires -portfolio-backtest, since it has nothing
+	// to multiply otherwise. Default off per the workstream's own rule: never
+	// change default backtest/live behavior without a validated flip (see
+	// volMultiplierAt's doc comment in portfolio.go for the pre-registered
+	// formula/constants).
+	volTargetFlag := flag.Bool("vol-target", false, "Phase 25 §3: market-level volatility-targeted exposure overlay (SPY's 20d realized vol vs. its trailing 1y percentile scales RiskPct) — requires -portfolio-backtest, default off")
 	flag.Parse()
+
+	if *volTargetFlag && !*portfolioBacktestFlag {
+		fmt.Printf("Error: -vol-target requires -portfolio-backtest (it has nothing to multiply otherwise)\n")
+		os.Exit(1)
+	}
 
 	m := market.US
 	if *marketFlag == "tw" {
@@ -737,6 +763,16 @@ func main() {
 		}
 	}
 
+	// Phase 25 §3.3: only allocated when -portfolio-backtest is set, so a
+	// default run pays nothing extra (no full-history highs/lows/closes
+	// copies, no entry-event bookkeeping) and its output stays untouched.
+	var tickerHists map[string]tickerHist
+	var portfolioEntries map[string][]string
+	if *portfolioBacktestFlag {
+		tickerHists = make(map[string]tickerHist, len(tickers))
+		portfolioEntries = make(map[string][]string)
+	}
+
 	count := 0
 	total := len(tickers)
 	for _, ticker := range tickers {
@@ -756,6 +792,9 @@ func main() {
 			continue
 		}
 		fetched++
+		if tickerHists != nil {
+			tickerHists[ticker] = newTickerHist(candles)
+		}
 
 		// Phase 15 §4.5: one extra FinMind request per TW ticker, whole
 		// history in one shot rather than day-by-day — trustAligned/
@@ -898,6 +937,11 @@ func main() {
 					rec.TradeHoldDays = outcome.HoldDays
 				}
 				records = append(records, rec)
+
+				if portfolioEntries != nil {
+					entryDateStr := candles[entryIdx].Date.Format("2006-01-02")
+					portfolioEntries[entryDateStr] = append(portfolioEntries[entryDateStr], ticker)
+				}
 			}
 		}
 	}
@@ -971,6 +1015,26 @@ func main() {
 	writeBaselineSummaryCSV(fmt.Sprintf("strategyscan_baseline_%s.csv", m), baselineRecs)
 	if *dumpTradesFlag != "" {
 		writeTradeDumpCSV(*dumpTradesFlag, baselineRecs)
+	}
+
+	if *portfolioBacktestFlag {
+		pcfg := exitCfg
+		pcfg.RiskPct = *portfolioRiskPctFlag
+		pcfg.MaxPositionPct = *portfolioMaxPositionPctFlag
+		result := runPortfolioBacktest(tickerHists, portfolioEntries, benchCandles, pcfg, *portfolioCashFlag, *volTargetFlag, *dateFromFlag, *dateToFlag)
+		printPortfolioResult(*portfolioCashFlag, result, *volTargetFlag)
+
+		eqPath := *portfolioEquityOutFlag
+		if eqPath == "" {
+			eqPath = fmt.Sprintf("strategyscan_equity_%s.csv", m)
+		}
+		writeEquityCurveCSV(eqPath, result.Curve)
+
+		tradesPath := *portfolioTradesOutFlag
+		if tradesPath == "" {
+			tradesPath = fmt.Sprintf("strategyscan_portfolio_trades_%s.csv", m)
+		}
+		writePortfolioTradesCSV(tradesPath, result.Trades)
 	}
 }
 
