@@ -504,6 +504,9 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 	}
 
 	var result []llm.StockData
+	// One picker for the whole batch: a market-wide story tagged onto a
+	// dozen tickers gets one slot in this prompt, not a dozen.
+	picker := &newsPicker{}
 	for _, t := range tickers {
 		if market.Of(t) == market.US {
 			time.Sleep(finnhubRequestDelay)
@@ -516,8 +519,8 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 		if market.Of(t) == market.US {
 			time.Sleep(finnhubRequestDelay)
 		}
-		news, _ := b.provider.GetNews(t, 5)
-		stock := llm.StockData{Quote: q, News: news, CompanyName: b.companyName(t)}
+		fetched, _ := b.provider.GetNews(t, tickerNewsFetch)
+		stock := llm.StockData{Quote: q, News: picker.pick(fetched, tickerNewsSlots), CompanyName: b.companyName(t)}
 		fetchFundamentals := includeFundamentals || extraFundamentals[t]
 		if fetchFundamentals && b.fundamentals != nil {
 			if fd, err := b.cachedFundamentals(t); err != nil {

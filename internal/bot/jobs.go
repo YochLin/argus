@@ -157,11 +157,8 @@ func (b *Bot) recordPriceEvents(ctx context.Context, hits []signals.PriceEvent, 
 	}
 
 	for _, ev := range writeup {
-		news, _ := b.provider.GetNews(ev.Ticker, eventNewsFetch)
-		news = dedupeHeadlines(filterNewsNearDate(news, date))
-		if len(news) > eventNewsSlots {
-			news = news[:eventNewsSlots]
-		}
+		news, _ := b.provider.GetNews(ev.Ticker, tickerNewsFetch)
+		news = (&newsPicker{}).pick(filterNewsNearDate(news, date), tickerNewsSlots)
 		facts := priceEventFacts(ev)
 		facts.ATRMultiple, facts.VolumeRatio = b.priceEventScale(ev.Ticker, ev.ChangePct)
 		summary, model, latencyMs, err := b.llm.ExplainPriceEvent(ctx, facts, news)
