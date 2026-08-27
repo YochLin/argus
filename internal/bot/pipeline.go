@@ -151,7 +151,7 @@ func (b *Bot) recordLLMRun(kind string, m market.MarketID, in recommendationInpu
 	for _, s := range in.candidates {
 		newsCount += len(s.News)
 	}
-	gapCount := countCandleGaps(in.watchlist, m) + countCandleGaps(in.candidates, m)
+	gapCount := countCandleGaps(in.watchlist, in.candidates)
 
 	if err := b.db.InsertLLMRun(kind, m, model, latencyMs, string(inputJSON), raw, len(in.watchlist), len(in.candidates), newsCount, gapCount); err != nil {
 		logger.Errorf("llm run: insert: %v", err)
@@ -193,40 +193,52 @@ func (b *Bot) recordPriceEventLLMRun(ev signals.PriceEvent, m market.MarketID, n
 }
 
 // countCandleGaps counts, across every stock's Candles, how many consecutive
-// bar pairs skip more than one trading day — a stand-in for "Yahoo's chart
-// API silently dropped a bar" (see internal/data's GetHistory doc comment
-// for a documented instance of that). US uses internal/market.IsTradingDay's
-// real NYSE calendar; TW falls back to a weekday-only check since
-// internal/market doesn't cover the TWSE calendar (same limitation the prior
-// client-side TS heuristic had for both markets — see the /llm audit page's
-// data-quality panel).
-func countCandleGaps(stocks []llm.StockData, m market.MarketID) int {
+// bar pairs have another stock's bar dated strictly in between — a stand-in
+// for "Yahoo's chart API silently dropped a bar" (see internal/data's
+// GetHistory doc comment for a documented instance of that). Phase 19 後續
+// PR2: the prior version asked a calendar (NYSE for US, weekday-only for TW,
+// since internal/market doesn't cover the TWSE calendar) whether a date
+// should have had a bar. For TW that meant every non-trading weekday not
+// already a Saturday/Sunday — a single holiday like Dragon Boat Festival
+// inflated one run's count from a real 1 to 28. This asks the batch itself
+// instead: a date only counts as a missed bar if some *other* ticker in the
+// same batch actually traded that day, which needs no holiday calendar and
+// is naturally correct for both markets (a real market holiday shows up in
+// no ticker's Candles, so it's never in the union).  Needs >1 tickers to
+// have any signal — a single-ticker batch's own bars are the only dates in
+// its calendar, so nothing ever falls strictly between them.
+func countCandleGaps(lists ...[]llm.StockData) int {
+	calendar := make(map[string]bool)
+	for _, stocks := range lists {
+		for _, s := range stocks {
+			for _, c := range s.Candles {
+				calendar[c.Date.Format("2006-01-02")] = true
+			}
+		}
+	}
 	gaps := 0
-	for _, s := range stocks {
-		for i := 1; i < len(s.Candles); i++ {
-			if tradingDaysBetween(s.Candles[i-1].Date, s.Candles[i].Date, m) > 1 {
-				gaps++
+	for _, stocks := range lists {
+		for _, s := range stocks {
+			for i := 1; i < len(s.Candles); i++ {
+				if hasAttestedGap(s.Candles[i-1].Date, s.Candles[i].Date, calendar) {
+					gaps++
+				}
 			}
 		}
 	}
 	return gaps
 }
 
-// tradingDaysBetween counts trading days in (from, to], matching the
-// semantics of the TS heuristic it replaces: exactly 1 for two consecutive
-// trading days, >1 whenever a bar is missing in between.
-func tradingDaysBetween(from, to time.Time, m market.MarketID) int {
-	n := 0
-	for d := from.AddDate(0, 0, 1); !d.After(to); d = d.AddDate(0, 0, 1) {
-		if m == market.US {
-			if market.IsTradingDay(d) {
-				n++
-			}
-		} else if wd := d.Weekday(); wd != time.Saturday && wd != time.Sunday {
-			n++
+// hasAttestedGap reports whether some date strictly between from and to is
+// in calendar — i.e. another ticker in the batch has a bar there, so its
+// absence from this stock's own bars is a real missing bar, not a holiday.
+func hasAttestedGap(from, to time.Time, calendar map[string]bool) bool {
+	for d := from.AddDate(0, 0, 1); d.Before(to); d = d.AddDate(0, 0, 1) {
+		if calendar[d.Format("2006-01-02")] {
+			return true
 		}
 	}
-	return n
+	return false
 }
 
 // sendAndSaveRecommendations formats LLM recommendations for Telegram and
@@ -557,6 +569,7 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 			time.Sleep(finnhubRequestDelay)
 		}
 		fetched, _ := b.provider.GetNews(t, tickerNewsFetch)
+		fetched = filterStaleNews(fetched, time.Now().In(cst))
 		stock := llm.StockData{Quote: q, News: picker.pick(fetched, tickerNewsSlots), CompanyName: b.companyName(t)}
 		fetchFundamentals := includeFundamentals || extraFundamentals[t]
 		if fetchFundamentals && b.fundamentals != nil {
