@@ -186,7 +186,7 @@ func (b *Bot) runRecommend(ctx context.Context, m market.MarketID) {
 	// (see exploreCandidates and docs/phase-2.6-two-stage-llm-exploration.md)
 	// — an interactive /recommend doesn't get a second one-shot LLM call
 	// tacked onto its latency.
-	sources := recommendationSources(in.watchlistTickers, in.candidateTickers, in.scanHits, nil)
+	sources := service.RecommendationSources(in.watchlistTickers, in.candidateTickers, in.scanHits, nil)
 	b.sendAndSaveRecommendations(summary, recs, sources, m, len(in.candidateTickers), in.watchlist, in.candidates)
 }
 

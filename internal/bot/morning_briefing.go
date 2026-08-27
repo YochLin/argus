@@ -4,25 +4,21 @@ import (
 	"context"
 	"time"
 
-	"argus/internal/db"
 	"argus/internal/i18n"
-	"argus/internal/llm"
 	"argus/internal/logger"
 	"argus/internal/market"
+	"argus/internal/service"
 )
 
 // usIndices are the ETF proxies used for the morning briefing's broad-index
 // summary — there's no direct index quote in data.Provider, but SPY/QQQ/DIA/
 // IWM track the S&P 500/Nasdaq/Dow/Russell 2000 closely enough for a
 // narrative recap (not a precise index-point figure).
-var usIndices = []struct {
-	Ticker string
-	Label  string
-}{
-	{"SPY", "S&P 500"},
-	{"QQQ", "Nasdaq"},
-	{"DIA", "Dow Jones"},
-	{"IWM", "Russell 2000"},
+var usIndices = []service.IndexProxy{
+	{Ticker: "SPY", Label: "S&P 500"},
+	{Ticker: "QQQ", Label: "Nasdaq"},
+	{Ticker: "DIA", Label: "Dow Jones"},
+	{Ticker: "IWM", Label: "Russell 2000"},
 }
 
 // twIndices mirrors usIndices for RunTWMorningBriefing's "prior TW close"
@@ -30,63 +26,9 @@ var usIndices = []struct {
 // symbols: ^TWII returns live data but ^TWOII's quote timestamp was
 // live-verified stale (over a year old), so both proxies use the same
 // live-verified-fresh ETF-ticker approach usIndices already relies on.
-var twIndices = []struct {
-	Ticker string
-	Label  string
-}{
-	{"0050", "台灣50"},
-	{"0051", "中型100"},
-}
-
-// fetchIndexQuotes fetches each ticker in idx's current quote, skipping
-// (logging) any that fail rather than failing the whole briefing — same
-// per-field-degrades convention as computeMarketRegime's own VIX fetch.
-func (b *Bot) fetchIndexQuotes(idx []struct {
-	Ticker string
-	Label  string
-}) []llm.IndexQuote {
-	var out []llm.IndexQuote
-	for _, i := range idx {
-		q, err := b.provider.GetQuote(i.Ticker)
-		if err != nil {
-			logger.Errorf("morning briefing: %s quote: %v", i.Ticker, err)
-			continue
-		}
-		out = append(out, llm.IndexQuote{Label: i.Label, Price: q.Price, ChangePercent: q.ChangePercent})
-	}
-	return out
-}
-
-// briefingNewsSlots is how many news items each briefing section gets —
-// fewer than tickerNewsSlots because the briefing covers the watchlist and
-// ~20 movers in one narrative recap, not a per-ticker decision.
-const briefingNewsSlots = 3
-
-// loadQuoteHighlights is a lighter sibling of fetchStockData for the morning
-// briefing's watchlist/mover sections: quote + a few news items + company
-// name + position (if held), deliberately skipping computeTechnicals'
-// GetHistory("1y") call — a narrative recap doesn't need RSI/MACD/candles,
-// and fetching full technicals for both the watchlist and ~20 mover tickers
-// every morning would double the daily history-fetch volume for no benefit
-// here. writeStockSection renders the result safely regardless (see
-// StockData's per-field degradation convention).
-func (b *Bot) loadQuoteHighlights(tickers []string, positions map[string]db.Position) []llm.StockData {
-	var result []llm.StockData
-	picker := &newsPicker{}
-	for _, t := range tickers {
-		q, err := b.provider.GetQuote(t)
-		if err != nil {
-			logger.Errorf("morning briefing: quote %s: %v", t, err)
-			continue
-		}
-		fetched, _ := b.provider.GetNews(t, tickerNewsFetch)
-		stock := llm.StockData{Quote: q, News: picker.pick(fetched, briefingNewsSlots), CompanyName: b.companyName(t)}
-		if p, ok := positions[t]; ok {
-			stock.Position = &llm.Position{Shares: p.Shares, AvgCost: p.AvgCost}
-		}
-		result = append(result, stock)
-	}
-	return result
+var twIndices = []service.IndexProxy{
+	{Ticker: "0050", Label: "台灣50"},
+	{Ticker: "0051", Label: "中型100"},
 }
 
 // RunUSMorningBriefing is the 07:00 CST scheduler entry point (see
@@ -107,7 +49,7 @@ func (b *Bot) RunUSMorningBriefing(ctx context.Context) {
 
 	b.Send(i18n.T(b.lang, i18n.KeyMorningBriefingStart))
 
-	indices := b.fetchIndexQuotes(usIndices)
+	indices := service.FetchIndexQuotes(b.provider, usIndices)
 	var vix float64
 	if q, err := b.provider.GetQuote(vixTicker); err != nil {
 		logger.Errorf("morning briefing: %s quote: %v", vixTicker, err)
@@ -122,13 +64,13 @@ func (b *Bot) RunUSMorningBriefing(ctx context.Context) {
 	if err != nil {
 		logger.Errorf("morning briefing: watchlist: %v", err)
 	}
-	watchlist := b.loadQuoteHighlights(watchlistTickers, positions)
+	watchlist := service.LoadQuoteHighlights(b.provider, b.companyNames, watchlistTickers, positions)
 
 	moverTickers, err := b.provider.GetMarketMovers()
 	if err != nil {
 		logger.Errorf("morning briefing: market movers: %v", err)
 	}
-	movers := b.loadQuoteHighlights(moverTickers, positions)
+	movers := service.LoadQuoteHighlights(b.provider, b.companyNames, moverTickers, positions)
 
 	result, err := b.llm.MorningBriefing(ctx, reportDate.Format("2006-01-02"), indices, vix, marketNews, watchlist, movers, false)
 	if err != nil {
@@ -181,7 +123,7 @@ func (b *Bot) RunTWMorningBriefing(ctx context.Context) {
 
 	b.Send(i18n.T(b.lang, i18n.KeyTWMorningBriefingStart))
 
-	indices := append(b.fetchIndexQuotes(twIndices), b.fetchIndexQuotes(usIndices)...)
+	indices := append(service.FetchIndexQuotes(b.provider, twIndices), service.FetchIndexQuotes(b.provider, usIndices)...)
 	var vix float64
 	if q, err := b.provider.GetQuote(vixTicker); err != nil {
 		logger.Errorf("tw morning briefing: %s quote: %v", vixTicker, err)
@@ -196,7 +138,7 @@ func (b *Bot) RunTWMorningBriefing(ctx context.Context) {
 	if err != nil {
 		logger.Errorf("tw morning briefing: watchlist: %v", err)
 	}
-	watchlist := b.loadQuoteHighlights(watchlistTickers, positions)
+	watchlist := service.LoadQuoteHighlights(b.provider, b.companyNames, watchlistTickers, positions)
 
 	var moverTickers []string
 	if b.twMovers != nil {
@@ -205,7 +147,7 @@ func (b *Bot) RunTWMorningBriefing(ctx context.Context) {
 			logger.Errorf("tw morning briefing: market movers: %v", err)
 		}
 	}
-	movers := b.loadQuoteHighlights(moverTickers, positions)
+	movers := service.LoadQuoteHighlights(b.provider, b.companyNames, moverTickers, positions)
 
 	result, err := b.llm.MorningBriefing(ctx, reportDate.Format("2006-01-02"), indices, vix, marketNews, watchlist, movers, true)
 	if err != nil {

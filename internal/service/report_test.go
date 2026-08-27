@@ -92,6 +92,51 @@ func TestMonthRange(t *testing.T) {
 	})
 }
 
+type mockWeeklyNetWorthStore struct {
+	latestDate string
+	latest     float64
+	haveLatest bool
+	baseline   float64
+	haveBase   bool
+}
+
+func (m *mockWeeklyNetWorthStore) GetLatestNetWorth(mk market.MarketID) (string, float64, bool, error) {
+	return m.latestDate, m.latest, m.haveLatest, nil
+}
+
+func (m *mockWeeklyNetWorthStore) GetNetWorthOnOrBefore(date string, mk market.MarketID) (float64, bool, error) {
+	return m.baseline, m.haveBase, nil
+}
+
+func TestWeeklyNetWorthChangeNoSnapshotYet(t *testing.T) {
+	_, _, ok, err := WeeklyNetWorthChange(&mockWeeklyNetWorthStore{}, market.US)
+	if err != nil || ok {
+		t.Fatalf("WeeklyNetWorthChange() ok = %v, err = %v, want ok=false, err=nil", ok, err)
+	}
+}
+
+func TestWeeklyNetWorthChangeNoBaselineAWeekAgo(t *testing.T) {
+	store := &mockWeeklyNetWorthStore{latestDate: "2026-08-27", latest: 1000, haveLatest: true}
+	_, _, ok, err := WeeklyNetWorthChange(store, market.US)
+	if err != nil || ok {
+		t.Fatalf("WeeklyNetWorthChange() ok = %v, err = %v, want ok=false, err=nil", ok, err)
+	}
+}
+
+func TestWeeklyNetWorthChange(t *testing.T) {
+	store := &mockWeeklyNetWorthStore{
+		latestDate: "2026-08-27", latest: 1100,
+		haveLatest: true, baseline: 1000, haveBase: true,
+	}
+	latest, pctChange, ok, err := WeeklyNetWorthChange(store, market.US)
+	if err != nil || !ok {
+		t.Fatalf("WeeklyNetWorthChange() ok = %v, err = %v, want ok=true, err=nil", ok, err)
+	}
+	if latest != 1100 || pctChange != 10 {
+		t.Errorf("WeeklyNetWorthChange() = (%v, %v), want (1100, 10)", latest, pctChange)
+	}
+}
+
 type mockMonthlyReportStore struct {
 	points     []db.NetWorthPoint
 	baseline   float64

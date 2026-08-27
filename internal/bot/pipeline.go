@@ -73,7 +73,7 @@ func (b *Bot) gatherRecommendationInputs(m market.MarketID) (recommendationInput
 		}
 	}
 	scanHits := b.loadScanHits(m)
-	dedupedCandidates := mergeCandidates(candidateTickers, scanHits, tickers)
+	dedupedCandidates := service.MergeCandidates(candidateTickers, scanHits, tickers)
 	dedupedCandidates = service.RankAndTruncateCandidates(b.history, dedupedCandidates, benchmarkFor(m), candidatePrefilterCount)
 	allTickers := append(append([]string{}, tickers...), dedupedCandidates...)
 
@@ -151,7 +151,7 @@ func (b *Bot) recordLLMRun(kind string, m market.MarketID, in recommendationInpu
 	for _, s := range in.candidates {
 		newsCount += len(s.News)
 	}
-	gapCount := countCandleGaps(in.watchlist, in.candidates)
+	gapCount := service.CountCandleGaps(in.watchlist, in.candidates)
 
 	if err := b.db.InsertLLMRun(kind, m, model, latencyMs, string(inputJSON), raw, len(in.watchlist), len(in.candidates), newsCount, gapCount); err != nil {
 		logger.Errorf("llm run: insert: %v", err)
@@ -190,55 +190,6 @@ func (b *Bot) recordPriceEventLLMRun(ev signals.PriceEvent, m market.MarketID, n
 	if err := b.db.InsertLLMRun("price_event", m, model, latencyMs, string(inputJSON), summary, 0, 0, len(news), 0); err != nil {
 		logger.Errorf("llm run: insert price event: %v", err)
 	}
-}
-
-// countCandleGaps counts, across every stock's Candles, how many consecutive
-// bar pairs have another stock's bar dated strictly in between — a stand-in
-// for "Yahoo's chart API silently dropped a bar" (see internal/data's
-// GetHistory doc comment for a documented instance of that). Phase 19 後續
-// PR2: the prior version asked a calendar (NYSE for US, weekday-only for TW,
-// since internal/market doesn't cover the TWSE calendar) whether a date
-// should have had a bar. For TW that meant every non-trading weekday not
-// already a Saturday/Sunday — a single holiday like Dragon Boat Festival
-// inflated one run's count from a real 1 to 28. This asks the batch itself
-// instead: a date only counts as a missed bar if some *other* ticker in the
-// same batch actually traded that day, which needs no holiday calendar and
-// is naturally correct for both markets (a real market holiday shows up in
-// no ticker's Candles, so it's never in the union).  Needs >1 tickers to
-// have any signal — a single-ticker batch's own bars are the only dates in
-// its calendar, so nothing ever falls strictly between them.
-func countCandleGaps(lists ...[]llm.StockData) int {
-	calendar := make(map[string]bool)
-	for _, stocks := range lists {
-		for _, s := range stocks {
-			for _, c := range s.Candles {
-				calendar[c.Date.Format("2006-01-02")] = true
-			}
-		}
-	}
-	gaps := 0
-	for _, stocks := range lists {
-		for _, s := range stocks {
-			for i := 1; i < len(s.Candles); i++ {
-				if hasAttestedGap(s.Candles[i-1].Date, s.Candles[i].Date, calendar) {
-					gaps++
-				}
-			}
-		}
-	}
-	return gaps
-}
-
-// hasAttestedGap reports whether some date strictly between from and to is
-// in calendar — i.e. another ticker in the batch has a bar there, so its
-// absence from this stock's own bars is a real missing bar, not a holiday.
-func hasAttestedGap(from, to time.Time, calendar map[string]bool) bool {
-	for d := from.AddDate(0, 0, 1); d.Before(to); d = d.AddDate(0, 0, 1) {
-		if calendar[d.Format("2006-01-02")] {
-			return true
-		}
-	}
-	return false
 }
 
 // sendAndSaveRecommendations formats LLM recommendations for Telegram and
@@ -1243,34 +1194,6 @@ func renderEarningsPreview(lang i18n.Lang, earnings map[string]data.EarningsEven
 	return sb.String()
 }
 
-// mergeCandidates combines the market-movers list with today's Phase 2.6
-// universe-scan hits into the final candidate ticker list: movers first
-// (existing behavior preserved), then any scan-hit ticker not already
-// present, finally excluding anything already on the watchlist (exclude).
-func mergeCandidates(movers []string, scanHits map[string]string, exclude []string) []string {
-	seen := make(map[string]bool, len(movers)+len(scanHits))
-	excluded := make(map[string]bool, len(exclude))
-	for _, t := range exclude {
-		excluded[t] = true
-	}
-
-	var out []string
-	add := func(t string) {
-		if seen[t] || excluded[t] {
-			return
-		}
-		seen[t] = true
-		out = append(out, t)
-	}
-	for _, t := range movers {
-		add(t)
-	}
-	for t := range scanHits {
-		add(t)
-	}
-	return out
-}
-
 // candidatePrefilterCount is Phase 23 PR9's rule-score cutoff
 // (docs/phase-23-strategy-data-uplift.md §5: "規則分粗篩到 20") — the daily
 // candidate pool (movers ∪ scan hits, 40-55/day before this) is too big for
@@ -1278,44 +1201,3 @@ func mergeCandidates(movers []string, scanHits map[string]string, exclude []stri
 // the final pick, so this prefilter only needs to not drop a real candidate,
 // not be precise (§4.2/§4.3).
 const candidatePrefilterCount = 20
-
-// recommendationSources maps every ticker eligible for today's LLM call to
-// where it came from ("watchlist"/"scan"/"explore"/"movers"), for Phase
-// 3.8's /track breakdown by candidate-sourcing path. candidates is the
-// already-deduped list returned by mergeCandidates, with Phase 2.6 解凍's
-// exploreCandidates results already appended by RunDailyReport (nil/empty
-// explore for handleRecommend, which doesn't run that step — see
-// docs/phase-2.6-two-stage-llm-exploration.md). Priority is watchlist > scan
-// > explore > movers: a ticker present in both scanHits and that list is
-// attributed to "scan" rather than "movers" or "explore" — that's the most
-// specific signal that actually surfaced it with a stated reason (see
-// llm.StockData.ScanReason), even if it also happened to be trending or
-// LLM-nominated; scan beats explore because scan hit is our own concrete
-// technical signal, explore is just a one-line model nomination (in
-// practice these shouldn't overlap at all — exploreCandidates' dedup step
-// already excludes anything already a candidate — this ordering is a
-// defensive guard, not an expected case).
-func recommendationSources(watchlist, candidates []string, scanHits map[string]string, explore map[string]string) map[string]string {
-	out := make(map[string]string, len(watchlist)+len(candidates))
-	for _, t := range watchlist {
-		out[t] = "watchlist"
-	}
-	for _, t := range candidates {
-		// mergeCandidates already excludes watchlist tickers from candidates
-		// in normal use, so this shouldn't fire in practice — kept as a
-		// defensive guard so "watchlist" always wins over "movers"/"scan"/
-		// "explore" for a ticker present in both, rather than depending on
-		// which loop ran last.
-		if out[t] == "watchlist" {
-			continue
-		}
-		if _, ok := scanHits[t]; ok {
-			out[t] = "scan"
-		} else if _, ok := explore[t]; ok {
-			out[t] = "explore"
-		} else {
-			out[t] = "movers"
-		}
-	}
-	return out
-}
