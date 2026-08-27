@@ -43,7 +43,7 @@ func TestFilterNewsNearDate(t *testing.T) {
 	}
 }
 
-func TestDedupeHeadlines(t *testing.T) {
+func TestNewsPicker(t *testing.T) {
 	news := []data.NewsItem{
 		// The TW case: one wire story, three outlets, Google News' " - 媒體"
 		// tag being the only difference.
@@ -56,7 +56,8 @@ func TestDedupeHeadlines(t *testing.T) {
 		{Source: "Bloomberg", Headline: "TSMC lifts capex guidance for 2026 - Bloomberg"},
 	}
 
-	got := dedupeHeadlines(news)
+	p := &newsPicker{}
+	got := p.pick(news, tickerNewsSlots)
 	want := []string{"經濟日報", "中央社", "Reuters"}
 	if len(got) != len(want) {
 		t.Fatalf("kept %d items %v, want %v", len(got), headlines(got), want)
@@ -67,8 +68,24 @@ func TestDedupeHeadlines(t *testing.T) {
 		}
 	}
 
-	if got := dedupeHeadlines(nil); got != nil {
-		t.Errorf("dedupeHeadlines(nil) = %v, want nil", got)
+	// The cross-ticker case: the same picker, the next ticker's feed. The
+	// market-wide story the first ticker already used is skipped, and the
+	// slot goes to the next distinct one instead of being lost.
+	next := []data.NewsItem{
+		{Source: "Reuters", Headline: "TSMC lifts capex guidance for 2026"},
+		{Source: "中央社", Headline: "聯發科天璣新平台發表"},
+	}
+	if got := p.pick(next, tickerNewsSlots); len(got) != 1 || got[0].Source != "中央社" {
+		t.Errorf("second pick = %v, want only the story the first ticker had not shown", headlines(got))
+	}
+
+	// slots caps the answer even when everything is distinct.
+	if got := (&newsPicker{}).pick(news, 2); len(got) != 2 {
+		t.Errorf("pick(news, 2) kept %d items, want 2", len(got))
+	}
+
+	if got := (&newsPicker{}).pick(nil, tickerNewsSlots); got != nil {
+		t.Errorf("pick(nil) = %v, want nil", got)
 	}
 }
 
