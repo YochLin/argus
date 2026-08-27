@@ -7,7 +7,7 @@ import (
 	"argus/internal/data"
 )
 
-func TestFilterNewsNearDate(t *testing.T) {
+func TestFilterStaleNews(t *testing.T) {
 	at := func(s string) time.Time {
 		ts, err := time.Parse(time.RFC3339, s)
 		if err != nil {
@@ -15,17 +15,17 @@ func TestFilterNewsNearDate(t *testing.T) {
 		}
 		return ts
 	}
+	asOf := at("2026-08-27T09:00:00+08:00")
 	news := []data.NewsItem{
-		{Headline: "same day", PublishedAt: at("2026-08-25T14:00:00+08:00")},
-		{Headline: "us session, next cst day", PublishedAt: at("2026-08-26T03:30:00+08:00")},
-		{Headline: "day before", PublishedAt: at("2026-08-24T09:00:00+08:00")},
-		{Headline: "two days old", PublishedAt: at("2026-08-23T23:59:00+08:00")},
+		{Headline: "today", PublishedAt: at("2026-08-27T08:00:00+08:00")},
+		{Headline: "just under 72h", PublishedAt: at("2026-08-24T10:00:00+08:00")},
+		{Headline: "just over 72h", PublishedAt: at("2026-08-24T08:00:00+08:00")},
 		{Headline: "a week old", PublishedAt: at("2026-08-18T10:00:00+08:00")},
 		{Headline: "undated"},
 	}
 
-	got := filterNewsNearDate(news, "2026-08-25")
-	want := []string{"same day", "us session, next cst day", "day before"}
+	got := filterStaleNews(news, asOf)
+	want := []string{"today", "just under 72h"}
 	if len(got) != len(want) {
 		t.Fatalf("kept %d items %v, want %v", len(got), headlines(got), want)
 	}
@@ -34,16 +34,9 @@ func TestFilterNewsNearDate(t *testing.T) {
 			t.Errorf("item %d = %q, want %q", i, got[i].Headline, h)
 		}
 	}
-
-	if got := filterNewsNearDate(news, "not-a-date"); len(got) != len(news) {
-		t.Errorf("unparseable date filtered %d items away, want the news left untouched", len(news)-len(got))
-	}
-	if got := filterNewsNearDate(news, "2026-01-05"); len(got) != 0 {
-		t.Errorf("kept %v for an unrelated date, want none (the prompt's 'cause unknown' branch)", headlines(got))
-	}
 }
 
-func TestDedupeHeadlines(t *testing.T) {
+func TestNewsPicker(t *testing.T) {
 	news := []data.NewsItem{
 		// The TW case: one wire story, three outlets, Google News' " - 媒體"
 		// tag being the only difference.
@@ -56,7 +49,8 @@ func TestDedupeHeadlines(t *testing.T) {
 		{Source: "Bloomberg", Headline: "TSMC lifts capex guidance for 2026 - Bloomberg"},
 	}
 
-	got := dedupeHeadlines(news)
+	p := &newsPicker{}
+	got := p.pick(news, tickerNewsSlots)
 	want := []string{"經濟日報", "中央社", "Reuters"}
 	if len(got) != len(want) {
 		t.Fatalf("kept %d items %v, want %v", len(got), headlines(got), want)
@@ -67,8 +61,24 @@ func TestDedupeHeadlines(t *testing.T) {
 		}
 	}
 
-	if got := dedupeHeadlines(nil); got != nil {
-		t.Errorf("dedupeHeadlines(nil) = %v, want nil", got)
+	// The cross-ticker case: the same picker, the next ticker's feed. The
+	// market-wide story the first ticker already used is skipped, and the
+	// slot goes to the next distinct one instead of being lost.
+	next := []data.NewsItem{
+		{Source: "Reuters", Headline: "TSMC lifts capex guidance for 2026"},
+		{Source: "中央社", Headline: "聯發科天璣新平台發表"},
+	}
+	if got := p.pick(next, tickerNewsSlots); len(got) != 1 || got[0].Source != "中央社" {
+		t.Errorf("second pick = %v, want only the story the first ticker had not shown", headlines(got))
+	}
+
+	// slots caps the answer even when everything is distinct.
+	if got := (&newsPicker{}).pick(news, 2); len(got) != 2 {
+		t.Errorf("pick(news, 2) kept %d items, want 2", len(got))
+	}
+
+	if got := (&newsPicker{}).pick(nil, tickerNewsSlots); got != nil {
+		t.Errorf("pick(nil) = %v, want nil", got)
 	}
 }
 
