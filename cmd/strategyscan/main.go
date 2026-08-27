@@ -416,7 +416,14 @@ func main() {
 	// the per-trade rows lets the comparison be done properly (same
 	// date-clustered bootstrap the excess numbers use) outside this tool.
 	dumpTradesFlag := flag.String("dump-trades", "", "write the baseline's per-trade replay rows to this CSV, for paired comparison between two exit configs")
-	skipTrustFlag := flag.Bool("skip-trust", false, "TW only: don't fetch FinMind trust-net data and drop 網 5 from the study (the other four screens don't use it)")
+	skipTrustFlag := flag.Bool("skip-trust", false, "TW only: don't fetch trust-net data and drop 網 5 from the study (the other four screens don't use it)")
+	// Phase 25 §4: T86 (internal/data/twse_t86.go) replaces FinMind as 網5's
+	// data source. It has no ranged query, so a decade-long backtest needs
+	// its own bulk day-major cache — see t86_cache.go's package comment for
+	// why -history-file used to require -skip-trust and no longer has to
+	// once -t86-file is also given.
+	buildT86CacheFlag := flag.String("build-t86-cache", "", "TW only: fetch whole-market TWSE T86 (tw150 tickers only) into this CSV cache for [-date-from,-date-to] (default: 10y back from today), then exit")
+	t86FileFlag := flag.String("t86-file", "", "TW only: read 網 5's trust/foreign net from this cache (built by -build-t86-cache) instead of one live TWSE request per ticker")
 	flag.Parse()
 
 	m := market.US
@@ -483,6 +490,35 @@ func main() {
 		fmt.Printf("Building TW history cache from Shioaji at %s: %s .. %s -> %s\n", addr, from, to, *buildHistoryFlag)
 		if err := buildHistoryCache(context.Background(), sinopac.New(addr), fromT, toT, *buildHistoryFlag); err != nil {
 			fmt.Printf("Error building cache: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *buildT86CacheFlag != "" {
+		if m != market.TW {
+			fmt.Printf("Error: -build-t86-cache is TW-only (T86 is a TWSE-only report)\n")
+			os.Exit(1)
+		}
+		from, to := *dateFromFlag, *dateToFlag
+		if from == "" {
+			from = time.Now().AddDate(-10, 0, 0).Format("2006-01-02")
+		}
+		if to == "" {
+			to = time.Now().Format("2006-01-02")
+		}
+		fromT, err1 := time.Parse("2006-01-02", from)
+		toT, err2 := time.Parse("2006-01-02", to)
+		if err1 != nil || err2 != nil {
+			fmt.Printf("Error: -date-from/-date-to must be YYYY-MM-DD\n")
+			os.Exit(1)
+		}
+		keep := make(map[string]bool)
+		for _, t := range parseTickers(tw150TickersRaw) {
+			keep[t] = true
+		}
+		fmt.Printf("Building T86 cache: %s .. %s, %d tw150 tickers -> %s\n", from, to, len(keep), *buildT86CacheFlag)
+		if err := buildT86Cache(data.NewTWSE(), keep, fromT, toT, *buildT86CacheFlag); err != nil {
+			fmt.Printf("Error building T86 cache: %v\n", err)
 			os.Exit(1)
 		}
 		return
@@ -618,8 +654,8 @@ func main() {
 		return yahoo.GetHistory(ticker, *rangeFlag)
 	}
 	if *historyFileFlag != "" {
-		if m == market.TW && !*skipTrustFlag {
-			fmt.Printf("Error: -history-file needs -skip-trust — the cache universe is the whole market (~2,000 tickers) and 網 5 would need one FinMind request per ticker, far past the free tier's quota.\n")
+		if m == market.TW && !*skipTrustFlag && *t86FileFlag == "" {
+			fmt.Printf("Error: TW -history-file needs -skip-trust or -t86-file — the OHLCV cache universe is the whole market (~2,000 tickers) and 網 5 would otherwise need one live trust-net request per ticker, far past what's affordable per run. Build a T86 cache once with -build-t86-cache and pass it via -t86-file.\n")
 			os.Exit(1)
 		}
 		// TW's cache is the whole market and needs the equity filter; US's
@@ -652,7 +688,22 @@ func main() {
 	// docs/phase-15-trust-follow.md §4.1: FinMind's free tier serves every
 	// dataset used here unauthenticated (live-verified), so this backtest
 	// tool doesn't gate construction on FINMIND_TOKEN the way the bot does.
+	// FinMind stays as the live (uncached), per-ticker trust-net fallback
+	// below — TWSE.GetTrustNetSeries deliberately caps its walk-back to ~20
+	// calendar days (see its doc comment) and would silently return an
+	// almost-empty series for a multi-year backtest range instead of
+	// erroring, which is worse than keeping the working FinMind path as the
+	// non-cached default. -t86-file (built by -build-t86-cache) is the
+	// correct way to backtest 網 5 against T86.
 	finmind := data.NewFinMind(os.Getenv("FINMIND_TOKEN"))
+	var t86Cache map[string][]data.TrustNetDay
+	if *t86FileFlag != "" {
+		var err error
+		if t86Cache, err = loadT86Cache(*t86FileFlag); err != nil {
+			fmt.Printf("Error loading T86 cache: %v\n", err)
+			os.Exit(1)
+		}
+	}
 
 	fmt.Printf("Fetching %s history for market regime and benchmark...\n", benchTicker)
 	benchCandles, err := getHistory(benchTicker)
@@ -757,16 +808,28 @@ func main() {
 		}
 		fetched++
 
-		// Phase 15 §4.5: one extra FinMind request per TW ticker, whole
-		// history in one shot rather than day-by-day — trustAligned/
-		// foreignAligned stay nil on failure, which just drops trust_follow
-		// for this ticker's records below (baseline/other strategies are
-		// unaffected). Both series ride the same request/rows (see
-		// data.TrustNetDay).
+		// Phase 15 §4.5 / Phase 25 §4.4: trust-net source is either the
+		// pre-built T86 cache (no network call at all — see t86_cache.go) or
+		// one live FinMind request per TW ticker, whole history in one shot
+		// rather than day-by-day. trustAligned/foreignAligned stay nil on
+		// failure (or on a ticker absent from the cache — e.g. outside the
+		// cache's date range or delisted since), which just drops
+		// trust_follow for this ticker's records below (baseline/other
+		// strategies are unaffected). Both series ride the same
+		// request/rows (see data.TrustNetDay).
 		var trustAligned, foreignAligned []int64
 		if m == market.TW && !*skipTrustFlag {
-			time.Sleep(200 * time.Millisecond) // rate limit
-			rows, err := finmind.GetTrustNetSeries(ticker, len(candles))
+			var rows []data.TrustNetDay
+			var err error
+			if t86Cache != nil {
+				var ok bool
+				if rows, ok = t86Cache[ticker]; !ok {
+					err = fmt.Errorf("%s not in T86 cache", ticker)
+				}
+			} else {
+				time.Sleep(200 * time.Millisecond) // rate limit
+				rows, err = finmind.GetTrustNetSeries(ticker, len(candles))
+			}
 			if err != nil {
 				trustFetchFailed++
 				trustFailedTickers = append(trustFailedTickers, ticker)
@@ -916,11 +979,15 @@ func main() {
 		}
 		fmt.Printf("Fetch failures (first %d of %d): %s\n", len(shown), len(failedTickers), strings.Join(shown, ", "))
 	}
+	trustSourceLabel := "FinMind (live, per ticker)"
+	if t86Cache != nil {
+		trustSourceLabel = "T86 (" + *t86FileFlag + ")"
+	}
 	if m == market.TW && *skipTrustFlag {
-		fmt.Printf("Trust-net (FinMind): skipped (-skip-trust); 網 5 is not part of this run.\n")
+		fmt.Printf("Trust-net: skipped (-skip-trust); 網 5 is not part of this run.\n")
 	}
 	if m == market.TW && !*skipTrustFlag {
-		fmt.Printf("Trust-net (FinMind): %d fetch errors out of %d fetched tickers\n", trustFetchFailed, fetched)
+		fmt.Printf("Trust-net (%s): %d fetch errors out of %d fetched tickers\n", trustSourceLabel, trustFetchFailed, fetched)
 		if len(trustFailedTickers) > 0 {
 			shown := trustFailedTickers
 			if len(shown) > 10 {
@@ -930,10 +997,10 @@ func main() {
 		}
 		// PR1 (docs/phase-23-strategy-data-uplift.md §5): a silent drop here is
 		// how 網 5 went unbacktested for an entire phase without anyone
-		// noticing (§2.3) — FINMIND_TOKEN missing/invalid must fail the run,
-		// not just print a line nobody reads.
+		// noticing (§2.3) — a broken/incomplete trust-net source must fail
+		// the run, not just print a line nobody reads.
 		if fetched > 0 && float64(trustFetchFailed)/float64(fetched) > 0.05 {
-			fmt.Printf("FATAL: trust-net fetch error rate %.1f%% exceeds 5%% — 網 5 (trust_follow) would be studied on a crippled sample. Check FINMIND_TOKEN and re-run.\n",
+			fmt.Printf("FATAL: trust-net fetch error rate %.1f%% exceeds 5%% — 網 5 (trust_follow) would be studied on a crippled sample. Check FINMIND_TOKEN (live path) or the -t86-file cache's coverage and re-run.\n",
 				float64(trustFetchFailed)/float64(fetched)*100.0)
 			os.Exit(1)
 		}

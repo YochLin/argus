@@ -70,7 +70,7 @@ type Bot struct {
 	twMarketNews     data.MarketNewsProvider        // TW's marketNews counterpart (cnyes), always non-nil — no API key required
 	twMovers         data.TWMarketMoversProvider    // TW's GetMarketMovers counterpart (TWSE OpenAPI), always non-nil — no API key required
 	companyNames     data.CompanyNameProvider       // nil if FINMIND_TOKEN isn't set
-	trustNet         data.TrustNetProvider          // Phase 15 網 5【主力跟單】, TW only; nil if FINMIND_TOKEN isn't set
+	trustNet         data.TrustNetProvider          // Phase 15 網 5【主力跟單】, TW only; Phase 25 §4.4 switched this from FinMind to TWSE's own T86 report, so — like institutional/twMarketNews/twMovers — always non-nil, no API key required
 	optionChain      data.OptionChainProvider       // Phase 12, US-only; always non-nil in real use (Yahoo needs no API key), nil-checked anyway for tests that build a partial Bot
 	// secFundamentals is Phase 23 PR6's SEC EDGAR-derived valuation
 	// percentile/cash-flow quality source, US-only; nil unless SEC_USER_AGENT
@@ -79,9 +79,10 @@ type Bot struct {
 	// anonymous UA the way institutional/twMarketNews/twMovers do.
 	secFundamentals data.FundamentalHistoryProvider
 	// twValuation is Phase 23 PR7's TW counterpart, backed by FinMind's
-	// TaiwanStockPER (nil unless FINMIND_TOKEN is set — same instance as
-	// trustNet/companyNames, not a second FinMind client). Both providers
-	// are dispatched by market.Of(ticker) from the same cachedValuationSnapshot.
+	// TaiwanStockPER (nil unless FINMIND_TOKEN is set — same FinMind
+	// instance as companyNames; trustNet moved off FinMind in Phase 25 §4.4
+	// and no longer shares it). Both providers are dispatched by
+	// market.Of(ticker) from the same cachedValuationSnapshot.
 	twValuation data.FundamentalHistoryProvider
 	history     data.HistoryProvider
 	sinopac     *sinopac.Client // Phase 16, TW only; nil unless SHIOAJI_ADDR is set

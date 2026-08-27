@@ -191,13 +191,14 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 		sectorProvider = core.Finnhub
 		earningsSurpriseProvider = core.Finnhub // Phase 23 PR8
 	}
-	// trustNetProvider/twValuationProvider are FinMind fields runMCPServer()
-	// has no use for, same reasoning as the Finnhub block above.
-	var trustNetProvider data.TrustNetProvider
+	// industryMapProvider/twValuationProvider are FinMind fields
+	// runMCPServer() has no use for, same reasoning as the Finnhub block
+	// above. trustNetProvider used to live here too (core.FinMind) until
+	// Phase 25 §4.4 — it's now assigned below, off twMovers, once that's
+	// constructed.
 	var industryMapProvider data.IndustryMapProvider
 	var twValuationProvider data.FundamentalHistoryProvider
 	if core.FinMind != nil {
-		trustNetProvider = core.FinMind
 		industryMapProvider = core.FinMind
 		twValuationProvider = core.FinMind // Phase 23 PR7: TaiwanStockPER-derived valuation percentile
 	}
@@ -218,6 +219,14 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 	// fundamentalsProvider/earningsProvider above they're constructed
 	// unconditionally, same as yahoo/History.
 	twMovers := data.NewTWSE()
+	// trustNetProvider (網5【主力跟單】's data source) now reads TWSE's own
+	// T86 report directly instead of FinMind's secondhand copy (Phase 25
+	// §4.4): canonical, free/keyless like twMovers above — so, unlike the
+	// FinMind-gated block above, this is unconditional, no longer needs
+	// FINMIND_TOKEN — and adds the 外資 dimension FinMind's TrustNetProvider
+	// never carried. See internal/data/twse_t86.go's GetTrustNetSeries doc
+	// comment for the capped live lookback this implies.
+	var trustNetProvider data.TrustNetProvider = twMovers
 	twMarketNews := data.MarketNewsProvider(data.NewMarketNewsFilter(data.NewCnyes(), newsBlocked))
 	var twMoversProvider data.TWMarketMoversProvider = twMovers
 	if core.Sinopac != nil {

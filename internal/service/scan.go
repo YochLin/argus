@@ -54,9 +54,11 @@ type RestrictedProvider interface {
 type ScanService struct {
 	store    ScanStore
 	detector *signals.Detector
-	// trustNet is Phase 15 網 5【主力跟單】's optional TW-only data source;
-	// nil when FINMIND_TOKEN isn't set, same nil-degrade convention as every
-	// other optional provider.
+	// trustNet is Phase 15 網 5【主力跟單】's TW-only data source. Still
+	// nil-checked below (same nil-degrade convention as every other optional
+	// provider) for callers/tests that don't wire one, but in real use it's
+	// always non-nil since Phase 25 §4.4 moved it off FinMind onto TWSE's
+	// own T86 report — no API key required.
 	trustNet data.TrustNetProvider
 	// fundamentals backs the revenue-growth short-circuit gate (see
 	// revenueGrowthOK) — nil when the caller has no fundamentals provider
