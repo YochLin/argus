@@ -40,6 +40,27 @@ var tw150TickersRaw string
 //go:embed sp400_tickers.txt
 var sp400TickersRaw string
 
+// sp600TickersRaw is the S&P SmallCap 600, sourced from SPDR Portfolio S&P
+// 600 Small Cap ETF's (SPSM) public daily holdings file — no auth, no
+// scraping: https://www.ssga.com/us/en/individual/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-spsm.xlsx
+// (live-verified 2026-08-27: real .xlsx, "Ticker"/"Name"/"Weight" columns,
+// 602 equity rows after dropping SPSM's 8 non-equity holdings — USD cash,
+// an E-mini Russell 2000 futures contract, and 6 CVR/earnout/contra rows
+// that carry no tradable ticker; sp600_tickers.txt itself is bare
+// ticker-per-line like sp400/sp500's, no header row, to match parseTickers).
+// Added for Phase 25 §8.1: 網6 (post-gap
+// drift) measured a correctly-signed effect but couldn't clear the
+// significance bar on sp400's ~400 names — too few triggers, not a signal
+// problem (see CheckPostGapDriftExact's doc comment in internal/signals) —
+// and S&P 600 gives ~50% more distinct US small-caps to re-run the study
+// against. iShares' IJR (the more obvious first choice, same index) sits
+// behind a bot-blocking CDN (sourcedefense.blackrock.com) that returns an
+// HTML challenge page instead of the CSV even with a browser UA — SPDR's
+// SPSM tracks the identical index and its .xlsx download has no such gate.
+//
+//go:embed sp600_tickers.txt
+var sp600TickersRaw string
+
 // baseStrategies are the four technical screens common to both markets;
 // twStrategies adds Phase 15's 網 5 (TW only — no US equivalent, see
 // docs/phase-15-trust-follow.md §6). Order is shared by the hit map, the
@@ -379,8 +400,11 @@ func main() {
 	// clean time-slice still can't tell an edge from survivorship bias; the
 	// S&P 400 mid-caps are a disjoint universe (an index is either 500 or 400,
 	// never both) drawn from the same market, which is the cheap way to ask
-	// "does this screen work on stocks it wasn't tuned on".
-	universeFlag := flag.String("universe", "", "US only: alternate ticker universe — sp400 (mid-cap) instead of the default S&P 500")
+	// "does this screen work on stocks it wasn't tuned on". sp600 (Phase 25
+	// §8.1) exists for the opposite reason — not out-of-sample checking, but
+	// raw trigger count: 網6/網1/網2 all measured a correctly-signed effect
+	// that couldn't clear the significance bar on sp400's ~400 names alone.
+	universeFlag := flag.String("universe", "", "US only: alternate ticker universe — sp400 (mid-cap) or sp600 (small-cap) instead of the default S&P 500")
 	// 網 3 calibration. Evaluated as extra pseudo-strategies in the SAME run
 	// rather than by re-running with a different -flag: the run cost is the
 	// per-ticker history fetch, and CheckTrendBreakoutExact is pure and cheap,
@@ -481,12 +505,7 @@ func main() {
 			fmt.Printf("Error: -earnings-dates needs SEC_USER_AGENT set (SEC EDGAR requires an email-shaped User-Agent, see internal/data/sec.go)\n")
 			os.Exit(1)
 		}
-		var us []string
-		if *universeFlag == "sp400" {
-			us = parseTickers(sp400TickersRaw)
-		} else {
-			us = parseTickers(sp500TickersRaw)
-		}
+		us := universeTickers(*universeFlag)
 		fmt.Printf("Building earnings-dates cache from SEC EDGAR: %d tickers -> %s\n", len(us), *earningsDatesBuildFlag)
 		if err := buildEarningsDatesCache(data.NewSEC(ua), us, *earningsDatesBuildFlag); err != nil {
 			fmt.Printf("Error building earnings-dates cache: %v\n", err)
@@ -512,12 +531,7 @@ func main() {
 	}
 
 	if *buildHistoryFlag != "" && m != market.TW {
-		var us []string
-		if *universeFlag == "sp400" {
-			us = parseTickers(sp400TickersRaw)
-		} else {
-			us = parseTickers(sp500TickersRaw)
-		}
+		us := universeTickers(*universeFlag)
 		us = append(us, "SPY") // the benchmark has to be in its own cache
 		fmt.Printf("Building US history cache from Yahoo: %d tickers, range=%s -> %s\n", len(us), *rangeFlag, *buildHistoryFlag)
 		if err := buildHistoryCacheYahoo(data.NewYahoo(), us, *rangeFlag, *buildHistoryFlag); err != nil {
@@ -666,11 +680,15 @@ func main() {
 			strategies = append(append([]string{}, baseStrategies...), trustStrategy)
 		}
 		fmt.Printf("Loaded %d tw150 tickers.\n", len(tickers))
-	} else if *universeFlag == "sp400" {
-		tickers = parseTickers(sp400TickersRaw)
-		fmt.Printf("Loaded %d S&P 400 mid-cap tickers (out-of-sample universe).\n", len(tickers))
+	} else if *universeFlag == "sp400" || *universeFlag == "sp600" {
+		tickers = universeTickers(*universeFlag)
+		label := "S&P 400 mid-cap"
+		if *universeFlag == "sp600" {
+			label = "S&P 600 small-cap"
+		}
+		fmt.Printf("Loaded %d %s tickers (out-of-sample universe).\n", len(tickers), label)
 	} else if *universeFlag != "" {
-		fmt.Printf("Error: -universe must be empty or sp400, got %q\n", *universeFlag)
+		fmt.Printf("Error: -universe must be empty, sp400, or sp600, got %q\n", *universeFlag)
 		os.Exit(1)
 	} else {
 		tickers = parseTickers(sp500TickersRaw)
@@ -1232,6 +1250,22 @@ func parseTickers(raw string) []string {
 		}
 	}
 	return out
+}
+
+// universeTickers resolves -universe to the matching embedded US ticker
+// list; any value other than "sp400"/"sp600" (including "") falls back to
+// the default S&P 500 — callers that need to reject an unrecognized value
+// (the main dispatch below) validate *universeFlag themselves before
+// calling this.
+func universeTickers(universe string) []string {
+	switch universe {
+	case "sp400":
+		return parseTickers(sp400TickersRaw)
+	case "sp600":
+		return parseTickers(sp600TickersRaw)
+	default:
+		return parseTickers(sp500TickersRaw)
+	}
 }
 
 // fillForwardReturns recomputes rec's 5/10/20-day forward returns as of idx.
