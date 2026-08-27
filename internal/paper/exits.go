@@ -47,10 +47,52 @@ type ExitDefaults struct {
 // halving mean return — it buys the appearance of winning often and sells
 // the returns.
 //
-// StopATRMult/StopLossPct are NOT calibrated: changing the stop distance
-// changes SuggestShares' position size, so two stop widths produce different
-// notional exposure and their percentage returns are not comparable without
-// R-normalizing first. These are the historical values, pending that study.
+// There is deliberately no maximum-holding-period field: the live account
+// holds until a stop, trailing stop, or target fires. cmd/strategyscan's
+// -hold-sweep replayed the control at 5 through 120 days and annualized
+// return is flat from 20 days out in both time slices, so a time stop in
+// that range buys nothing, and no screen's preferred horizon replicated
+// across the split. Only very short caps (5-10 days) move the number, and
+// they move it down. See that flag's doc comment for the tables.
+//
+// StopATRMult = 2 is calibrated as of 2026-08-27, and the answer was to
+// leave it where it was.
+//
+// The comparison has to be made in R — (exit-entry)/(entry-stop) — because
+// SuggestShares sizes a position so a stop-out loses a fixed share of
+// equity, so a wider stop buys fewer shares and the same price move is a
+// different amount of money. But R alone inverts the answer, and that is
+// the whole point of this entry: uncapped, R rises monotonically as the
+// stop tightens (US control, ~59k trades per slice: 0.505 at 1 ATR down to
+// 0.251 at 5). Live sizing is NOT uncapped. At RISK_PCT_PER_TRADE's
+// effective 1% and PAPER_MAX_POSITION_PCT's 25%, risk-based sizing asks for
+// 100*risk/stopWidth percent of the account — 39% at a 2.5% stop — and the
+// cap truncates it. A truncated position earns proportionally less, and
+// once that is applied the curve turns over:
+//
+//	ATR mult   1.0    1.5    2.0    2.5    3.0    4.0    5.0
+//	holdout  0.311  0.369  0.375  0.359  0.337  0.287  0.247
+//	in-samp  0.148  0.156  0.155  0.146  0.137  0.119  0.106
+//
+// Both slices peak at 1.5-2.0 and 2.0 is inside the noise of the top in
+// both, so it stands.
+//
+// The mechanism is worth stating because it couples two settings that look
+// independent: the cap stops binding at a stop width of RISK_PCT/
+// MAX_POSITION_PCT = 4%, which is about 1.6 ATR on this data — precisely
+// where the peak sits. Below it you pay a higher stop-out rate (70.6% at 1
+// ATR vs 53.2% at 2) without getting the larger position that would justify
+// it; above it, sizing works and the wider stop only dilutes R. So MOVING
+// PAPER_MAX_POSITION_PCT MOVES THE OPTIMAL STOP WIDTH. Re-run
+// cmd/strategyscan -stop-sweep with the new cap before assuming 2 still
+// holds.
+//
+// Win rate, for the third time in these studies, points the other way: 28.1%
+// at 1 ATR climbing to 58.0% at 5, while capped R peaks in the middle.
+//
+// StopLossPct is still uncalibrated — it is only the fallback for when ATR
+// is unavailable, so it is rare enough that the sweep above says nothing
+// about it.
 func DefaultExits(m market.MarketID) ExitDefaults {
 	d := ExitDefaults{
 		StopATRMult: 2,

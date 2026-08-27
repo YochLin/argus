@@ -1,6 +1,8 @@
 package main
 
 import (
+	"math"
+	"reflect"
 	"testing"
 	"time"
 
@@ -146,5 +148,149 @@ func TestSplitRegime(t *testing.T) {
 	})
 	if len(bull) != 2 || len(bear) != 1 {
 		t.Fatalf("want 2 bull / 1 bear, got %d / %d", len(bull), len(bear))
+	}
+}
+
+func TestParseHoldSweep(t *testing.T) {
+	got, err := parseHoldSweep(" 20, 60 ,20, 10 ")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if want := []int{20, 60, 10}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v (input order kept, duplicate dropped)", got, want)
+	}
+	if got, err := parseHoldSweep(""); got != nil || err != nil {
+		t.Errorf("empty = (%v, %v), want (nil, nil) — the sweep is off by default", got, err)
+	}
+	for _, bad := range []string{"0", "-5", "20,abc"} {
+		if _, err := parseHoldSweep(bad); err == nil {
+			t.Errorf("parseHoldSweep(%q) = nil error, want one", bad)
+		}
+	}
+}
+
+// sweepCandles builds a deterministic path from per-day percentage moves.
+func sweepCandles(moves []float64) []data.Candle {
+	price := 100.0
+	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	out := make([]data.Candle, 0, len(moves)+1)
+	out = append(out, data.Candle{Date: start, Open: price, High: price, Low: price, Close: price, Volume: 1_000_000})
+	for i, mv := range moves {
+		price *= 1 + mv/100
+		out = append(out, data.Candle{
+			Date: start.AddDate(0, 0, i+1),
+			Open: price, High: price, Low: price, Close: price,
+			Volume: 1_000_000,
+		})
+	}
+	return out
+}
+
+// The multi-horizon replay must agree exactly with the single-horizon one it
+// replaced, for every horizon and on both branches (a rule exit fired, and a
+// forced close at the horizon). One replay serving many horizons is only
+// worth having if it is the same replay.
+func TestSimulateTradeHorizonsMatchesSingleHorizon(t *testing.T) {
+	cfg := paper.Config{StopATRMult: 2, StopLossPct: 10, TrailingPct: 18, Market: market.US}
+	holds := []int{5, 10, 20, 40, 60}
+
+	paths := map[string][]float64{
+		"grind up (forced close at every horizon)": repeatMove(+0.4, 80),
+		"straight down (stop fires early)":         repeatMove(-1.5, 80),
+		"up then collapse (trailing fires late)":   append(repeatMove(+1.2, 40), repeatMove(-2.0, 40)...),
+	}
+
+	for name, moves := range paths {
+		t.Run(name, func(t *testing.T) {
+			candles := sweepCandles(moves)
+			multi := simulateTradeHorizons(candles, 0, cfg, 0.1, holds)
+			for _, h := range holds {
+				want, wantOK := simulateTrade(candles, 0, cfg, 0.1, h)
+				got, gotOK := multi[h]
+				if gotOK != wantOK {
+					t.Fatalf("h=%d: ok = %v, want %v", h, gotOK, wantOK)
+				}
+				if !wantOK {
+					continue
+				}
+				if math.Abs(got.ExitRet-want.ExitRet) > 1e-9 || got.ExitReason != want.ExitReason || got.HoldDays != want.HoldDays {
+					t.Errorf("h=%d: got %+v, want %+v", h, got, want)
+				}
+			}
+		})
+	}
+}
+
+func repeatMove(pct float64, n int) []float64 {
+	out := make([]float64, n)
+	for i := range out {
+		out[i] = pct
+	}
+	return out
+}
+
+func TestParseFloatList(t *testing.T) {
+	got, err := parseFloatList(" 1, 2.5 ,4 ")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if want := []float64{1, 2.5, 4}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+	if got, err := parseFloatList(""); got != nil || err != nil {
+		t.Errorf("empty = (%v, %v), want (nil, nil)", got, err)
+	}
+	for _, bad := range []string{"0", "-1", "2,x"} {
+		if _, err := parseFloatList(bad); err == nil {
+			t.Errorf("parseFloatList(%q) = nil error, want one", bad)
+		}
+	}
+}
+
+// The stop-width study divides by (Entry-Stop), so a replay that reports a
+// stop it didn't actually use would silently produce plausible R values
+// off the wrong denominator. Pin that the reported stop is the one the ATR
+// multiple asks for, and that it scales with the multiple.
+func TestSimulateTradeReportsTheStopItUsed(t *testing.T) {
+	candles := sweepCandles(append(repeatMove(+1.0, 30), repeatMove(-1.2, 50)...))
+
+	var prevDist float64
+	for _, mult := range []float64{1, 2, 3, 4} {
+		cfg := paper.Config{StopATRMult: mult, StopLossPct: 10, TrailingPct: 18, Market: market.US}
+		o, ok := simulateTrade(candles, 20, cfg, 0.1, 60)
+		if !ok {
+			t.Fatalf("mult=%g: no trade", mult)
+		}
+		if o.Entry <= 0 || o.Stop <= 0 || o.Stop >= o.Entry {
+			t.Fatalf("mult=%g: entry=%g stop=%g, want 0 < stop < entry", mult, o.Entry, o.Stop)
+		}
+		dist := o.Entry - o.Stop
+		if prevDist > 0 {
+			// Each step here is +1 ATR, so the gap grows by a constant.
+			if step := dist - prevDist; step <= 0 {
+				t.Errorf("mult=%g: stop distance %g did not widen from %g", mult, dist, prevDist)
+			}
+		}
+		prevDist = dist
+	}
+}
+
+// A stopped-out trade must lose at least its full unit of risk: R <= -1
+// before friction, and strictly worse after. If this ever passes with
+// R > -1 the replay is exiting above its own stop.
+func TestStoppedOutTradeLosesAtLeastOneR(t *testing.T) {
+	candles := sweepCandles(repeatMove(-1.5, 60))
+	cfg := paper.Config{StopATRMult: 2, StopLossPct: 10, TrailingPct: 18, Market: market.US}
+
+	o, ok := simulateTrade(candles, 20, cfg, 0.1, 60)
+	if !ok {
+		t.Fatal("no trade")
+	}
+	if o.ExitReason != "stop" {
+		t.Fatalf("ExitReason = %q, want stop on a straight decline", o.ExitReason)
+	}
+	stopPct := (o.Entry - o.Stop) / o.Entry * 100
+	if r := o.ExitRet / stopPct; r > -1 {
+		t.Errorf("R = %.3f, want <= -1 (a stop-out loses its risk unit plus friction)", r)
 	}
 }
