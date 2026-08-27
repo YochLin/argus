@@ -64,6 +64,12 @@ var baseStrategies = []string{"squeeze_breakout", "box_bottom", "trend_breakout"
 const (
 	gapDriftStrategy   = "post_gap_drift"
 	gapDriftT1Strategy = "post_gap_drift_t1"
+	// gapDriftConfirmedStrategy is Phase 25 §8.1: identical to gapDriftStrategy
+	// plus one more condition — the signal day must fall within ±1 trading
+	// day of a real SEC filed date (see earnings_cache.go's nearFilingDate).
+	// Only added to the strategies list when -earnings-dates-file is set
+	// (US only — see loadEarningsDatesCache's caller).
+	gapDriftConfirmedStrategy = "post_gap_drift_confirmed"
 )
 
 // entryOffset shifts a strategy's entry away from its signal bar. Absent
@@ -417,6 +423,11 @@ func main() {
 	// date-clustered bootstrap the excess numbers use) outside this tool.
 	dumpTradesFlag := flag.String("dump-trades", "", "write the baseline's per-trade replay rows to this CSV, for paired comparison between two exit configs")
 	skipTrustFlag := flag.Bool("skip-trust", false, "TW only: don't fetch trust-net data and drop 網 5 from the study (the other four screens don't use it)")
+	// Phase 25 §8.1 step 3: same two-step offline-cache pattern as
+	// -build-history/-history-file, for SEC EDGAR filed dates instead of
+	// candles. US only (SEC has no TW equivalent).
+	earningsDatesBuildFlag := flag.String("earnings-dates", "", "fetch SEC EDGAR filed dates for every ticker in -universe into this CSV cache, then exit (US only, needs SEC_USER_AGENT)")
+	earningsDatesFileFlag := flag.String("earnings-dates-file", "", "read (ticker, filed_date) pairs from this cache (built by -earnings-dates) and add post_gap_drift_confirmed (網 6 + SEC filing confirmation) to the study")
 	// Phase 25 §4: T86 (internal/data/twse_t86.go) replaces FinMind as 網5's
 	// data source. It has no ranged query, so a decade-long backtest needs
 	// its own bulk day-major cache — see t86_cache.go's package comment for
@@ -458,6 +469,30 @@ func main() {
 	} else if *marketFlag != "us" {
 		fmt.Printf("Error: -market must be us or tw, got %q\n", *marketFlag)
 		os.Exit(1)
+	}
+
+	if *earningsDatesBuildFlag != "" {
+		if m != market.US {
+			fmt.Printf("Error: -earnings-dates is US-only (SEC EDGAR has no TW equivalent — see data.SEC.GetFilingDates)\n")
+			os.Exit(1)
+		}
+		ua := os.Getenv("SEC_USER_AGENT")
+		if ua == "" {
+			fmt.Printf("Error: -earnings-dates needs SEC_USER_AGENT set (SEC EDGAR requires an email-shaped User-Agent, see internal/data/sec.go)\n")
+			os.Exit(1)
+		}
+		var us []string
+		if *universeFlag == "sp400" {
+			us = parseTickers(sp400TickersRaw)
+		} else {
+			us = parseTickers(sp500TickersRaw)
+		}
+		fmt.Printf("Building earnings-dates cache from SEC EDGAR: %d tickers -> %s\n", len(us), *earningsDatesBuildFlag)
+		if err := buildEarningsDatesCache(data.NewSEC(ua), us, *earningsDatesBuildFlag); err != nil {
+			fmt.Printf("Error building earnings-dates cache: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	// Resolve the exit-parameter sentinels now that -market is known. These
@@ -669,6 +704,26 @@ func main() {
 	for _, v := range devVariants {
 		strategies = append(strategies, v.name)
 		fmt.Printf("網 3 calibration variant: %s (MaxMA20DevPct=%g, default %g)\n", v.name, v.devPct, screenParams.MaxMA20DevPct)
+	}
+
+	// Phase 25 §8.1 step 4: post_gap_drift_confirmed only enters the study
+	// when a cache was actually supplied — with none, every hits[...] lookup
+	// below would be false and the strategy would print a hollow 0-trigger
+	// line instead of not existing.
+	var earningsDates map[string]map[string]bool
+	if *earningsDatesFileFlag != "" {
+		if m != market.US {
+			fmt.Printf("Error: -earnings-dates-file is US-only\n")
+			os.Exit(1)
+		}
+		var err error
+		earningsDates, err = loadEarningsDatesCache(*earningsDatesFileFlag)
+		if err != nil {
+			fmt.Printf("Error loading earnings-dates cache: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Loaded earnings-dates cache: %d tickers\n", len(earningsDates))
+		strategies = append(strategies, gapDriftConfirmedStrategy)
 	}
 
 	// getHistory is the single read path for candles, so the Yahoo and cache
@@ -961,6 +1016,13 @@ func main() {
 			// Same signal, different entry bar — never re-screened, so the
 			// two variants can only ever differ by the entry.
 			hits[gapDriftT1Strategy] = hits[gapDriftStrategy]
+			// §8.1 step 4: same signal, same entry bar, plus one more gate —
+			// never triggers when earningsDates is nil (map read on nil is
+			// false), which is exactly right since gapDriftConfirmedStrategy
+			// is absent from `strategies` in that case anyway.
+			if earningsDates != nil {
+				hits[gapDriftConfirmedStrategy] = hits[gapDriftStrategy] && nearFilingDate(earningsDates[ticker], candles, t)
+			}
 			if trustAligned != nil {
 				hits[trustStrategy] = signals.CheckTrustFollowExact(sub, trustAligned[:t+1], foreignAligned[:t+1], screenParams)
 			}
@@ -1070,6 +1132,9 @@ func main() {
 	printSummary(benchTicker, "Trend Pullback (網 4)", filterByStrategy(records, "trend_pullback"), &ctrl)
 	printSummary(benchTicker, "Post-Gap Drift (網 6，訊號日收盤進場)", filterByStrategy(records, gapDriftStrategy), &ctrl)
 	printSummary(benchTicker, "Post-Gap Drift (網 6，延一日進場)", filterByStrategy(records, gapDriftT1Strategy), &ctrl)
+	if earningsDates != nil {
+		printSummary(benchTicker, "Post-Gap Drift Confirmed (網 6 + SEC filed 日期 ±1 交易日)", filterByStrategy(records, gapDriftConfirmedStrategy), &ctrl)
+	}
 	if m == market.TW && !*skipTrustFlag {
 		printSummary(benchTicker, "Trust Follow (網 5，主力跟單 v2)", filterByStrategy(records, trustStrategy), &ctrl)
 	}

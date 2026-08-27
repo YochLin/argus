@@ -194,6 +194,77 @@ func (s *SEC) GetFundamentalSnapshot(ticker string, priceCandles []Candle) (*Fun
 	return computeFundamentalSnapshot(ticker, facts, priceCandles), nil
 }
 
+// filingDateTags are us-gaap tags virtually every 10-Q/10-K filer reports —
+// used only to discover WHEN a filing was made (p.Filed), never to read the
+// tag's actual value, so any tag with broad coverage works equally well.
+var filingDateTags = []string{"Revenues", "NetIncomeLoss"}
+
+// GetFilingDates returns ticker's 10-Q/10-K filing dates (YYYY-MM-DD,
+// ascending, deduped) — actual public-disclosure ("filed") dates, not fiscal
+// period ends. Shares fetchCompanyFacts with GetFundamentalSnapshot (one
+// companyfacts JSON already carries both), but is deliberately a separate
+// function rather than folded into annual10KPoints: that function's
+// 10-K-only filter exists to keep the valuation-percentile pool clean (no
+// TTM reconstruction — see FundamentalSnapshot's doc comment), and pulling
+// 10-Qs into the same path would pollute it. Phase 25 §8.1's use case is an
+// approximate earnings-date calendar (paired with cmd/strategyscan's
+// -earnings-dates cache) — filed dates are known to lag the actual
+// announcement by up to a trading day (after-hours report, next-day filing),
+// hence a ±1 trading day matching window downstream, not exact equality.
+//
+// Coverage measured 2026-08-27 against cmd/strategyscan/sp400_tickers.txt
+// (400 tickers, live SEC EDGAR): 398/400 returned dates (OZK: 404 — a stale
+// CIK; VNT: 0 dates, no usable tag history). Filing-date count per ticker:
+// median 61, min 3, max 70. Years of history reached by the earliest filed
+// date: median 15, min 0 (recent IPOs), max 17. Only 60/398 (~15%) fall
+// under 9 years, mostly recent IPOs/spinoffs (e.g. BROS, TOST, PINS) whose
+// short listing history is the real limit, not an EDGAR gap. This
+// comfortably covers cmd/strategyscan's 2016-08..2026-08 backtest window —
+// §8.1 step 2's checkpoint passes, so step 3 onward proceeded.
+func (s *SEC) GetFilingDates(ticker string) ([]string, error) {
+	if err := s.ensureCIKIndex(); err != nil {
+		return nil, err
+	}
+	cik, ok := s.cikByTicker[strings.ToUpper(ticker)]
+	if !ok {
+		return nil, fmt.Errorf("sec: no CIK found for ticker %s", ticker)
+	}
+	facts, err := s.fetchCompanyFacts(cik)
+	if err != nil {
+		return nil, err
+	}
+	return filingDatesFromFacts(facts), nil
+}
+
+// filingDatesFromFacts is the pure (network-free, unit-testable) half of
+// GetFilingDates.
+func filingDatesFromFacts(facts *secCompanyFacts) []string {
+	seen := make(map[string]bool)
+	for _, tag := range filingDateTags {
+		t, ok := facts.Facts.USGAAP[tag]
+		if !ok {
+			continue
+		}
+		for _, pts := range t.Units {
+			for _, p := range pts {
+				if p.Form != "10-Q" && p.Form != "10-K" {
+					continue
+				}
+				if p.Filed == "" {
+					continue
+				}
+				seen[p.Filed] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for d := range seen {
+		out = append(out, d)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // annualPoint is one 10-K fiscal-year figure for a single us-gaap tag.
 type annualPoint struct {
 	end string // fiscal year end, "2025-09-27"

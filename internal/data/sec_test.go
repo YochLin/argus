@@ -162,6 +162,79 @@ func TestComputeFundamentalSnapshot_MismatchedPeriodsSkipsQuality(t *testing.T) 
 	}
 }
 
+func TestFilingDatesFromFacts(t *testing.T) {
+	tests := []struct {
+		name string
+		pts  map[string][]secFactPoint // tag -> points
+		want []string
+	}{
+		{
+			name: "same-day multiple filed entries collapse to one",
+			pts: map[string][]secFactPoint{
+				"Revenues": {
+					{End: "2024-03-31", Val: 100, Form: "10-Q", Filed: "2024-05-01"},
+					{End: "2024-03-31", Val: 100, Form: "10-Q", Filed: "2024-05-01"}, // duplicate unit series
+				},
+			},
+			want: []string{"2024-05-01"},
+		},
+		{
+			name: "10-Q and 10-K both count, non-10-Q/10-K forms are skipped",
+			pts: map[string][]secFactPoint{
+				"Revenues": {
+					{End: "2024-03-31", Val: 100, Form: "10-Q", Filed: "2024-05-01"},
+					{End: "2024-12-31", Val: 400, Form: "10-K", Filed: "2025-02-15"},
+					{End: "2024-06-30", Val: 200, Form: "8-K", Filed: "2024-08-10"}, // not a periodic filing, must be excluded
+				},
+			},
+			want: []string{"2024-05-01", "2025-02-15"},
+		},
+		{
+			name: "dedup across different tags reporting the same filing",
+			pts: map[string][]secFactPoint{
+				"Revenues":      {{End: "2024-03-31", Val: 100, Form: "10-Q", Filed: "2024-05-01"}},
+				"NetIncomeLoss": {{End: "2024-03-31", Val: 10, Form: "10-Q", Filed: "2024-05-01"}},
+			},
+			want: []string{"2024-05-01"},
+		},
+		{
+			name: "empty filed values are dropped",
+			pts: map[string][]secFactPoint{
+				"Revenues": {{End: "2024-03-31", Val: 100, Form: "10-Q", Filed: ""}},
+			},
+			want: nil,
+		},
+		{
+			name: "no matching tags at all",
+			pts:  map[string][]secFactPoint{"SomeOtherTag": {{End: "2024-03-31", Val: 100, Form: "10-Q", Filed: "2024-05-01"}}},
+			want: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			facts := &secCompanyFacts{}
+			facts.Facts.USGAAP = make(map[string]struct {
+				Units map[string][]secFactPoint `json:"units"`
+			})
+			for tag, pts := range tt.pts {
+				entry := facts.Facts.USGAAP[tag]
+				entry.Units = map[string][]secFactPoint{"USD": pts}
+				facts.Facts.USGAAP[tag] = entry
+			}
+			got := filingDatesFromFacts(facts)
+			if len(got) != len(tt.want) {
+				t.Fatalf("filingDatesFromFacts() = %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("filingDatesFromFacts()[%d] = %v, want %v (full: got=%v want=%v)", i, got[i], tt.want[i], got, tt.want)
+				}
+			}
+		})
+	}
+}
+
 func TestGetFundamentalSnapshot_CIKLookupAndFetch(t *testing.T) {
 	factsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("User-Agent") == "" {

@@ -48,7 +48,7 @@ from collections import defaultdict
 
 NBOOT = 400
 random.seed(20260827)
-SCREENS = ["post_gap_drift", "post_gap_drift_t1",
+SCREENS = ["post_gap_drift", "post_gap_drift_t1", "post_gap_drift_confirmed",
            "squeeze_breakout", "box_bottom", "trend_breakout", "trend_pullback"]
 
 
