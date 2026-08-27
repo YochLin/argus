@@ -144,6 +144,56 @@ func TrustFollowTechnicalGate(candles []data.Candle, p ScreenParams) bool {
 // selling into the same tape ("土洋對作"). Replaces Phase 15 v1's 60-day
 // dormant-segment approximation — see docs/phase-15-trust-follow.md — which
 // backtested at -1.4pp excess and was never wired.
+//
+// Phase 25 §4.4 (2026-08-27): trustNet/foreignNet's DATA SOURCE moved from
+// FinMind (a secondhand mirror) to TWSE's own T86 report — the same report
+// FinMind's own TaiwanStockInstitutionalInvestorsBuySellWide is itself
+// sourced from — via internal/data/twse_t86.go. This function's conditions
+// were left untouched (per §4's "swap the source first, treat threshold
+// changes as a separate follow-up" instruction), so this is purely a
+// provenance/plumbing change: canonical instead of secondhand, free/keyless
+// instead of needing FINMIND_TOKEN (which, notably, was never actually
+// configured with a real value in this deployment — 網5 was silently
+// disabled in production before this change, not merely running on
+// secondhand data).
+//
+// The §4.4-mandated RETEST — rerun the pre-registered two-split backtest
+// against the new source to separate "data source changed the numbers" from
+// "conditions changed the numbers" — was NOT completed. Building the T86
+// side-cache this retest needs (cmd/strategyscan -build-t86-cache) requires
+// walking every calendar day of the 10-year window one HTTP request at a
+// time (T86 has no ranged query — see twse_t86.go). Live-verified 2026-08-27
+// while building this exact cache: TWSE's rwd/T86 endpoint enforces an
+// aggressive anti-scraping WAF — a burst of ~50 requests within ~20s
+// triggered a sustained IP-level block (still active >20 minutes later,
+// and it blocked EVERY date including "today," not just the ones scraped —
+// confirmed not host-wide, since openapi.twse.com.tw stayed reachable
+// throughout). A 2s/request pace held clean through 20+ consecutive fresh
+// dates with no re-trigger and is what -build-t86-cache now uses (see
+// t86_cache.go), but at that pace a full 10-year, whole-market crawl takes
+// roughly 3+ hours of continuous wall-clock time — confirmed by timing a
+// live partial run (30 minutes covered 2016-08-01..2018-03, ~16% of the
+// 2016-08..2026-08 window). That is a real, evidenced wall-clock cost, not
+// a design gap, and it did not finish within this session.
+//
+// So: NO excess-return numbers exist yet for 網5 against T86, in either
+// direction. Do not infer anything about whether the source swap helped,
+// hurt, or was neutral — nothing was measured. What IS verified: the T86
+// client parses real historical responses correctly across TWSE's pre-2017
+// (16-column) and post-2017 (19-column) report layouts (see
+// twse_t86_test.go, built from live-captured fixtures), the day-major cache
+// builder/loader round-trips correctly (t86_cache_test.go), and a live
+// partial build (2016-08-01..2018-03, ~41k rows, 118 tw150 tickers) ran
+// end-to-end against the real endpoint without a parsing or alignment
+// error. To finish the retest: let `strategyscan -market=tw
+// -build-t86-cache=t86.csv -date-from=2016-08-01 -date-to=2026-08-27` run to
+// completion (~3h), then run both pre-registered slices with
+// `-t86-file=t86.csv -dump-trades=...` and feed the results to
+// cmd/strategyscan/t86_study.py — same date-clustered bootstrap method as
+// pead_study.py, same >1SE bar as every other Phase 25 workstream. Until
+// then, the last real numbers for 網5 remain whatever Phase 23 PR1 measured
+// against FinMind (see docs/phase-15-trust-follow.md) — this change neither
+// confirms nor overturns that.
 func CheckTrustFollowExact(candles []data.Candle, trustNet, foreignNet []int64, p ScreenParams) bool {
 	n := len(candles)
 	if len(trustNet) != n || len(foreignNet) != n || !TrustFollowTechnicalGate(candles, p) {

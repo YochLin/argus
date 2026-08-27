@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -32,6 +33,25 @@ type TWSE struct {
 	// Kept overridable the same way baseURL is, for the same test-against-
 	// httptest reason.
 	rwdBaseURL string
+
+	// t86DayCache/t86Mu (Phase 25 §4.4) memoize fetchT86TrustForeignDay by
+	// calendar day (YYYYMMDD), process-lifetime, shared across every ticker
+	// GetTrustNetSeries is asked about. This exists because of a live-
+	// verified finding, not speculative caution: building a multi-year T86
+	// history by walking calendar days (2026-08-27, cmd/strategyscan
+	// -build-t86-cache) triggered a sustained (>20 min observed) IP-level
+	// WAF block on www.twse.com.tw/rwd/* after roughly 50 requests inside a
+	// ~20s burst — a smaller batch of 7 requests spread over ~15s did not
+	// trigger it. Without this cache, GetTrustNetSeries' own per-ticker walk
+	// (up to liveTrustNetLookbackDays requests) repeated across the handful
+	// of TW tickers 網5 checks in one scan run could stack into that same
+	// range and take GetInstitutionalFlow — a different, already-shipped
+	// feature sharing this same rwd host — down with it for the cooldown
+	// window. Caching by day means N tickers checked the same run cost AT
+	// MOST liveTrustNetLookbackDays requests total (usually far fewer, since
+	// most days get reused across tickers), not N times that.
+	t86DayCache map[string]map[string]TrustNetDay
+	t86Mu       sync.Mutex
 }
 
 func NewTWSE() *TWSE {
@@ -46,8 +66,9 @@ func NewTWSE() *TWSE {
 			Timeout:   10 * time.Second,
 			Transport: &http.Transport{TLSNextProto: map[string]func(string, *tls.Conn) http.RoundTripper{}},
 		},
-		baseURL:    "https://openapi.twse.com.tw",
-		rwdBaseURL: "https://www.twse.com.tw",
+		baseURL:     "https://openapi.twse.com.tw",
+		rwdBaseURL:  "https://www.twse.com.tw",
+		t86DayCache: make(map[string]map[string]TrustNetDay),
 	}
 }
 
