@@ -93,7 +93,8 @@ func (g *GoogleNews) GetNews(ticker string, limit int) ([]NewsItem, error) {
 		return nil, errGoogleNewsNotTW
 	}
 
-	items, err := g.fetch(g.query(ticker))
+	query := g.query(ticker)
+	items, err := g.fetch(query)
 	if err != nil {
 		return nil, err
 	}
@@ -119,13 +120,36 @@ func (g *GoogleNews) GetNews(ticker string, limit int) ([]NewsItem, error) {
 	// newest-first, and the prompt renderer's "recent news" framing assumes
 	// it. Items with an unparseable pubDate sort last on their zero time
 	// rather than jumping to the front.
+	//
+	// Phase 19 後續 PR4: recency alone isn't enough — a live audit of 135 TW
+	// per-ticker items found 54 (40%) whose headline never names the company
+	// at all (a full-text query match on an unrelated word, or a content-farm
+	// roundup headline that names no ticker). Reordering rather than
+	// dropping: mentionsQuery-true items sort first (newest-first within
+	// that group), so a ticker with only unnamed coverage still fills its
+	// slots exactly as it does today — this can only ever help, never lose a
+	// story that would otherwise have made the cut.
 	sort.SliceStable(out, func(i, j int) bool {
+		mi, mj := mentionsQuery(out[i].Headline, query), mentionsQuery(out[j].Headline, query)
+		if mi != mj {
+			return mi
+		}
 		return out[i].PublishedAt.After(out[j].PublishedAt)
 	})
 	if len(out) > limit {
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+// mentionsQuery reports whether headline contains the search query (the
+// resolved Chinese company name, or the bare ticker when no name was
+// available) verbatim — see GetNews's PR4 note. A plain substring check, so
+// a query word that's also common Chinese vocabulary (廣達/大同/統一/國喬)
+// still false-positives on an unrelated headline that happens to contain it;
+// narrowing that is a separate, unvalidated experiment, not this fix.
+func mentionsQuery(headline, query string) bool {
+	return query != "" && strings.Contains(headline, query)
 }
 
 // query builds the search term for ticker — see GetNews for why the name
