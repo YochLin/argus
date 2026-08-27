@@ -82,6 +82,34 @@ func filterNewsNearDate(news []data.NewsItem, date string) []data.NewsItem {
 	return out
 }
 
+// tickerNewsMaxAge is how old a fetchStockData news item may be before it's
+// dropped as stale — Phase 19 後續 PR3. Unlike a price event,
+// fetchStockData's daily-report/recommend path has no event date to anchor
+// filterNewsNearDate's ±eventNewsWindow to, so filterStaleNews below just
+// checks age against "now" instead, with a window widened to 3 days
+// (matching the /llm audit page's own isStale threshold, LlmRunsView.tsx) —
+// tighter than that and today's genuinely slow-news tickers would come back
+// empty rather than merely older. Live-verified against run id=8
+// (2026-08-26 US daily report): 50/239 items were older than this.
+const tickerNewsMaxAge = 72 * time.Hour
+
+// filterStaleNews drops items older than tickerNewsMaxAge as of asOf.
+// Unlike filterNewsNearDate's symmetric window, only a lower bound is
+// needed here — news is never dated in the future. Same "undated item is
+// dropped, not kept" rule as filterNewsNearDate.
+func filterStaleNews(news []data.NewsItem, asOf time.Time) []data.NewsItem {
+	var out []data.NewsItem
+	for _, n := range news {
+		if n.PublishedAt.IsZero() {
+			continue
+		}
+		if asOf.Sub(n.PublishedAt) <= tickerNewsMaxAge {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 // headlineDupThreshold is how similar two normalized headlines must be
 // (Dice coefficient over rune bigrams) before the later one is treated as a
 // syndicated copy of the earlier. 0.8 is calibrated for the case that
