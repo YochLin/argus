@@ -186,7 +186,7 @@ func (b *Bot) runRecommend(ctx context.Context, m market.MarketID) {
 	// (see exploreCandidates and docs/phase-2.6-two-stage-llm-exploration.md)
 	// — an interactive /recommend doesn't get a second one-shot LLM call
 	// tacked onto its latency.
-	sources := recommendationSources(in.watchlistTickers, in.candidateTickers, in.scanHits, nil)
+	sources := service.RecommendationSources(in.watchlistTickers, in.candidateTickers, in.scanHits, nil)
 	b.sendAndSaveRecommendations(summary, recs, sources, m, len(in.candidateTickers), in.watchlist, in.candidates)
 }
 
@@ -204,32 +204,10 @@ func (b *Bot) handleCheck(ctx context.Context, ticker string) {
 	b.Send(i18n.T(b.lang, i18n.KeyAnalyzingTicker, ticker))
 	label := b.tickerLabel(ticker)
 
-	q, err := b.provider.GetQuote(ticker)
+	stock, err := service.CheckStockData(b.provider, b.companyNames, b.fundamentals, b.analystRating, ticker)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyQuoteFailed, label, err))
 		return
-	}
-	news, _ := b.provider.GetNews(ticker, 5)
-
-	stock := llm.StockData{Quote: q, News: news, CompanyName: b.companyName(ticker)}
-	if b.fundamentals != nil {
-		if fd, err := b.fundamentals.GetFundamentals(ticker); err != nil {
-			logger.Errorf("fundamentals %s: %v", ticker, err)
-		} else {
-			stock.Fundamentals = fd
-		}
-		if st, err := b.fundamentals.GetFinancialStatements(ticker, "annual"); err != nil {
-			logger.Errorf("financial statements %s: %v", ticker, err)
-		} else {
-			stock.Statement = st
-		}
-	}
-	if b.analystRating != nil {
-		if ar, err := b.analystRating.GetAnalystRating(ticker); err != nil {
-			logger.Errorf("analyst rating %s: %v", ticker, err)
-		} else {
-			stock.AnalystRating = ar
-		}
 	}
 	// RS63 needs the right benchmark for ticker's own market (Phase 6): SPY
 	// for a US ticker, 0050 for a TW one — /check works on either since

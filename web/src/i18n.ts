@@ -134,7 +134,10 @@ export interface Dictionary {
   llmLowQualitySource: string;
   llmStaleNews: string;
   llmDuplicateTitles: string;
+  llmDuplicateTitlesSameTicker: string;
+  llmDuplicateTitlesCrossTicker: string;
   llmCandleGaps: string;
+  llmNoSummaryRate: string;
   llmBlockedSources: string;
   llmUnblock: string;
   llmNoBlockedSources: string;
@@ -532,8 +535,11 @@ const en: Dictionary = {
   llmDataQuality: "Data quality",
   llmLowQualitySource: "Low-quality source",
   llmStaleNews: "Stale (>72h)",
-  llmDuplicateTitles: "Duplicate titles",
+  llmDuplicateTitles: "Duplicate",
+  llmDuplicateTitlesSameTicker: "Duplicate (same ticker)",
+  llmDuplicateTitlesCrossTicker: "Duplicate (cross-ticker)",
   llmCandleGaps: "Candle gaps",
+  llmNoSummaryRate: "No summary",
   llmBlockedSources: "Blocked news sources",
   llmUnblock: "Unblock",
   llmNoBlockedSources: "No sources blocked yet.",
@@ -901,8 +907,11 @@ const zh: Dictionary = {
   llmDataQuality: "資料品質檢查",
   llmLowQualitySource: "低品質來源",
   llmStaleNews: "過期新聞（>72h）",
-  llmDuplicateTitles: "重複標題",
+  llmDuplicateTitles: "重複",
+  llmDuplicateTitlesSameTicker: "重複標題（同檔）",
+  llmDuplicateTitlesCrossTicker: "重複標題（跨檔）",
   llmCandleGaps: "K 線缺漏",
+  llmNoSummaryRate: "無摘要",
   llmBlockedSources: "已封鎖的新聞來源",
   llmUnblock: "解除封鎖",
   llmNoBlockedSources: "目前沒有封鎖任何來源。",
