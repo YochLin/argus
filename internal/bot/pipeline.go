@@ -151,7 +151,7 @@ func (b *Bot) recordLLMRun(kind string, m market.MarketID, in recommendationInpu
 	for _, s := range in.candidates {
 		newsCount += len(s.News)
 	}
-	gapCount := service.CountCandleGaps(in.watchlist, m) + service.CountCandleGaps(in.candidates, m)
+	gapCount := service.CountCandleGaps(in.watchlist, in.candidates)
 
 	if err := b.db.InsertLLMRun(kind, m, model, latencyMs, string(inputJSON), raw, len(in.watchlist), len(in.candidates), newsCount, gapCount); err != nil {
 		logger.Errorf("llm run: insert: %v", err)
@@ -520,6 +520,7 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 			time.Sleep(finnhubRequestDelay)
 		}
 		fetched, _ := b.provider.GetNews(t, tickerNewsFetch)
+		fetched = filterStaleNews(fetched, time.Now().In(cst))
 		stock := llm.StockData{Quote: q, News: picker.pick(fetched, tickerNewsSlots), CompanyName: b.companyName(t)}
 		fetchFundamentals := includeFundamentals || extraFundamentals[t]
 		if fetchFundamentals && b.fundamentals != nil {
