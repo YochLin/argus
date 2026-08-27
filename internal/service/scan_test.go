@@ -343,6 +343,18 @@ func TestDecorateStrategyHitsTrendBreakoutAlwaysDowngraded(t *testing.T) {
 	}
 }
 
+func TestDecorateStrategyHitsBoxBottomAlwaysDowngraded(t *testing.T) {
+	sigs := []signals.Signal{{Type: signals.TypeBoxBottom, Message: "hit"}, {Type: "strategy_squeeze", Message: "other"}}
+	got := DecorateStrategyHits(sigs, false, i18n.EN)
+	want := i18n.T(i18n.EN, i18n.KeyStrategyUnvalidatedBoxBottom)
+	if !strings.Contains(got[0].Message, want) {
+		t.Errorf("box bottom missing the downgrade notice in a bull regime: %q", got[0].Message)
+	}
+	if strings.Contains(got[1].Message, want) {
+		t.Errorf("downgrade notice leaked onto another screen: %q", got[1].Message)
+	}
+}
+
 func hasSignalType(sigs []signals.Signal, typ string) bool {
 	for _, s := range sigs {
 		if s.Type == typ {

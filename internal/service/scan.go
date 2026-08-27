@@ -506,6 +506,13 @@ func (s *ScanService) RestrictedTickers(ctx context.Context, m market.MarketID) 
 //     negative excess at ~4 sigma in four independent out-of-sample slices.
 //     Downgraded to reference material, deliberately not delisted — see
 //     signals.CheckTrendBreakout for the numbers and the repro commands.
+//   - 網 2 (Box Bottom Rebound) carries its own §4.4 downgrade notice
+//     unconditionally too, same reasoning as 網 3: a dedicated run (Phase 25
+//     §4.7) found it fails the pre-registered bar on BOTH S&P 500 and S&P 400,
+//     so there is no universe left to scope the downgrade to even though
+//     internal/bot has no live-ticker universe info to scope it with anyway —
+//     see signals.CheckBoxBottomReboundExact for the numbers and repro
+//     commands.
 func DecorateStrategyHits(sigs []signals.Signal, isBear bool, lang i18n.Lang) []signals.Signal {
 	for i := range sigs {
 		if !strings.HasPrefix(sigs[i].Type, "strategy_") {
@@ -516,6 +523,9 @@ func DecorateStrategyHits(sigs []signals.Signal, isBear bool, lang i18n.Lang) []
 		}
 		if sigs[i].Type == signals.TypeTrendBreakout {
 			sigs[i].Message += "\n" + i18n.T(lang, i18n.KeyStrategyUnvalidated)
+		}
+		if sigs[i].Type == signals.TypeBoxBottom {
+			sigs[i].Message += "\n" + i18n.T(lang, i18n.KeyStrategyUnvalidatedBoxBottom)
 		}
 	}
 	return sigs

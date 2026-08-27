@@ -31,6 +31,11 @@ const (
 // notice — see CheckTrendBreakout's doc comment.
 const TypeTrendBreakout = "strategy_trend_breakout"
 
+// TypeBoxBottom is 網 2's Signal.Type. Exported for the same reason as
+// TypeTrendBreakout — see CheckBoxBottomReboundExact's doc comment for the
+// §4.4 downgrade this backs.
+const TypeBoxBottom = "strategy_box_bottom"
+
 // ScreenParams holds the market-calibrated thresholds CheckSqueezeBreakoutExact/
 // CheckBoxBottomReboundExact screen against (Phase 13 §7) — a struct param
 // rather than fields on Detector because SqueezeBreakout/BoxBottomRebound are
@@ -240,19 +245,61 @@ func CheckSqueezeBreakoutExact(candles []data.Candle, p ScreenParams) bool {
 
 // CheckBoxBottomReboundExact evaluates candles' last bar (網 2【箱底反彈】).
 //
-// Phase 25 §4.6 note — this is not 網 2's own study, it is what fell out of
-// the 網 6 runs, which measured all five screens against the same control on
-// a universe 網 2 had not been checked against before. On S&P 400 mid-caps
-// 網 2's excess return is negative in BOTH time slices and significant in
-// both: -3.35% at 2.3 sigma (holdout) and -2.45% at 2.9 sigma (in-sample),
-// the strongest negative of any screen in those runs. On S&P 500 large caps
-// it is +0.66%/-1.03%, i.e. noise, which is why this never showed up before.
+// # Result: measured (Phase 25 §4.7, dedicated run), downgraded
 //
-// Deliberately NOT acted on here: a §4.4 downgrade is a separate decision
-// from shipping 網 6, and folding it into that PR would mean changing a live
-// screen on the strength of a study that was pre-registered for something
-// else. The honest next step is a run whose stated purpose is 網 2 on
-// mid-caps. Until then, treat this as a flag, not a verdict.
+// §4.6 (PR #176) found, incidentally, that on S&P 400 mid-caps 網 2's excess
+// return over the random-entry control was negative in both pre-registered
+// time slices and significant, versus noise on S&P 500 — but that finding
+// fell out of a study pre-registered for 網 6, not for 網 2, so §4.4's
+// downgrade was deliberately NOT applied on the strength of it. This is the
+// dedicated re-run that decision was waiting on, pre-registered before
+// running: >1 SE in BOTH time splits on the SAME universe stays validated;
+// one split short of 1 SE, a significant negative split, or negative in
+// both, downgrades to briefing-only (same bar 網 3 was downgraded under, not
+// a delist either way).
+//
+// Same date-clustered bootstrap as 網 3/網 6 (cmd/strategyscan/pead_study.py,
+// 400 resamples of dates, split 2021-11-01, earlier slice the holdout),
+// against the random-entry control from the SAME run, both universes:
+//
+//	sample                     n     excess     SE   sigma
+//	SP500 holdout [large-cap] 260     +0.75%   0.81    0.9
+//	SP500 in-samp [large-cap] 274     -1.12%   0.84    1.3  (negative, significant)
+//	SP400 holdout [mid-cap]   167     -3.35%   1.48    2.3  (negative, significant)
+//	SP400 in-samp [mid-cap]   160     -2.47%   0.82    3.0  (negative, significant)
+//
+// Neither universe clears the bar. S&P 400 replicates §4.6's incidental
+// numbers almost exactly (-3.35%/2.3σ holdout, -2.45%/2.9σ in-sample there vs
+// -3.35%/2.3σ, -2.47%/3.0σ here — same data, same bootstrap, now run and
+// labeled as its own study rather than a side effect of 網 6's). S&P 500 —
+// the large-cap universe this screen was originally tuned against, and the
+// closer match to the bot's actual live watchlist — does NOT hold up under
+// this protocol either: holdout doesn't clear 1 SE and in-sample is a
+// significant NEGATIVE excess, so "noise in one split, real negative in the
+// other" fails the bar the same way mid-cap's "negative in both" does. That
+// settles the question this run exists to answer: there is no universe
+// where 網 2 clears the bar, so scoping the downgrade to mid-caps only would
+// be wrong, not merely unnecessary. Downgraded unconditionally, exactly like
+// 網 3 (internal/service/scan.go's DecorateStrategyHits,
+// i18n.KeyStrategyUnvalidatedBoxBottom) — still emitted, never delisted.
+//
+// TW was not run: this environment had no live Shioaji daemon available
+// (token decryption needs a key only the operator holds — see
+// defaultShioajiSocket's doc comment in cmd/strategyscan/main.go), so TW
+// remains an open question, not a third confirmed data point, for whoever
+// picks this up next.
+//
+// Reproduce (US-only path; CACHE built once per universe via -build-history
+// from Yahoo, ~1-2 min per universe with no rate-limit-bound TW cache build
+// needed):
+//
+//	strategyscan -market=us -range=10y -build-history=us_daily.csv
+//	strategyscan -market=us -range=10y -build-history=sp400_daily.csv -universe=sp400
+//	strategyscan -market=us -range=10y -history-file=us_daily.csv    -date-from=2016-11-01 -date-to=2021-10-31 -dump-trades=dump.csv
+//	strategyscan -market=us -range=10y -history-file=us_daily.csv    -date-from=2021-11-01                     -dump-trades=dump.csv
+//	strategyscan -market=us -range=10y -history-file=sp400_daily.csv -universe=sp400 -date-from=2016-11-01 -date-to=2021-10-31 -dump-trades=dump.csv
+//	strategyscan -market=us -range=10y -history-file=sp400_daily.csv -universe=sp400 -date-from=2021-11-01                     -dump-trades=dump.csv
+//	python3 pead_study.py "LABEL=strategyscan_results_us.csv,dump.csv" ...  (repeat per run; box_bottom row, "overall"/first n-excess-SE-sigma columns is the pre-registered number, not "matched")
 func CheckBoxBottomReboundExact(candles []data.Candle, p ScreenParams) bool {
 	n := len(candles)
 	if n < 60+p.MA60SlopeLookback {
@@ -375,7 +422,7 @@ func (d *Detector) CheckBoxBottom(ticker string, candles []data.Candle, prevStat
 
 	return &Signal{
 		Ticker:  ticker,
-		Type:    "strategy_box_bottom",
+		Type:    TypeBoxBottom,
 		Message: i18n.T(d.lang, i18n.KeyStrategyBoxBottom, ticker, daysAgoStr),
 	}, newState
 }
