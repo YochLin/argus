@@ -294,3 +294,42 @@ func TestStoppedOutTradeLosesAtLeastOneR(t *testing.T) {
 		t.Errorf("R = %.3f, want <= -1 (a stop-out loses its risk unit plus friction)", r)
 	}
 }
+
+// The T+1 variant's whole point is that it is scored on the bar it actually
+// entered. fillForwardReturns is what makes that true, so check it moves with
+// idx rather than silently reusing the signal bar — and that it reports
+// "no data" instead of a fake 0 when the horizon runs off the end.
+func TestFillForwardReturnsMovesWithTheEntryBar(t *testing.T) {
+	// 70 bars rising 1% a day, so a 5-day forward return is ~5% from any bar
+	// and the entry price differs between consecutive bars.
+	candles := make([]data.Candle, 70)
+	px := 100.0
+	for i := range candles {
+		candles[i] = data.Candle{
+			Date: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, i),
+			Open: px, High: px, Low: px, Close: px, Volume: 1_000_000,
+		}
+		px *= 1.01
+	}
+	idxByDate := map[string]int{}
+	for i, c := range candles {
+		idxByDate[c.Date.Format("2006-01-02")] = i
+	}
+
+	var atSignal, atNextBar TriggerRecord
+	fillForwardReturns(&atSignal, 60, candles, candles, idxByDate)
+	fillForwardReturns(&atNextBar, 61, candles, candles, idxByDate)
+	if !atSignal.Has5d || !atNextBar.Has5d {
+		t.Fatal("Has5d = false, want both bars to have a 5-day forward return")
+	}
+	if atSignal.Ret5d == atNextBar.Ret5d {
+		// Equal here would mean idx is being ignored — the exact bug the T+1
+		// variant would hide, since it would silently score T+0's returns.
+		t.Errorf("both bars returned %.4f%%, want different bars to differ", atSignal.Ret5d)
+	}
+
+	// 20 days past bar 60 runs off the end of a 70-bar series.
+	if atSignal.Has20d {
+		t.Error("Has20d = true past the end of the data, want false (not a 0 return)")
+	}
+}

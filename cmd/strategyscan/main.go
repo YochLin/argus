@@ -44,7 +44,31 @@ var sp400TickersRaw string
 // twStrategies adds Phase 15's 網 5 (TW only — no US equivalent, see
 // docs/phase-15-trust-follow.md §6). Order is shared by the hit map, the
 // record loop and the summary printout.
-var baseStrategies = []string{"squeeze_breakout", "box_bottom", "trend_breakout", "trend_pullback"}
+var baseStrategies = []string{"squeeze_breakout", "box_bottom", "trend_breakout", "trend_pullback", gapDriftStrategy, gapDriftT1Strategy}
+
+// gapDriftStrategy is 網 6 (Phase 25 §2), entered market-on-close on the
+// signal bar like every other screen and like the random-entry control.
+// gapDriftT1Strategy is the same signal held one bar before entering.
+//
+// The T+1 variant exists because entry timing is the classic objection to
+// trading PEAD, and it is worth separating two things the spec conflated.
+// It is NOT a lookahead fix: every 網 6 condition (the gap off yesterday's
+// close, the volume, the close in the upper half, the 60-day high) is known
+// at the signal bar's close, so a market-on-close entry there is the same
+// deal the other four screens and the control already get — shifting only
+// this screen would have handed it a strictly worse entry than its own
+// control and made the excess unreadable. What T+1 does measure is whether
+// the drift is durable or whether it is all in the first session: if the
+// edge only survives at T+0, it is a one-day continuation, not drift, and
+// the slippage assumption has to carry far more weight.
+const (
+	gapDriftStrategy   = "post_gap_drift"
+	gapDriftT1Strategy = "post_gap_drift_t1"
+)
+
+// entryOffset shifts a strategy's entry away from its signal bar. Absent
+// from the map means 0, i.e. market-on-close on the signal bar.
+var entryOffset = map[string]int{gapDriftT1Strategy: 1}
 
 const trustStrategy = "trust_follow"
 
@@ -795,28 +819,13 @@ func main() {
 
 			// §10.3: forward returns computed for every day, not just hit days,
 			// so baseline can walk the same (ticker, day) population.
-			r5, bR5, ok5 := calcForwardReturn(t, 5, candles, benchCandles, benchDateIdx)
-			r10, bR10, ok10 := calcForwardReturn(t, 10, candles, benchCandles, benchDateIdx)
-			r20, bR20, ok20 := calcForwardReturn(t, 20, candles, benchCandles, benchDateIdx)
-
 			baseRec := TriggerRecord{
 				Ticker:       ticker,
 				Date:         evalDateStr,
 				EntryPrice:   entryPrice,
 				MarketRegime: marketRegime,
 			}
-			if ok5 {
-				baseRec.Ret5d, baseRec.BenchRet5d, baseRec.Has5d = r5, bR5, true
-				baseRec.BeatBench5d = r5 > bR5
-			}
-			if ok10 {
-				baseRec.Ret10d, baseRec.BenchRet10d, baseRec.Has10d = r10, bR10, true
-				baseRec.BeatBench10d = r10 > bR10
-			}
-			if ok20 {
-				baseRec.Ret20d, baseRec.BenchRet20d, baseRec.Has20d = r20, bR20, true
-				baseRec.BeatBench20d = r20 > bR20
-			}
+			fillForwardReturns(&baseRec, t, candles, benchCandles, benchDateIdx)
 
 			baseline := baseRec
 			baseline.Strategy = baselineStrategy
@@ -845,7 +854,11 @@ func main() {
 				"box_bottom":       signals.CheckBoxBottomReboundExact(sub, screenParams),
 				"trend_breakout":   signals.CheckTrendBreakoutExact(sub, screenParams),
 				"trend_pullback":   signals.CheckTrendPullbackExact(sub, screenParams),
+				gapDriftStrategy:   signals.CheckPostGapDriftExact(sub, screenParams),
 			}
+			// Same signal, different entry bar — never re-screened, so the
+			// two variants can only ever differ by the entry.
+			hits[gapDriftT1Strategy] = hits[gapDriftStrategy]
 			if trustAligned != nil {
 				hits[trustStrategy] = signals.CheckTrustFollowExact(sub, trustAligned[:t+1], foreignAligned[:t+1], screenParams)
 			}
@@ -866,8 +879,19 @@ func main() {
 
 				rec := baseRec
 				rec.Strategy = strat
-				stopReplay(strat, ticker, candles, t)
-				if outcome, ok := replay(strat, ticker, candles, t); ok {
+				entryIdx := t + entryOffset[strat]
+				if entryIdx != t {
+					// A delayed entry has to move everything downstream with
+					// it — price, forward returns, replay — or it is being
+					// scored on a bar it never traded.
+					if entryIdx >= len(candles) || candles[entryIdx].Close <= 0 {
+						continue
+					}
+					rec.EntryPrice = candles[entryIdx].Close
+					fillForwardReturns(&rec, entryIdx, candles, benchCandles, benchDateIdx)
+				}
+				stopReplay(strat, ticker, candles, entryIdx)
+				if outcome, ok := replay(strat, ticker, candles, entryIdx); ok {
 					rec.HasTrade = true
 					rec.TradeExitRet = outcome.ExitRet
 					rec.TradeExitReason = outcome.ExitReason
@@ -933,6 +957,8 @@ func main() {
 	printSummary(benchTicker, "Box Bottom Rebound (網 2)", filterByStrategy(records, "box_bottom"), &ctrl)
 	printSummary(benchTicker, "Trend Breakout (網 3)", filterByStrategy(records, "trend_breakout"), &ctrl)
 	printSummary(benchTicker, "Trend Pullback (網 4)", filterByStrategy(records, "trend_pullback"), &ctrl)
+	printSummary(benchTicker, "Post-Gap Drift (網 6，訊號日收盤進場)", filterByStrategy(records, gapDriftStrategy), &ctrl)
+	printSummary(benchTicker, "Post-Gap Drift (網 6，延一日進場)", filterByStrategy(records, gapDriftT1Strategy), &ctrl)
 	if m == market.TW && !*skipTrustFlag {
 		printSummary(benchTicker, "Trust Follow (網 5，主力跟單 v2)", filterByStrategy(records, trustStrategy), &ctrl)
 	}
@@ -1010,6 +1036,21 @@ func parseTickers(raw string) []string {
 		}
 	}
 	return out
+}
+
+// fillForwardReturns recomputes rec's 5/10/20-day forward returns as of idx.
+// Split out of the eval loop because 網 6's T+1 variant enters a bar after
+// its signal, so it cannot reuse the signal bar's numbers.
+func fillForwardReturns(rec *TriggerRecord, idx int, candles, benchCandles []data.Candle, benchDateIdx map[string]int) {
+	if r, b, ok := calcForwardReturn(idx, 5, candles, benchCandles, benchDateIdx); ok {
+		rec.Ret5d, rec.BenchRet5d, rec.Has5d, rec.BeatBench5d = r, b, true, r > b
+	}
+	if r, b, ok := calcForwardReturn(idx, 10, candles, benchCandles, benchDateIdx); ok {
+		rec.Ret10d, rec.BenchRet10d, rec.Has10d, rec.BeatBench10d = r, b, true, r > b
+	}
+	if r, b, ok := calcForwardReturn(idx, 20, candles, benchCandles, benchDateIdx); ok {
+		rec.Ret20d, rec.BenchRet20d, rec.Has20d, rec.BeatBench20d = r, b, true, r > b
+	}
 }
 
 func calcForwardReturn(t, days int, stockCandles, benchCandles []data.Candle, benchDateIdx map[string]int) (stockRet, benchRet float64, ok bool) {
