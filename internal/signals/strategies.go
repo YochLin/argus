@@ -697,6 +697,47 @@ func PostGapDrift(candles []data.Candle, p ScreenParams) *StrategyHit {
 //     unprofitable; it cannot manufacture or destroy an edge over a control
 //     that trades the same way. Worth remembering before running that
 //     sensitivity again on any screen measured against this control.
+//
+// # Update — post_gap_drift_confirmed (Phase 25 §8.1), also measured, also NOT shipped
+//
+// §8.1 asked whether the gap-based surprise proxy is being diluted by gaps
+// that have nothing to do with an actual earnings release — i.e. does
+// requiring the signal day to fall within ±1 trading day of a real SEC 10-Q/
+// 10-K filed date (data.SEC.GetFilingDates, cmd/strategyscan's
+// -earnings-dates-file cache) sharpen the edge. Same S&P 400 universe, same
+// two time slices, same random-entry control, same bootstrap:
+//
+//	sample                         n     excess     SE   sigma
+//	SP400 holdout, confirmed      88     +2.23%   2.39    0.9
+//	SP400 in-samp, confirmed     155     +2.22%   1.58    1.4
+//	(for reference, unconfirmed) 208     +2.30%   2.54    0.9
+//	(for reference, unconfirmed) 270     +0.72%   1.22    0.6
+//
+// Pre-registered bar was the same as above: >1 SE in BOTH splits. Holdout
+// stayed at 0.9 sigma — did not clear. Still NOT wired into i18n or
+// service.CheckStatefulSignals, same as the unconfirmed screen.
+//
+// The pre-registered extra requirement (trigger count strictly lower than
+// unconfirmed) held in both slices: 88 < 208 (holdout), 155 < 270 (in-sample)
+// — confirming against a live filing calendar does cut the sample roughly in
+// half, as expected (not every >=5% gap on 3x volume is an earnings gap).
+//
+// What's actually informative here: excess return on the holdout slice is
+// UNCHANGED to within 0.07pp (+2.30% -> +2.23%) despite the sample nearly
+// halving. Per §8.1.4's own pre-registered instruction for exactly this
+// pattern ("excess didn't rise AND the sample shrank -> the answer is
+// universe expansion, not loosening the window"), that is the honest
+// reading — not that confirmation adds nothing, but that it isn't the lever
+// this screen needs. The in-sample slice's jump to 1.4 sigma is the kind of
+// one-good-one-bad split split §4.4's two-slice rule exists to keep from
+// being reported as a win.
+//
+// §4.6's required question: did this invalidate anything? No. If anything it
+// reinforces §2.2's original premise — the raw gap is already most of the
+// earnings-surprise signal, since restricting to gaps provably tied to a
+// real SEC filing barely moves the per-trade excess. The bottleneck named in
+// the original result (sample size, not signal quality) stands unchanged;
+// this update is one more data point for it, not a revision of it.
 func CheckPostGapDriftExact(candles []data.Candle, p ScreenParams) bool {
 	n := len(candles)
 	if n < 60 {
