@@ -283,23 +283,38 @@ func CheckSqueezeBreakoutExact(candles []data.Candle, p ScreenParams) bool {
 // 網 3 (internal/service/scan.go's DecorateStrategyHits,
 // i18n.KeyStrategyUnvalidatedBoxBottom) — still emitted, never delisted.
 //
-// TW was not run: this environment had no live Shioaji daemon available
-// (token decryption needs a key only the operator holds — see
-// defaultShioajiSocket's doc comment in cmd/strategyscan/main.go), so TW
-// remains an open question, not a third confirmed data point, for whoever
-// picks this up next.
+// TW (2026-08-28 follow-up): run once the operator brought up a live
+// Shioaji daemon (`shioaji server start`, see defaultShioajiSocket's doc
+// comment). Whole-market point-in-time OHLCV cache via -build-history
+// (~15 min for the full 2016-08..2026-08 window — Shioaji has no TWSE-T86-
+// style WAF, unlike CheckTrustFollowExact's data source), tw150 baseline,
+// same split/bootstrap:
 //
-// Reproduce (US-only path; CACHE built once per universe via -build-history
-// from Yahoo, ~1-2 min per universe with no rate-limit-bound TW cache build
-// needed):
+//	sample            n     excess     SE   sigma
+//	TW in-samp       151     -1.28%   1.94    0.7
+//	TW holdout       117     +3.11%   2.18    1.4
+//
+// Neither split clears 1 SE in the required direction together — holdout is
+// positive but in-sample is negative and short of 1 SE, the same "one split
+// short" failure mode US large-cap hit. TW does not overturn the
+// unconditional downgrade above; it's the third universe now confirming the
+// same answer, not a dissenting one.
+//
+// Reproduce (US path: CACHE built once per universe via -build-history from
+// Yahoo, ~1-2 min per universe; TW path: whole-market point-in-time via
+// -build-history from a live Shioaji daemon, ~15 min, -skip-trust since this
+// screen doesn't use 網 5's trust-net data):
 //
 //	strategyscan -market=us -range=10y -build-history=us_daily.csv
 //	strategyscan -market=us -range=10y -build-history=sp400_daily.csv -universe=sp400
+//	strategyscan -market=tw -build-history=tw_daily.csv -date-from=2016-08-01 -date-to=2026-08-27
 //	strategyscan -market=us -range=10y -history-file=us_daily.csv    -date-from=2016-11-01 -date-to=2021-10-31 -dump-trades=dump.csv
 //	strategyscan -market=us -range=10y -history-file=us_daily.csv    -date-from=2021-11-01                     -dump-trades=dump.csv
 //	strategyscan -market=us -range=10y -history-file=sp400_daily.csv -universe=sp400 -date-from=2016-11-01 -date-to=2021-10-31 -dump-trades=dump.csv
 //	strategyscan -market=us -range=10y -history-file=sp400_daily.csv -universe=sp400 -date-from=2021-11-01                     -dump-trades=dump.csv
-//	python3 pead_study.py "LABEL=strategyscan_results_us.csv,dump.csv" ...  (repeat per run; box_bottom row, "overall"/first n-excess-SE-sigma columns is the pre-registered number, not "matched")
+//	strategyscan -market=tw -history-file=tw_daily.csv -skip-trust -date-from=2016-11-01 -date-to=2021-10-31 -dump-trades=dump.csv
+//	strategyscan -market=tw -history-file=tw_daily.csv -skip-trust -date-from=2021-11-01                     -dump-trades=dump.csv
+//	python3 pead_study.py "LABEL=strategyscan_results_<market>.csv,dump.csv" ...  (repeat per run; box_bottom row, "overall"/first n-excess-SE-sigma columns is the pre-registered number, not "matched")
 func CheckBoxBottomReboundExact(candles []data.Candle, p ScreenParams) bool {
 	n := len(candles)
 	if n < 60+p.MA60SlopeLookback {
