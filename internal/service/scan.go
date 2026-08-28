@@ -513,6 +513,15 @@ func (s *ScanService) RestrictedTickers(ctx context.Context, m market.MarketID) 
 //     internal/bot has no live-ticker universe info to scope it with anyway —
 //     see signals.CheckBoxBottomReboundExact for the numbers and repro
 //     commands.
+//   - 網 5 (Trust Follow, TW only) carries its own §4.4 downgrade notice too:
+//     the retest against T86 (its new canonical data source, Phase 25 §4)
+//     came back one split negative (at the 1 SE line), one split positive
+//     but short of 1 SE — same "one split short" failure as 網 2's US
+//     large-cap slice. Notably this screen went LIVE unconditionally when
+//     its data source swapped to T86 (a keyless source, unlike the never-
+//     configured FINMIND_TOKEN it replaced), with zero measurement at the
+//     time — see signals.CheckTrustFollowExact for the numbers, the T86
+//     TSE-only coverage caveat, and repro commands.
 func DecorateStrategyHits(sigs []signals.Signal, isBear bool, lang i18n.Lang) []signals.Signal {
 	for i := range sigs {
 		if !strings.HasPrefix(sigs[i].Type, "strategy_") {
@@ -526,6 +535,9 @@ func DecorateStrategyHits(sigs []signals.Signal, isBear bool, lang i18n.Lang) []
 		}
 		if sigs[i].Type == signals.TypeBoxBottom {
 			sigs[i].Message += "\n" + i18n.T(lang, i18n.KeyStrategyUnvalidatedBoxBottom)
+		}
+		if sigs[i].Type == signals.TypeTrustFollow {
+			sigs[i].Message += "\n" + i18n.T(lang, i18n.KeyStrategyUnvalidatedTrustFollow)
 		}
 	}
 	return sigs

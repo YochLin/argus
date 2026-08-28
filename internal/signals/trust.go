@@ -157,43 +157,53 @@ func TrustFollowTechnicalGate(candles []data.Candle, p ScreenParams) bool {
 // disabled in production before this change, not merely running on
 // secondhand data).
 //
-// The §4.4-mandated RETEST — rerun the pre-registered two-split backtest
-// against the new source to separate "data source changed the numbers" from
-// "conditions changed the numbers" — was NOT completed. Building the T86
-// side-cache this retest needs (cmd/strategyscan -build-t86-cache) requires
-// walking every calendar day of the 10-year window one HTTP request at a
-// time (T86 has no ranged query — see twse_t86.go). Live-verified 2026-08-27
-// while building this exact cache: TWSE's rwd/T86 endpoint enforces an
-// aggressive anti-scraping WAF — a burst of ~50 requests within ~20s
-// triggered a sustained IP-level block (still active >20 minutes later,
-// and it blocked EVERY date including "today," not just the ones scraped —
-// confirmed not host-wide, since openapi.twse.com.tw stayed reachable
-// throughout). A 2s/request pace held clean through 20+ consecutive fresh
-// dates with no re-trigger and is what -build-t86-cache now uses (see
-// t86_cache.go), but at that pace a full 10-year, whole-market crawl takes
-// roughly 3+ hours of continuous wall-clock time — confirmed by timing a
-// live partial run (30 minutes covered 2016-08-01..2018-03, ~16% of the
-// 2016-08..2026-08 window). That is a real, evidenced wall-clock cost, not
-// a design gap, and it did not finish within this session.
+// # Result (2026-08-29): measured, does NOT clear the bar — downgraded
 //
-// So: NO excess-return numbers exist yet for 網5 against T86, in either
-// direction. Do not infer anything about whether the source swap helped,
-// hurt, or was neutral — nothing was measured. What IS verified: the T86
-// client parses real historical responses correctly across TWSE's pre-2017
-// (16-column) and post-2017 (19-column) report layouts (see
-// twse_t86_test.go, built from live-captured fixtures), the day-major cache
-// builder/loader round-trips correctly (t86_cache_test.go), and a live
-// partial build (2016-08-01..2018-03, ~41k rows, 118 tw150 tickers) ran
-// end-to-end against the real endpoint without a parsing or alignment
-// error. To finish the retest: let `strategyscan -market=tw
-// -build-t86-cache=t86.csv -date-from=2016-08-01 -date-to=2026-08-27` run to
-// completion (~3h), then run both pre-registered slices with
-// `-t86-file=t86.csv -dump-trades=...` and feed the results to
-// cmd/strategyscan/t86_study.py — same date-clustered bootstrap method as
-// pead_study.py, same >1SE bar as every other Phase 25 workstream. Until
-// then, the last real numbers for 網5 remain whatever Phase 23 PR1 measured
-// against FinMind (see docs/phase-15-trust-follow.md) — this change neither
-// confirms nor overturns that.
+// The §4.4-mandated retest finished. Building the T86 side-cache took ~10
+// hours of real wall-clock time (started 2026-08-27 23:35, finished
+// 2026-08-29 00:32) — much longer than the ~3h estimate below, because the
+// WAF's occasional `context deadline exceeded`/`connection reset by peer`
+// timeouts (not full IP blocks this run — those retried and succeeded) added
+// up over a 2,457-trading-day crawl. Same date-clustered bootstrap as every
+// other Phase 25 item (cmd/strategyscan/t86_study.py, 400 resamples, split
+// 2021-11-01), tw150 universe, against the random-entry control from the
+// same run:
+//
+//	sample       n     excess     SE   sigma
+//	in-samp   1562     -0.72%   0.69    1.0  (negative, at the bar)
+//	holdout   2371     +0.44%   0.80    0.5  (positive, short of 1 SE)
+//
+// Neither split clears >1 SE positive — in-sample is negative (right at the
+// 1 SE line), holdout is positive but well short. Same "one split short of
+// 1 SE" failure pattern box_bottom's US large-cap slice hit. This settles
+// the §4.4 question the source swap left open: T86 did not turn 網5 into a
+// validated screen. Downgraded to briefing-only, same treatment as 網2/網3
+// (internal/service/scan.go's DecorateStrategyHits,
+// i18n.KeyStrategyUnvalidatedTrustFollow) — still emitted, never delisted.
+// This also closes the loop PR #178 opened: 網5 went live unconditionally
+// on the T86 swap with zero measurement (FINMIND_TOKEN had never actually
+// been configured, so it was silently dead in production before that PR) —
+// the honest state, now that it's actually been measured, is "measured and
+// downgraded," not "measured and validated."
+//
+// Universe note: T86 is TWSE's own report — TSE (上市) listings only,
+// structurally no TPEx (上櫃/OTC) coverage. 9 of tw150's 118 tickers never
+// appeared anywhere in the 10-year whole-market crawl (0 rows each) despite
+// having real Yahoo/Shioaji price history — a permanent scope gap, not a
+// crawl failure. cmd/strategyscan/main.go now drops those 9 from the
+// universe up front (right after loading -t86-file, before the fetch loop)
+// rather than let them trip the existing 5%-fetch-error FATAL guard, which
+// exists to catch real cache problems, not this structural exclusion.
+//
+// Reproduce (T86 cache build is the slow part — ~10h in practice; TW price
+// history via a live Shioaji daemon, `shioaji server start`, ~15 min for
+// the whole market, or omit -history-file to fetch just tw150 from Yahoo
+// as this run did):
+//
+//	strategyscan -market=tw -build-t86-cache=t86.csv -date-from=2016-08-01 -date-to=2026-08-27
+//	strategyscan -market=tw -range=10y -t86-file=t86.csv -date-from=2016-11-01 -date-to=2021-10-31 -dump-trades=dump.csv
+//	strategyscan -market=tw -range=10y -t86-file=t86.csv -date-from=2021-11-01                     -dump-trades=dump.csv
+//	python3 t86_study.py "LABEL=strategyscan_results_tw.csv,dump.csv" ...  (repeat per run; "overall" column is the pre-registered number)
 func CheckTrustFollowExact(candles []data.Candle, trustNet, foreignNet []int64, p ScreenParams) bool {
 	n := len(candles)
 	if len(trustNet) != n || len(foreignNet) != n || !TrustFollowTechnicalGate(candles, p) {
@@ -243,6 +253,12 @@ func TrustFollow(candles []data.Candle, trustNet, foreignNet []int64, p ScreenPa
 	return nil
 }
 
+// TypeTrustFollow is 網 5's Signal.Type. Exported for the same reason as
+// TypeBoxBottom/TypeTrendBreakout (internal/signals/strategies.go) — see
+// CheckTrustFollowExact's doc comment for the numbers behind its §4.4
+// downgrade.
+const TypeTrustFollow = "strategy_trust_follow"
+
 func (d *Detector) CheckTrustFollow(ticker string, candles []data.Candle, trustNet, foreignNet []int64, prevState string) (sig *Signal, newState string) {
 	p := DefaultScreenParams(market.Of(ticker))
 	hit := TrustFollow(candles, trustNet, foreignNet, p)
@@ -266,7 +282,7 @@ func (d *Detector) CheckTrustFollow(ticker string, candles []data.Candle, trustN
 
 	return &Signal{
 		Ticker:  ticker,
-		Type:    "strategy_trust_follow",
+		Type:    TypeTrustFollow,
 		Message: i18n.T(d.lang, i18n.KeyStrategyTrustFollow, ticker, daysAgoStr, window, volPct),
 	}, newState
 }
