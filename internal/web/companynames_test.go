@@ -56,6 +56,16 @@ func TestBuildCompanyNames_TWOnlyAcrossSources(t *testing.T) {
 	}
 }
 
+func TestBuildCompanyNames_IncludesRecommendedTickers(t *testing.T) {
+	fdb := &fakeDB{recs: []db.Recommendation{{Ticker: "6669"}, {Ticker: "TSLA"}}}
+	provider := &fakeNames{names: map[string]string{"6669": "緯穎"}}
+
+	got := buildCompanyNames(fdb, provider)
+	if len(got.Names) != 1 || got.Names["6669"] != "緯穎" {
+		t.Fatalf("Names = %v, want only 6669", got.Names)
+	}
+}
+
 func TestBuildCompanyNames_LookupFailureSkipsTicker(t *testing.T) {
 	fdb := &fakeDB{watchlist: []string{"2330", "9999"}}
 	provider := &fakeNames{names: map[string]string{"2330": "台積電"}}
