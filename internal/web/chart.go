@@ -5,6 +5,7 @@ import (
 
 	"argus/internal/data"
 	"argus/internal/db"
+	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/signals"
 )
@@ -12,11 +13,16 @@ import (
 // buildChart assembles /api/chart: ticker's ~1y of daily candles plus the
 // support/resistance levels computed from that same slice (docs/phase-7-
 // support-resistance.md §4.1), open position risk info if held, and historical
-// rounds for this ticker.
+// rounds for this ticker. A history-fetch failure (mistyped/delisted/
+// unresolvable ticker) degrades to empty candles/levels rather than erroring
+// out entirely — the DB-backed position/rounds section below has nothing to
+// do with price history, and a held position for a ticker Yahoo can't
+// resolve must still be reachable (and deletable) from this page.
 func buildChart(database dbReader, quotes quoteGetter, history data.HistoryProvider, ticker string) (chartResponse, error) {
 	candles, err := history.GetHistory(ticker, "1y")
 	if err != nil {
-		return chartResponse{}, err
+		logger.Errorf("web: build chart for %s: history unavailable: %v", ticker, err)
+		candles = nil
 	}
 
 	levels := signals.PriceLevels(candles)

@@ -81,10 +81,34 @@ func TestBuildChart_NoLevels(t *testing.T) {
 	}
 }
 
-func TestBuildChart_HistoryErrorPropagates(t *testing.T) {
-	hist := &fakeHistory{err: errors.New("yahoo down")}
-	if _, err := buildChart(nil, nil, hist, "AAPL"); err == nil {
-		t.Fatal("buildChart() error = nil, want the history provider's error to propagate")
+func TestBuildChart_HistoryErrorDegradesToEmptyCandles(t *testing.T) {
+	// A ticker Yahoo can't resolve (typo/delisted) must not take down the
+	// whole chart response — the position/rounds section below is DB-backed
+	// and has nothing to do with price history, and a held position for
+	// such a ticker still needs to be reachable (and deletable) from here.
+	fdb := &fakeDB{
+		positions: []db.Position{
+			{Ticker: "2343", Shares: 55, AvgCost: 186, Market: "tw"},
+		},
+		txs: []db.Transaction{
+			{ID: 83, Date: "2026-08-27", Ticker: "2343", Side: "BUY", Shares: 55, Price: 186, Market: "tw"},
+		},
+	}
+	hist := &fakeHistory{err: errors.New("yahoo history: status 404 for 2343.TWO")}
+	quotes := &fakeQuotes{quotes: map[string]*data.Quote{"2343": {Ticker: "2343", Price: 0}}}
+
+	got, err := buildChart(fdb, quotes, hist, "2343")
+	if err != nil {
+		t.Fatalf("buildChart() error = %v, want nil (history failure should degrade, not propagate)", err)
+	}
+	if len(got.Candles) != 0 || len(got.Levels) != 0 {
+		t.Errorf("Candles/Levels = %v/%v, want both empty", got.Candles, got.Levels)
+	}
+	if got.Position == nil || got.Position.Shares != 55 {
+		t.Fatalf("Position = %+v, want the DB-backed position to still surface", got.Position)
+	}
+	if len(got.Rounds) != 1 {
+		t.Fatalf("Rounds len = %d, want 1", len(got.Rounds))
 	}
 }
 
