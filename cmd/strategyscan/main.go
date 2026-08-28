@@ -67,6 +67,86 @@ var sp600TickersRaw string
 // record loop and the summary printout.
 var baseStrategies = []string{"squeeze_breakout", "box_bottom", "trend_breakout", "trend_pullback", gapDriftStrategy, gapDriftT1Strategy}
 
+// confirmableStrategies is which screens Phase 25 §8.4① tests a delayed,
+// pullback-confirmed entry against (see entryConfirmDaysFlag/pullbackEntryIdx
+// below). Deliberately excludes gapDriftStrategy/gapDriftT1Strategy and
+// trustStrategy: those screens' whole thesis is that the signal bar itself
+// is the edge (continuation, not mean-reversion), so "wait for a pullback"
+// would test a different, contradictory hypothesis rather than refine the
+// same one.
+//
+// # Result: measured, does not clear the bar, not wired into any default run
+//
+// Pre-registered before running: N=5 trading days (matches dedupWindowDays,
+// the window every other alert-once check already uses — not swept, per
+// §8.4.4's "don't run several and pick the winner" rule), MA5-or-signal-low
+// confirmation, same date-clustered bootstrap as every other Phase 25 study
+// (pead_study.py, 400 resamples, split 2021-11-01), against the SAME
+// random-entry control the base (unconfirmed) strategy is scored against in
+// the same run — so a confirm-variant row and its base row are directly
+// comparable, no separate run needed:
+//
+//	overall (pre-registered) column, sigma:           SP500 IS  SP500 OOS  SP400 IS  SP400 OOS
+//	squeeze_breakout_confirm  (base: 0.6 -0.8 2.4-neg 0.2)        0.4        0.9        0.1       0.6
+//	box_bottom_confirm        (base: 0.8 1.2-neg 2.1-neg 2.8-neg) 0.7      1.2-neg    2.3-neg    2.8-neg
+//	trend_breakout_confirm    (base: 2.2-neg 0.3 1.4 2.0-neg)    2.2-neg     0.3        1.2       1.8-neg
+//	trend_pullback_confirm    (base: 0.8 1.1-neg 1.4 1.6-neg)    1.4       0.6-neg    0.9-neg    2.2-neg
+//
+// No screen clears >1 SE positive in both splits of either universe — the
+// bar §4.4/§8.4.4 both require. box_bottom_confirm stays negative and
+// significant in 3 of 4 slices (unsurprising: box_bottom itself is already
+// downgraded, §4.7, for the same reason — confirmation doesn't rescue a
+// screen whose entries were already wrong). trend_pullback_confirm is
+// actively worse than its base in SP400 (both splits move further negative
+// with confirmation). squeeze_breakout_confirm's one interesting move is
+// SP400 IS: the base's significant -3.50%/2.4σ loss becomes noise
+// (+0.22%/0.1σ) under confirmation — but that's one cell, not a validated
+// effect, and it doesn't repeat in the other three. Net: entry confirmation
+// is not a free upgrade to any of the four base screens; not wired into
+// checkStatefulSignals or the live bot. The infra stays (default off,
+// -entry-confirm-days=0 is byte-identical to no flag) for whoever revisits
+// this with a different confirmation rule (different N, a different pullback
+// definition) rather than re-deriving pullbackEntryIdx from scratch.
+//
+// Reproduce (same US caches as CheckBoxBottomReboundExact's doc comment):
+//
+//	strategyscan -market=us -range=10y -history-file=us_daily.csv    -entry-confirm-days=5 -date-from=2016-11-01 -date-to=2021-10-31 -dump-trades=dump.csv
+//	strategyscan -market=us -range=10y -history-file=us_daily.csv    -entry-confirm-days=5 -date-from=2021-11-01                     -dump-trades=dump.csv
+//	strategyscan -market=us -range=10y -history-file=sp400_daily.csv -universe=sp400 -entry-confirm-days=5 -date-from=2016-11-01 -date-to=2021-10-31 -dump-trades=dump.csv
+//	strategyscan -market=us -range=10y -history-file=sp400_daily.csv -universe=sp400 -entry-confirm-days=5 -date-from=2021-11-01                     -dump-trades=dump.csv
+//	python3 pead_study.py "LABEL=strategyscan_results_us.csv,dump.csv" ...  (repeat per run; *_confirm rows, "overall" column is the pre-registered number)
+//
+// TW was not run — this item is US-only in scope (§8.4 doesn't call out TW,
+// and 網 5's trust-net gate has no analog here worth adding cost for).
+var confirmableStrategies = []string{"squeeze_breakout", "box_bottom", "trend_breakout", "trend_pullback"}
+
+// confirmSuffix marks a strategy name as §8.4①'s delayed-entry variant of
+// the base strategy with the same prefix — same signal, same dedup
+// window (both share hits[strat] via the same t), different entry bar.
+const confirmSuffix = "_confirm"
+
+// pullbackEntryIdx searches forward from signalIdx (exclusive) up to maxDays
+// trading days for the first bar whose close has pulled back to <= that
+// bar's own MA5, or <= the signal bar's own low. ok=false means no such bar
+// existed in the window — a legal "never confirmed, no trade" outcome for
+// that variant, not an error, matching the existing entryIdx-off-the-end
+// convention a few lines below.
+func pullbackEntryIdx(candles []data.Candle, signalIdx, maxDays int) (idx int, ok bool) {
+	closes := data.Closes(candles)
+	signalLow := candles[signalIdx].Low
+	last := signalIdx + maxDays
+	if last >= len(candles) {
+		last = len(candles) - 1
+	}
+	for i := signalIdx + 1; i <= last; i++ {
+		ma5 := signals.MA(closes[:i+1], 5)
+		if ma5 != 0 && (closes[i] <= ma5 || closes[i] <= signalLow) {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
 // gapDriftStrategy is 網 6 (Phase 25 §2), entered market-on-close on the
 // signal bar like every other screen and like the random-entry control.
 // gapDriftT1Strategy is the same signal held one bar before entering.
@@ -480,6 +560,11 @@ func main() {
 	// volMultiplierAt's doc comment in portfolio.go for the pre-registered
 	// formula/constants).
 	volTargetFlag := flag.Bool("vol-target", false, "Phase 25 §3: market-level volatility-targeted exposure overlay (SPY's 20d realized vol vs. its trailing 1y percentile scales RiskPct) — requires -portfolio-backtest, default off")
+	// Phase 25 §8.4①: alongside each of confirmableStrategies, evaluate a
+	// same-signal "<strategy>_confirm" variant in the SAME run (so it shares
+	// the SAME random-entry control the base strategy is compared against —
+	// no separate run needed). 0 = off, byte-identical to today's output.
+	entryConfirmDaysFlag := flag.Int("entry-confirm-days", 0, "Phase 25 §8.4①: also evaluate a same-signal '<strategy>_confirm' variant per confirmableStrategies entry, whose entry waits up to N trading days for a close <= MA5 or <= the signal bar's low; no pullback within N days = no trade for that variant (legal, not an error). 0 = off (default)")
 	flag.Parse()
 
 	if *volTargetFlag && !*portfolioBacktestFlag {
@@ -742,6 +827,13 @@ func main() {
 		}
 		fmt.Printf("Loaded earnings-dates cache: %d tickers\n", len(earningsDates))
 		strategies = append(strategies, gapDriftConfirmedStrategy)
+	}
+
+	if *entryConfirmDaysFlag > 0 {
+		for _, s := range confirmableStrategies {
+			strategies = append(strategies, s+confirmSuffix)
+		}
+		fmt.Printf("Entry confirmation (§8.4①): waiting up to %d days for a pullback to MA5/signal-bar low, on %v\n", *entryConfirmDaysFlag, confirmableStrategies)
 	}
 
 	// getHistory is the single read path for candles, so the Yahoo and cache
@@ -1047,6 +1139,11 @@ func main() {
 			for _, v := range devVariants {
 				hits[v.name] = signals.CheckTrendBreakoutExact(sub, v.params)
 			}
+			if *entryConfirmDaysFlag > 0 {
+				for _, s := range confirmableStrategies {
+					hits[s+confirmSuffix] = hits[s]
+				}
+			}
 
 			for _, strat := range strategies {
 				if !hits[strat] {
@@ -1061,7 +1158,16 @@ func main() {
 
 				rec := baseRec
 				rec.Strategy = strat
-				entryIdx := t + entryOffset[strat]
+				var entryIdx int
+				if strings.HasSuffix(strat, confirmSuffix) {
+					idx, ok := pullbackEntryIdx(candles, t, *entryConfirmDaysFlag)
+					if !ok {
+						continue
+					}
+					entryIdx = idx
+				} else {
+					entryIdx = t + entryOffset[strat]
+				}
 				if entryIdx != t {
 					// A delayed entry has to move everything downstream with
 					// it — price, forward returns, replay — or it is being

@@ -49,7 +49,10 @@ from collections import defaultdict
 NBOOT = 400
 random.seed(20260827)
 SCREENS = ["post_gap_drift", "post_gap_drift_t1", "post_gap_drift_confirmed",
-           "squeeze_breakout", "box_bottom", "trend_breakout", "trend_pullback"]
+           "squeeze_breakout", "box_bottom", "trend_breakout", "trend_pullback",
+           # Phase 25 §8.4①: same-signal delayed-entry variants (see
+           # cmd/strategyscan/main.go's entryConfirmDaysFlag/confirmableStrategies).
+           "squeeze_breakout_confirm", "box_bottom_confirm", "trend_breakout_confirm", "trend_pullback_confirm"]
 
 
 def load_screens(path):
