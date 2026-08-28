@@ -7,8 +7,10 @@ import (
 )
 
 // buildCompanyNames assembles /api/company-names: every TW ticker the user
-// has any relationship with (watchlist ∪ positions ∪ transacted tickers —
-// the union of what the other endpoints can ever display) mapped to its
+// has any relationship with (watchlist ∪ positions ∪ transacted tickers ∪
+// recommended tickers — the union of what the other endpoints can ever
+// display, including /recs' scan/explore-sourced tickers that may never
+// have touched the watchlist) mapped to its
 // Chinese short name via data.CompanyNameProvider (FinMind's
 // TaiwanStockInfo, cached forever in-process — see finmind.go's
 // GetCompanyName — so only a ticker's first-ever lookup costs a request).
@@ -48,6 +50,13 @@ func buildCompanyNames(database dbReader, provider data.CompanyNameProvider) com
 	}
 	for _, t := range txs {
 		set[t.Ticker] = true
+	}
+	recs, err := database.GetRecommendationsSince("")
+	if err != nil {
+		logger.Errorf("web: company names: get recommendations: %v", err)
+	}
+	for _, r := range recs {
+		set[r.Ticker] = true
 	}
 
 	for ticker := range set {

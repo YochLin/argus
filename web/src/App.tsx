@@ -227,7 +227,7 @@ export default function App() {
   } else if (path === "/reports") {
     body = <ReportsView dict={dict} market={market} names={names} />;
   } else if (path === "/recs") {
-    body = <RecsView dict={dict} market={market} />;
+    body = <RecsView dict={dict} market={market} names={names} />;
   } else if (path === "/paper") {
     body = paperEnabled ? (
       <PaperView

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   currencySymbol,
   fetchRecPerformance,
+  tickerLabel,
   type Market,
   type RecPerfActiveSignal,
   type RecPerfExtreme,
@@ -127,7 +128,17 @@ function StatsMatrix({
   );
 }
 
-function ExtremesTable({ dict, title, rows }: { dict: Dictionary; title: string; rows: RecPerfExtreme[] }) {
+function ExtremesTable({
+  dict,
+  title,
+  rows,
+  names,
+}: {
+  dict: Dictionary;
+  title: string;
+  rows: RecPerfExtreme[];
+  names: Record<string, string>;
+}) {
   if (rows.length === 0) {
     return null;
   }
@@ -147,7 +158,7 @@ function ExtremesTable({ dict, title, rows }: { dict: Dictionary; title: string;
         <tbody>
           {rows.map((r, i) => (
             <tr key={i}>
-              <td>{r.ticker}</td>
+              <td>{tickerLabel(r.ticker, names)}</td>
               <td>{r.date}</td>
               <td className="rec-source-cell">{sourceLabel(dict, r.source)}</td>
               <td>{r.action}</td>
@@ -170,11 +181,13 @@ function ActiveSignalsTable({
   title,
   rows,
   currency,
+  names,
 }: {
   dict: Dictionary;
   title: string;
   rows: RecPerfActiveSignal[];
   currency: string;
+  names: Record<string, string>;
 }) {
   if (rows.length === 0) {
     return null;
@@ -196,7 +209,7 @@ function ActiveSignalsTable({
         <tbody>
           {rows.map((r, i) => (
             <tr key={i}>
-              <td>{r.ticker}</td>
+              <td>{tickerLabel(r.ticker, names)}</td>
               <td>{r.action}</td>
               <td className="rec-source-cell">{sourceLabel(dict, r.source)}</td>
               <td>
@@ -223,7 +236,15 @@ function ActiveSignalsTable({
 // from /track (bot.go's forward, single-snapshot tracker) per
 // docs/offline-rec-eval.md §1 — the two are expected to disagree, since one
 // is a live rolling window and this is an offline multi-horizon replay.
-export function RecsView({ dict, market }: { dict: Dictionary; market: Market }) {
+export function RecsView({
+  dict,
+  market,
+  names = {},
+}: {
+  dict: Dictionary;
+  market: Market;
+  names?: Record<string, string>;
+}) {
   const [perf, setPerf] = useState<RecPerformance | null>(null);
   const [error, setError] = useState(false);
 
@@ -345,11 +366,12 @@ export function RecsView({ dict, market }: { dict: Dictionary; market: Market })
         title={dict.recActiveSignals}
         rows={perf.activeSignals}
         currency={currencySymbol(market)}
+        names={names}
       />
 
       <div className="detail-grid-2col">
-        <ExtremesTable dict={dict} title={dict.recBest} rows={perf.best} />
-        <ExtremesTable dict={dict} title={dict.recWorst} rows={perf.worst} />
+        <ExtremesTable dict={dict} title={dict.recBest} rows={perf.best} names={names} />
+        <ExtremesTable dict={dict} title={dict.recWorst} rows={perf.worst} names={names} />
       </div>
     </>
   );
