@@ -1,5 +1,15 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { currencySymbol, fetchCalendar, tickerLabel, type Calendar, type CalendarEvent, type Market, type Transaction } from "../api";
+import {
+  ApiError,
+  currencySymbol,
+  deleteTransaction,
+  fetchCalendar,
+  tickerLabel,
+  type Calendar,
+  type CalendarEvent,
+  type Market,
+  type Transaction,
+} from "../api";
 import type { Dictionary } from "../i18n";
 import { TradesTable } from "./TradesTable";
 
@@ -33,6 +43,10 @@ interface Props {
   // names is /api/company-names' TW ticker → Chinese-name map (see App.tsx),
   // forwarded to the click-a-day panel's TradesTable.
   names?: Record<string, string>;
+  writable?: boolean;
+  // onUnauthorized backs the day panel's delete-transaction 401 handling —
+  // same retry-after-login convention as ChartView/ChartListView.
+  onUnauthorized?: (retry: () => void) => void;
 }
 
 interface Cell {
@@ -94,7 +108,7 @@ function weekTotal(week: Cell[]): number {
   return week.reduce((sum, c) => sum + (c.value ?? 0), 0);
 }
 
-export function CalendarView({ dict, market, names }: Props) {
+export function CalendarView({ dict, market, names, writable = false, onUnauthorized }: Props) {
   const [month, setMonth] = useState(currentMonth());
   const [calendar, setCalendar] = useState<Calendar | null>(null);
   const [error, setError] = useState(false);
@@ -109,6 +123,20 @@ export function CalendarView({ dict, market, names }: Props) {
       .then(setCalendar)
       .catch(() => setError(true));
   }, [month, market]);
+
+  async function handleDeleteTx(tx: Transaction) {
+    if (!window.confirm(dict.confirmDeleteTransaction)) return;
+    try {
+      await deleteTransaction(tx.id);
+      setCalendar(await fetchCalendar(month, market));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401 && onUnauthorized) {
+        onUnauthorized(() => handleDeleteTx(tx));
+      } else {
+        window.alert(e instanceof ApiError ? e.message : dict.error);
+      }
+    }
+  }
 
   const valuesByDate = useMemo(() => {
     const m = new Map<string, number>();
@@ -236,6 +264,7 @@ export function CalendarView({ dict, market, names }: Props) {
                 transactions={transactionsByDate.get(selectedDate) ?? []}
                 currency={currency}
                 names={names}
+                onDelete={writable ? handleDeleteTx : undefined}
               />
               <div className="eyebrow day-events-title">{dict.eventsTitle}</div>
               {(() => {

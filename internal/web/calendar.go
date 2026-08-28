@@ -56,6 +56,7 @@ func buildCalendar(database dbReader, earnings data.EarningsProvider, month stri
 	for _, t := range txs {
 		if t.Date >= monthStart && t.Date <= monthEnd {
 			resp.Transactions = append(resp.Transactions, transactionResponse{
+				ID:          t.ID,
 				Date:        t.Date,
 				Ticker:      t.Ticker,
 				Side:        t.Side,

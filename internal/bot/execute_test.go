@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"argus/internal/db"
@@ -156,6 +157,103 @@ func TestAdjustCash(t *testing.T) {
 	cash, ok, err = b.loadCash(market.US)
 	if err != nil || !ok || cash != want {
 		t.Errorf("loadCash() after sell = %v, %v, %v, want %v, true, nil", cash, ok, err, want)
+	}
+}
+
+// TestExecuteDeleteTransaction covers the /undo path end to end — not just
+// db.DeleteTransaction's own lot math (see db_test.go's TestDeleteTransaction)
+// but the bot-layer effects it doesn't touch: cash reversal, and a
+// full-close SELL's stop_price surviving the round trip back through a
+// deleted positions row.
+func TestExecuteDeleteTransaction(t *testing.T) {
+	b, d := newPendingActionsTestBot(t)
+	// Set before any ExecuteBuy call — buyStopSuggestion's computeStopSuggestion
+	// lazily constructs and caches b.riskService against whatever b.provider
+	// is at that first call (see b.risks()), so this must happen up front,
+	// unlike TestExecuteSetStop which sidesteps it by seeding positions via
+	// d.RecordBuy directly instead of through the bot layer.
+	b.provider = quoteOnlyProvider{price: 250}
+	if err := b.db.SetSetting(cashSettingKey, "10000"); err != nil {
+		t.Fatalf("SetSetting() error = %v", err)
+	}
+
+	// Undoing a BUY restores cash and removes the position entirely.
+	if _, err := b.ExecuteBuy("AAPL", 10, 200, feePtr(1), "2026-07-01"); err != nil {
+		t.Fatalf("ExecuteBuy() error = %v", err)
+	}
+	buyTxs, err := d.GetTransactions("AAPL")
+	if err != nil || len(buyTxs) != 1 {
+		t.Fatalf("GetTransactions() = %v, %v; want 1 row", buyTxs, err)
+	}
+	if _, err := b.ExecuteDeleteTransaction(buyTxs[0].ID); err != nil {
+		t.Fatalf("ExecuteDeleteTransaction(buy) error = %v", err)
+	}
+	if cash, ok, err := b.loadCash(market.US); err != nil || !ok || cash != 10000 {
+		t.Errorf("loadCash() after undoing buy = %v, %v, %v, want 10000, true, nil", cash, ok, err)
+	}
+	if _, ok, err := d.GetPosition("AAPL"); err != nil || ok {
+		t.Errorf("GetPosition() after undoing buy: ok = %v, err = %v; want false, nil", ok, err)
+	}
+
+	// Rejecting a non-latest transaction: buy twice, try to delete the first.
+	if _, err := b.ExecuteBuy("AAPL", 10, 200, feePtr(1), "2026-07-01"); err != nil {
+		t.Fatalf("ExecuteBuy() (lot1) error = %v", err)
+	}
+	if _, err := b.ExecuteBuy("AAPL", 10, 210, feePtr(1), "2026-07-02"); err != nil {
+		t.Fatalf("ExecuteBuy() (lot2) error = %v", err)
+	}
+	lotTxs, err := d.GetTransactions("AAPL")
+	if err != nil || len(lotTxs) != 2 {
+		t.Fatalf("GetTransactions() = %v, %v; want 2 rows", lotTxs, err)
+	}
+	if msg, err := b.ExecuteDeleteTransaction(lotTxs[0].ID); !errors.Is(err, db.ErrNotLatestTransaction) {
+		t.Errorf("ExecuteDeleteTransaction(lot1) = %q, %v, want ErrNotLatestTransaction", msg, err)
+	}
+	// Undo back down to a clean slate for the next case.
+	if _, err := b.ExecuteDeleteTransaction(lotTxs[1].ID); err != nil {
+		t.Fatalf("ExecuteDeleteTransaction(lot2) error = %v", err)
+	}
+	if _, err := b.ExecuteDeleteTransaction(lotTxs[0].ID); err != nil {
+		t.Fatalf("ExecuteDeleteTransaction(lot1) error = %v", err)
+	}
+
+	// Undoing a full-close SELL restores cash, shares, avg_cost, and the
+	// stop price that was in effect at the moment of sale — even though the
+	// intervening full close deleted the positions row outright.
+	if _, err := b.ExecuteBuy("AAPL", 10, 200, feePtr(1), "2026-07-01"); err != nil {
+		t.Fatalf("ExecuteBuy() error = %v", err)
+	}
+	if _, err := b.ExecuteSetStop("AAPL", 190); err != nil {
+		t.Fatalf("ExecuteSetStop() error = %v", err)
+	}
+	cashBeforeSell, _, err := b.loadCash(market.US)
+	if err != nil {
+		t.Fatalf("loadCash() error = %v", err)
+	}
+	if _, err := b.ExecuteSell(context.Background(), "AAPL", 10, 220, feePtr(3), "2026-07-10"); err != nil {
+		t.Fatalf("ExecuteSell() error = %v", err)
+	}
+	if _, ok, err := d.GetPosition("AAPL"); err != nil || ok {
+		t.Fatalf("GetPosition() after full-close sell: ok = %v, err = %v; want false, nil", ok, err)
+	}
+	sellTxs, err := d.GetTransactions("AAPL")
+	if err != nil || len(sellTxs) != 2 {
+		t.Fatalf("GetTransactions() = %v, %v; want 2 rows", sellTxs, err)
+	}
+	sellID := sellTxs[len(sellTxs)-1].ID
+
+	if _, err := b.ExecuteDeleteTransaction(sellID); err != nil {
+		t.Fatalf("ExecuteDeleteTransaction(sell) error = %v", err)
+	}
+	if cash, ok, err := b.loadCash(market.US); err != nil || !ok || cash != cashBeforeSell {
+		t.Errorf("loadCash() after undoing sell = %v, %v, %v, want %v, true, nil", cash, ok, err, cashBeforeSell)
+	}
+	pos, ok, err := d.GetPosition("AAPL")
+	if err != nil || !ok {
+		t.Fatalf("GetPosition() after undoing sell = %+v, %v, %v", pos, ok, err)
+	}
+	if pos.Shares != 10 || pos.AvgCost != 200.1 || pos.StopPrice != 190 {
+		t.Errorf("GetPosition() after undoing sell = %+v, want Shares=10 AvgCost=200.1 StopPrice=190", pos)
 	}
 }
 

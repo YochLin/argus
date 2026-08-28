@@ -42,6 +42,8 @@ export interface Dictionary {
   fee: string;
   realizedPnL: string;
   noTransactions: string;
+  deleteTransaction: string;
+  confirmDeleteTransaction: string;
   today: string;
   weekdays: [string, string, string, string, string, string, string];
   navRounds: string;
@@ -444,6 +446,8 @@ const en: Dictionary = {
   fee: "Fee",
   realizedPnL: "Realized P&L",
   noTransactions: "No transactions this day.",
+  deleteTransaction: "Delete (only the ticker's most recent transaction can be deleted)",
+  confirmDeleteTransaction: "Delete this transaction? This can only be undone by re-entering the trade.",
   today: "Today",
   weekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
   navRounds: "Rounds",
@@ -816,6 +820,8 @@ const zh: Dictionary = {
   fee: "手續費",
   realizedPnL: "已實現損益",
   noTransactions: "當天沒有交易紀錄。",
+  deleteTransaction: "刪除（僅能刪除該股票最近一筆交易紀錄）",
+  confirmDeleteTransaction: "確定要刪除這筆交易紀錄嗎？之後只能靠重新輸入交易來還原。",
   today: "今天",
   weekdays: ["日", "一", "二", "三", "四", "五", "六"],
   navRounds: "回合",

@@ -17,12 +17,13 @@ func feePtr(v float64) *float64 { return &v }
 
 // fakeTrade is a TradeExecutor stub recording its last call's arguments.
 type fakeTrade struct {
-	buyMsg, sellMsg, stopMsg, buyAlertMsg string
-	buyErr, sellErr, stopErr, buyAlertErr error
-	lastBuy, lastSell                     tradeRequest
-	lastStop                              stopRequest
-	lastBuyAlert                          buyAlertRequest
-	notified                              []string
+	buyMsg, sellMsg, stopMsg, buyAlertMsg, deleteMsg string
+	buyErr, sellErr, stopErr, buyAlertErr, deleteErr error
+	lastBuy, lastSell                                tradeRequest
+	lastStop                                         stopRequest
+	lastBuyAlert                                     buyAlertRequest
+	lastDeleteID                                     int64
+	notified                                         []string
 }
 
 func (f *fakeTrade) Notify(msg string) {
@@ -47,6 +48,11 @@ func (f *fakeTrade) ExecuteSetStop(ticker string, price float64) (string, error)
 func (f *fakeTrade) ExecuteAddBuyAlert(ticker string, price float64) (string, error) {
 	f.lastBuyAlert = buyAlertRequest{Ticker: ticker, Price: price}
 	return f.buyAlertMsg, f.buyAlertErr
+}
+
+func (f *fakeTrade) ExecuteDeleteTransaction(id int64) (string, error) {
+	f.lastDeleteID = id
+	return f.deleteMsg, f.deleteErr
 }
 
 // fakeWatchlistDB is a watchlistWriter stub.
@@ -106,6 +112,7 @@ func newTradeTestServer(password string, trade TradeExecutor, wl watchlistWriter
 	s.mux.HandleFunc("POST /api/login", s.requireWritable(s.handleLogin))
 	s.mux.HandleFunc("POST /api/trade/buy", s.requireWritable(s.requireAuth(s.requireTrade(s.handleTradeBuy))))
 	s.mux.HandleFunc("POST /api/trade/sell", s.requireWritable(s.requireAuth(s.requireTrade(s.handleTradeSell))))
+	s.mux.HandleFunc("POST /api/trade/delete", s.requireWritable(s.requireAuth(s.requireTrade(s.handleDeleteTransaction))))
 	s.mux.HandleFunc("POST /api/stop", s.requireWritable(s.requireAuth(s.requireTrade(s.handleSetStop))))
 	s.mux.HandleFunc("POST /api/watchlist/add", s.requireWritable(s.requireAuth(s.handleWatchlistAdd)))
 	s.mux.HandleFunc("POST /api/watchlist/remove", s.requireWritable(s.requireAuth(s.handleWatchlistRemove)))

@@ -580,6 +580,8 @@ func (b *Bot) handleMessage(ctx context.Context, cmd, args string) {
 		b.handleBuy(args)
 	case "sell":
 		b.handleSell(ctx, args)
+	case "undo":
+		b.handleUndo(args)
 	case "stop":
 		b.handleStop(args)
 	case "buyalert":

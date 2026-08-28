@@ -868,6 +868,78 @@ func (b *Bot) ExecuteSell(ctx context.Context, ticker string, shares, price floa
 	return msg, err
 }
 
+// handleUndo backs /undo <ticker> — the typo-recovery path: it looks up
+// ticker's most recent transaction (GetTransactions is already date,id
+// ascending, so the last element is it) and deletes it via undoTransaction.
+// Anything older than the latest is out of scope by design — see
+// db.DB.DeleteTransaction's doc comment.
+func (b *Bot) handleUndo(args string) {
+	ticker := strings.ToUpper(strings.TrimSpace(args))
+	if ticker == "" {
+		b.Send(i18n.T(b.lang, i18n.KeyUndoUsage))
+		return
+	}
+	txs, err := b.db.GetTransactions(ticker)
+	if err != nil {
+		logger.Errorf("undo %s: get transactions: %v", ticker, err)
+		b.Send(i18n.T(b.lang, i18n.KeyUndoFailed, err))
+		return
+	}
+	if len(txs) == 0 {
+		b.Send(i18n.T(b.lang, i18n.KeyUndoNoTx, b.tickerLabel(ticker)))
+		return
+	}
+	msg, _ := b.undoTransaction(txs[len(txs)-1].ID)
+	b.Send(msg)
+}
+
+// undoTransaction is handleUndo's core, pulled out so ExecuteDeleteTransaction
+// (internal/web's per-row delete button) produces the exact same
+// confirmation text and cash reversal as typing /undo directly — same
+// convention as recordBuy/recordSell. The cash delta undoes exactly what
+// recordBuy/recordSell applied when the deleted transaction was first
+// recorded (see their own adjustCash calls): a deleted BUY gives back
+// shares*price+fee, a deleted SELL takes back shares*price-fee.
+func (b *Bot) undoTransaction(id int64) (string, error) {
+	trades := b.trading()
+	if trades == nil {
+		err := errors.New("trade service unavailable")
+		return i18n.T(b.lang, i18n.KeyUndoFailed, err), err
+	}
+	t, err := trades.Undo(id)
+	if err != nil {
+		switch {
+		case errors.Is(err, db.ErrTransactionNotFound):
+			return i18n.T(b.lang, i18n.KeyUndoNotFound), err
+		case errors.Is(err, db.ErrNotLatestTransaction):
+			return i18n.T(b.lang, i18n.KeyUndoNotLatest), err
+		default:
+			return i18n.T(b.lang, i18n.KeyUndoFailed, err), err
+		}
+	}
+
+	var cashDelta float64
+	if t.Side == "BUY" {
+		cashDelta = t.Shares*t.Price + t.Fee
+	} else {
+		cashDelta = -(t.Shares*t.Price - t.Fee)
+	}
+	b.adjustCash(t.Ticker, cashDelta)
+
+	if t.Side == "BUY" {
+		return i18n.T(b.lang, i18n.KeyUndoBuySuccess, b.tickerLabel(t.Ticker), t.Shares, b.money(t.Ticker, t.Price)), nil
+	}
+	return i18n.T(b.lang, i18n.KeyUndoSellSuccess, b.tickerLabel(t.Ticker), t.Shares, b.money(t.Ticker, t.Price)), nil
+}
+
+// ExecuteDeleteTransaction is ExecuteBuy/ExecuteSell's sibling for
+// internal/web's POST /api/trade/delete — the dashboard's per-row delete
+// button, which already knows the specific transaction id (unlike /undo,
+// which resolves it from a ticker).
+func (b *Bot) ExecuteDeleteTransaction(id int64) (string, error) {
+	return b.undoTransaction(id)
+}
+
 // ExecuteSetStop is ExecuteBuy's sibling for internal/web's POST /api/stop
 // (see docs/phase-10-web-trade-input.md §4.2), reusing setStop's validation
 // so the web form rejects a stop price at/above the latest close the exact

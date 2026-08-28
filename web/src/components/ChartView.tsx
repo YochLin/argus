@@ -10,6 +10,7 @@ import {
 import {
   ApiError,
   currencySymbol,
+  deleteTransaction,
   fetchChart,
   fetchRoundDetail,
   marketOf,
@@ -20,6 +21,7 @@ import {
   type ChartLevel,
   type RoundDetail,
   type RoundSummary,
+  type Transaction,
 } from "../api";
 import type { Dictionary } from "../i18n";
 import { TradesTable } from "./TradesTable";
@@ -219,6 +221,22 @@ export function ChartView({
       }
     } finally {
       setThesisSubmitting(false);
+    }
+  }
+
+  async function handleDeleteTx(tx: Transaction) {
+    if (!ticker || !selectedRoundStart) return;
+    if (!window.confirm(dict.confirmDeleteTransaction)) return;
+    try {
+      await deleteTransaction(tx.id);
+      setRoundDetail(await fetchRoundDetail(ticker, selectedRoundStart));
+      setChart(await fetchChart(ticker));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401 && onUnauthorized) {
+        onUnauthorized(() => handleDeleteTx(tx));
+      } else {
+        window.alert(e instanceof ApiError ? e.message : dict.error);
+      }
     }
   }
 
@@ -541,6 +559,7 @@ export function ChartView({
               transactions={roundDetail.trades}
               currency={currency}
               names={names}
+              onDelete={writable ? handleDeleteTx : undefined}
             />
           </div>
           <div className="card">

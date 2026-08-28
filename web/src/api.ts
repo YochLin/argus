@@ -108,6 +108,7 @@ export interface Config {
 }
 
 export interface Transaction {
+  id: number;
   date: string;
   ticker: string;
   side: string; // "BUY" | "SELL"
@@ -1301,6 +1302,15 @@ export function executeSell(req: TradeRequest): Promise<TradeResponse> {
 
 export function setStopPrice(req: StopRequest): Promise<TradeResponse> {
   return postJSON("/api/stop", req);
+}
+
+// deleteTransaction backs TradesTable's per-row delete button (typo
+// recovery) — the server only allows deleting a ticker's most recent
+// transaction (see internal/db's DeleteTransaction doc comment) and
+// otherwise rejects with a message rendered verbatim, same TradeResponse
+// convention as executeBuy/executeSell.
+export function deleteTransaction(id: number): Promise<TradeResponse> {
+  return postJSON("/api/trade/delete", { id });
 }
 
 export function addWatchlistTicker(ticker: string): Promise<TradeResponse> {

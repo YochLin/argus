@@ -241,6 +241,7 @@ func buildRoundDetail(database dbReader, history data.HistoryProvider, ticker, s
 	}
 	for _, l := range found.Legs {
 		resp.Trades = append(resp.Trades, transactionResponse{
+			ID:          l.ID,
 			Date:        l.Date,
 			Ticker:      l.Ticker,
 			Side:        l.Side,

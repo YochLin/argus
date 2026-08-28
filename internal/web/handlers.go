@@ -144,6 +144,7 @@ type calendarEvent struct {
 }
 
 type transactionResponse struct {
+	ID          int64   `json:"id"`
 	Date        string  `json:"date"`
 	Ticker      string  `json:"ticker"`
 	Side        string  `json:"side"`

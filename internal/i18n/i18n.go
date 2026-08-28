@@ -150,6 +150,14 @@ const (
 	KeySellSuccess            Key = "sell_success"
 	KeySellNoPosition         Key = "sell_no_position"
 	KeySellInsufficientShares Key = "sell_insufficient_shares"
+
+	KeyUndoUsage       Key = "undo_usage"
+	KeyUndoNoTx        Key = "undo_no_tx"
+	KeyUndoNotFound    Key = "undo_not_found"
+	KeyUndoNotLatest   Key = "undo_not_latest"
+	KeyUndoFailed      Key = "undo_failed"
+	KeyUndoBuySuccess  Key = "undo_buy_success"
+	KeyUndoSellSuccess Key = "undo_sell_success"
 	// KeyFeeAutoNote (Phase 13 §3.2) is appended to a buy/sell confirmation
 	// when the fee wasn't typed explicitly and was instead auto-calculated
 	// via paper.FeeFor (TW only — US auto-calc is always 0).
