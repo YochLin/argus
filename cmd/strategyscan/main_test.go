@@ -333,3 +333,27 @@ func TestFillForwardReturnsMovesWithTheEntryBar(t *testing.T) {
 		t.Error("Has20d = true past the end of the data, want false (not a 0 return)")
 	}
 }
+
+// TestUniverseTickers checks each embedded universe parses to a plausible
+// ticker count (guards against a truncated/corrupt embed) and that an
+// unrecognized -universe value falls back to the S&P 500 default, matching
+// universeTickers' documented contract (validation of "must be a known
+// value" lives at the main() call site, not here).
+func TestUniverseTickers(t *testing.T) {
+	cases := []struct {
+		universe string
+		wantMin  int
+		wantMax  int
+	}{
+		{"", 490, 510},      // S&P 500 default
+		{"bogus", 490, 510}, // unrecognized -> same S&P 500 default
+		{"sp400", 390, 410}, // S&P 400 mid-cap
+		{"sp600", 550, 650}, // S&P 600 small-cap (SPSM live count: 602)
+	}
+	for _, c := range cases {
+		got := universeTickers(c.universe)
+		if len(got) < c.wantMin || len(got) > c.wantMax {
+			t.Errorf("universeTickers(%q) = %d tickers, want between %d and %d", c.universe, len(got), c.wantMin, c.wantMax)
+		}
+	}
+}
