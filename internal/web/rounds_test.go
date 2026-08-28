@@ -308,14 +308,25 @@ func TestBuildRoundDetail_RoundNotFound(t *testing.T) {
 	}
 }
 
-func TestBuildRoundDetail_HistoryErrorPropagates(t *testing.T) {
+func TestBuildRoundDetail_HistoryErrorDegradesToEmptyCandles(t *testing.T) {
+	// Same rationale as buildChart: a ticker Yahoo can't resolve must not
+	// take down the round's trades/theses/lessons, which are DB-only.
 	fdb := &fakeDB{
 		txs: []db.Transaction{
-			tx("AAPL", "BUY", 10, 100, "2026-06-01"),
+			tx("2343", "BUY", 55, 186, "2026-08-27"),
 		},
 	}
-	_, err := buildRoundDetail(fdb, &fakeHistory{err: errors.New("yahoo down")}, "AAPL", "2026-06-01")
-	if err == nil || errors.Is(err, errRoundNotFound) {
-		t.Errorf("buildRoundDetail() error = %v, want the history provider's error to propagate", err)
+	got, err := buildRoundDetail(fdb, &fakeHistory{err: errors.New("yahoo history: status 404 for 2343.TWO")}, "2343", "2026-08-27")
+	if err != nil {
+		t.Fatalf("buildRoundDetail() error = %v, want nil (history failure should degrade, not propagate)", err)
+	}
+	if len(got.Candles) != 0 {
+		t.Errorf("Candles = %v, want empty", got.Candles)
+	}
+	if got.HasMAEMFE {
+		t.Errorf("HasMAEMFE = true, want false with no candles")
+	}
+	if len(got.Trades) != 1 || got.Trades[0].Shares != 55 {
+		t.Fatalf("Trades = %+v, want the DB-backed leg to still surface", got.Trades)
 	}
 }

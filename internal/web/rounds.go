@@ -211,7 +211,11 @@ func buildRoundDetail(database dbReader, history data.HistoryProvider, ticker, s
 
 	candles, err := history.GetHistory(ticker, roundHistoryRange(found.StartDate, now))
 	if err != nil {
-		return roundDetailResponse{}, err
+		// Same rationale as buildChart: a ticker Yahoo can't resolve must not
+		// take down trades/theses/lessons below, which are DB-only and have
+		// nothing to do with price history.
+		logger.Errorf("web: round detail: history unavailable for %s: %v", ticker, err)
+		candles = nil
 	}
 
 	mm := roundMAEMFE(candles, found.Legs, found.StartDate, found.EndDate, now)
