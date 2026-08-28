@@ -24,6 +24,7 @@ type InsiderTransaction struct {
 // Form-4-equivalent filing regime).
 type InsiderTransactionProvider interface {
 	GetInsiderTransactions(ticker string, limit int) ([]InsiderTransaction, error)
+	GetInsiderTransactionsRange(ticker, from, to string) ([]InsiderTransaction, error)
 }
 
 type finnhubInsiderTransaction struct {
@@ -50,6 +51,30 @@ func (f *Finnhub) GetInsiderTransactions(ticker string, limit int) ([]InsiderTra
 		return nil, err
 	}
 	return buildInsiderTransactions(ticker, result.Data, limit), nil
+}
+
+// GetInsiderTransactionsRange is GetInsiderTransactions' sister method for
+// Phase 25 §8.2's backtest cache (cmd/strategyscan/insider_cache.go) — the
+// live path (LLM briefing, Phase 19 audit page) only ever wants "most
+// recent N", but a backtest needs a specific historical window. Finnhub's
+// free tier does support from/to on this endpoint (live-verified
+// 2026-08-29: /stock/insider-transactions?symbol=AAPL&from=2016-01-01&
+// to=2016-12-31 returns real 2016 filings, not an empty/truncated page —
+// unlike EarningsSurpriseProvider's /stock/earnings, which silently caps at
+// the trailing 4 quarters regardless of from/to, this endpoint honors the
+// range). No limit param: a backtest wants the whole window, not a capped
+// "most recent" page.
+func (f *Finnhub) GetInsiderTransactionsRange(ticker, from, to string) ([]InsiderTransaction, error) {
+	if market.Of(ticker) == market.TW {
+		return nil, errTWNotSupported
+	}
+	var result struct {
+		Data []finnhubInsiderTransaction `json:"data"`
+	}
+	if err := f.get(fmt.Sprintf("/stock/insider-transactions?symbol=%s&from=%s&to=%s", ticker, from, to), &result); err != nil {
+		return nil, err
+	}
+	return buildInsiderTransactions(ticker, result.Data, 0), nil
 }
 
 // buildInsiderTransactions maps Finnhub's raw rows to InsiderTransaction,
