@@ -40,6 +40,10 @@ func (f *fakeTradeStore) AddTicker(ticker string) error {
 	return nil
 }
 
+func (f *fakeTradeStore) DeleteTransaction(id int64) (db.Transaction, error) {
+	return db.Transaction{ID: id}, nil
+}
+
 func TestTradeServiceBuyAutoFeeAndWatchlist(t *testing.T) {
 	store := &fakeTradeStore{}
 	svc := NewTradeService(store, 1)

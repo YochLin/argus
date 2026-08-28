@@ -23,6 +23,11 @@ type TradeExecutor interface {
 	ExecuteBuy(ticker string, shares, price float64, fee *float64, date string) (string, error)
 	ExecuteSell(ctx context.Context, ticker string, shares, price float64, fee *float64, date string) (string, error)
 	ExecuteSetStop(ticker string, price float64) (string, error)
+	// ExecuteDeleteTransaction backs POST /api/trade/delete — like
+	// ExecuteBuy/Sell it needs bot-layer behavior beyond the raw DB delete
+	// (reversing the trade's cash effect), so it goes through this seam
+	// rather than a direct-to-db handler the way watchlistWriter does.
+	ExecuteDeleteTransaction(id int64) (string, error)
 	// ExecuteAddBuyAlert backs POST /api/buy-alerts/add — a quote fetch (to
 	// infer the alert's direction, see bot.buyAlertDirection) is bot-layer
 	// behavior beyond the raw DB write, same rationale as ExecuteSetStop.
@@ -73,6 +78,10 @@ type tradeRequest struct {
 type stopRequest struct {
 	Ticker string  `json:"ticker"`
 	Price  float64 `json:"price"`
+}
+
+type deleteTransactionRequest struct {
+	ID int64 `json:"id"`
 }
 
 type tickerRequest struct {
@@ -188,6 +197,20 @@ func (s *Server) handleTradeSell(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid date")
 		return
 	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, tradeResponse{Message: msg})
+}
+
+func (s *Server) handleDeleteTransaction(w http.ResponseWriter, r *http.Request) {
+	var req deleteTransactionRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	msg, err := s.trade.ExecuteDeleteTransaction(req.ID)
+	s.trade.Notify(msg)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, msg)
 		return

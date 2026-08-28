@@ -243,12 +243,13 @@ func New(cfg Config) *Server {
 	// falling through to spaHandler's SPA-fallback 200. See
 	// docs/phase-10-web-trade-input.md §4.1.
 	s.mux.HandleFunc("POST /api/login", s.requireWritable(s.handleLogin))
-	// The four TradeExecutor-backed routes carry requireTrade on top of the
+	// The TradeExecutor-backed routes carry requireTrade on top of the
 	// shared gate — Trade is nil whenever Telegram isn't configured (Phase 17
 	// PR1), which is now a reachable state for an otherwise-working
 	// dashboard.
 	s.mux.HandleFunc("POST /api/trade/buy", s.requireWritable(s.requireAuth(s.requireTrade(s.handleTradeBuy))))
 	s.mux.HandleFunc("POST /api/trade/sell", s.requireWritable(s.requireAuth(s.requireTrade(s.handleTradeSell))))
+	s.mux.HandleFunc("POST /api/trade/delete", s.requireWritable(s.requireAuth(s.requireTrade(s.handleDeleteTransaction))))
 	s.mux.HandleFunc("POST /api/stop", s.requireWritable(s.requireAuth(s.requireTrade(s.handleSetStop))))
 	s.mux.HandleFunc("POST /api/watchlist/add", s.requireWritable(s.requireAuth(s.handleWatchlistAdd)))
 	s.mux.HandleFunc("POST /api/watchlist/remove", s.requireWritable(s.requireAuth(s.handleWatchlistRemove)))

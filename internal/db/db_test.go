@@ -345,6 +345,100 @@ func TestRecordSellFIFO(t *testing.T) {
 	}
 }
 
+// TestDeleteTransaction covers the typo-recovery path a Telegram /undo
+// command and the dashboard's per-row delete button both rely on: only the
+// most recent transaction for a ticker may be deleted, a deleted SELL must
+// restore exactly the lots it FIFO-consumed, and a deleted BUY that was the
+// ticker's only transaction must remove the position entirely.
+func TestDeleteTransaction(t *testing.T) {
+	d := newTestDB(t)
+
+	if _, err := d.RecordBuy("AAPL", 10, 100, 0, "2026-07-01"); err != nil {
+		t.Fatalf("RecordBuy() (lot1) error = %v", err)
+	}
+	buy2, err := d.RecordBuy("AAPL", 10, 150, 0, "2026-07-02")
+	if err != nil {
+		t.Fatalf("RecordBuy() (lot2) error = %v", err)
+	}
+	if buy2.Shares != 20 {
+		t.Fatalf("position after two buys = %+v, want Shares=20", buy2)
+	}
+
+	// Deleting an older transaction (lot1, no longer the latest) is refused.
+	txs, err := d.GetTransactions("AAPL")
+	if err != nil || len(txs) != 2 {
+		t.Fatalf("GetTransactions() = %v, %v; want 2 rows", txs, err)
+	}
+	if _, err := d.DeleteTransaction(txs[0].ID); !errors.Is(err, ErrNotLatestTransaction) {
+		t.Errorf("DeleteTransaction(lot1) error = %v, want ErrNotLatestTransaction", err)
+	}
+
+	// Deleting a nonexistent id is refused.
+	if _, err := d.DeleteTransaction(999999); !errors.Is(err, ErrTransactionNotFound) {
+		t.Errorf("DeleteTransaction(missing) error = %v, want ErrTransactionNotFound", err)
+	}
+
+	// Sell 5 (FIFO from lot1, leaving lot1 @ 5 remaining, lot2 untouched @ 10).
+	if _, _, err := d.RecordSell("AAPL", 5, 200, 0, "2026-07-03"); err != nil {
+		t.Fatalf("RecordSell() error = %v", err)
+	}
+	sellTxs, err := d.GetTransactions("AAPL")
+	if err != nil {
+		t.Fatalf("GetTransactions() error = %v", err)
+	}
+	sellID := sellTxs[len(sellTxs)-1].ID
+
+	// Undoing the SELL restores lot1 to fully open again.
+	deletedSell, err := d.DeleteTransaction(sellID)
+	if err != nil {
+		t.Fatalf("DeleteTransaction(sell) error = %v", err)
+	}
+	if deletedSell.Side != "SELL" || deletedSell.Shares != 5 {
+		t.Errorf("DeleteTransaction(sell) returned = %+v, want Side=SELL Shares=5", deletedSell)
+	}
+	pos, ok, err := d.GetPosition("AAPL")
+	if err != nil || !ok {
+		t.Fatalf("GetPosition() after undoing sell = %+v, %v, %v", pos, ok, err)
+	}
+	wantAvgCost := (10*100.0 + 10*150.0) / 20
+	if pos.Shares != 20 || math.Abs(pos.AvgCost-wantAvgCost) > 1e-9 {
+		t.Errorf("GetPosition() after undoing sell = %+v, want Shares=20 AvgCost=%v (restored to pre-sell state)", pos, wantAvgCost)
+	}
+
+	// Undo the latest BUY (lot2) — position falls back to just lot1.
+	txs, err = d.GetTransactions("AAPL")
+	if err != nil {
+		t.Fatalf("GetTransactions() error = %v", err)
+	}
+	lot2Latest := txs[len(txs)-1].ID
+	deletedBuy, err := d.DeleteTransaction(lot2Latest)
+	if err != nil {
+		t.Fatalf("DeleteTransaction(buy2) error = %v", err)
+	}
+	if deletedBuy.Side != "BUY" || deletedBuy.Price != 150 {
+		t.Errorf("DeleteTransaction(buy2) returned = %+v, want Side=BUY Price=150", deletedBuy)
+	}
+	pos, ok, err = d.GetPosition("AAPL")
+	if err != nil || !ok {
+		t.Fatalf("GetPosition() after undoing buy2 = %+v, %v, %v", pos, ok, err)
+	}
+	if pos.Shares != 10 || pos.AvgCost != 100 {
+		t.Errorf("GetPosition() after undoing buy2 = %+v, want Shares=10 AvgCost=100", pos)
+	}
+
+	// Undo the last remaining transaction: the position disappears entirely.
+	txs, err = d.GetTransactions("AAPL")
+	if err != nil || len(txs) != 1 {
+		t.Fatalf("GetTransactions() = %v, %v; want 1 row", txs, err)
+	}
+	if _, err := d.DeleteTransaction(txs[0].ID); err != nil {
+		t.Fatalf("DeleteTransaction(lot1) error = %v", err)
+	}
+	if _, ok, err := d.GetPosition("AAPL"); err != nil || ok {
+		t.Errorf("GetPosition() after undoing the last transaction: ok = %v, err = %v; want false, nil", ok, err)
+	}
+}
+
 // TestBackfillFIFOLots pins migration 16's backfill step: given pre-existing
 // transaction history written the old way (BUY rows with remaining_shares
 // never set, a SELL's realized_pnl computed off the old blended average, and

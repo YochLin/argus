@@ -22,6 +22,15 @@ var ErrNoPosition = errors.New("no position for ticker")
 // selling more than is held would go negative, which isn't representable.
 var ErrInsufficientShares = errors.New("insufficient shares for sell")
 
+// ErrTransactionNotFound is returned by DeleteTransaction when id doesn't
+// exist.
+var ErrTransactionNotFound = errors.New("transaction not found")
+
+// ErrNotLatestTransaction is returned by DeleteTransaction when id isn't the
+// most recently recorded transaction for its ticker — see that function's
+// doc comment for why only the latest one is safe to undo.
+var ErrNotLatestTransaction = errors.New("only the most recent transaction for a ticker can be deleted")
+
 // ErrCrossesZero is returned by RecordOption when an order would flip a
 // position from long to short (or vice versa) in one trade — e.g. selling 3
 // contracts against a 2-long position. Rejected rather than split into
@@ -1188,6 +1197,125 @@ func (d *DB) RecordSellExt(ticker string, shares, price, fee float64, date, extI
 		return Position{}, 0, err
 	}
 	return Position{Ticker: ticker, Shares: remainingShares, AvgCost: avgCost, Market: string(market.Of(ticker))}, realizedPnL, nil
+}
+
+// DeleteTransaction undoes a single mis-entered trade — for typo recovery
+// via a bot command, not general trade-history editing. It only allows
+// deleting the most recent transaction recorded for its ticker
+// (ErrNotLatestTransaction otherwise): an older BUY may already have had
+// some of its shares FIFO-consumed by a later SELL whose realized_pnl is
+// already baked into that SELL's row (see RecordSellExt), and an older
+// SELL's consumed lots may have been touched by even-later trades — neither
+// is safely reversible without recomputing every transaction after it. The
+// latest transaction has no such successor, so undoing it is exact: a BUY's
+// lot is simply removed (nothing could have consumed it yet), and a SELL's
+// shares are restored to the same lots it took them from, oldest-first —
+// the mirror image of the FIFO consumption RecordSellExt did, safe to
+// replay in reverse because nothing later has touched those lots since.
+// Returns the deleted row so the caller (bot/web) can reverse its own
+// derived state, e.g. cash balance.
+func (d *DB) DeleteTransaction(id int64) (Transaction, error) {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return Transaction{}, err
+	}
+	defer tx.Rollback()
+
+	var t Transaction
+	err = tx.QueryRow(`
+		SELECT id, ticker, side, shares, price, fee, date, realized_pnl, stop_price, market, created_at
+		FROM transactions WHERE id = ?`, id,
+	).Scan(&t.ID, &t.Ticker, &t.Side, &t.Shares, &t.Price, &t.Fee, &t.Date, &t.RealizedPnL, &t.StopPrice, &t.Market, &t.CreatedAt)
+	if err == sql.ErrNoRows {
+		return Transaction{}, ErrTransactionNotFound
+	}
+	if err != nil {
+		return Transaction{}, err
+	}
+
+	var maxID int64
+	if err := tx.QueryRow(`SELECT MAX(id) FROM transactions WHERE ticker = ?`, t.Ticker).Scan(&maxID); err != nil {
+		return Transaction{}, err
+	}
+	if maxID != id {
+		return Transaction{}, ErrNotLatestTransaction
+	}
+
+	if t.Side == "SELL" {
+		lotRows, err := tx.Query(`
+			SELECT id, remaining_shares, shares FROM transactions
+			WHERE ticker = ? AND side = 'BUY' ORDER BY date, id`, t.Ticker)
+		if err != nil {
+			return Transaction{}, err
+		}
+		type lot struct {
+			id                int64
+			remaining, shares float64
+		}
+		var lots []lot
+		for lotRows.Next() {
+			var l lot
+			if err := lotRows.Scan(&l.id, &l.remaining, &l.shares); err != nil {
+				lotRows.Close()
+				return Transaction{}, err
+			}
+			lots = append(lots, l)
+		}
+		if err := lotRows.Err(); err != nil {
+			lotRows.Close()
+			return Transaction{}, err
+		}
+		lotRows.Close()
+
+		need := t.Shares
+		for _, l := range lots {
+			if need <= 1e-9 {
+				break
+			}
+			restore := math.Min(need, l.shares-l.remaining)
+			if restore <= 1e-9 {
+				continue
+			}
+			if _, err := tx.Exec(`UPDATE transactions SET remaining_shares = ? WHERE id = ?`, l.remaining+restore, l.id); err != nil {
+				return Transaction{}, err
+			}
+			need -= restore
+		}
+		if need > 1e-9 {
+			return Transaction{}, fmt.Errorf("db: DeleteTransaction: %s open lots %v shares short of the %v to restore — position/lot data out of sync", t.Ticker, t.Shares-need, t.Shares)
+		}
+	}
+
+	if _, err := tx.Exec(`DELETE FROM transactions WHERE id = ?`, id); err != nil {
+		return Transaction{}, err
+	}
+
+	totalShares, avgCost, err := lotAvgCost(tx, t.Ticker)
+	if err != nil {
+		return Transaction{}, err
+	}
+	if totalShares <= 1e-9 {
+		if _, err := tx.Exec(`DELETE FROM positions WHERE ticker = ?`, t.Ticker); err != nil {
+			return Transaction{}, err
+		}
+	} else {
+		if _, err := tx.Exec(`
+			INSERT INTO positions (ticker, shares, avg_cost, stop_price, market, updated_at)
+			VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+			ON CONFLICT(ticker) DO UPDATE SET
+				shares = excluded.shares,
+				avg_cost = excluded.avg_cost,
+				updated_at = excluded.updated_at`,
+			t.Ticker, totalShares, avgCost, t.StopPrice, t.Market,
+		); err != nil {
+			return Transaction{}, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Transaction{}, err
+	}
+	return t, nil
 }
 
 // TransactionExtIDExists reports whether a transactions row with this

@@ -12,6 +12,15 @@ interface Props {
   // names is /api/company-names' TW ticker → Chinese-name map — optional
   // with an empty default, same degrade convention as PositionsTable.
   names?: Record<string, string>;
+  // onDelete (typo-recovery) renders a per-row × button when provided —
+  // same "don't render, don't just disable" convention as PositionsTable's
+  // onTrade-gated columns. The server only allows deleting a ticker's most
+  // recent transaction (see internal/db's DeleteTransaction), so this stays
+  // available on every row and lets the server's rejection message (a row
+  // that isn't actually the latest) surface through the caller rather than
+  // trying to precompute "is this the latest" across a table that, in
+  // CalendarView's case, mixes multiple tickers.
+  onDelete?: (tx: Transaction) => void;
 }
 
 function fmtSigned(v: number, currency: string): string {
@@ -23,7 +32,7 @@ function fmtSigned(v: number, currency: string): string {
 // (Phase 5 PR2/PR3) — same six columns, same BUY/SELL/realizedPnL
 // formatting, so this was pulled out rather than kept as two near-identical
 // copies once a second caller showed up.
-export function TradesTable({ dict, transactions, emptyMessage, currency = "$", names = {} }: Props) {
+export function TradesTable({ dict, transactions, emptyMessage, currency = "$", names = {}, onDelete }: Props) {
   if (transactions.length === 0) {
     return <div className="empty-message">{emptyMessage ?? dict.noTransactions}</div>;
   }
@@ -37,6 +46,7 @@ export function TradesTable({ dict, transactions, emptyMessage, currency = "$", 
           <th>{dict.price}</th>
           <th>{dict.fee}</th>
           <th>{dict.realizedPnL}</th>
+          {onDelete && <th />}
         </tr>
       </thead>
       <tbody>
@@ -56,6 +66,19 @@ export function TradesTable({ dict, transactions, emptyMessage, currency = "$", 
             <td className={t.realizedPnL > 0 ? "profit" : t.realizedPnL < 0 ? "loss" : ""}>
               {t.side === "SELL" ? fmtSigned(t.realizedPnL, currency) : "—"}
             </td>
+            {onDelete && (
+              <td>
+                <button
+                  type="button"
+                  className="watchlist-remove-btn"
+                  onClick={() => onDelete(t)}
+                  aria-label={dict.deleteTransaction}
+                  title={dict.deleteTransaction}
+                >
+                  ×
+                </button>
+              </td>
+            )}
           </tr>
         ))}
       </tbody>

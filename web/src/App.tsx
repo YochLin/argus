@@ -204,7 +204,15 @@ export default function App() {
 
   let body;
   if (path === "/calendar") {
-    body = <CalendarView dict={dict} market={market} names={names} />;
+    body = (
+      <CalendarView
+        dict={dict}
+        market={market}
+        names={names}
+        writable={status?.writable ?? false}
+        onUnauthorized={(retry) => setAuthRetry(() => retry)}
+      />
+    );
   } else if (path === "/rounds") {
     body = (
       <RoundsListView

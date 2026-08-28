@@ -26,6 +26,7 @@ type TradeStore interface {
 	RecordBuyExt(ticker string, shares, price, fee float64, date, extID string) (db.Position, error)
 	RecordSellExt(ticker string, shares, price, fee float64, date, extID string) (db.Position, float64, error)
 	AddTicker(ticker string) error
+	DeleteTransaction(id int64) (db.Transaction, error)
 }
 
 // BuyInput describes a buy request after the transport has parsed its input.
@@ -149,6 +150,13 @@ func (s *TradeService) Sell(in SellInput) (TradeResult, error) {
 		Fee:         fee,
 		FeeAuto:     feeAuto,
 	}, nil
+}
+
+// Undo deletes a single mis-entered transaction by id — see
+// db.DB.DeleteTransaction's doc comment for why only the most recent
+// transaction for its ticker can be undone this way.
+func (s *TradeService) Undo(id int64) (db.Transaction, error) {
+	return s.store.DeleteTransaction(id)
 }
 
 func validateTrade(rawTicker string, shares, price float64, fee *float64, side string, twFeeDiscount float64) (string, float64, bool, error) {

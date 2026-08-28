@@ -65,6 +65,7 @@ func botCommands(lang i18n.Lang) []tgbotapi.BotCommand {
 		{"track", "回顧過去 N 天建議命中率，預設 7 天", "Review recommendation hit rate over the past N days (default 7)"},
 		{"buy", "記錄買入：股數 價格 [手續費] [日期]", "Record a buy: shares price [fee] [date]"},
 		{"sell", "記錄賣出：股數 價格 [手續費] [日期]", "Record a sell: shares price [fee] [date]"},
+		{"undo", "刪除該股票最近一筆交易紀錄（修正輸入錯誤）", "Delete a ticker's most recent transaction (fix a typo)"},
 		{"stop", "設定或查詢停損價", "Set or view a stop-loss price"},
 		{"buyalert", "設定或查詢買進提醒價", "Set or view a buy-alert price"},
 		{"portfolio", "目前持倉、市值與損益", "Current positions, market value, and P&L"},
