@@ -357,3 +357,47 @@ func TestUniverseTickers(t *testing.T) {
 		}
 	}
 }
+
+// TestPullbackEntryIdx covers §8.4①'s legal outcomes: confirms the very
+// next bar when price breaches the signal low (and MA5 agrees), never
+// confirms with a zero-length window, and never confirms across a
+// monotonic uptrend that touches neither condition.
+func TestPullbackEntryIdx(t *testing.T) {
+	// Five flat 100-closes so MA5 is well-defined at the signal bar, then a
+	// signal bar (idx 5, close=100, low=99), then a close (98) that breaches
+	// both the signal low and MA5(~99.6) on the very next bar.
+	candles := flatThenCandles(0, 0)
+	closes := []float64{100, 100, 100, 100, 100, 100 /* signal, low=99 */, 98}
+	for i, c := range closes {
+		low := c
+		if i == 5 {
+			low = 99
+		}
+		candles = append(candles, data.Candle{
+			Date: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, i),
+			Open: c, High: c, Low: low, Close: c, Volume: 1000,
+		})
+	}
+	signalIdx := 5
+
+	if idx, ok := pullbackEntryIdx(candles, signalIdx, 10); !ok || idx != signalIdx+1 {
+		t.Errorf("confirms next bar: got (%d, %v), want (%d, true)", idx, ok, signalIdx+1)
+	}
+	if idx, ok := pullbackEntryIdx(candles, signalIdx, 0); ok {
+		t.Errorf("zero-length window: got (%d, true), want ok=false", idx)
+	}
+
+	// A steady uptrend never pulls back to MA5 or the signal low (both
+	// always below the current close in a monotonic rise).
+	upCandles := flatThenCandles(0, 0)
+	for i := 0; i < 12; i++ {
+		c := 100.0 + float64(i)
+		upCandles = append(upCandles, data.Candle{
+			Date: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, i),
+			Open: c, High: c + 1, Low: c - 1, Close: c, Volume: 1000,
+		})
+	}
+	if idx, ok := pullbackEntryIdx(upCandles, 4, 6); ok {
+		t.Errorf("monotonic uptrend, no pullback: got (%d, true), want ok=false", idx)
+	}
+}
