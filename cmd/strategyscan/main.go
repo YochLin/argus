@@ -951,6 +951,28 @@ func main() {
 			fmt.Printf("Error loading T86 cache: %v\n", err)
 			os.Exit(1)
 		}
+		// T86 is TWSE's own report — TSE (上市) listings only, structurally
+		// no TPEx (上櫃/OTC) coverage. A tw150 member that never appears
+		// ANYWHERE in a 10-year whole-market crawl (live-verified
+		// 2026-08-29: 9/118 tw150 tickers, 0 rows each, despite fetching
+		// real Yahoo price history fine) is a permanent TSE-vs-TPEx scope
+		// gap, not a crawl failure — drop them from the universe before the
+		// fetch loop rather than let them inflate the FATAL error-rate
+		// guard below, which exists to catch REAL cache-coverage problems
+		// (a bad build, a stale file), not this structural exclusion.
+		var kept []string
+		var dropped []string
+		for _, t := range tickers {
+			if _, ok := t86Cache[t]; ok {
+				kept = append(kept, t)
+			} else {
+				dropped = append(dropped, t)
+			}
+		}
+		if len(dropped) > 0 {
+			fmt.Printf("T86 has no coverage for %d/%d tickers (TSE-only report, no TPEx/OTC — dropping from this run's universe): %v\n", len(dropped), len(tickers), dropped)
+			tickers = kept
+		}
 	}
 
 	fmt.Printf("Fetching %s history for market regime and benchmark...\n", benchTicker)
