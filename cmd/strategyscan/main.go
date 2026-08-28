@@ -179,6 +179,12 @@ var entryOffset = map[string]int{gapDriftT1Strategy: 1}
 
 const trustStrategy = "trust_follow"
 
+// insiderClusterBuyStrategy is Phase 25 §8.2 (US only, no TW Form 4
+// equivalent). Only added to the strategies list when -insider-tx-file is
+// set — same "absent means never false-hollow" reasoning as
+// gapDriftConfirmedStrategy above.
+const insiderClusterBuyStrategy = "insider_cluster_buy"
+
 const baselineStrategy = "baseline"
 
 type TriggerRecord struct {
@@ -532,6 +538,13 @@ func main() {
 	// candles. US only (SEC has no TW equivalent).
 	earningsDatesBuildFlag := flag.String("earnings-dates", "", "fetch SEC EDGAR filed dates for every ticker in -universe into this CSV cache, then exit (US only, needs SEC_USER_AGENT)")
 	earningsDatesFileFlag := flag.String("earnings-dates-file", "", "read (ticker, filed_date) pairs from this cache (built by -earnings-dates) and add post_gap_drift_confirmed (網 6 + SEC filing confirmation) to the study")
+	// Phase 25 §8.2: same two-step offline-cache pattern as -earnings-dates/
+	// -earnings-dates-file, for Finnhub insider transactions instead of SEC
+	// filed dates. Unlike T86 (no ranged query, needs a day-major bulk
+	// walk), GetInsiderTransactionsRange takes a date range per ticker
+	// directly, so this is one request per ticker, not one per day.
+	insiderTxBuildFlag := flag.String("insider-tx", "", "US only: fetch Finnhub insider transactions for every ticker in -universe over [-date-from,-date-to] (default: 10y back from today) into this CSV cache, then exit (needs FINNHUB_API_KEY)")
+	insiderTxFileFlag := flag.String("insider-tx-file", "", "read (ticker -> transactions) from this cache (built by -insider-tx) and add insider_cluster_buy to the study")
 	// Phase 25 §4: T86 (internal/data/twse_t86.go) replaces FinMind as 網5's
 	// data source. It has no ranged query, so a decade-long backtest needs
 	// its own bulk day-major cache — see t86_cache.go's package comment for
@@ -594,6 +607,32 @@ func main() {
 		fmt.Printf("Building earnings-dates cache from SEC EDGAR: %d tickers -> %s\n", len(us), *earningsDatesBuildFlag)
 		if err := buildEarningsDatesCache(data.NewSEC(ua), us, *earningsDatesBuildFlag); err != nil {
 			fmt.Printf("Error building earnings-dates cache: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *insiderTxBuildFlag != "" {
+		if m != market.US {
+			fmt.Printf("Error: -insider-tx is US-only (Finnhub has no TW insider-filing equivalent)\n")
+			os.Exit(1)
+		}
+		key := os.Getenv("FINNHUB_API_KEY")
+		if key == "" {
+			fmt.Printf("Error: -insider-tx needs FINNHUB_API_KEY set\n")
+			os.Exit(1)
+		}
+		from, to := *dateFromFlag, *dateToFlag
+		if from == "" {
+			from = time.Now().AddDate(-10, 0, 0).Format("2006-01-02")
+		}
+		if to == "" {
+			to = time.Now().Format("2006-01-02")
+		}
+		us := universeTickers(*universeFlag)
+		fmt.Printf("Building insider-tx cache from Finnhub: %s .. %s, %d tickers -> %s\n", from, to, len(us), *insiderTxBuildFlag)
+		if err := buildInsiderTxCache(data.NewFinnhub(key), us, from, to, *insiderTxBuildFlag); err != nil {
+			fmt.Printf("Error building insider-tx cache: %v\n", err)
 			os.Exit(1)
 		}
 		return
@@ -834,6 +873,24 @@ func main() {
 			strategies = append(strategies, s+confirmSuffix)
 		}
 		fmt.Printf("Entry confirmation (§8.4①): waiting up to %d days for a pullback to MA5/signal-bar low, on %v\n", *entryConfirmDaysFlag, confirmableStrategies)
+	}
+
+	// Phase 25 §8.2: insider_cluster_buy only enters the study when a cache
+	// was supplied — same reasoning as post_gap_drift_confirmed above.
+	var insiderTx map[string][]data.InsiderTransaction
+	if *insiderTxFileFlag != "" {
+		if m != market.US {
+			fmt.Printf("Error: -insider-tx-file is US-only\n")
+			os.Exit(1)
+		}
+		var err error
+		insiderTx, err = loadInsiderTxCache(*insiderTxFileFlag)
+		if err != nil {
+			fmt.Printf("Error loading insider-tx cache: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Loaded insider-tx cache: %d tickers\n", len(insiderTx))
+		strategies = append(strategies, insiderClusterBuyStrategy)
 	}
 
 	// getHistory is the single read path for candles, so the Yahoo and cache
@@ -1135,6 +1192,9 @@ func main() {
 			}
 			if trustAligned != nil {
 				hits[trustStrategy] = signals.CheckTrustFollowExact(sub, trustAligned[:t+1], foreignAligned[:t+1], screenParams)
+			}
+			if insiderTx != nil {
+				hits[insiderClusterBuyStrategy] = signals.CheckInsiderClusterBuyExact(sub, insiderTx[ticker], screenParams)
 			}
 			for _, v := range devVariants {
 				hits[v.name] = signals.CheckTrendBreakoutExact(sub, v.params)
