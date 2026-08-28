@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   addWatchlistTicker,
   ApiError,
@@ -74,13 +74,24 @@ export function ChartListView({
   const [newTicker, setNewTicker] = useState("");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Guards against out-of-order responses: a mistyped/invalid ticker makes
+  // its own fetch the slowest (every provider in the Multi chain fails
+  // before giving up), so a reload started before removing it can resolve
+  // *after* the reload that confirms the removal and stomp the correct
+  // state with stale data. Only the most recently issued reload may apply.
+  const reloadSeq = useRef(0);
 
   function reload() {
+    const seq = ++reloadSeq.current;
     setItems(null);
     setError(false);
     fetchWatchlistSummary(market)
-      .then((r) => setItems(r.tickers))
-      .catch(() => setError(true));
+      .then((r) => {
+        if (seq === reloadSeq.current) setItems(r.tickers);
+      })
+      .catch(() => {
+        if (seq === reloadSeq.current) setError(true);
+      });
   }
 
   useEffect(reload, [market]);
