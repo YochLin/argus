@@ -1128,6 +1128,18 @@ func (b *Bot) buildClosedTradeReview(ticker string, stopPrice float64) (llm.Clos
 // manual /review TICKER path, which reports failures to the user instead
 // (and is also the way to backfill a review that got dropped this way).
 func (b *Bot) reviewClosedTrade(ctx context.Context, ticker string, stopPrice float64) {
+	// ExecuteSell fires this in its own goroutine on every full close, with
+	// no synchronization back to the caller — a test Bot built without an
+	// llm client (most don't need one) can still trigger a full-close sell
+	// and leak this goroutine, which then panics on b.llm.ReviewTrade's nil
+	// receiver at some later, unrelated point in the same test binary.
+	// Live-observed 2026-08-29 CI (internal/bot, SIGSEGV in
+	// llm.(*Client).ReviewTrade). b.llm is never nil in production — Boot
+	// constructs it unconditionally — so this guard only ever fires in
+	// exactly that test scenario.
+	if b.llm == nil {
+		return
+	}
 	ctx = context.WithoutCancel(ctx)
 	trade, ok, err := b.buildClosedTradeReview(ticker, stopPrice)
 	if err != nil {
