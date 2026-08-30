@@ -355,11 +355,14 @@ export function ChartView({
       series.setMarkers(markers);
 
       const fromDate = roundDetail.start;
-      const toDate = roundDetail.end || chart.candles[chart.candles.length - 1].date;
-      chartRef.current?.timeScale().setVisibleRange({
-        from: fromDate as Time,
-        to: toDate as Time,
-      });
+      const lastCandle = chart.candles[chart.candles.length - 1];
+      const toDate = roundDetail.end || lastCandle?.date;
+      if (toDate) {
+        chartRef.current?.timeScale().setVisibleRange({
+          from: fromDate as Time,
+          to: toDate as Time,
+        });
+      }
     } else {
       series.setMarkers([]);
       chartRef.current?.timeScale().fitContent();
