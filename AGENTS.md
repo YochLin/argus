@@ -31,9 +31,9 @@ docker compose up --build    # build + run in Docker (uses .env, mounts ./data -
 There's no broad test suite; `internal/i18n` has the one exception (`go test ./internal/i18n/...`), which
 checks the zh/en message tables stay in sync — see that package's entry below. Setup: copy `.env.example`
 to `.env` and fill in `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` — since Phase 17 these may be left
-blank, in which case the process still starts with Telegram disabled entirely (no bot, no scheduled
-reports) and everything else running, so they can be filled in later from the web dashboard's Settings
-page — plus `FINNHUB_API_KEY` (optional). The LLM needs no API key — run `claude` once on this machine and log in with your Claude
+blank, in which case the process starts with the Telegram transport disabled (no inbound commands, no
+outbound messages) but everything else — scheduled jobs included — still running, so they can be filled
+in later from the web dashboard's Settings page — plus `FINNHUB_API_KEY` (optional). The LLM needs no API key — run `claude` once on this machine and log in with your Claude
 Pro/Max account first (see `internal/llm` below); Node.js (`npx`) must also be installed since the bot
 shells out to an ACP agent process.
 
@@ -41,7 +41,9 @@ shells out to an ACP agent process.
 
 Flow: `internal/app`'s `Boot` wires everything together — loads env (`app.Load`), opens SQLite, builds
 the data provider chain (`app.NewCoreProviders`), constructs the LLM client, constructs the Telegram
-`bot.Bot` (only when a token/chat id is configured), constructs the web server, registers the cron jobs;
+`bot.Bot` (a headless one, `bot.NewHeadless`, when no token/chat id is configured — never nil, so every
+cron job and the web dashboard's write seam keep working with Telegram off; only `App.Run`'s long-poll
+loop is gated), constructs the web server, registers the cron jobs;
 `App.Run` then starts all of them and blocks until SIGINT/SIGTERM, and `App.Close` releases them in
 reverse order. Two entrypoints share that one wiring (Phase 24 Stage 3 Step 3.1): `cmd/bot/main.go` is
 the original Telegram-first one — plus the `mcp`/`eval`/`backtest` subcommands, which branch before any
@@ -176,7 +178,8 @@ of it — and `cmd/server/main.go` is the server-first daemon, differing only in
   (scheduler jobs + alert checks), `pipeline.go` (recommendation data assembly), `format.go` (pure
   formatting helpers). `internal/bot/channel.go`'s `Channel` interface abstracts the transport —
   `telegram.go` is the only file that imports `tgbotapi`, leaving room for a future second messaging
-  channel. `pending_actions.go` is the bot-side half of Phase 4's write-gating flow (confirm/reject
+  channel, and `headless.go` is the no-op implementation a Telegram-less process runs on (Phase 24
+  Stage 3: the absence of a transport must not take the orchestration with it). `pending_actions.go` is the bot-side half of Phase 4's write-gating flow (confirm/reject
   inline keyboards for MCP-proposed trades). Risk management (`/stop`, stop-loss/trailing-stop/target/
   MA5-break alerts, position sizing) and TW market support (per-market watchlist/portfolio/snapshot/
   cash handling) are both fully wired through this package. `options.go` (Phase 12) adds `/obuy`/

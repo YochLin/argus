@@ -38,8 +38,26 @@ func TestBootWithoutTelegram(t *testing.T) {
 			}
 			defer a.Close()
 
-			if a.Bot != nil {
-				t.Error("Bot should be nil without a Telegram token")
+			// Headless, not nil (Phase 24 Stage 3): a Telegram-less
+			// process still has to run every scheduler job, or the
+			// dashboard's P&L curve replays a daily_snapshots table
+			// nothing ever wrote to.
+			if a.Bot == nil {
+				t.Error("Bot must be wired headless without a Telegram token")
+			}
+			if a.telegram {
+				t.Error("telegram must be false without a Telegram token")
+			}
+			// 11 with the dashboard on: the 9 Telegram-era jobs + 2
+			// universe scans + log rotation + backup, and the two
+			// sector-flow scans only when Web exists. Asserted as a count,
+			// not a list, so re-gating any of them on Telegram fails here.
+			wantJobs := 13
+			if tc.wantWeb {
+				wantJobs += 2
+			}
+			if got := a.Scheduler.JobCount(); got != wantJobs {
+				t.Errorf("scheduler jobs = %d, want %d", got, wantJobs)
 			}
 			if (a.Web != nil) != tc.wantWeb {
 				t.Errorf("Web != nil = %v, want %v", a.Web != nil, tc.wantWeb)

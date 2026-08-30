@@ -149,15 +149,23 @@ func (b *Bot) handleRecommend(ctx context.Context, args string) {
 		return
 	}
 	for _, m := range markets {
-		b.runRecommend(ctx, m)
+		b.RunRecommend(ctx, m)
 	}
 }
 
-// runRecommend is handleRecommend's per-market body — the interactive
+// RunRecommend is handleRecommend's per-market body — the interactive
 // counterpart of runDailyReport's LLM-call tail, without the signal
 // detection/exit-discipline/exploration steps that are runDailyReport-only
 // (see that function's own doc comment for why).
-func (b *Bot) runRecommend(ctx context.Context, m market.MarketID) {
+//
+// Exported for POST /api/v1/recommendations/trigger (Phase 24 Stage 4 Step
+// 4.2), which reaches it through web.Recommender rather than importing this
+// package. The panic guard is here rather than at either call site for the
+// same reason: both run it on a goroutine of their own (dispatch's `go
+// b.handleMessage`, the trigger handler's), where an unrecovered panic takes
+// the whole process down instead of one request.
+func (b *Bot) RunRecommend(ctx context.Context, m market.MarketID) {
+	defer b.recoverJobPanic("recommend")
 	b.Send(i18n.T(b.lang, i18n.KeyAnalyzing))
 
 	in, err := b.gatherRecommendationInputs(m)
