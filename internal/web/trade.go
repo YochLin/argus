@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"argus/internal/market"
 	"argus/internal/service"
 )
 
@@ -40,6 +41,19 @@ type TradeExecutor interface {
 	// 10's "Telegram 照常同步" decision), but as this package's own choice
 	// rather than a side effect baked into the bot-layer call.
 	Notify(msg string)
+}
+
+// Recommender is the same seam for POST /api/v1/recommendations/trigger:
+// *bot.Bot's RunRecommend, injected by internal/app rather than imported.
+// Its own interface rather than a TradeExecutor method, because the two are
+// unrelated — a deployment can have one and not the other, and the trade
+// routes shouldn't start 409-ing because recommendations aren't wired.
+type Recommender interface {
+	// RunRecommend gathers inputs, calls the LLM and saves the resulting
+	// recommendations. It returns nothing: it reports its own outcome
+	// through the notification/DB layers, and the caller reads the result
+	// back through GET /api/v1/recommendations/latest.
+	RunRecommend(ctx context.Context, m market.MarketID)
 }
 
 // watchlistWriter is web's narrow view of *db.DB for watchlist add/remove —

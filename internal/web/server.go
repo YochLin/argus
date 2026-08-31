@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"argus/internal/data"
@@ -69,9 +70,14 @@ type Config struct {
 	Password string
 	// Trade is the write-endpoint seam onto *bot.Bot (buy/sell/stop) — nil
 	// whenever Password is empty, since New only wires the write routes up
-	// in that case, and also whenever Telegram itself isn't configured
-	// (Phase 17 PR1), which requireTrade answers with a 409.
+	// in that case. It is no longer nil when Telegram is unconfigured
+	// (Phase 24 Stage 3's headless bot is a working TradeExecutor); nil now
+	// only means no seam was injected at all, which requireTrade answers
+	// with a 409.
 	Trade TradeExecutor
+	// Recommend backs POST /api/v1/recommendations/trigger; nil (the state
+	// every test builds) makes that one route 409 and changes nothing else.
+	Recommend Recommender
 	// EnvPath is the .env file /api/settings edits (Phase 17 PR2). main.go
 	// always passes ".env": godotenv.Load() reads exactly that path relative
 	// to the working directory, so anything else here would edit a file the
@@ -142,9 +148,13 @@ type Server struct {
 	recPerf          *recPerfStore
 	password         string
 	trade            TradeExecutor
-	envPath          string
-	csvDB            csvWriter
-	thesisDB         thesisWriter
+	recommender      Recommender
+	// recRunning is the one-at-a-time gate on
+	// handleAPIRecommendationsTrigger's background run.
+	recRunning atomic.Bool
+	envPath    string
+	csvDB      csvWriter
+	thesisDB   thesisWriter
 	// paperDB stays *db.DB (not dbReader) so nil-checking it in
 	// handlePaper can't fall into the classic "non-nil interface wrapping
 	// a nil pointer" trap — it's passed into buildPaper's dbReader
@@ -187,6 +197,7 @@ func New(cfg Config) *Server {
 		heatThresholdPct:    cfg.RiskHeatPct,
 		password:            cfg.Password,
 		trade:               cfg.Trade,
+		recommender:         cfg.Recommend,
 		envPath:             cmp.Or(cfg.EnvPath, ".env"),
 		csvDB:               cfg.DB,
 		thesisDB:            cfg.DB,

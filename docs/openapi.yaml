@@ -265,9 +265,8 @@ paths:
       tags: [signals]
       summary: Recent stored LLM recommendations, newest first
       description: |
-        Reads the last 90 days of history. There is no trigger endpoint: a new
-        recommendation still comes from the Telegram bot's pipeline, which has
-        not been extracted into a service yet.
+        Reads the last 90 days of history. This is also where the result of
+        POST /api/v1/recommendations/trigger shows up once the run finishes.
       parameters:
         - $ref: "#/components/parameters/Market"
         - name: limit
@@ -295,6 +294,42 @@ paths:
                             items:
                               $ref: "#/components/schemas/Recommendation"
         "401":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/recommendations/trigger:
+    post:
+      tags: [signals]
+      summary: Start a recommendation run for one market
+      description: |
+        Answers 202 as soon as the run starts; it takes minutes (data gather
+        plus an LLM call), so poll GET /api/v1/recommendations/latest for the
+        result. Only one run at a time process-wide — a second request while
+        one is in flight gets 409, as does a deployment with no recommendation
+        runner wired.
+      parameters:
+        - $ref: "#/components/parameters/Market"
+      responses:
+        "202":
+          description: Run started
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            example: started
+                          market:
+                            type: string
+                            enum: [us, tw]
+        "401":
+          $ref: "#/components/responses/Error"
+        "409":
           $ref: "#/components/responses/Error"
 
   /api/v1/scan/hits:

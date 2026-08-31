@@ -317,3 +317,9 @@ func (s *Scheduler) Start() {
 func (s *Scheduler) Stop() {
 	s.c.Stop()
 }
+
+// JobCount reports how many jobs are registered. Exists for internal/app's
+// boot test, which has no other way to tell "this deployment schedules its
+// closing snapshot" from "this deployment silently schedules nothing" — the
+// exact regression Phase 24 Stage 3's Telegram gate used to cause.
+func (s *Scheduler) JobCount() int { return len(s.c.Entries()) }

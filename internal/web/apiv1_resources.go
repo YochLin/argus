@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"slices"
@@ -19,13 +20,14 @@ import (
 // envelope. No business logic lives in this file; that's the whole point of
 // the surface existing on top of the service layer rather than beside it.
 //
-// Deliberately absent from the plan doc's endpoint list:
-// POST /api/v1/recommendations/trigger. Generating a recommendation still
-// means bot.runRecommend — the pipeline is Stage 1.3's extraction and hasn't
-// happened yet — and reaching into *bot.Bot from here would rebuild exactly
-// the coupling Stage 3 is unwinding. /latest reads the stored history, which
-// is what an app actually needs to render; add /trigger when there's a
-// RecommendationService to call.
+// POST /api/v1/recommendations/trigger is the one route here that calls no
+// service: generating a recommendation is still bot.RunRecommend, since
+// Stage 1.3's full pipeline extraction never landed (see PLAN.md's Step 3.2
+// note on gatherRecommendationInputs). It reaches it through the Recommender
+// interface below — injected by internal/app, the same seam TradeExecutor
+// has used since Stage 1.1 — so this package still doesn't know
+// internal/bot exists, and swapping in a real RecommendationService later
+// changes one line in internal/app and nothing here.
 
 // cst pins the deployment's dating zone the same way internal/scheduler,
 // internal/bot, and internal/service do (see those packages' own `cst` —
@@ -349,14 +351,54 @@ func (s *Server) handleAPINotificationRead(w http.ResponseWriter, r *http.Reques
 	writeAPIOK(w, map[string]any{"id": id, "read": true})
 }
 
-// requireAPITrade is requireTrade with the v1 envelope — same 409 for the
-// same reason (Telegram isn't configured, so there's no TradeExecutor).
+// requireAPITrade is requireTrade with the v1 envelope — same 409 when no
+// TradeExecutor was injected. Since Phase 24 Stage 3 that no longer means
+// "Telegram is unconfigured": internal/app injects a headless bot in that
+// case, so a nil executor now only happens on a Server built without the
+// seam at all, i.e. a test.
 func (s *Server) requireAPITrade(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.trade == nil {
-			writeAPIError(w, http.StatusConflict, "Telegram is not configured yet")
+			writeAPIError(w, http.StatusConflict, "trade execution is not available")
 			return
 		}
 		next(w, r)
 	}
+}
+
+// handleAPIRecommendationsTrigger is POST /api/v1/recommendations/trigger
+// (?market=us|tw): start a fresh recommendation run and answer 202
+// immediately. A run is a full data gather plus an LLM call — minutes, well
+// past any mobile client's request timeout — so the result is collected from
+// GET /api/v1/recommendations/latest afterwards, not from this response.
+//
+// One run at a time, process-wide: a second concurrent run would fetch the
+// same quotes, burn a second LLM call and race the first one's writes into
+// the recommendations table, all for a result the user asked for once and
+// double-tapped. 409 rather than a queue — the caller retrying in a minute
+// is the whole of the recovery, and a queue would need a lifecycle nothing
+// here has.
+func (s *Server) handleAPIRecommendationsTrigger(w http.ResponseWriter, r *http.Request) {
+	if s.recommender == nil {
+		writeAPIError(w, http.StatusConflict, "recommendation runs are not available")
+		return
+	}
+	if !s.recRunning.CompareAndSwap(false, true) {
+		writeAPIError(w, http.StatusConflict, "a recommendation run is already in progress")
+		return
+	}
+	m := marketParam(r)
+	// WithoutCancel, not r.Context() directly: net/http cancels a request's
+	// context the moment its handler returns, which here is immediately —
+	// passing it through would abort the run at its first ctx check.
+	ctx := context.WithoutCancel(r.Context())
+	go func() {
+		defer s.recRunning.Store(false)
+		s.recommender.RunRecommend(ctx, m)
+	}()
+	writeJSON(w, http.StatusAccepted, apiResponse{
+		Success:   true,
+		Data:      map[string]string{"status": "started", "market": string(m)},
+		Timestamp: time.Now().Unix(),
+	})
 }

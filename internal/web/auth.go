@@ -99,9 +99,11 @@ func (s *Server) requireWritable(next http.HandlerFunc) http.HandlerFunc {
 }
 
 // requireTrade rejects the write endpoints that go through TradeExecutor
-// when Telegram isn't configured (Phase 17 PR1: main.go leaves Trade nil in
-// that case, and the dashboard is otherwise fully functional). 409 rather
-// than 404/500: the route exists and the request is well-formed, it's the
+// when no executor was injected. It used to be the Telegram-less case (Phase
+// 17 PR1 left Trade nil then); since Phase 24 Stage 3 internal/app injects a
+// headless bot instead, so these buttons keep working with Telegram off —
+// what's left is a Server built without the seam at all. 409 rather than
+// 404/500: the route exists and the request is well-formed, it's the
 // server's own configuration that isn't ready — and the frontend needs to
 // tell this apart from a plain rejected trade to show the right message.
 // Only trade/stop/buy-alert-add need this; watchlist and thesis writes go
@@ -109,7 +111,7 @@ func (s *Server) requireWritable(next http.HandlerFunc) http.HandlerFunc {
 func (s *Server) requireTrade(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.trade == nil {
-			writeError(w, http.StatusConflict, "Telegram is not configured yet")
+			writeError(w, http.StatusConflict, "trade execution is not available")
 			return
 		}
 		next(w, r)

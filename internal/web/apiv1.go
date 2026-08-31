@@ -98,6 +98,7 @@ func (s *Server) apiV1Handlers() map[string]http.HandlerFunc {
 		"POST /api/v1/trade/sell":              s.requireAPIAuth(s.requireAPITrade(s.handleAPITradeSell)),
 		"POST /api/v1/risk/stop":               s.requireAPIAuth(s.requireAPITrade(s.handleAPISetStop)),
 		"GET /api/v1/recommendations/latest":   s.requireAPIAuth(s.handleAPIRecommendationsLatest),
+		"POST /api/v1/recommendations/trigger": s.requireAPIAuth(s.handleAPIRecommendationsTrigger),
 		"GET /api/v1/scan/hits":                s.requireAPIAuth(s.handleAPIScanHits),
 		"GET /api/v1/notifications":            s.requireAPIAuth(s.handleAPINotifications),
 		"POST /api/v1/notifications/{id}/read": s.requireAPIAuth(s.handleAPINotificationRead),

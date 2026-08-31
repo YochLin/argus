@@ -61,9 +61,8 @@ func main() {
 	// Phase 2.6 追加項's S&P 500 refresh (see docs/phase-2.6-universe-refresh.md):
 	// runs once per process start, right after seedSP500's fresh-install
 	// path (inside bot.New -> db.New) has already had its chance to run.
-	if a.Bot != nil {
-		a.Bot.SyncUniverse()
-	}
+	// a.Bot is never nil since Boot's headless fallback (Phase 24 Stage 3).
+	a.Bot.SyncUniverse()
 
 	logger.Info("stock trader bot started")
 	a.Run(ctx)

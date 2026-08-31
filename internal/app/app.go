@@ -51,9 +51,13 @@ type App struct {
 	DB      *db.DB
 	PaperDB *db.DB
 	LLM     *llm.Client
-	// Bot is nil when Telegram isn't configured (Phase 17 PR1) — every use
-	// of it, here and in the entrypoints, must stay nil-guarded.
-	Bot *bot.Bot
+	// Bot is never nil after a successful Boot: when Telegram isn't
+	// configured (Phase 17 PR1) it's a headless one (bot.NewHeadless), which
+	// runs every job and web-facing seam with its outbound text going
+	// nowhere. telegram records which of the two it is — the one thing that
+	// genuinely needs a live Telegram is Run's long-poll loop.
+	Bot      *bot.Bot
+	telegram bool
 	// Web is nil only when cfg.WebAddr is empty (cmd/bot's dashboard-off
 	// state); cmd/server always has one, see DefaultWebAddr.
 	Web       *web.Server
@@ -285,13 +289,10 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 
 	// Telegram is optional as of Phase 17 PR1 (docs/phase-17-web-settings.md
 	// §3): without a token/chat id — or with a pair Telegram itself rejects,
-	// which bot.New finds out synchronously via getMe — a.Bot stays nil and
-	// the process still comes up to serve the web dashboard, whose Settings
-	// page is how the operator fills these in. Every use of a.Bot is
-	// therefore nil-guarded.
-	if cfg.TelegramToken == "" || cfg.ChatID == 0 {
-		logger.Info("TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not configured: Telegram disabled, set them on the web dashboard's Settings page")
-	} else if a.Bot, err = bot.New(bot.Config{
+	// which bot.New finds out synchronously via getMe — the process still
+	// comes up to serve the web dashboard, whose Settings page is how the
+	// operator fills these in.
+	botCfg := bot.Config{
 		Token:                  cfg.TelegramToken,
 		ChatID:                 cfg.ChatID,
 		DB:                     database,
@@ -329,25 +330,30 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 		PaperMaxPositionPct:    cfg.PaperMaxPositionPct,
 		PaperTakeProfitATRMult: cfg.PaperTakeProfitATRMult,
 		Notifier:               a.Notifier,
-	}); err != nil {
+	}
+	if cfg.TelegramToken == "" || cfg.ChatID == 0 {
+		logger.Info("TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not configured: Telegram disabled, set them on the web dashboard's Settings page")
+	} else if b, botErr := bot.New(botCfg); botErr != nil {
 		// A rejected token (bot.New's getMe call) must not be fatal either:
 		// the recovery path for a typo'd token is the Settings page, which
-		// only exists if this process keeps running.
-		logger.Errorf("init bot: %v (Telegram disabled, dashboard still available)", err)
-		a.Bot = nil
+		// only exists if this process keeps running. Deliberately not
+		// assigned to the named `err` return — that would trip the deferred
+		// Close() above and tear down a process that is otherwise fine.
+		logger.Errorf("init bot: %v (Telegram disabled, dashboard still available)", botErr)
+	} else {
+		a.Bot, a.telegram = b, true
+	}
+	// Headless fallback (Phase 24 Stage 3 Step 3.1's "若環境變數包含
+	// TELEGRAM_BOT_TOKEN，背景啟動 Telegram Bot Polling" — i.e. Telegram
+	// gates the *polling*, nothing else): a.Bot is never nil after Boot, so
+	// registerJobs below, web.Config.Trade and SyncUniverse all keep working
+	// on a Telegram-less deployment. Only Run's long-poll loop is gated, on
+	// a.telegram.
+	if a.Bot == nil {
+		a.Bot = bot.NewHeadless(botCfg)
 	}
 
 	a.Scheduler = scheduler.New()
-
-	// trade must be assigned only when a.Bot is non-nil: handing a nil
-	// *bot.Bot straight to web.Config.Trade would produce a non-nil interface
-	// wrapping a nil pointer, which every `s.trade == nil` check in
-	// internal/web would then miss (server.go's paperDB comment names the
-	// same trap).
-	var trade web.TradeExecutor
-	if a.Bot != nil {
-		trade = a.Bot
-	}
 
 	if cfg.WebAddr != "" {
 		// In-process, not a subcommand like "mcp": the dashboard needs live
@@ -366,7 +372,16 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 			OptionChain:  core.Yahoo,
 			RiskHeatPct:  cfg.RiskHeatPct,
 			Password:     cfg.WebPassword,
-			Trade:        trade,
+			// Always the bot, headless or not: since Phase 24 tech debt 3
+			// the Execute* methods have no Telegram side effect of their
+			// own (the handlers call Notify explicitly), so a headless one
+			// is a fully working TradeExecutor — the dashboard's write
+			// buttons no longer go dead just because Telegram is unset.
+			Trade: a.Bot,
+			// The one line that changes if Stage 1.3's
+			// RecommendationService ever lands — internal/web only knows
+			// the web.Recommender interface.
+			Recommend: a.Bot,
 			// Phase 17 PR2: the file godotenv.Load() already read at startup
 			// — not configurable, since editing any other file would have no
 			// effect on the next boot.
@@ -396,59 +411,55 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 	return a, nil
 }
 
-// registerJobs registers every cron job on a.Scheduler. The Telegram block is
-// registered as one unit rather than nil-guarding twelve closures — every job
-// in it reports to Telegram, see docs/phase-17-web-settings.md §3.1. Log
-// rotation and backups are deliberately outside it: they're the two jobs that
-// still matter on a Telegram-less process.
+// registerJobs registers every cron job on a.Scheduler. None of them is
+// gated on Telegram any more (Phase 24 Stage 3): a.Bot is always non-nil,
+// headless when no token is configured, so each job below still computes and
+// persists its result and only its Telegram-shaped summary text goes
+// nowhere. That gate used to be the phase's worst functional hole —
+// AddClosingSnapshot's real job is writing daily_snapshots/benchmark rows,
+// which the dashboard's whole P&L curve replays, so a Telegram-less
+// cmd/server silently accumulated no history and the dashboard just looked
+// broken.
 //
-// Known limitation (Stage 3.2, not yet done — see
-// docs/architecture/server-refactor-plan.md §4 Step 3.2): every job here
-// still computes its result and sends it via Telegram in one method on
-// *bot.Bot, so a Telegram-less cmd/server skips all of them, not just the
-// Telegram send. The one that bites hardest is AddClosingSnapshot: its real
-// job is writing daily_snapshots/benchmark rows, which the dashboard's whole
-// P&L curve replays — a Telegram-less server silently accumulates no history
-// and the dashboard just looks broken. AddUniverseScan (scan_hits) has the
-// same problem. Fixing this means splitting each *Bot method into a
-// compute-and-persist half callable without Telegram and a
-// format-and-send half, job by job — deferred to a follow-up PR, not done
-// here.
+// What's still true (Step 3.2's remaining structural work, see
+// docs/architecture/server-refactor-plan.md §4): these jobs compute and send
+// in one method on *bot.Bot rather than calling a service and publishing an
+// Event the way AddUniverseScan below does. That's now a code-shape debt,
+// not a behavioral one.
 func (a *App) registerJobs(ctx context.Context) {
-	if b := a.Bot; b != nil {
-		a.Scheduler.AddDailyReport(ctx, func(ctx context.Context) {
-			b.RunDailyReport(ctx)
-		})
-		a.Scheduler.AddMorningBriefing(ctx, func(ctx context.Context) {
-			b.RunUSMorningBriefing(ctx)
-		})
-		a.Scheduler.AddTWDailyReport(ctx, func(ctx context.Context) {
-			b.RunTWDailyReport(ctx)
-		})
-		a.Scheduler.AddTWMorningBriefing(ctx, func(ctx context.Context) {
-			b.RunTWMorningBriefing(ctx)
-		})
-		a.Scheduler.AddClosingSnapshot(ctx, func(ctx context.Context) {
-			b.RunClosingSnapshot(ctx, market.US)
-		})
-		a.Scheduler.AddTWClosingSnapshot(ctx, func(ctx context.Context) {
-			b.RunClosingSnapshot(ctx, market.TW)
-		})
-		a.Scheduler.AddWeeklyReview(ctx, func(ctx context.Context) {
-			b.RunWeeklyReview(ctx)
-		})
-		a.Scheduler.AddSinopacSync(ctx, func(ctx context.Context) {
-			if a.cfg.ShioajiAddr == "" {
-				return
-			}
-			if msg, found := b.RunSinopacSync(ctx, !a.cfg.SinopacSyncLive); found {
-				b.Send(msg)
-			}
-		})
-		a.Scheduler.AddMonthlyReport(ctx, func(ctx context.Context) {
-			b.RunMonthlyReport(ctx)
-		})
-	}
+	b := a.Bot
+	a.Scheduler.AddDailyReport(ctx, func(ctx context.Context) {
+		b.RunDailyReport(ctx)
+	})
+	a.Scheduler.AddMorningBriefing(ctx, func(ctx context.Context) {
+		b.RunUSMorningBriefing(ctx)
+	})
+	a.Scheduler.AddTWDailyReport(ctx, func(ctx context.Context) {
+		b.RunTWDailyReport(ctx)
+	})
+	a.Scheduler.AddTWMorningBriefing(ctx, func(ctx context.Context) {
+		b.RunTWMorningBriefing(ctx)
+	})
+	a.Scheduler.AddClosingSnapshot(ctx, func(ctx context.Context) {
+		b.RunClosingSnapshot(ctx, market.US)
+	})
+	a.Scheduler.AddTWClosingSnapshot(ctx, func(ctx context.Context) {
+		b.RunClosingSnapshot(ctx, market.TW)
+	})
+	a.Scheduler.AddWeeklyReview(ctx, func(ctx context.Context) {
+		b.RunWeeklyReview(ctx)
+	})
+	a.Scheduler.AddSinopacSync(ctx, func(ctx context.Context) {
+		if a.cfg.ShioajiAddr == "" {
+			return
+		}
+		if msg, found := b.RunSinopacSync(ctx, !a.cfg.SinopacSyncLive); found {
+			b.Send(msg)
+		}
+	})
+	a.Scheduler.AddMonthlyReport(ctx, func(ctx context.Context) {
+		b.RunMonthlyReport(ctx)
+	})
 
 	// The universe scan is Phase 24 Stage 3 Step 3.2's first fully inverted
 	// job: the scheduler calls a service and gets a DTO back, with no *Bot in
@@ -538,7 +549,9 @@ func (a *App) Run(ctx context.Context) {
 			}
 		}()
 	}
-	if a.Bot != nil {
+	// Only a real Telegram channel has an inbound side worth long-polling —
+	// a headless Bot's Listen would just block until shutdown.
+	if a.telegram {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

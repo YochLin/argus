@@ -42,10 +42,11 @@ func main() {
 
 	// Phase 2.6 追加項's S&P 500 refresh — same once-per-process-start call
 	// cmd/bot makes; it's a DB refresh, not a Telegram concern, but it lives
-	// on *bot.Bot until Stage 1's remaining service extractions move it.
-	if a.Bot != nil {
-		a.Bot.SyncUniverse()
-	}
+	// on *bot.Bot until Stage 1's remaining service extractions move it. No
+	// nil guard since Boot's headless fallback: it runs on a Telegram-less
+	// server too, which is the whole point — the universe table going stale
+	// was never a Telegram problem.
+	a.Bot.SyncUniverse()
 
 	logger.Info("argus server started")
 	a.Run(ctx)
