@@ -71,7 +71,16 @@ export function ImportView({ dict, onUnauthorized, onSuccess }: Props) {
           }}
         />
         <div className="modal-actions">
-          <input ref={fileInputRef} type="file" accept=".csv,text/csv" onChange={handleFile} />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            onChange={handleFile}
+            style={{ display: "none" }}
+          />
+          <button type="button" onClick={() => fileInputRef.current?.click()}>
+            {dict.importChooseFile}
+          </button>
           <button disabled={busy || !csv.trim()} onClick={() => run(true)}>
             {dict.importPreview}
           </button>

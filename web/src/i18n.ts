@@ -332,6 +332,7 @@ export interface Dictionary {
   importInstructions: string;
   importTemplateHint: string;
   importTextareaPlaceholder: string;
+  importChooseFile: string;
   importPreview: string;
   importConfirm: string;
   importLine: string;
@@ -731,6 +732,7 @@ const en: Dictionary = {
   importInstructions: "Paste or upload CSV transactions to backfill your trade history.",
   importTemplateHint: "Columns: date,ticker,action,shares,price,fee (fee optional, header row required)",
   importTextareaPlaceholder: "date,ticker,action,shares,price,fee\n2026-01-05,AAPL,BUY,10,150,1.5",
+  importChooseFile: "Upload CSV",
   importPreview: "Preview",
   importConfirm: "Confirm Import",
   importLine: "Line",
@@ -1114,6 +1116,7 @@ const zh: Dictionary = {
   importInstructions: "貼上或上傳 CSV 交易紀錄以補建歷史交易。",
   importTemplateHint: "欄位：date,ticker,action,shares,price,fee（fee 可省略，需保留標題列）",
   importTextareaPlaceholder: "date,ticker,action,shares,price,fee\n2026-01-05,AAPL,BUY,10,150,1.5",
+  importChooseFile: "上傳 CSV",
   importPreview: "預覽",
   importConfirm: "確認匯入",
   importLine: "行號",
