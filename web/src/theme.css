@@ -2653,3 +2653,95 @@ th {
   line-height: 1.55;
   color: var(--ink-2);
 }
+
+/* Phase 12 PR4's design-parity pass: /options page chrome not shared with
+   any other view — the collateral/calendar split row, the expiry-calendar's
+   dot-list rows (replacing a plain table), and the Add/Close modal's
+   call/put and buy/sell segmented toggles. */
+.opt-split-grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .opt-split-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.opt-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.opt-calendar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.opt-calendar-row + .opt-calendar-row {
+  margin-top: 10px;
+}
+
+.opt-calendar-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.opt-calendar-date {
+  width: 92px;
+  flex-shrink: 0;
+}
+
+.opt-calendar-dte {
+  width: 44px;
+  flex-shrink: 0;
+}
+
+.opt-calendar-symbols {
+  color: var(--ink-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modal-wide {
+  width: 420px;
+}
+
+.seg-toggle {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.seg-toggle button {
+  flex: 1;
+  min-width: 100px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.seg-toggle button.active {
+  border-color: var(--accent);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}

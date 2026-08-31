@@ -32,6 +32,15 @@ type TradeExecutor interface {
 	// infer the alert's direction, see bot.buyAlertDirection) is bot-layer
 	// behavior beyond the raw DB write, same rationale as ExecuteSetStop.
 	ExecuteAddBuyAlert(ticker string, price float64) (string, error)
+	// ExecuteOptionOpen backs POST /api/options/open (Phase 12 PR4's write
+	// half) — side is "BUY" or "SELL", same one-write-path/naked-call-
+	// warning behavior as /obuy and /osell (bot.recordOption).
+	ExecuteOptionOpen(symbol, side string, contracts, premium, fee float64, date string) (string, error)
+	// ExecuteOptionClose backs POST /api/options/close — action is
+	// db.OptionActionBuyToClose/SellToClose (a closing trade) or
+	// db.OptionActionExpired/Assigned/Exercised (a resolution), same
+	// dispatch as bot.ExecuteOptionClose.
+	ExecuteOptionClose(symbol, action string, contracts, premium, fee float64, date string) (string, error)
 	// Notify pushes a Telegram message. Since Phase 24 tech debt 3,
 	// ExecuteBuy/ExecuteSell/ExecuteSetStop no longer push to Telegram on
 	// their own — the handlers below call Notify explicitly after every

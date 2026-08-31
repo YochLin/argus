@@ -391,6 +391,24 @@ export interface Dictionary {
   noOptionPositions: string;
   noClosedOptions: string;
   noOptionCollateral: string;
+  // Phase 12 PR4's write half (design-parity pass): Add/Close modals wired
+  // to POST /api/options/open|close (internal/web/options.go), same
+  // requireTrade/writable gate as PositionsTable's buy/sell/stop buttons.
+  optAddBtn: string;
+  optCloseBtn: string;
+  optionCollateralNote: string;
+  optionNoPnlNote: string;
+  optAddTitle: string;
+  optCloseTitle: string;
+  optFieldPremium: string;
+  optOutcomeHint: string;
+  optBuyToClose: string;
+  optSellToClose: string;
+  optExpiredBtn: string;
+  optAssignedBtn: string;
+  optExercisedBtn: string;
+  optCall: string;
+  optPut: string;
   // Phase 18: the sector money-flow treemap page.
   navFlow: string;
   sectorFlowSubtitle: string;
@@ -766,6 +784,21 @@ const en: Dictionary = {
   noOptionPositions: "No open option positions.",
   noClosedOptions: "No closed option trades yet.",
   noOptionCollateral: "No collateral obligations.",
+  optAddBtn: "+ Add",
+  optCloseBtn: "Close",
+  optionCollateralNote: "CSP locks cash; a covered call locks shares. Naked means locked shares exceed what you hold.",
+  optionNoPnlNote: "Realized P&L only — options have no daily market-value history to chart.",
+  optAddTitle: "Add Option Position",
+  optCloseTitle: "Close Position",
+  optFieldPremium: "Premium",
+  optOutcomeHint: "What happened to this contract?",
+  optBuyToClose: "Buy to Close",
+  optSellToClose: "Sell to Close",
+  optExpiredBtn: "Expired",
+  optAssignedBtn: "Assigned",
+  optExercisedBtn: "Exercised",
+  optCall: "Call",
+  optPut: "Put",
   navFlow: "Money Flow",
   sectorFlowSubtitle: "Sector × market-cap money-flow heatmap — block size is market cap, color is change.",
   sectorFlowHeldHint: "Outlined blocks = your positions. Click a block to view its chart.",
@@ -1134,6 +1167,21 @@ const zh: Dictionary = {
   noOptionPositions: "目前沒有期權部位。",
   noClosedOptions: "尚無已平倉期權交易。",
   noOptionCollateral: "沒有擔保品義務。",
+  optAddBtn: "+ 新增",
+  optCloseBtn: "平倉",
+  optionCollateralNote: "CSP 鎖定現金；備兌賣權鎖定股數。裸賣代表鎖定股數超過實際持有股數。",
+  optionNoPnlNote: "僅顯示已實現損益 — 選擇權沒有每日市值歷史可繪製曲線。",
+  optAddTitle: "新增選擇權部位",
+  optCloseTitle: "平倉",
+  optFieldPremium: "權利金",
+  optOutcomeHint: "這筆合約發生了什麼事？",
+  optBuyToClose: "買進平倉",
+  optSellToClose: "賣出平倉",
+  optExpiredBtn: "到期歸零",
+  optAssignedBtn: "被履約",
+  optExercisedBtn: "履約",
+  optCall: "買權",
+  optPut: "賣權",
   navFlow: "資金流向",
   sectorFlowSubtitle: "資金流向產業 × 市值熱力圖，方格大小為市值，顏色為漲跌。",
   sectorFlowHeldHint: "外框標示 = 我的持倉，點方格可看個股圖。",
