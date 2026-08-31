@@ -9,13 +9,13 @@ import "argus/internal/market"
 // the package doc). That guarantee only ever covered the rules, never the
 // numbers fed into them — and the numbers promptly diverged: the exit study
 // of 2026-08-26 moved the live US trailing stop from 15 to 18 while
-// cmd/bot/backtest.go and cmd/strategyscan both kept defaulting to 15, so
+// cmd/server/backtest.go and cmd/strategyscan both kept defaulting to 15, so
 // the tools whose banner says "live-aligned" would have gone on measuring
 // the configuration that was just retired. A study of the wrong parameters
 // is worse than no study, because it still produces confident numbers.
 //
 // So the calibrated values live here, once, and all three callers read them:
-// cmd/bot/config.go as its env fallback, and the two offline tools as their
+// internal/app/config.go as its env fallback, and the two offline tools as their
 // flag defaults. Changing a number here changes what the bot runs AND what
 // the next study measures, together.
 //

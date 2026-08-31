@@ -719,7 +719,7 @@ const (
 
 	// argus eval (docs/offline-rec-eval.md) — the offline batch scorer for
 	// the recommendations table's full history, run manually from a
-	// terminal rather than the bot/Telegram. cmd/bot/eval.go is the only
+	// terminal rather than the bot/Telegram. cmd/server/eval.go is the only
 	// caller.
 	KeyEvalTitle                 Key = "eval_title"
 	KeyEvalFetching              Key = "eval_fetching"
@@ -743,7 +743,7 @@ const (
 	// recommendations table's full history through internal/paper, the same
 	// engine the live paper account (internal/bot/paper.go) uses, so a
 	// backtest result reflects what the live account would actually have
-	// done. cmd/bot/backtest.go is the only caller. Reuses
+	// done. cmd/server/backtest.go is the only caller. Reuses
 	// KeyEvalFetching/KeyEvalCSVSaved/KeyEvalNoData above rather than
 	// duplicating them — that history-fetch/CSV/no-data wording isn't
 	// eval-specific.

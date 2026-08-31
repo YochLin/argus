@@ -64,7 +64,7 @@ type Dispatcher struct {
 // Notifier (e.g. one gated on cfg.DB being set) should only append it to the
 // slice when actually constructed — passing a typed-nil concrete pointer
 // here would produce a non-nil Notifier interface value that still panics on
-// Send, the same footgun documented on cmd/bot/providers.go's coreProviders.
+// Send, the same footgun documented on internal/app/providers.go's coreProviders.
 func NewDispatcher(notifiers ...Notifier) *Dispatcher {
 	return &Dispatcher{notifiers: notifiers}
 }

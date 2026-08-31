@@ -5,7 +5,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /bot ./cmd/bot
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /bot ./cmd/server
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates

@@ -1,5 +1,5 @@
 // Package paper is the pure rule engine shared by the two Phase 11 paths —
-// argus backtest's historical replay (cmd/bot/backtest.go) and the live
+// argus backtest's historical replay (cmd/server/backtest.go) and the live
 // paper account's forward accumulation (internal/bot/paper.go). Same
 // "no DB/network/Telegram" discipline as internal/signals/internal/receval:
 // Account.ApplySignal/MarkClose/Equity are the entire trading rulebook, fed
@@ -62,7 +62,7 @@ func NewAccount(cash float64) *Account {
 // Trade is one executed BUY or SELL, shaped to convert 1:1 into a
 // db.Transaction (Ticker/Side/Shares/Price/Fee/Date/RealizedPnL/StopPrice
 // line up by name) so internal/bot/paper.go's persistPaperTrade and
-// cmd/bot/backtest.go's CSV writer don't need a translation layer. Reason is
+// cmd/server/backtest.go's CSV writer don't need a translation layer. Reason is
 // "llm_buy"/"llm_sell"/"stop"/"target"/"trailing" — the exit-reason breakdown backtest
 // reports and the web dashboard both key off it (the web side re-derives an
 // equivalent from the persisted stop_price snapshot instead, see
