@@ -12,7 +12,7 @@ import (
 
 // Shioaji wraps a *sinopac.Client as a Provider — broker-grade TW quotes in
 // front of Yahoo's unofficial, suffix-guessing chart API (see yahoo.go).
-// Constructed only when SHIOAJI_ADDR is set (cmd/bot/main.go); when it
+// Constructed only when SHIOAJI_ADDR is set (cmd/server/main.go); when it
 // isn't, this type never exists and the Multi chain is exactly what it was
 // before this file — no shioaji reference anywhere in a default run.
 type Shioaji struct {

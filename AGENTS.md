@@ -21,11 +21,10 @@ rather than a quick swap.
 
 ```bash
 go build ./...              # build everything
-go run ./cmd/bot             # run locally, Telegram-first (reads .env via godotenv)
-go run ./cmd/server          # run locally, server-first (HTTP always on, Telegram attached if configured)
-go run ./cmd/bot mcp         # run as an MCP server over stdio instead (see internal/mcptools)
-go vet ./...                 # static checks
-docker compose up --build    # build + run in Docker (uses .env, mounts ./data -> /app/data)
+go run ./cmd/server         # run locally (HTTP always on, Telegram attached if configured)
+go run ./cmd/server mcp     # run as an MCP server over stdio instead (see internal/mcptools)
+go vet ./...                # static checks
+docker compose up --build   # build + run in Docker (uses .env, mounts ./data -> /app/data)
 ```
 
 There's no broad test suite; `internal/i18n` has the one exception (`go test ./internal/i18n/...`), which
@@ -45,11 +44,15 @@ the data provider chain (`app.NewCoreProviders`), constructs the LLM client, con
 cron job and the web dashboard's write seam keep working with Telegram off; only `App.Run`'s long-poll
 loop is gated), constructs the web server, registers the cron jobs;
 `App.Run` then starts all of them and blocks until SIGINT/SIGTERM, and `App.Close` releases them in
-reverse order. Two entrypoints share that one wiring (Phase 24 Stage 3 Step 3.1): `cmd/bot/main.go` is
-the original Telegram-first one — plus the `mcp`/`eval`/`backtest` subcommands, which branch before any
-of it — and `cmd/server/main.go` is the server-first daemon, differing only in that it defaults
-`WEB_ADDR` to `app.DefaultWebAddr` (`:8080`) so the HTTP/API surface is always on. Deploy units and
-`docker-compose.yml` still build `./cmd/bot`; nothing about that path changed.
+reverse order. `cmd/server/main.go` is the only entrypoint (Phase 24 Stage 3): it defaults `WEB_ADDR`
+to `app.DefaultWebAddr` (`127.0.0.1:8080`) so the HTTP/API surface is always on, and carries the
+`mcp`/`eval`/`backtest` subcommands, which branch before any of the daemon setup. `mcp` in particular
+has to stay in *this* binary: `llm.argusMCPServer` spawns a chat session's MCP server as
+`os.Executable() mcp`, so a deployed binary that ignored the argument would boot a second copy of the
+whole daemon against the live DB. The old Telegram-first `cmd/bot` is gone — once nothing but the
+long-poll loop was gated on a token, it differed only in what an empty `WEB_ADDR` meant. Deploy units,
+the Dockerfile and `docker-compose.yml` all build `./cmd/server`; the deployed binary is still installed
+as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
 
 - `internal/data` — `Provider` interface (`GetQuote`/`GetNews`/`GetMarketMovers`), implemented
   independently by `finnhub.go` (primary) and `yahoo.go` (fallback via `Multi`). Separate optional
@@ -201,7 +204,7 @@ of it — and `cmd/server/main.go` is the server-first daemon, differing only in
   `get_news`, `get_market_movers`, `get_fundamentals`, `get_financial_statements`,
   `get_upcoming_earnings`, `get_portfolio`) plus Phase 4's gated write tools (`record_buy`/`record_sell`,
   which only create a `pending_action` for the bot to confirm via Telegram, never write directly).
-  Reached via `cmd/bot/main.go`'s `mcp` subcommand — same binary as the bot, so it can never drift out of
+  Reached via `cmd/server/main.go`'s `mcp` subcommand — same binary as the daemon, so it can never drift out of
   version sync. All provider calls go through `withCache`+`tokenBucket` rate limiting. Dependency graph
   stays narrow (`internal/data`/`internal/db`/`internal/render`/`internal/i18n`, never `internal/llm`/
   `internal/bot`) so the tool surface survives an LLM provider swap. Details:

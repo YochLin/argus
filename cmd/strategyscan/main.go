@@ -385,7 +385,7 @@ func main() {
 	// exactly the live paper account's own defaults (stopCandidateATRMult in
 	// internal/bot/pipeline.go, STOP_LOSS_PCT/TRAILING_STOP_PCT/
 	// TRAILING_STOP_ATR_MULT/PAPER_TAKE_PROFIT_ATR_MULT in .env.example, and
-	// cmd/bot/backtest.go's own flags) — same names as that tool's flags on
+	// cmd/server/backtest.go's own flags) — same names as that tool's flags on
 	// purpose, so a user familiar with one recognizes the other.
 	// -1 (not a literal) so the default can depend on -market, which is not
 	// known until Parse. 0 stays meaningful for the three that it disables.

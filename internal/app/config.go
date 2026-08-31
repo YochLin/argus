@@ -1,10 +1,11 @@
-// Package app is the shared boot wiring behind both entrypoints: cmd/server
-// (Phase 24 Stage 3's primary daemon — HTTP always on, Telegram an optional
-// attached adapter) and cmd/bot (the original Telegram-first entrypoint, kept
-// so `go run ./cmd/bot` and every deploy unit that names it keep working).
-// Before Stage 3 this wiring lived in cmd/bot/main.go and was already
-// duplicated once inside runMCPServer (Phase 24 tech debt 6); a second
-// entrypoint copying it again would have made that three.
+// Package app is the boot wiring behind cmd/server, Phase 24 Stage 3's
+// daemon: HTTP always on, Telegram an optional attached adapter. It's a
+// package rather than code inside main() because the wiring was already
+// duplicated once inside runMCPServer (Phase 24 tech debt 6) and, while the
+// inversion was in progress, a second entrypoint would have made that three.
+// That second entrypoint (cmd/bot, the original Telegram-first one) is gone
+// now; this stays where it is, since main() is not where a hundred lines of
+// dependency graph belong and the MCP subcommand still shares half of it.
 package app
 
 import (

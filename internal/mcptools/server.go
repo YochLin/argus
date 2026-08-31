@@ -55,7 +55,7 @@ const (
 // registered when nil, per PLAN.md's "Finnhub-only tools ... 於 tools/list
 // 階段就不註冊" decision. provider and history are never nil in practice
 // (Multi always wraps at least Yahoo, and history is Yahoo-only but always
-// constructed — see cmd/bot/main.go), so their tools are unconditional.
+// constructed — see cmd/server/main.go), so their tools are unconditional.
 // database and writeDatabase are the same nil-check-and-degrade shape once
 // more: nil whenever db.OpenReadOnly/OpenForWrites failed (see
 // runMCPServer), so a DB hiccup takes down only the tools that depend on
@@ -96,7 +96,7 @@ func NewServer(lang i18n.Lang, provider data.Provider, history data.HistoryProvi
 }
 
 // Run starts the argus MCP server on stdio and blocks until the connection
-// closes or ctx is cancelled. This is what cmd/bot's "mcp" subcommand
+// closes or ctx is cancelled. This is what the "mcp" subcommand
 // invokes — an ACP chat session launches the same binary as a subprocess
 // (os.Executable()) rather than a separately deployed server, so the tool
 // surface can never drift out of version sync with the running bot.

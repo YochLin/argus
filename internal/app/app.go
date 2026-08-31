@@ -25,26 +25,24 @@ import (
 )
 
 // DefaultWebAddr is the address cmd/server falls back to when WEB_ADDR is
-// unset. cmd/bot deliberately does not use it: there, an empty WEB_ADDR still
-// means "no dashboard" (Config.WebAddr's presence-of-config convention), and
-// silently binding a port on an existing deployment that never asked for one
-// would be a behavior change. cmd/server is the inverse by definition — a
-// server with no HTTP listener is not a server — so it defaults instead of
-// gating. No new env var: WEB_ADDR already names exactly this thing.
+// unset. Everywhere else in this config an unset value means "feature off"
+// (Config.WebAddr's presence-of-config convention); a server with no HTTP
+// listener is not a server, so this one field is the inverse and defaults
+// instead of gating. No new env var: WEB_ADDR already names exactly this
+// thing.
 //
 // Loopback-only, not "0.0.0.0:8080": internal/web/server.go says outright
 // that the dashboard "deliberately has no auth/HTTPS of its own" beyond
 // WEB_PASSWORD gating writes — every read route (portfolio, P&L, positions)
-// is wide open. cmd/bot never bound a port the operator hadn't explicitly
-// asked for; cmd/server binding all interfaces by default on a VPS with a
-// routable public IP would hand that same open read surface to anyone who
-// port-scans it. An operator who wants it reachable sets WEB_ADDR=:8080
-// themselves — a decision this default shouldn't make for them.
+// is wide open. Binding all interfaces by default on a VPS with a routable
+// public IP would hand that open read surface to anyone who port-scans it,
+// and a default is the wrong place to make that call. An operator who wants
+// it reachable sets WEB_ADDR=:8080 themselves.
 const DefaultWebAddr = "127.0.0.1:8080"
 
 // App is everything Boot wired up: the long-running pieces Run drives and the
 // resources Close releases. Fields are exported so an entrypoint can reach
-// past Run for a one-shot (cmd/bot's SyncUniverse, say) without Boot needing
+// past Run for a one-shot (cmd/server's SyncUniverse, say) without Boot needing
 // a callback parameter for each such case.
 type App struct {
 	cfg     Config
@@ -58,8 +56,9 @@ type App struct {
 	// genuinely needs a live Telegram is Run's long-poll loop.
 	Bot      *bot.Bot
 	telegram bool
-	// Web is nil only when cfg.WebAddr is empty (cmd/bot's dashboard-off
-	// state); cmd/server always has one, see DefaultWebAddr.
+	// Web is nil only when cfg.WebAddr is empty, which cmd/server never
+	// leaves it (see DefaultWebAddr) — so in practice only a test Boots
+	// without one.
 	Web       *web.Server
 	Scheduler *scheduler.Scheduler
 	// Notifier is the process-wide event bus (Phase 24 Stage 2). Built here
@@ -81,8 +80,8 @@ type App struct {
 // providers, LLM, Telegram adapter, HTTP server, cron jobs — and returns
 // without starting anything long-running (that's Run). Splitting construction
 // from starting is what lets cmd/server bring the HTTP server up as the
-// primary process with Telegram attached behind it, while cmd/bot keeps its
-// original Telegram-first shape, off one copy of this wiring.
+// primary process with Telegram attached behind it, and what lets a test
+// Boot the whole graph without any of it going live.
 //
 // ctx is only used for cron-job registration (scheduler.Add* takes the ctx
 // each job body will run under); nothing here blocks on it.

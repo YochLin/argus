@@ -1,7 +1,7 @@
 // Package receval scores Argus's historical recommendations table against
 // actual subsequent price action — see docs/offline-rec-eval.md for the full
 // design. Pure functions over plain structs only (same "no DB/network"
-// discipline as internal/signals): callers (cmd/bot's "eval" subcommand)
+// discipline as internal/signals): callers (the "eval" subcommand)
 // fetch db.Recommendation rows and data.Candle history and hand over plain
 // values, so this package's tests need neither.
 package receval
