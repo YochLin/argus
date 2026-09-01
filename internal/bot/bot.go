@@ -624,6 +624,8 @@ func (b *Bot) handleMessage(ctx context.Context, cmd, args string) {
 		b.handlePaper(args)
 	case "sinopac":
 		b.handleSinopac(ctx, args)
+	case "podcast":
+		b.handlePodcast(ctx, args)
 	default:
 		b.Send(i18n.T(b.lang, i18n.KeyUnknownCommand))
 	}

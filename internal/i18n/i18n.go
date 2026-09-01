@@ -820,4 +820,27 @@ const (
 	// same "untranslated source text" precedent as cnyes news headlines.
 	KeyRestrictedStockAlertTitle Key = "restricted_stock_alert_title"
 	KeyRestrictedStockAlertLine  Key = "restricted_stock_alert_line"
+
+	// /podcast <url> — the user pastes a stock-market podcast transcript
+	// link (e.g. a vocus.cc episode); the page is fetched via
+	// internal/webfetch and LLM-extracted into per-ticker/macro
+	// observations (internal/llm.ExtractPodcastInsights), stored via
+	// db.SavePodcastInsight. KeyPodcastMarketMarker/KeyPodcastStanceMarker
+	// are language-dependent labels the prompt and parser share, same
+	// marker convention as KeyReasonMarker/KeyActionMarker; "[TICKER:"
+	// itself is a hardcoded literal in both the prompt template and the
+	// parser, same as buildRecommendationPrompt/parseRecommendations.
+	KeyPodcastUsage         Key = "podcast_usage"
+	KeyPodcastFetching      Key = "podcast_fetching"
+	KeyPodcastFetchFailed   Key = "podcast_fetch_failed"
+	KeyPodcastAnalyzing     Key = "podcast_analyzing"
+	KeyPodcastAnalyzeFailed Key = "podcast_analyze_failed"
+	KeyPodcastNoInsights    Key = "podcast_no_insights"
+	KeyPodcastSavedHeader   Key = "podcast_saved_header"
+	KeyPodcastSavedLine     Key = "podcast_saved_line"
+	KeyPodcastMacroLabel    Key = "podcast_macro_label"
+	KeyPodcastPromptIntro   Key = "podcast_prompt_intro"
+	KeyPodcastTaskBlock     Key = "podcast_task_block"
+	KeyPodcastMarketMarker  Key = "podcast_market_marker"
+	KeyPodcastStanceMarker  Key = "podcast_stance_marker"
 )

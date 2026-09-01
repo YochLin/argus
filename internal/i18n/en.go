@@ -3,7 +3,7 @@ package i18n
 // enMessages is the English message table. Every format verb here must
 // appear in the same order as its zh.go counterpart — see the note there.
 var enMessages = map[Key]string{
-	KeyUnknownCommand:                "Unknown command. Available commands:\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [days]\n/buy <ticker> <shares> <price> [fee]\n/sell <ticker> <shares> <price> [fee]\n/stop <ticker> [price]\n/buyalert <ticker> [price|remove price]\n/portfolio\n/obuy /osell /oassign /oexercise\n/option <ticker> [call|put|csp|cc]\n/insight\n/cash [amount]\n/thesis <ticker> [text]\n/review <ticker>\n/events [ticker]\n/dailyreport\n/morningreport\n/monthlyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n/paper [reset]\n\nSend a plain message (no leading /) to chat freely.",
+	KeyUnknownCommand:                "Unknown command. Available commands:\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [days]\n/buy <ticker> <shares> <price> [fee]\n/sell <ticker> <shares> <price> [fee]\n/stop <ticker> [price]\n/buyalert <ticker> [price|remove price]\n/portfolio\n/obuy /osell /oassign /oexercise\n/option <ticker> [call|put|csp|cc]\n/insight\n/cash [amount]\n/thesis <ticker> [text]\n/review <ticker>\n/events [ticker]\n/dailyreport\n/morningreport\n/monthlyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n/paper [reset]\n/podcast <url>\n\nSend a plain message (no leading /) to chat freely.",
 	KeyAddUsage:                      "Usage: /add <ticker>, e.g. /add AAPL",
 	KeyAddFailed:                     "Failed to add: %v",
 	KeyAddSuccess:                    "Added *%s* to your watchlist.",
@@ -712,4 +712,29 @@ Write only from the data actually provided above — omit any section you have n
 
 	KeyRestrictedStockAlertTitle: "⚠️ *Disposition/Attention Stock Alert*\n\n",
 	KeyRestrictedStockAlertLine:  "• *%s* is now under disposition/attention trading: %s\n",
+
+	KeyPodcastUsage:         "Usage: /podcast <podcast transcript url>",
+	KeyPodcastFetching:      "Fetching the episode content...",
+	KeyPodcastFetchFailed:   "Fetch failed: %v",
+	KeyPodcastAnalyzing:     "Analyzing market views in the transcript...",
+	KeyPodcastAnalyzeFailed: "Analysis failed: %v",
+	KeyPodcastNoInsights:    "No market-relevant views were found in this episode.",
+	KeyPodcastSavedHeader:   "Extracted and saved %d view(s) from this episode:\n\n",
+	KeyPodcastSavedLine:     "• %s [%s] %s\n",
+	KeyPodcastMacroLabel:    "Macro",
+	KeyPodcastPromptIntro: "The user shared a stock-market podcast/video transcript. It may contain sponsor reads, small talk, or listener Q&A unrelated to investing. Only extract points from market-analysis passages — ignore ads, sponsor reads, and unrelated personal chatter.\n\nTitle: %s\nURL: %s\n\nTranscript:\n%s\n\n",
+	KeyPodcastTaskBlock: `
+## Task
+
+Find every per-stock view and macro view mentioned in the transcript (leave the ticker empty when there's no single stock attached). Output one block per view, with no extra text:
+
+[TICKER: symbol or empty]
+%s US or TW (empty for a macro-only view)
+%s Stance must be exactly one of BULLISH, BEARISH, NEUTRAL, WATCH
+%s One sentence close to the original wording — do not embellish or infer beyond it (under 100 words)
+
+If nothing in the transcript is worth extracting, output nothing.
+`,
+	KeyPodcastMarketMarker: "Market:",
+	KeyPodcastStanceMarker: "Stance:",
 }

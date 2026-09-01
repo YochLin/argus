@@ -167,6 +167,81 @@ func TestParseExploreNominations(t *testing.T) {
 	})
 }
 
+func TestParsePodcastInsights(t *testing.T) {
+	t.Run("english single ticker", func(t *testing.T) {
+		raw := "[TICKER: NVDA]\nMarket: US\nStance: BULLISH\nReason: AI capex still accelerating.\n"
+		got := parsePodcastInsights(i18n.EN, raw)
+		want := []PodcastInsight{{Ticker: "NVDA", Market: "US", Stance: "BULLISH", Thesis: "AI capex still accelerating."}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("parsePodcastInsights() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("chinese markers", func(t *testing.T) {
+		raw := "[TICKER: 2330]\n市場: TW\n觀點: BEARISH\n原因: 法說保守，訂單能見度下修。\n"
+		got := parsePodcastInsights(i18n.ZH, raw)
+		want := []PodcastInsight{{Ticker: "2330", Market: "TW", Stance: "BEARISH", Thesis: "法說保守，訂單能見度下修。"}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("parsePodcastInsights() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("macro-only block has empty ticker and market but is still kept", func(t *testing.T) {
+		raw := "[TICKER: ]\nMarket:\nStance: NEUTRAL\nReason: Overall market chopping sideways today.\n"
+		got := parsePodcastInsights(i18n.EN, raw)
+		want := []PodcastInsight{{Ticker: "", Market: "", Stance: "NEUTRAL", Thesis: "Overall market chopping sideways today."}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("parsePodcastInsights() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("multiple blocks including a macro one", func(t *testing.T) {
+		raw := "[TICKER: NVDA]\nMarket: US\nStance: BULLISH\nReason: capex cycle.\n[TICKER: ]\nMarket:\nStance: WATCH\nReason: Fed decision next week.\n"
+		got := parsePodcastInsights(i18n.EN, raw)
+		want := []PodcastInsight{
+			{Ticker: "NVDA", Market: "US", Stance: "BULLISH", Thesis: "capex cycle."},
+			{Ticker: "", Market: "", Stance: "WATCH", Thesis: "Fed decision next week."},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("parsePodcastInsights() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("invalid stance leaves Stance empty rather than a made-up word", func(t *testing.T) {
+		raw := "[TICKER: NVDA]\nMarket: US\nStance: SUPER BULLISH\nReason: enthusiastic host.\n"
+		got := parsePodcastInsights(i18n.EN, raw)
+		want := []PodcastInsight{{Ticker: "NVDA", Market: "US", Stance: "", Thesis: "enthusiastic host."}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("parsePodcastInsights() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("no ticker blocks yields no insights", func(t *testing.T) {
+		got := parsePodcastInsights(i18n.EN, "just ad-read chatter, nothing market-relevant")
+		if len(got) != 0 {
+			t.Errorf("parsePodcastInsights() = %+v, want empty", got)
+		}
+	})
+
+	t.Run("empty input yields no insights", func(t *testing.T) {
+		got := parsePodcastInsights(i18n.EN, "")
+		if len(got) != 0 {
+			t.Errorf("parsePodcastInsights() = %+v, want empty", got)
+		}
+	})
+
+	t.Run("more than maxPodcastInsights is truncated", func(t *testing.T) {
+		var raw string
+		for i := 0; i < maxPodcastInsights+5; i++ {
+			raw += "[TICKER: AAA]\nMarket: US\nStance: WATCH\nReason: filler.\n"
+		}
+		got := parsePodcastInsights(i18n.EN, raw)
+		if len(got) != maxPodcastInsights {
+			t.Fatalf("parsePodcastInsights() returned %d insights, want %d", len(got), maxPodcastInsights)
+		}
+	})
+}
+
 func TestParseMarketSummary(t *testing.T) {
 	marker := "[MARKET SUMMARY]"
 
