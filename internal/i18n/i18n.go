@@ -852,10 +852,10 @@ const (
 	KeyPodcastDerivedMarker Key = "podcast_derived_marker"
 	KeyPodcastDerivedLine   Key = "podcast_derived_line"
 	// KeyPodcastDuplicateWarning fires before (re-)processing a URL
-	// db.CountPodcastInsightsByURL already has rows for, telling the user
-	// their existing insights for this episode are about to be replaced
-	// (see db.DeletePodcastInsightsByURL) — sent as its own message ahead
-	// of KeyPodcastFetching so it's seen before the slow fetch/LLM work
+	// db.CountPodcastInsightsByURL already has rows for — a warning, not a
+	// block (see that method's doc comment), since a deliberate re-run is
+	// legitimate too; it's sent as its own message ahead of
+	// KeyPodcastFetching so the user sees it before the slow fetch/LLM work
 	// starts, not buried after.
 	KeyPodcastDuplicateWarning Key = "podcast_duplicate_warning"
 )

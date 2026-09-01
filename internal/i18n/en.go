@@ -746,5 +746,5 @@ If nothing in the transcript is worth extracting, output nothing.
 	KeyPodcastStanceMarker:     "Stance:",
 	KeyPodcastDerivedMarker:    "Derived from:",
 	KeyPodcastDerivedLine:      "   └ derived from: %s (not directly named in the transcript)\n",
-	KeyPodcastDuplicateWarning: "⚠️ This link has already been analyzed before (%d record(s) on file) — those will be replaced with this run's results once it finishes.",
+	KeyPodcastDuplicateWarning: "⚠️ This link has already been analyzed before (%d record(s) on file) — proceeding to analyze it again.",
 }

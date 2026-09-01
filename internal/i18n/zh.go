@@ -733,5 +733,5 @@ var zhMessages = map[Key]string{
 	KeyPodcastStanceMarker:     "觀點:",
 	KeyPodcastDerivedMarker:    "推論自:",
 	KeyPodcastDerivedLine:      "　└ 推論自：%s（非逐字稿原文直接提及）\n",
-	KeyPodcastDuplicateWarning: "⚠️ 這個連結先前已經分析過，已有 %d 則記錄，這次分析完成後將會覆蓋成新的結果。",
+	KeyPodcastDuplicateWarning: "⚠️ 這個連結先前已經分析過，已有 %d 則記錄，這次仍會繼續分析並新增。",
 }
