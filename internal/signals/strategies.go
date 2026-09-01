@@ -37,6 +37,16 @@ const TypeTrendBreakout = "strategy_trend_breakout"
 // §4.4 downgrade this backs.
 const TypeBoxBottom = "strategy_box_bottom"
 
+// TypeSqueezeBreakout is 網 1's Signal.Type, and TypeTrendPullback is 網 4's.
+// Exported for the same reason as TypeTrendBreakout/TypeBoxBottom — see
+// CheckSqueezeBreakoutExact's/CheckTrendPullbackExact's doc comments for the
+// §4.4 downgrade this backs (2026-09-01 dedicated run, PLAN.md's 網1／網4
+// 專屬降級評估 item).
+const (
+	TypeSqueezeBreakout = "strategy_squeeze_breakout"
+	TypeTrendPullback   = "strategy_trend_pullback"
+)
+
 // ScreenParams holds the market-calibrated thresholds CheckSqueezeBreakoutExact/
 // CheckBoxBottomReboundExact screen against (Phase 13 §7) — a struct param
 // rather than fields on Detector because SqueezeBreakout/BoxBottomRebound are
@@ -192,6 +202,42 @@ func BoxBottomRebound(candles []data.Candle, p ScreenParams) *StrategyHit {
 	return nil
 }
 
+// CheckSqueezeBreakoutExact evaluates candles' last bar (網 1【擠壓突破】).
+//
+// # Result: measured (Phase 25 §4.4, dedicated run, 2026-09-01), downgraded
+//
+// PLAN.md's 網1／網4 專屬降級評估 item: an incidental S&P 600 small-cap number
+// (from the universe-expansion study, in-sample +4.31%/1.6σ, holdout
+// -0.99%/0.8σ) came in one split short of §4.4's bar, but per the precedent
+// 網 2's downgrade set (PR #181 — a downgrade needs a run pre-registered FOR
+// that screen, not an incidental number from one registered for something
+// else), that alone was explicitly not a decision. This is the dedicated
+// run: plain-US (S&P 500, this screen's original tuning universe) and TW,
+// both pre-registered splits, same date-clustered bootstrap protocol as 網
+// 2/網 3/網 6 (cmd/strategyscan/pead_study.py, 400 resamples of dates, split
+// 2021-11-01), against the random-entry control from the SAME run:
+//
+//	sample                     n     excess     SE   sigma
+//	SP500 in-samp [large-cap] 395     -0.50%   0.87    0.6
+//	SP500 holdout [large-cap] 340     +1.34%   1.61    0.8
+//	TW in-samp                1527    +0.48%   1.04    0.5
+//	TW holdout                1518    +0.12%   0.77    0.2
+//
+// Neither universe clears 1 SE in even one split, let alone both — weaker
+// than the sp600 incidental number, not stronger. Downgraded unconditionally
+// to briefing material under §4.4, the same treatment as 網 2/網 3/網 5 (see
+// signals.TypeSqueezeBreakout, service.DecorateStrategyHits): still emitted,
+// never delisted.
+//
+// Reproduce (US: default -universe is S&P 500; TW: -skip-trust since this
+// screen doesn't use 網 5's trust-net data; CACHE built once per market via
+// -build-history, same caches 網 2's/網 6's doc comments reuse):
+//
+//	strategyscan -market=us -range=10y -history-file=us_daily.csv -date-from=2016-11-01 -date-to=2021-10-31 -dump-trades=dump.csv
+//	strategyscan -market=us -range=10y -history-file=us_daily.csv -date-from=2021-11-01                     -dump-trades=dump.csv
+//	strategyscan -market=tw -history-file=tw_daily.csv -skip-trust -date-from=2016-11-01 -date-to=2021-10-31 -dump-trades=dump.csv
+//	strategyscan -market=tw -history-file=tw_daily.csv -skip-trust -date-from=2021-11-01                     -dump-trades=dump.csv
+//	python3 pead_study.py "LABEL=strategyscan_results_<market>.csv,dump.csv" ...  (repeat per run; squeeze_breakout row, "overall" columns are the pre-registered number, not "matched")
 func CheckSqueezeBreakoutExact(candles []data.Candle, p ScreenParams) bool {
 	n := len(candles)
 	if n < 60 {
@@ -427,7 +473,7 @@ func (d *Detector) CheckSqueezeBreakout(ticker string, candles []data.Candle, pr
 
 	return &Signal{
 		Ticker:  ticker,
-		Type:    "strategy_squeeze_breakout",
+		Type:    TypeSqueezeBreakout,
 		Message: i18n.T(d.lang, i18n.KeyStrategySqueezeBreakout, ticker, daysAgoStr),
 	}, newState
 }
@@ -499,6 +545,41 @@ func TrendBreakout(candles []data.Candle, p ScreenParams) *StrategyHit {
 // CheckTrendPullbackExact evaluates candles' last bar (網 4【趨勢回檔】):
 // only buy a pullback inside an established uptrend, never a falling knife.
 // See docs/phase-14-strategy-screens-2.md §4.1 for the condition rationale.
+//
+// # Result: measured (Phase 25 §4.4, dedicated run, 2026-09-01), downgraded
+//
+// A Phase 14 follow-up had already looked at this screen's regime split
+// (TW ~1.5-1.8σ, US ~0.8-1.7σ) and landed on "keep firing in both markets,
+// don't delist" — but that judgment never got a user-visible §4.4 annotation
+// the way 網 2/網 3/網 5 did, the same gap PLAN.md's 網1／網4 專屬降級評估 item
+// flagged for 網 1. This is that item's dedicated run for 網 4: plain-US
+// (S&P 500) and TW, both pre-registered splits, same date-clustered
+// bootstrap protocol as 網 1/網 2/網 3/網 6 (cmd/strategyscan/pead_study.py,
+// 400 resamples of dates, split 2021-11-01), against the random-entry
+// control from the SAME run:
+//
+//	sample                     n     excess     SE   sigma
+//	SP500 in-samp [large-cap] 931     +0.54%   0.66    0.8
+//	SP500 holdout [large-cap] 860     -0.75%   0.73    1.0  (negative)
+//	TW in-samp                1740    +0.09%   1.12    0.1
+//	TW holdout                1962    +0.93%   0.86    1.1
+//
+// No universe clears 1 SE in BOTH splits with the same sign: US is short in
+// in-sample and negative-but-borderline in holdout, TW is essentially zero
+// in in-sample despite holdout clearing 1 SE. Downgraded unconditionally to
+// briefing material under §4.4, closing the annotation gap the Phase 14
+// follow-up left open — same treatment as 網 1/網 2/網 3/網 5 (see
+// signals.TypeTrendPullback, service.DecorateStrategyHits): still emitted,
+// never delisted.
+//
+// Reproduce (same caches/commands as CheckSqueezeBreakoutExact's doc
+// comment, trend_pullback row instead):
+//
+//	strategyscan -market=us -range=10y -history-file=us_daily.csv -date-from=2016-11-01 -date-to=2021-10-31 -dump-trades=dump.csv
+//	strategyscan -market=us -range=10y -history-file=us_daily.csv -date-from=2021-11-01                     -dump-trades=dump.csv
+//	strategyscan -market=tw -history-file=tw_daily.csv -skip-trust -date-from=2016-11-01 -date-to=2021-10-31 -dump-trades=dump.csv
+//	strategyscan -market=tw -history-file=tw_daily.csv -skip-trust -date-from=2021-11-01                     -dump-trades=dump.csv
+//	python3 pead_study.py "LABEL=strategyscan_results_<market>.csv,dump.csv" ...  (repeat per run; trend_pullback row, "overall" columns are the pre-registered number, not "matched")
 func CheckTrendPullbackExact(candles []data.Candle, p ScreenParams) bool {
 	n := len(candles)
 	if n < 60+p.MA60SlopeLookback {
@@ -631,7 +712,7 @@ func (d *Detector) CheckTrendPullback(ticker string, candles []data.Candle, prev
 
 	return &Signal{
 		Ticker:  ticker,
-		Type:    "strategy_trend_pullback",
+		Type:    TypeTrendPullback,
 		Message: i18n.T(d.lang, i18n.KeyStrategyTrendPullback, ticker, daysAgoStr),
 	}, newState
 }

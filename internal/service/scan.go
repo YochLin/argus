@@ -522,6 +522,13 @@ func (s *ScanService) RestrictedTickers(ctx context.Context, m market.MarketID) 
 //     configured FINMIND_TOKEN it replaced), with zero measurement at the
 //     time — see signals.CheckTrustFollowExact for the numbers, the T86
 //     TSE-only coverage caveat, and repro commands.
+//   - 網 1 (Squeeze Breakout) and 網 4 (Trend Pullback) each carry their own
+//     §4.4 downgrade notice too (2026-09-01 dedicated run, PLAN.md's 網1／
+//     網4 專屬降級評估 item): neither clears 1 SE in both pre-registered
+//     splits on either S&P 500 or TW. Both had been firing live with no
+//     annotation at all up to this point — indistinguishable, on Telegram,
+//     from a validated entry trigger — see signals.CheckSqueezeBreakoutExact/
+//     CheckTrendPullbackExact for the numbers and repro commands.
 func DecorateStrategyHits(sigs []signals.Signal, isBear bool, lang i18n.Lang) []signals.Signal {
 	for i := range sigs {
 		if !strings.HasPrefix(sigs[i].Type, "strategy_") {
@@ -538,6 +545,12 @@ func DecorateStrategyHits(sigs []signals.Signal, isBear bool, lang i18n.Lang) []
 		}
 		if sigs[i].Type == signals.TypeTrustFollow {
 			sigs[i].Message += "\n" + i18n.T(lang, i18n.KeyStrategyUnvalidatedTrustFollow)
+		}
+		if sigs[i].Type == signals.TypeSqueezeBreakout {
+			sigs[i].Message += "\n" + i18n.T(lang, i18n.KeyStrategyUnvalidatedSqueezeBreakout)
+		}
+		if sigs[i].Type == signals.TypeTrendPullback {
+			sigs[i].Message += "\n" + i18n.T(lang, i18n.KeyStrategyUnvalidatedTrendPullback)
 		}
 	}
 	return sigs
