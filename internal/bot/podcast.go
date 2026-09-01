@@ -21,10 +21,12 @@ import (
 // reusing handleChatArticle's free-form chat reply, since the point here is
 // building up a queryable log of past views (see the /podcast design
 // discussion), not a one-off conversational summary. Re-submitting the same
-// URL isn't blocked (db.SavePodcastInsight has no dedup — see its doc
-// comment) but is warned about up front via CountPodcastInsightsByURL,
-// since a duplicate would double-count that episode in any future
-// cross-episode aggregation.
+// URL overwrites rather than accumulates: CountPodcastInsightsByURL warns
+// the user up front, and once a fresh, non-empty extraction is in hand,
+// DeletePodcastInsightsByURL clears the URL's old rows before the new ones
+// are saved — a run that comes back empty leaves prior insights untouched,
+// since an empty reply is more likely extraction flakiness than "there's
+// genuinely nothing here anymore".
 func (b *Bot) handlePodcast(ctx context.Context, args string) {
 	url, ok := webfetch.ExtractURL(args)
 	if !ok {
@@ -32,7 +34,8 @@ func (b *Bot) handlePodcast(ctx context.Context, args string) {
 		return
 	}
 
-	if existing, err := b.db.CountPodcastInsightsByURL(url); err != nil {
+	existing, err := b.db.CountPodcastInsightsByURL(url)
+	if err != nil {
 		logger.Errorf("podcast: count existing insights for %s: %v", url, err)
 	} else if existing > 0 {
 		b.Send(i18n.T(b.lang, i18n.KeyPodcastDuplicateWarning, existing))
@@ -56,6 +59,14 @@ func (b *Bot) handlePodcast(ctx context.Context, args string) {
 	if len(insights) == 0 {
 		b.Send(i18n.T(b.lang, i18n.KeyPodcastNoInsights))
 		return
+	}
+
+	if existing > 0 {
+		if err := b.db.DeletePodcastInsightsByURL(url); err != nil {
+			logger.Errorf("podcast: delete existing insights for %s: %v", url, err)
+			b.Send(i18n.T(b.lang, i18n.KeyPodcastAnalyzeFailed, err))
+			return
+		}
 	}
 
 	var sb strings.Builder
