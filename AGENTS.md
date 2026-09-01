@@ -119,7 +119,11 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   `internal/data.SEC` (US) or FinMind's `TaiwanStockPER` (TW) valuation percentile/cash-flow quality on a
   90-day TTL that `bot.cachedValuationSnapshot` checks before ever calling either source;
   `pe_percentile`/`cash_flow_quality` are nullable columns, not 0-sentinel, since a ticker with too little
-  history is a real "unknown," not a real zero.
+  history is a real "unknown," not a real zero. Migration 25 added `podcast_insights`
+  (`podcast_insights.go`) — an append-only log of `/podcast`'s LLM-extracted per-stock/macro market
+  views, same no-dedup convention as `trade_lessons`; `ticker`/`market` default to `''` rather than
+  being nullable, since a macro-only row (no single stock attached) is a normal row shape here, not a
+  missing value.
   Full table/method rationale: **[docs/architecture/db.md](docs/architecture/db.md)**.
 
 - `internal/i18n` — every user/LLM-facing string, split into `zh.go` (default) and `en.go`, keyed by
@@ -137,7 +141,11 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   blocks (not JSON); `Chat` replies go through verbatim. `StockData` carries optional attach-and-render
   fields (`Position`, `Earnings`, `ScanReason`, `Technicals`, `Candles`, `PrevRec`) that degrade
   independently when their source data isn't available. Also home to `WeeklyReview`, `InsightPortfolio`,
-  and `ReviewTrade` (closed-trade analysis). Full provider/prompt rationale:
+  and `ReviewTrade` (closed-trade analysis). `ExtractPodcastInsights` is `/podcast`'s one-shot call over
+  a fetched transcript, reusing `checkModel` (same reasoning as `ExploreCandidates`); its
+  `parsePodcastInsights` parser mirrors `parseExploreNominations` but flushes a block even when its
+  `[TICKER: ]` is empty, since a macro-only observation with no single stock attached is still a real
+  result, not a parse failure. Full provider/prompt rationale:
   **[docs/architecture/llm.md](docs/architecture/llm.md)**.
 
 - `internal/signals` — pure functions for rule-based technical signals (RSI, MACD, Stochastic KD,
@@ -197,6 +205,11 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   signal via `revenueGrowthOK` when `ScreenParams.RequireRevenueGrowth` is set — a fundamentals-based gate
   evaluated in `internal/bot` (reading `MonthRevenueYoYPct` for TW vs `RevenueGrowthYoY` for US via
   `b.cachedFundamentals`), not in `internal/signals`, since the latter stays DB/network-free.
+  `podcast.go`'s `/podcast <url>` reuses `internal/webfetch`'s fetch path (same as the chat article-
+  digestion mode) but, unlike that free-form chat reply, runs a dedicated one-shot LLM call
+  (`llm.ExtractPodcastInsights`) that parses structured per-stock/macro market views out of a pasted
+  podcast/video transcript and persists each one via `db.SavePodcastInsight` — building a queryable
+  log of past outside-source views rather than a one-off summary.
   Full command-by-command and job-by-job rationale: **[docs/architecture/bot.md](docs/architecture/bot.md)**.
 
 - `internal/mcptools` — Phase 3.5's MCP (Model Context Protocol) tool surface for chat, using the

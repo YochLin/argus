@@ -817,6 +817,25 @@ func buildExplorePrompt(lang i18n.Lang, marketNews []data.NewsItem, exclude []st
 	return sb.String()
 }
 
+// buildPodcastPrompt is the /podcast command's prompt (internal/bot/podcast.go):
+// a one-shot call over a fetched podcast/video transcript, asking the model
+// to pull out per-stock and macro market views while ignoring sponsor reads
+// and unrelated chatter — the transcript itself does the filtering job a
+// pre-processing step would otherwise need to do, since the model can judge
+// "is this passage market-relevant" better than a regex ever could. title
+// and url are the fetched page's own (webfetch.Article.Title, the pasted
+// URL); transcript is webfetch.Article.Text, already capped by
+// maxArticleRunes.
+func buildPodcastPrompt(lang i18n.Lang, title, url, transcript string) string {
+	var sb strings.Builder
+	sb.WriteString(i18n.T(lang, i18n.KeyPodcastPromptIntro, title, url, transcript))
+	sb.WriteString(i18n.T(lang, i18n.KeyPodcastTaskBlock,
+		i18n.T(lang, i18n.KeyPodcastMarketMarker),
+		i18n.T(lang, i18n.KeyPodcastStanceMarker),
+		i18n.T(lang, i18n.KeyReasonMarker)))
+	return sb.String()
+}
+
 func buildCheckPrompt(lang i18n.Lang, s StockData) string {
 	var sb strings.Builder
 	if s.Quote != nil && market.Of(s.Quote.Ticker) == market.TW {

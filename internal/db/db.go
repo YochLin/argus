@@ -686,6 +686,29 @@ var migrations = []string{
 	);
 	CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
 	`,
+
+	// 25: podcast_insights backs the /podcast command (internal/bot/podcast.go)
+	// — a stock-focused podcast transcript, pasted as a URL, gets fetched via
+	// internal/webfetch and LLM-extracted into per-ticker (or ticker-less,
+	// for a macro-only observation) rows. Append-only log, same
+	// no-dedup/no-uniqueness-constraint convention as trade_lessons/scan_hits:
+	// re-running /podcast on the same episode is expected to add fresh rows,
+	// not silently no-op. No episode_date column — created_at (when it was
+	// ingested) is enough for a single-user bot; the episode's own date, if
+	// ever needed, is still in source_title/source_url for a human to read.
+	`
+	CREATE TABLE IF NOT EXISTS podcast_insights (
+		id           INTEGER PRIMARY KEY AUTOINCREMENT,
+		source_url   TEXT NOT NULL,
+		source_title TEXT NOT NULL,
+		ticker       TEXT NOT NULL DEFAULT '',
+		market       TEXT NOT NULL DEFAULT '',
+		stance       TEXT NOT NULL,
+		thesis       TEXT NOT NULL,
+		created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE INDEX IF NOT EXISTS idx_podcast_insights_ticker ON podcast_insights(ticker);
+	`,
 }
 
 func (d *DB) migrate() error {

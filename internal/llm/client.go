@@ -295,6 +295,43 @@ func (c *Client) ExploreCandidates(ctx context.Context, marketNews []data.NewsIt
 	return parseExploreNominations(c.lang, raw), nil
 }
 
+// PodcastInsight is one market observation parsed out of a podcast
+// transcript by ExtractPodcastInsights. Ticker/Market are "" for a
+// macro-only observation with no single stock attached. Unverified, same as
+// ExploreNomination — the caller (bot.handlePodcast) stores these as-is
+// (see db.SavePodcastInsight) rather than treating them as trading signals;
+// Thesis is asked to stay close to the model's actual wording rather than
+// its own inference, precisely so a human can sanity-check it later.
+type PodcastInsight struct {
+	Ticker string
+	Market string
+	Stance string
+	Thesis string
+}
+
+// maxPodcastInsights caps how many observations parsePodcastInsights keeps
+// from one episode — defensive, same reasoning as maxExploreNominations,
+// against a model that ignores the prompt's implicit per-episode scope.
+const maxPodcastInsights = 30
+
+// ExtractPodcastInsights is the /podcast command's one-shot call (checkModel
+// — a transcript readthrough is closer to CheckStock's single-pass analysis
+// than to GenerateRecommendations' multi-ticker batch job, same reasoning as
+// ExploreCandidates reusing checkModel): it reads title/url/transcript (a
+// podcast/video transcript the user pasted a link to — see
+// internal/webfetch.Fetch) and returns whatever per-stock or macro market
+// views it found. An empty result is a legitimate outcome (the episode had
+// nothing market-relevant), unlike GenerateRecommendations' zero-blocks
+// case — no ErrRecommendationParseFailed-style error here.
+func (c *Client) ExtractPodcastInsights(ctx context.Context, title, url, transcript string) ([]PodcastInsight, error) {
+	prompt := buildPodcastPrompt(c.lang, title, url, transcript)
+	raw, _, _, err := c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+	if err != nil {
+		return nil, err
+	}
+	return parsePodcastInsights(c.lang, raw), nil
+}
+
 // Chat sends text on the client's persistent chat session, starting one on
 // the first call. Unlike GenerateRecommendations/CheckStock, the session
 // stays open across calls so the agent remembers earlier turns. If an open

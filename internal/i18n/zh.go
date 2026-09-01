@@ -6,7 +6,7 @@ package i18n
 // sites pass positional args once and reuse them for whichever table T
 // picks.
 var zhMessages = map[Key]string{
-	KeyUnknownCommand:                "未知指令。可用指令：\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [天數]\n/buy <ticker> <股數> <價格> [手續費]\n/sell <ticker> <股數> <價格> [手續費]\n/stop <ticker> [價格]\n/buyalert <ticker> [價格|remove 價格]\n/portfolio\n/obuy /osell /oassign /oexercise\n/option <ticker> [call|put|csp|cc]\n/insight\n/cash [金額]\n/thesis <ticker> [論點文字]\n/review <ticker>\n/events [ticker]\n/dailyreport\n/morningreport\n/monthlyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n/paper [reset]\n\n直接傳一般訊息（不加 / 開頭）則會跟我自由對話。",
+	KeyUnknownCommand:                "未知指令。可用指令：\n/add <ticker>\n/remove <ticker>\n/list\n/status [ticker]\n/recommend\n/check <ticker>\n/track [天數]\n/buy <ticker> <股數> <價格> [手續費]\n/sell <ticker> <股數> <價格> [手續費]\n/stop <ticker> [價格]\n/buyalert <ticker> [價格|remove 價格]\n/portfolio\n/obuy /osell /oassign /oexercise\n/option <ticker> [call|put|csp|cc]\n/insight\n/cash [金額]\n/thesis <ticker> [論點文字]\n/review <ticker>\n/events [ticker]\n/dailyreport\n/morningreport\n/monthlyreport\n/fundamentals <ticker>\n/universe [add|remove] <ticker>\n/reset\n/paper [reset]\n/podcast <url>\n\n直接傳一般訊息（不加 / 開頭）則會跟我自由對話。",
 	KeyAddUsage:                      "用法：/add <ticker>，例如 /add AAPL",
 	KeyAddFailed:                     "新增失敗：%v",
 	KeyAddSuccess:                    "已將 *%s* 加入自選股。",
@@ -700,4 +700,29 @@ var zhMessages = map[Key]string{
 
 	KeyRestrictedStockAlertTitle: "⚠️ *處置/注意股提醒*\n\n",
 	KeyRestrictedStockAlertLine:  "• *%s* 已列入處置/注意股：%s\n",
+
+	KeyPodcastUsage:         "用法：/podcast <podcast 逐字稿網址>",
+	KeyPodcastFetching:      "正在讀取節目內容...",
+	KeyPodcastFetchFailed:   "讀取失敗：%v",
+	KeyPodcastAnalyzing:     "正在分析逐字稿中的市場觀點...",
+	KeyPodcastAnalyzeFailed: "分析失敗：%v",
+	KeyPodcastNoInsights:    "這集沒有抽到任何市場相關的觀點。",
+	KeyPodcastSavedHeader:   "已從這集抽出 %d 則觀點並存檔：\n\n",
+	KeyPodcastSavedLine:     "• %s [%s] %s\n",
+	KeyPodcastMacroLabel:    "總體經濟",
+	KeyPodcastPromptIntro: "使用者分享了一段股市相關 podcast/影音節目的逐字稿，內容可能包含業配、開場閒聊、聽眾 Q&A 等與投資無關的段落。請只從市場分析段落抽取重點，忽略業配、廣告、以及與投資無關的個人閒聊。\n\n標題：%s\n網址：%s\n\n逐字稿：\n%s\n\n",
+	KeyPodcastTaskBlock: `
+## 任務
+
+找出逐字稿中提到的個股觀點與總體經濟觀點（沒有對應個股時代號留空），每個觀點各輸出一個區塊，不要有額外文字：
+
+[TICKER: 代號或留空]
+%s US 或 TW（沒有對應個股則留空）
+%s 觀點只能是 BULLISH、BEARISH、NEUTRAL、WATCH 四者之一
+%s 一句話貼近原文的重點，不要自行延伸腦補（100字以內）
+
+如果整段逐字稿沒有任何值得抽取的市場相關內容，不要輸出任何區塊。
+`,
+	KeyPodcastMarketMarker: "市場:",
+	KeyPodcastStanceMarker: "觀點:",
 }

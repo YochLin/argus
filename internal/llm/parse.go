@@ -196,6 +196,97 @@ func parseLesson(lang i18n.Lang, raw string) string {
 	return ""
 }
 
+// parsePodcastInsights parses buildPodcastPrompt's reply into PodcastInsight
+// values. Expected format:
+//
+//	[TICKER: NVDA]
+//	<market marker> US
+//	<stance marker> BULLISH
+//	<reason marker> ...
+//
+// Unlike parseRecommendations/parseExploreNominations, a block is flushed
+// even when its ticker is empty (a macro-only observation with no single
+// stock attached) — flush is gated on having seen a [TICKER: line at all
+// (the seen flag), not on currentTicker being non-empty. Market/Stance fall
+// back to "" for a value the model didn't format as expected, rather than
+// dropping the whole block, so a partially-malformed reply still yields
+// whatever it got right.
+func parsePodcastInsights(lang i18n.Lang, raw string) []PodcastInsight {
+	marketPrefix := i18n.T(lang, i18n.KeyPodcastMarketMarker)
+	stancePrefix := i18n.T(lang, i18n.KeyPodcastStanceMarker)
+	reasonPrefix := i18n.T(lang, i18n.KeyReasonMarker)
+
+	var insights []PodcastInsight
+	lines := strings.Split(raw, "\n")
+	var seen bool
+	var currentTicker, currentMarket, currentStance string
+	var reasonParts []string
+
+	flush := func() {
+		if seen {
+			insights = append(insights, PodcastInsight{
+				Ticker: currentTicker,
+				Market: currentMarket,
+				Stance: currentStance,
+				Thesis: strings.TrimSpace(strings.Join(reasonParts, " ")),
+			})
+		}
+	}
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "[TICKER:") && strings.HasSuffix(line, "]") {
+			flush()
+			ticker := strings.TrimSuffix(strings.TrimPrefix(line, "[TICKER:"), "]")
+			currentTicker = normalizeExploreTicker(ticker)
+			currentMarket = ""
+			currentStance = ""
+			reasonParts = nil
+			seen = true
+			continue
+		}
+		if strings.HasPrefix(line, marketPrefix) {
+			currentMarket = strings.ToUpper(strings.TrimSpace(strings.TrimPrefix(line, marketPrefix)))
+			continue
+		}
+		if strings.HasPrefix(line, stancePrefix) {
+			currentStance = parseStance(strings.TrimPrefix(line, stancePrefix))
+			continue
+		}
+		if strings.HasPrefix(line, reasonPrefix) {
+			reason := strings.TrimPrefix(line, reasonPrefix)
+			reasonParts = append(reasonParts, strings.TrimSpace(reason))
+			continue
+		}
+		if seen && len(reasonParts) > 0 && line != "" {
+			reasonParts = append(reasonParts, line)
+		}
+	}
+	flush()
+
+	if len(insights) > maxPodcastInsights {
+		insights = insights[:maxPodcastInsights]
+	}
+	return insights
+}
+
+// parseStance normalizes a stance-line value to BULLISH/BEARISH/NEUTRAL/
+// WATCH, returning "" for anything else — same made-up-word guard as
+// parseAction.
+func parseStance(s string) string {
+	switch strings.ToUpper(strings.TrimSpace(s)) {
+	case "BULLISH":
+		return "BULLISH"
+	case "BEARISH":
+		return "BEARISH"
+	case "NEUTRAL":
+		return "NEUTRAL"
+	case "WATCH":
+		return "WATCH"
+	}
+	return ""
+}
+
 // parseAction normalizes an action-line value to BUY/SELL/HOLD, returning ""
 // for anything else so downstream consumers (display, /track hit-rate) never
 // see a made-up action word.
