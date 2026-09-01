@@ -2038,6 +2038,27 @@ th {
   cursor: not-allowed;
 }
 
+/* Tinted accent button (design ref: OPTIONS section's "+ Add" button) —
+   distinct from .btn-primary's solid fill: accent text on a faint accent
+   tint, going solid only on hover. */
+.btn-tint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 6px 13px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.btn-tint:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
 .success-message {
   color: var(--profit);
   font-size: 13px;
@@ -2662,6 +2683,11 @@ th {
   display: grid;
   grid-template-columns: 1.3fr 1fr;
   gap: 16px;
+  /* The Positions .card right before this (a bare .card, not a grid
+     wrapper) carries no margin-bottom of its own — .content > .card +
+     .card only fires between two bare cards — so this side needs the gap
+     instead, same fix ReportsView's .report-section applies. */
+  margin-top: 16px;
   margin-bottom: 16px;
   align-items: start;
 }

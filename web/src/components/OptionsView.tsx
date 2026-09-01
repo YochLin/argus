@@ -92,7 +92,7 @@ export function OptionsView({ dict, market, writable, onUnauthorized }: Props) {
 
   return (
     <>
-      <div className="kpi-grid">
+      <div className="stat-grid">
         <div className="card">
           <div className="eyebrow">{dict.positions}</div>
           <div className="kpi-value">{positions.length}</div>
@@ -114,7 +114,7 @@ export function OptionsView({ dict, market, writable, onUnauthorized }: Props) {
           <div className="eyebrow">{dict.positions}</div>
           <span style={{ flex: 1 }} />
           {writable && (
-            <button className="btn-primary" onClick={() => setModal({ mode: "open" })}>
+            <button className="btn-tint" onClick={() => setModal({ mode: "open" })}>
               {dict.optAddBtn}
             </button>
           )}
