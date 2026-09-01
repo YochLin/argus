@@ -7,6 +7,15 @@
 # `runs-on: self-hosted` and does `systemctl --user restart argus`, so both
 # of these need to exist on the box before the first deploy can succeed.
 #
+# Also installs deploy/shioaji.service (pipx install shioaji + enable --now)
+# when ~/apps/argus/.env already has a real SJ_API_KEY — unlike claude/agy,
+# the shioaji daemon logs in on its own from SJ_API_KEY/SJ_SEC_KEY in .env,
+# no interactive OAuth, so there's nothing here that has to stay manual (see
+# the sinopac-shioaji-integration memory: the old "needs a human present for
+# token_pool decryption" assumption was disproven — it stays logged in
+# unattended). Skipped silently when .env isn't there yet or SJ_API_KEY is
+# still the .env.example placeholder, since Shioaji is optional.
+#
 # Run this from your local machine (needs `gh`, logged in with a token that
 # has repo admin rights, to mint a short-lived runner registration token).
 #
@@ -47,12 +56,41 @@ systemctl --user daemon-reload
 systemctl --user enable argus
 REMOTE
 
+echo "==> checking for a real SJ_API_KEY in .env (Shioaji setup, optional)"
+scp "$(cd "$(dirname "$0")/../.." && pwd)/deploy/shioaji.service" "${APP_USER}@${IP}:/tmp/shioaji.service"
+ssh "${APP_USER}@${IP}" bash -s <<'REMOTE'
+set -euo pipefail
+ENV_FILE=~/apps/argus/.env
+SJ_KEY="$(grep '^SJ_API_KEY=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)"
+
+if [ -z "$SJ_KEY" ] || [ "$SJ_KEY" = "your_sinopac_api_key_here" ]; then
+  echo "no real SJ_API_KEY in .env yet -- skipping Shioaji (write .env, then re-run this script to pick it up)"
+  rm -f /tmp/shioaji.service
+  exit 0
+fi
+
+command -v pipx >/dev/null || sudo apt-get install -y pipx
+pipx install --force shioaji
+pipx ensurepath
+
+mkdir -p ~/.config/systemd/user
+mv /tmp/shioaji.service ~/.config/systemd/user/shioaji.service
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+systemctl --user daemon-reload
+# argus.service waits for the first CI deploy to have a binary (enable-only,
+# above); shioaji's binary is already on disk from pipx and logs itself in,
+# so it's safe to start immediately.
+systemctl --user enable --now shioaji
+echo "shioaji: pipx-installed and started"
+REMOTE
+
 cat <<EOF
 
 ==> done. Remaining manual steps on ${IP} (can't be scripted):
   1. mkdir -p ~/apps/argus && cd ~/apps/argus
      write .env there (see .env.example in the repo for the full list —
-     TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID are required)
+     TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID are required). Re-run this script
+     afterward if you want the Shioaji step above to pick up SJ_API_KEY.
   2. claude   # log in once with your Pro/Max account (interactive OAuth)
   3. (optional) npm install -g @agentclientprotocol/claude-agent-acp
      then set CLAUDE_ACP_COMMAND=claude-agent-acp in .env to skip npx resolve overhead

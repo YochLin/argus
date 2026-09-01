@@ -70,22 +70,29 @@ func buildT86Cache(twse *data.TWSE, keep map[string]bool, from, to time.Time, pa
 		var dayMap map[string]data.TrustNetDay
 		var err error
 		for attempt := 0; attempt < 4; attempt++ {
-			if dayMap, err = twse.GetT86Day(d); err == nil {
+			dayMap, err = twse.GetT86Day(d)
+			// data.ErrT86NoReport means "holiday or block, can't tell which
+			// from this response alone" (see its doc comment) — not
+			// retryable, and not fatal on its own; consecutiveEmptyWeekdays
+			// below is what actually detects a block, so this falls through
+			// to the same empty-day handling a genuine holiday gets.
+			if err == nil || errors.Is(err, data.ErrT86NoReport) {
 				break
 			}
 			fmt.Printf("  %s: %v (retry %d/3)\n", date, err, attempt+1)
 			time.Sleep(time.Duration(attempt+1) * 2 * time.Second)
 		}
-		if err != nil {
+		if err != nil && !errors.Is(err, data.ErrT86NoReport) {
 			return fmt.Errorf("t86 %s: %w", date, err)
 		}
 		// Paced on EVERY calendar day, not just the ones with rows to write —
 		// a weekend still costs a real HTTP round-trip (see
 		// doFetchT86TrustForeignDay), so pacing only the non-empty branch
 		// would let a run of weekends/holidays fire back-to-back with no
-		// delay at all. See the sleep call's own comment for the rate this
-		// value is based on.
-		time.Sleep(2 * time.Second)
+		// delay at all. Shared with GetTrustNetSeries' pacing (see
+		// data.T86SafeRequestInterval's doc comment for the rate this is
+		// based on) so the two can't quietly drift apart.
+		time.Sleep(data.T86SafeRequestInterval)
 		if len(dayMap) == 0 {
 			if d.Weekday() != time.Saturday && d.Weekday() != time.Sunday {
 				consecutiveEmptyWeekdays++
