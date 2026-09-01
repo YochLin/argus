@@ -25,14 +25,16 @@ var twQuarterlyDeadlines = []twStatutoryDeadline{
 	{3, 31}, {5, 15}, {8, 14}, {11, 14},
 }
 
-// GetTWUpcomingEarnings is the free, zero-API proxy for EarningsProvider's
-// TW gap: the next statutory financial-disclosure deadline (quarterly/
-// annual report or monthly revenue) that falls within [now, now+days],
-// same for every TW ticker in tickers since it's a filing-law date rather
-// than a company-specific announcement. EarningsEvent.Estimated is always
-// true on these results so callers can word it as a deadline rather than
-// implying a confirmed per-company earnings date (see writeStockSection's
-// KeyEarningsLineEstimated). Non-TW tickers in the input are ignored.
+// GetTWUpcomingEarnings fills EarningsProvider's TW gap with, per ticker,
+// the soonest of: a real announced 法說會 date scraped from Yahoo TW (see
+// tw_earnings_call.go), or — when no real one is scraped for that ticker
+// within [now, now+days] — the next statutory financial-disclosure deadline
+// (quarterly/annual report or monthly revenue), which is the same date for
+// every TW ticker since it's a filing-law date rather than a company-
+// specific announcement. EarningsEvent.Estimated distinguishes the two so
+// callers can word a deadline as such rather than implying a confirmed
+// per-company date (see writeStockSection's KeyEarningsLineEstimated).
+// Non-TW tickers in the input are ignored.
 func GetTWUpcomingEarnings(tickers []string, days int, now time.Time) map[string]EarningsEvent {
 	var twTickers []string
 	for _, t := range tickers {
@@ -44,25 +46,39 @@ func GetTWUpcomingEarnings(tickers []string, days int, now time.Time) map[string
 		return nil
 	}
 
-	deadline, ok := nextTWDisclosureDeadline(now, days)
-	if !ok {
-		return nil
+	windowEnd := now.AddDate(0, 0, days)
+	real := cachedYahooEarningsCalls()
+	out := make(map[string]EarningsEvent, len(twTickers))
+	var remaining []string
+	for _, t := range twTickers {
+		if ev, ok := earliestInRange(real[t], now, windowEnd); ok {
+			out[t] = ev
+			continue
+		}
+		remaining = append(remaining, t)
+	}
+	if len(remaining) == 0 {
+		return out
 	}
 
-	out := make(map[string]EarningsEvent, len(twTickers))
+	deadline, ok := nextTWDisclosureDeadline(now, days)
+	if !ok {
+		return out
+	}
 	dateStr := deadline.Format("2006-01-02")
-	for _, t := range twTickers {
+	for _, t := range remaining {
 		out[t] = EarningsEvent{Ticker: t, Date: dateStr, Estimated: true}
 	}
 	return out
 }
 
 // GetTWEarningsInRange is GetTWUpcomingEarnings generalized to an arbitrary
-// [from, to] range, returning every statutory deadline in range rather than
-// just the soonest one — the web dashboard's Calendar view needs this to
-// browse a past or future month directly, and a single month can contain
-// more than one deadline (e.g. the 8/14 Q2 deadline and the 8/10
-// monthly-revenue deadline both fall in August).
+// [from, to] range — the web dashboard's Calendar view needs this to browse
+// a past or future month directly. Every real event scraped for a ticker
+// within range is included; the statutory-deadline proxy fills in for a
+// ticker only when it has no real event in that same range (a single month
+// can otherwise still contain more than one deadline, e.g. the 8/14 Q2
+// deadline and the 8/10 monthly-revenue deadline both falling in August).
 func GetTWEarningsInRange(tickers []string, from, to time.Time) []EarningsEvent {
 	var twTickers []string
 	for _, t := range tickers {
@@ -74,15 +90,27 @@ func GetTWEarningsInRange(tickers []string, from, to time.Time) []EarningsEvent 
 		return nil
 	}
 
-	deadlines := twDisclosureDeadlinesInRange(from, to)
-	if len(deadlines) == 0 {
-		return nil
+	real := cachedYahooEarningsCalls()
+	var out []EarningsEvent
+	haveReal := make(map[string]bool, len(twTickers))
+	for _, t := range twTickers {
+		for _, ev := range real[t] {
+			d, err := time.Parse("2006-01-02", ev.Date)
+			if err != nil || d.Before(from) || d.After(to) {
+				continue
+			}
+			out = append(out, ev)
+			haveReal[t] = true
+		}
 	}
 
-	out := make([]EarningsEvent, 0, len(twTickers)*len(deadlines))
+	deadlines := twDisclosureDeadlinesInRange(from, to)
 	for _, d := range deadlines {
 		dateStr := d.Format("2006-01-02")
 		for _, t := range twTickers {
+			if haveReal[t] {
+				continue
+			}
 			out = append(out, EarningsEvent{Ticker: t, Date: dateStr, Estimated: true})
 		}
 	}
