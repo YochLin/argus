@@ -192,6 +192,28 @@ func BoxBottomRebound(candles []data.Candle, p ScreenParams) *StrategyHit {
 	return nil
 }
 
+// CheckSqueezeBreakoutExact evaluates candles' last bar (網 1【擠壓突破】).
+//
+// # Status: not yet formally evaluated against §4.4's bar — no dedicated
+// pre-registered run exists for THIS screen specifically. PLAN.md's
+// 2026-08-30 "網 1／網 4 的專屬降級評估" item covers that; per the rule that
+// decision established for 網 2 (a downgrade needs a run pre-registered FOR
+// that screen, not an incidental number from a study registered for
+// another), do not add a downgrade annotation here on the strength of the
+// data point below alone.
+//
+// One data point toward that pending evaluation — S&P 600 small-cap,
+// 2026-09-01 (Phase 25 §8's universe-expansion pass, same run as 網 2/網 6's
+// updates above/below):
+//
+//	sample            n     excess     SE   sigma
+//	SP600 in-samp    207     +4.31%   2.63    1.6
+//	SP600 holdout    249     -0.99%   1.27    0.8  (negative)
+//
+// In-sample clears 1 SE; holdout doesn't and flips negative — one split
+// short, the same failure shape 網 2's SP500 leg hit before its downgrade.
+// Not a decision on its own (see above): the dedicated run still needs a
+// plain-US split and a TW split before §4.4 applies.
 func CheckSqueezeBreakoutExact(candles []data.Candle, p ScreenParams) bool {
 	n := len(candles)
 	if n < 60 {
@@ -311,6 +333,18 @@ func CheckSqueezeBreakoutExact(candles []data.Candle, p ScreenParams) bool {
 // short" failure mode US large-cap hit. TW does not overturn the
 // unconditional downgrade above; it's the third universe now confirming the
 // same answer, not a dissenting one.
+//
+// S&P 600 small-cap (2026-09-01 follow-up, Phase 25 §8's universe-expansion
+// pass — same run also covers 網 1/網 6, see their own doc comments): same
+// split/bootstrap, same protocol.
+//
+//	sample                     n     excess     SE   sigma
+//	SP600 in-samp             187     -2.28%   1.02    2.2  (negative, significant)
+//	SP600 holdout             248     -0.44%   0.93    0.5
+//
+// Fourth universe (after SP500/SP400/TW above), same answer: does not clear
+// the bar, in-sample negative and significant again. Does not overturn the
+// unconditional downgrade; adds to it.
 //
 // Reproduce (US path: CACHE built once per universe via -build-history from
 // Yahoo, ~1-2 min per universe; TW path: whole-market point-in-time via
@@ -812,6 +846,32 @@ func PostGapDrift(candles []data.Candle, p ScreenParams) *StrategyHit {
 // real SEC filing barely moves the per-trade excess. The bottleneck named in
 // the original result (sample size, not signal quality) stands unchanged;
 // this update is one more data point for it, not a revision of it.
+//
+// # Update — S&P 600 small-cap re-run (2026-09-01), the prescribed fix for the sample-size bottleneck
+//
+// PEAD literature says the effect is strongest in small-caps (thinner
+// analyst coverage, slower information diffusion), and S&P 600 (~600 more US
+// small-caps, added for this) gives ~50% more names than SP400 to test that
+// against. Same split/bootstrap, same random-entry control:
+//
+//	sample                    n     excess     SE   sigma
+//	SP600 in-samp     [T0]   235     +0.97%   2.01    0.5
+//	SP600 holdout     [T0]   342     -0.91%   1.10    0.8  (negative)
+//	SP600 in-samp     [T1]   235     +2.03%   2.52    0.8
+//	SP600 holdout     [T1]   342     -0.92%   1.12    0.8  (negative)
+//
+// Still doesn't clear 1 SE in either slice or variant — expected, given the
+// SP400/SP500 pattern above. What IS new: the holdout excess is negative,
+// for both T0 and T1. That breaks the "positive-signed in all four samples"
+// pattern the original result flagged as suggestive (§ above) — it's now
+// positive in in-sample slices only, which is the same "flips sign between
+// universes" shape every OTHER screen here already had. Small-caps being the
+// literature's strongest case for PEAD and still landing negative on holdout
+// is evidence against "just needs more names," not for it — sample size
+// alone doesn't explain a sign flip, only a wide SE. Read together with the
+// unchanged SP400/SP500 numbers, this closes the "underpowered, not
+// disproven" framing rather than resolving it in the screen's favor; nothing
+// here argues for revisiting the "NOT wired" status above.
 func CheckPostGapDriftExact(candles []data.Candle, p ScreenParams) bool {
 	n := len(candles)
 	if n < 60 {
