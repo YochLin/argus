@@ -230,6 +230,28 @@ func TestParsePodcastInsights(t *testing.T) {
 		}
 	})
 
+	t.Run("downstream-beneficiary block carries DerivedFrom", func(t *testing.T) {
+		raw := "[TICKER: NVDA]\nMarket: US\nStance: BULLISH\nReason: GPU demand accelerating.\n" +
+			"[TICKER: 2330]\nMarket: TW\nStance: BULLISH\nReason: foundry capacity fully booked.\nDerived from: NVDA: GPU demand\n"
+		got := parsePodcastInsights(i18n.EN, raw)
+		want := []PodcastInsight{
+			{Ticker: "NVDA", Market: "US", Stance: "BULLISH", Thesis: "GPU demand accelerating."},
+			{Ticker: "2330", Market: "TW", Stance: "BULLISH", Thesis: "foundry capacity fully booked.", DerivedFrom: "NVDA: GPU demand"},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("parsePodcastInsights() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("chinese derived-from marker", func(t *testing.T) {
+		raw := "[TICKER: 2330]\n市場: TW\n觀點: BULLISH\n原因: 晶圓代工受惠 AI 需求成長。\n推論自: NVDA：GPU 需求成長\n"
+		got := parsePodcastInsights(i18n.ZH, raw)
+		want := []PodcastInsight{{Ticker: "2330", Market: "TW", Stance: "BULLISH", Thesis: "晶圓代工受惠 AI 需求成長。", DerivedFrom: "NVDA：GPU 需求成長"}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("parsePodcastInsights() = %+v, want %+v", got, want)
+		}
+	})
+
 	t.Run("more than maxPodcastInsights is truncated", func(t *testing.T) {
 		var raw string
 		for i := 0; i < maxPodcastInsights+5; i++ {

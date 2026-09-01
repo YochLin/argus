@@ -843,4 +843,12 @@ const (
 	KeyPodcastTaskBlock     Key = "podcast_task_block"
 	KeyPodcastMarketMarker  Key = "podcast_market_marker"
 	KeyPodcastStanceMarker  Key = "podcast_stance_marker"
+	// KeyPodcastDerivedMarker labels a downstream-beneficiary block's
+	// "derived from" line (see PodcastInsight.DerivedFrom's doc comment) —
+	// the model's own supply-chain inference, not something the transcript
+	// named directly, so it's parsed into a separate field rather than
+	// folded into Thesis. KeyPodcastDerivedLine renders it back in the
+	// /podcast reply, appended only when DerivedFrom is non-empty.
+	KeyPodcastDerivedMarker Key = "podcast_derived_marker"
+	KeyPodcastDerivedLine   Key = "podcast_derived_line"
 )
