@@ -7,10 +7,15 @@
 # `agy` CLI (internal/llm's optional ANTIGRAVITY_ENABLED fallback — see
 # internal/llm/antigravity_provider.go; installed either way since it's
 # harmless at rest, but stays inert unless that env var is set and it's
-# separately logged in), git, and a non-root APP_USER with `sudo` + systemd
+# separately logged in), git, a non-root APP_USER with `sudo` + systemd
 # linger enabled (linger is what lets a `systemctl --user` service, see
 # deploy/argus.service, keep running after the SSH session that started it
-# ends).
+# ends), a 5GB swapfile (every box this project has run on has needed one),
+# and the `openvpn` package (every box connects out through the home-router
+# full tunnel — see docs/vps-migration-hostinger.md in argus-storage; this
+# script only installs the package, copying over the actual client.conf and
+# enabling the service is still a manual step since the cert lives on
+# whichever box is already connected).
 #
 # Works against ANY box you can already SSH into as a user with sudo (or
 # root) — one created by scripts/vps/create-vultr-instance.sh, one clicked
@@ -57,7 +62,20 @@ APP_USER="$(printf '%s' "$1" | base64 -d)"; PUBKEY="$(printf '%s' "$2" | base64 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get upgrade -y
-apt-get install -y git curl build-essential unzip jq
+apt-get install -y git curl build-essential unzip jq openvpn
+
+# Swap — every box this project has run on needed it (npx + the claude CLI
+# are memory-hungry relative to a 1-2GB VPS); apt/cloud-init doesn't set one
+# up on its own. Skip if a swapfile is already configured (re-running this
+# script on a box that has one shouldn't fallocate a second).
+if ! swapon --show=NAME --noheadings | grep -q .; then
+  fallocate -l 5G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  grep -qxF '/swapfile swap swap defaults 0 0' /etc/fstab || \
+    echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+fi
 
 if ! id -u "$APP_USER" >/dev/null 2>&1; then
   useradd -m -s /bin/bash -G sudo "$APP_USER"
