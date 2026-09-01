@@ -128,22 +128,22 @@ func (ts *toolset) withCache(ctx context.Context, key string, ttl time.Duration,
 func registerTools(s *mcp.Server, ts *toolset) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_quote",
-		Description: "Get the current/latest quote for a US stock ticker: price, change %, open/high/low, volume, previous close, and quote timestamp.",
+		Description: "Get the current/latest quote for a US or Taiwan stock ticker: price, change %, open/high/low, volume, previous close, and quote timestamp.",
 	}, ts.getQuote)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_history",
-		Description: "Get roughly 1 year of daily OHLCV candles (date, open, high, low, close, volume) for a US stock ticker, oldest first — useful for reading candlestick patterns, eyeballing a trend, or computing an indicator not already exposed as a tool.",
+		Description: "Get roughly 1 year of daily OHLCV candles (date, open, high, low, close, volume) for a US or Taiwan stock ticker, oldest first — useful for reading candlestick patterns, eyeballing a trend, or computing an indicator not already exposed as a tool.",
 	}, ts.getHistory)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_technicals",
-		Description: "Get computed technical indicators for a US stock ticker: RSI(14), MACD trend and zero-line position, moving averages (MA5/20/50/60/200) and their alignment, Stochastic KD, Bollinger Bandwidth/%B, ATR(14) volatility, volume ratio vs 20-day average, new-high flags, and relative strength vs SPY (RS63). Prefer this over manually computing an indicator from get_history's raw candles. Note: this project only has daily bars, not intraday data, so there is no VWAP tool.",
+		Description: "Get computed technical indicators for a US or Taiwan stock ticker: RSI(14), MACD trend and zero-line position, moving averages (MA5/20/50/60/200) and their alignment, Stochastic KD, Bollinger Bandwidth/%B, ATR(14) volatility, volume ratio vs 20-day average, new-high flags, and relative strength vs SPY (RS63). Prefer this over manually computing an indicator from get_history's raw candles. Note: this project only has daily bars, not intraday data, so there is no VWAP tool.",
 	}, ts.getTechnicals)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_news",
-		Description: "Get recent news headlines for a US stock ticker, newest first.",
+		Description: "Get recent news headlines for a US or Taiwan stock ticker, newest first.",
 	}, ts.getNews)
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -190,16 +190,16 @@ func registerTools(s *mcp.Server, ts *toolset) {
 }
 
 type tickerInput struct {
-	Ticker string `json:"ticker" jsonschema:"US stock ticker symbol, e.g. AAPL"`
+	Ticker string `json:"ticker" jsonschema:"US or Taiwan stock ticker symbol, e.g. AAPL or 2330"`
 }
 
 type newsInput struct {
-	Ticker string `json:"ticker" jsonschema:"US stock ticker symbol, e.g. AAPL"`
+	Ticker string `json:"ticker" jsonschema:"US or Taiwan stock ticker symbol, e.g. AAPL or 2330"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"max number of news items to return (default 5)"`
 }
 
 type financialStatementInput struct {
-	Ticker string `json:"ticker" jsonschema:"US stock ticker symbol, e.g. AAPL"`
+	Ticker string `json:"ticker" jsonschema:"US or Taiwan stock ticker symbol, e.g. AAPL or 2330"`
 	Freq   string `json:"freq,omitempty" jsonschema:"'annual' for the latest 10-K, or 'quarterly' for the latest 10-Q (default annual)"`
 }
 
