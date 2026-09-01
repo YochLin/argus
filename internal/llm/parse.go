@@ -210,25 +210,30 @@ func parseLesson(lang i18n.Lang, raw string) string {
 // (the seen flag), not on currentTicker being non-empty. Market/Stance fall
 // back to "" for a value the model didn't format as expected, rather than
 // dropping the whole block, so a partially-malformed reply still yields
-// whatever it got right.
+// whatever it got right. An optional <derived-from marker> line (see
+// PodcastInsight.DerivedFrom) marks a downstream-beneficiary block the
+// model proposed on its own rather than the transcript naming directly —
+// its value is kept verbatim, not further parsed.
 func parsePodcastInsights(lang i18n.Lang, raw string) []PodcastInsight {
 	marketPrefix := i18n.T(lang, i18n.KeyPodcastMarketMarker)
 	stancePrefix := i18n.T(lang, i18n.KeyPodcastStanceMarker)
 	reasonPrefix := i18n.T(lang, i18n.KeyReasonMarker)
+	derivedPrefix := i18n.T(lang, i18n.KeyPodcastDerivedMarker)
 
 	var insights []PodcastInsight
 	lines := strings.Split(raw, "\n")
 	var seen bool
-	var currentTicker, currentMarket, currentStance string
+	var currentTicker, currentMarket, currentStance, currentDerivedFrom string
 	var reasonParts []string
 
 	flush := func() {
 		if seen {
 			insights = append(insights, PodcastInsight{
-				Ticker: currentTicker,
-				Market: currentMarket,
-				Stance: currentStance,
-				Thesis: strings.TrimSpace(strings.Join(reasonParts, " ")),
+				Ticker:      currentTicker,
+				Market:      currentMarket,
+				Stance:      currentStance,
+				Thesis:      strings.TrimSpace(strings.Join(reasonParts, " ")),
+				DerivedFrom: currentDerivedFrom,
 			})
 		}
 	}
@@ -241,6 +246,7 @@ func parsePodcastInsights(lang i18n.Lang, raw string) []PodcastInsight {
 			currentTicker = normalizeExploreTicker(ticker)
 			currentMarket = ""
 			currentStance = ""
+			currentDerivedFrom = ""
 			reasonParts = nil
 			seen = true
 			continue
@@ -251,6 +257,10 @@ func parsePodcastInsights(lang i18n.Lang, raw string) []PodcastInsight {
 		}
 		if strings.HasPrefix(line, stancePrefix) {
 			currentStance = parseStance(strings.TrimPrefix(line, stancePrefix))
+			continue
+		}
+		if strings.HasPrefix(line, derivedPrefix) {
+			currentDerivedFrom = strings.TrimSpace(strings.TrimPrefix(line, derivedPrefix))
 			continue
 		}
 		if strings.HasPrefix(line, reasonPrefix) {

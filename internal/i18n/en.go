@@ -733,8 +733,17 @@ Find every per-stock view and macro view mentioned in the transcript (leave the 
 %s Stance must be exactly one of BULLISH, BEARISH, NEUTRAL, WATCH
 %s One sentence close to the original wording — do not embellish or infer beyond it (under 100 words)
 
+If the transcript mentions growing demand or a tailwind for some ticker, and based on your own
+industry/supply-chain knowledge there's a clear, plausible downstream beneficiary (US or TW listed),
+output an extra block for that company too, with one more line:
+%s <the ticker actually mentioned>: <why it benefits, e.g. what demand is growing>
+This line marks the block as your own supply-chain inference, not a company the transcript named
+directly — only output it when the connection is clear, don't guess just to fill space.
+
 If nothing in the transcript is worth extracting, output nothing.
 `,
-	KeyPodcastMarketMarker: "Market:",
-	KeyPodcastStanceMarker: "Stance:",
+	KeyPodcastMarketMarker:  "Market:",
+	KeyPodcastStanceMarker:  "Stance:",
+	KeyPodcastDerivedMarker: "Derived from:",
+	KeyPodcastDerivedLine:   "   └ derived from: %s (not directly named in the transcript)\n",
 }

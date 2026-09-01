@@ -302,11 +302,20 @@ func (c *Client) ExploreCandidates(ctx context.Context, marketNews []data.NewsIt
 // (see db.SavePodcastInsight) rather than treating them as trading signals;
 // Thesis is asked to stay close to the model's actual wording rather than
 // its own inference, precisely so a human can sanity-check it later.
+//
+// DerivedFrom is "" for a row grounded in the transcript, and non-empty
+// (e.g. "NVDA: GPU demand") for a downstream-beneficiary row the model
+// proposed from its own supply-chain knowledge rather than something the
+// transcript named directly — a second, weaker level of "unverified" on top
+// of the whole struct's already-unverified status, so it's kept as its own
+// field rather than folded into Thesis where a reader couldn't tell the two
+// apart.
 type PodcastInsight struct {
-	Ticker string
-	Market string
-	Stance string
-	Thesis string
+	Ticker      string
+	Market      string
+	Stance      string
+	Thesis      string
+	DerivedFrom string
 }
 
 // maxPodcastInsights caps how many observations parsePodcastInsights keeps

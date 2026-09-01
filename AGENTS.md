@@ -123,7 +123,10 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   (`podcast_insights.go`) — an append-only log of `/podcast`'s LLM-extracted per-stock/macro market
   views, same no-dedup convention as `trade_lessons`; `ticker`/`market` default to `''` rather than
   being nullable, since a macro-only row (no single stock attached) is a normal row shape here, not a
-  missing value.
+  missing value. `derived_from` is also `''` by default, populated only for a downstream-beneficiary
+  row the model proposed from its own supply-chain knowledge (e.g. a TW foundry benefiting from an
+  NVDA demand story) rather than something the transcript named directly — kept as its own column so
+  that weaker, self-inferred claim stays visibly distinguishable from a grounded mention.
   Full table/method rationale: **[docs/architecture/db.md](docs/architecture/db.md)**.
 
 - `internal/i18n` — every user/LLM-facing string, split into `zh.go` (default) and `en.go`, keyed by
@@ -145,8 +148,12 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   a fetched transcript, reusing `checkModel` (same reasoning as `ExploreCandidates`); its
   `parsePodcastInsights` parser mirrors `parseExploreNominations` but flushes a block even when its
   `[TICKER: ]` is empty, since a macro-only observation with no single stock attached is still a real
-  result, not a parse failure. Full provider/prompt rationale:
-  **[docs/architecture/llm.md](docs/architecture/llm.md)**.
+  result, not a parse failure. The prompt also invites a downstream-beneficiary block (e.g. a TW
+  supplier that benefits from a US chipmaker's demand story mentioned in the transcript) marked with a
+  `DerivedFrom` line — an `ExploreNomination`-style "model's own claim, not grounded in the source
+  text" case nested inside an already-unverified struct, so it's its own field rather than folded into
+  Thesis where a reader couldn't tell a transcript quote from a supply-chain guess. Full provider/prompt
+  rationale: **[docs/architecture/llm.md](docs/architecture/llm.md)**.
 
 - `internal/signals` — pure functions for rule-based technical signals (RSI, MACD, Stochastic KD,
   Bollinger Bandwidth, MA Alignment, Volume-Price, New High, Relative Strength, Lowest Close) and

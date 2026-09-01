@@ -58,6 +58,7 @@ func (b *Bot) handlePodcast(ctx context.Context, args string) {
 			Market:      ins.Market,
 			Stance:      ins.Stance,
 			Thesis:      ins.Thesis,
+			DerivedFrom: ins.DerivedFrom,
 		}); err != nil {
 			logger.Errorf("podcast: save insight (%s/%s) for %s: %v", ins.Ticker, ins.Stance, url, err)
 			continue
@@ -67,6 +68,9 @@ func (b *Bot) handlePodcast(ctx context.Context, args string) {
 			label = i18n.T(b.lang, i18n.KeyPodcastMacroLabel)
 		}
 		sb.WriteString(i18n.T(b.lang, i18n.KeyPodcastSavedLine, label, ins.Stance, ins.Thesis))
+		if ins.DerivedFrom != "" {
+			sb.WriteString(i18n.T(b.lang, i18n.KeyPodcastDerivedLine, ins.DerivedFrom))
+		}
 	}
 	b.Send(sb.String())
 }
