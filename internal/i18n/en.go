@@ -722,7 +722,7 @@ Write only from the data actually provided above — omit any section you have n
 	KeyPodcastSavedHeader:   "Extracted and saved %d view(s) from this episode:\n\n",
 	KeyPodcastSavedLine:     "• %s [%s] %s\n",
 	KeyPodcastMacroLabel:    "Macro",
-	KeyPodcastPromptIntro: "The user shared a stock-market podcast/video transcript. It may contain sponsor reads, small talk, or listener Q&A unrelated to investing. Only extract points from market-analysis passages — ignore ads, sponsor reads, and unrelated personal chatter.\n\nTitle: %s\nURL: %s\n\nTranscript:\n%s\n\n",
+	KeyPodcastPromptIntro:   "The user shared a stock-market podcast/video transcript. It may contain sponsor reads, small talk, or listener Q&A unrelated to investing. Only extract points from market-analysis passages — ignore ads, sponsor reads, and unrelated personal chatter.\n\nTitle: %s\nURL: %s\n\nTranscript:\n%s\n\n",
 	KeyPodcastTaskBlock: `
 ## Task
 
@@ -742,8 +742,9 @@ directly — only output it when the connection is clear, don't guess just to fi
 
 If nothing in the transcript is worth extracting, output nothing.
 `,
-	KeyPodcastMarketMarker:  "Market:",
-	KeyPodcastStanceMarker:  "Stance:",
-	KeyPodcastDerivedMarker: "Derived from:",
-	KeyPodcastDerivedLine:   "   └ derived from: %s (not directly named in the transcript)\n",
+	KeyPodcastMarketMarker:     "Market:",
+	KeyPodcastStanceMarker:     "Stance:",
+	KeyPodcastDerivedMarker:    "Derived from:",
+	KeyPodcastDerivedLine:      "   └ derived from: %s (not directly named in the transcript)\n",
+	KeyPodcastDuplicateWarning: "⚠️ This link has already been analyzed before (%d record(s) on file) — proceeding to analyze it again.",
 }

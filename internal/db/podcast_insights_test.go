@@ -78,3 +78,41 @@ func TestSavePodcastInsight(t *testing.T) {
 		t.Errorf("2330 derived_from = %q, want %q", derivedFrom, "NVDA: GPU 需求成長")
 	}
 }
+
+func TestCountPodcastInsightsByURL(t *testing.T) {
+	d := newTestDB(t)
+
+	if count, err := d.CountPodcastInsightsByURL("https://vocus.cc/article/example"); err != nil {
+		t.Fatalf("CountPodcastInsightsByURL() before any save error = %v", err)
+	} else if count != 0 {
+		t.Fatalf("CountPodcastInsightsByURL() before any save = %d, want 0", count)
+	}
+
+	for range 2 {
+		if err := d.SavePodcastInsight(PodcastInsight{
+			SourceURL: "https://vocus.cc/article/example",
+			Stance:    "NEUTRAL",
+			Thesis:    "filler",
+		}); err != nil {
+			t.Fatalf("SavePodcastInsight() error = %v", err)
+		}
+	}
+	if err := d.SavePodcastInsight(PodcastInsight{
+		SourceURL: "https://vocus.cc/article/other",
+		Stance:    "NEUTRAL",
+		Thesis:    "unrelated episode",
+	}); err != nil {
+		t.Fatalf("SavePodcastInsight() unrelated episode error = %v", err)
+	}
+
+	if count, err := d.CountPodcastInsightsByURL("https://vocus.cc/article/example"); err != nil {
+		t.Fatalf("CountPodcastInsightsByURL() error = %v", err)
+	} else if count != 2 {
+		t.Fatalf("CountPodcastInsightsByURL() = %d, want 2", count)
+	}
+	if count, err := d.CountPodcastInsightsByURL("https://vocus.cc/article/other"); err != nil {
+		t.Fatalf("CountPodcastInsightsByURL() (other) error = %v", err)
+	} else if count != 1 {
+		t.Fatalf("CountPodcastInsightsByURL() (other) = %d, want 1", count)
+	}
+}

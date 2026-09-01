@@ -20,12 +20,22 @@ import (
 // db.SavePodcastInsight — a separate, structured-output command rather than
 // reusing handleChatArticle's free-form chat reply, since the point here is
 // building up a queryable log of past views (see the /podcast design
-// discussion), not a one-off conversational summary.
+// discussion), not a one-off conversational summary. Re-submitting the same
+// URL isn't blocked (db.SavePodcastInsight has no dedup — see its doc
+// comment) but is warned about up front via CountPodcastInsightsByURL,
+// since a duplicate would double-count that episode in any future
+// cross-episode aggregation.
 func (b *Bot) handlePodcast(ctx context.Context, args string) {
 	url, ok := webfetch.ExtractURL(args)
 	if !ok {
 		b.Send(i18n.T(b.lang, i18n.KeyPodcastUsage))
 		return
+	}
+
+	if existing, err := b.db.CountPodcastInsightsByURL(url); err != nil {
+		logger.Errorf("podcast: count existing insights for %s: %v", url, err)
+	} else if existing > 0 {
+		b.Send(i18n.T(b.lang, i18n.KeyPodcastDuplicateWarning, existing))
 	}
 
 	b.Send(i18n.T(b.lang, i18n.KeyPodcastFetching))
