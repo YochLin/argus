@@ -238,6 +238,15 @@ func (s *ScanService) CheckStatefulSignals(ticker string, candles []data.Candle)
 		if err != nil {
 			logger.Errorf("trust net %s: %v", ticker, err)
 		} else {
+			if len(rows) == 0 {
+				// A successful fetch (no failures counted) that still found
+				// zero rows for this ticker across the whole lookback means
+				// T86 has never listed it, not that it had no net buying
+				// today — T86 is TSE-only (see trust.go's Universe note), so
+				// this is the structural signature of a TPEx-listed ticker,
+				// distinct from ordinary "no signal today" silence.
+				logger.Warnf("trust net %s: never appears in T86 (likely TPEx/上櫃, no coverage) — 網5 will never fire for it", ticker)
+			}
 			trustAligned := signals.AlignTrustNet(candles, rows)
 			foreignAligned := signals.AlignForeignNet(candles, rows)
 			sig, newTrust := s.detector.CheckTrustFollow(ticker, candles, trustAligned, foreignAligned, prevTrust)
