@@ -2,6 +2,7 @@ package data
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -10,6 +11,16 @@ import (
 
 	"argus/internal/market"
 )
+
+// ErrT86NoReport is doFetchT86TrustForeignDay's sentinel for "TWSE answered
+// with no T86 report" — see that function's doc comment for why this can
+// mean either a genuine non-trading weekday or a WAF/rate-limit block, and
+// why callers (not this layer) are the ones positioned to tell those apart:
+// buildT86Cache (cmd/strategyscan/t86_cache.go) already has a
+// consecutive-empty-weekday heuristic for it, and GetTrustNetSeries's
+// failures counter now actually increments instead of silently treating
+// every non-200 as "market closed."
+var ErrT86NoReport = errors.New("twse t86: no report for this date (non-trading day or blocked)")
 
 // twseT86FullResponse is T86's whole-market response, kept separate from
 // institutional_tw.go's twseT86Response because this one also needs the
@@ -90,20 +101,28 @@ func (t *TWSE) fetchT86TrustForeignDay(date time.Time) (map[string]TrustNetDay, 
 		return cached, nil
 	}
 
-	dayMap, err := t.doFetchT86TrustForeignDay(date)
-	if err != nil {
-		return nil, err
-	}
-	// A nil dayMap is ambiguous — TWSE answers a genuine non-trading day AND
-	// a transient block/outage with the exact same "no data" shape (see
-	// doFetchT86TrustForeignDay's doc comment). Caching it as confirmed
-	// absence is only safe for a weekend, which is a real non-trading day
-	// unconditionally regardless of market; a weekday nil is left
-	// uncached so a transient block doesn't get memoized as "this day never
-	// has data" for the rest of the process's lifetime. internal/market's
+	// Weekends are unconditionally non-trading regardless of what TWSE's
+	// endpoint answers, so skip the network round-trip — and the
+	// holiday-vs-block ambiguity below, which only applies to weekdays —
+	// entirely, and cache the confirmed absence directly. internal/market's
 	// trading calendar isn't used here — it's NYSE-specific (see its doc
 	// comment), not TW's.
-	if dayMap != nil || date.Weekday() == time.Saturday || date.Weekday() == time.Sunday {
+	if date.Weekday() == time.Saturday || date.Weekday() == time.Sunday {
+		t.t86Mu.Lock()
+		t.t86DayCache[dateKey] = nil
+		t.t86Mu.Unlock()
+		return nil, nil
+	}
+
+	dayMap, err := t.doFetchT86TrustForeignDay(date)
+	if err != nil {
+		// Includes ErrT86NoReport (weekday holiday or WAF block — see its
+		// doc comment) — deliberately left uncached so a transient block
+		// doesn't get memoized as "this day never has data" for the rest of
+		// the process's lifetime.
+		return nil, err
+	}
+	if dayMap != nil {
 		t.t86Mu.Lock()
 		t.t86DayCache[dateKey] = dayMap
 		t.t86Mu.Unlock()
@@ -127,18 +146,20 @@ func (t *TWSE) doFetchT86TrustForeignDay(date time.Time) (map[string]TrustNetDay
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		// Live-verified 2026-08-27: TWSE answers a date with no T86 report
-		// at all — weekends, national holidays, and at least one ad-hoc
-		// closure found while building the historical cache (2016-09-23, a
-		// Friday, almost certainly a typhoon closure — internal/market's
-		// trading calendar doesn't cover those, see its doc comment) — with
-		// an HTTP 307 to an HTML "security" page, not an empty JSON body.
-		// Treating any non-200 here as "no data this day" (nil, nil) rather
-		// than an error is what makes buildT86Cache's calendar-day walk
-		// (t86_cache.go) match buildHistoryCache's existing "empty means
-		// skip" contract instead of retrying and aborting the whole build
-		// over a real, permanent non-trading day.
-		return nil, nil
+		// Live-verified 2026-08-27: TWSE answers a weekday with no T86
+		// report — an ad-hoc closure (2016-09-23, a Friday, almost certainly
+		// a typhoon closure — internal/market's trading calendar doesn't
+		// cover those, see its doc comment) as well as a WAF/rate-limit
+		// block — with an HTTP 307 to an HTML "security" page, not an empty
+		// JSON body or a distinct status code. The two are indistinguishable
+		// from this one response, so this layer reports both as
+		// ErrT86NoReport rather than silently swallowing them to (nil, nil)
+		// — a caller with more context (buildT86Cache's consecutive-empty-
+		// weekday count, GetTrustNetSeries' failures-across-the-lookback
+		// count) is what can actually tell "one holiday" from "a block in
+		// progress." fetchT86TrustForeignDay never reaches here for a
+		// weekend, which is unambiguous without asking TWSE at all.
+		return nil, ErrT86NoReport
 	}
 
 	var result twseT86FullResponse
@@ -194,6 +215,15 @@ func (t *TWSE) GetT86Day(date time.Time) (map[string]TrustNetDay, error) {
 // WHOLE universe instead of per ticker.
 const liveTrustNetLookbackDays = 20
 
+// T86SafeRequestInterval is the pacing between whole-market T86 requests,
+// shared by GetTrustNetSeries below and cmd/strategyscan/t86_cache.go's
+// buildT86Cache so the two don't each hardcode their own number that quietly
+// drifts apart. 2s/request (0.5 req/s) is the validated-safe rate: trust.go's
+// doc comment records ~50 requests/20s (2.5 req/s) triggering a 20+ minute
+// IP-level block, live-verified while building the historical cache — this
+// is that same number, not a re-derived one.
+const T86SafeRequestInterval = 2 * time.Second
+
 // GetTrustNetSeries implements data.TrustNetProvider directly off TWSE's own
 // T86 report (Phase 25 §4.4) — the canonical source, not FinMind's secondhand
 // copy, and the only free source with 外資 alongside 投信. See
@@ -210,10 +240,20 @@ func (t *TWSE) GetTrustNetSeries(ticker string, days int) ([]TrustNetDay, error)
 	var out []TrustNetDay
 	failures := 0
 	for i := 0; i < lookback; i++ {
-		if i > 0 {
-			time.Sleep(150 * time.Millisecond) // be a polite whole-market caller, same spirit as the Yahoo/FinMind rate limits elsewhere
+		day := time.Now().AddDate(0, 0, -i)
+		dateKey := day.Format("20060102")
+		t.t86Mu.Lock()
+		_, cached := t.t86DayCache[dateKey]
+		t.t86Mu.Unlock()
+		// Only pace requests that actually hit the network — the day cache
+		// is shared process-wide (keyed by calendar date, not by ticker), so
+		// in steady state only the first gated ticker of the day pays this;
+		// every other ticker's call this run walks the same 20 dates and
+		// hits cache for all of them.
+		if i > 0 && !cached {
+			time.Sleep(T86SafeRequestInterval)
 		}
-		dayMap, err := t.fetchT86TrustForeignDay(time.Now().AddDate(0, 0, -i))
+		dayMap, err := t.fetchT86TrustForeignDay(day)
 		if err != nil {
 			failures++
 			continue

@@ -1,6 +1,7 @@
 package data
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -80,6 +81,41 @@ func TestTWSEGetTrustNetSeries_LookbackCap(t *testing.T) {
 	// than exercising the network path.
 	if liveTrustNetLookbackDays <= 0 || liveTrustNetLookbackDays > 60 {
 		t.Errorf("liveTrustNetLookbackDays = %d, want a small positive cap", liveTrustNetLookbackDays)
+	}
+}
+
+func TestFetchT86TrustForeignDay_WeekendShortCircuit(t *testing.T) {
+	twse := NewTWSE()
+	// Known Saturday. Must resolve without ever reaching
+	// doFetchT86TrustForeignDay's HTTP round-trip — if the short-circuit
+	// regresses, this test starts making a real network call instead of
+	// asserting a static result.
+	sat := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
+	if sat.Weekday() != time.Saturday {
+		t.Fatalf("test fixture date %s is not a Saturday", sat)
+	}
+	dayMap, err := twse.fetchT86TrustForeignDay(sat)
+	if err != nil {
+		t.Fatalf("weekend fetch: got error %v, want nil", err)
+	}
+	if dayMap != nil {
+		t.Errorf("weekend fetch: got %v, want nil map", dayMap)
+	}
+	if _, hit := twse.t86DayCache[sat.Format("20060102")]; !hit {
+		t.Error("weekend fetch: expected confirmed absence to be cached")
+	}
+}
+
+func TestErrT86NoReport_IsDistinctSentinel(t *testing.T) {
+	// buildT86Cache (cmd/strategyscan/t86_cache.go) and GetTrustNetSeries
+	// both branch on identifying this specific error via errors.Is — a
+	// wrapped or re-created error with the same message would silently
+	// break that classification, so pin the sentinel's identity directly.
+	if ErrT86NoReport == nil {
+		t.Fatal("ErrT86NoReport must not be nil")
+	}
+	if errors.Is(ErrT86NoReport, errUSNotSupported) {
+		t.Error("ErrT86NoReport must not alias an unrelated sentinel")
 	}
 }
 
