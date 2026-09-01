@@ -1,6 +1,7 @@
 package web
 
 import (
+	"net/http"
 	"sort"
 
 	"argus/internal/data"
@@ -162,6 +163,76 @@ func buildOptions(database dbReader, optionChain data.OptionChainProvider, quote
 		})
 	}
 	return resp, nil
+}
+
+// optionOpenRequest is POST /api/options/open's body — the web dashboard's
+// counterpart to /obuy and /osell, dispatched by side rather than two
+// separate routes since the OCC symbol already carries call/put/strike/
+// expiry (see option.Parse).
+type optionOpenRequest struct {
+	Symbol    string  `json:"symbol"`
+	Side      string  `json:"side"` // "BUY" or "SELL"
+	Contracts float64 `json:"contracts"`
+	Premium   float64 `json:"premium"`
+	Fee       float64 `json:"fee"`
+	Date      string  `json:"date"`
+}
+
+// optionCloseRequest is POST /api/options/close's body — Action is one of
+// db.OptionActionBuyToClose/SellToClose (Contracts/Premium/Fee required) or
+// db.OptionActionExpired/Assigned/Exercised (ignored — resolveOption always
+// closes the whole remaining position at premium 0).
+type optionCloseRequest struct {
+	Symbol    string  `json:"symbol"`
+	Action    string  `json:"action"`
+	Contracts float64 `json:"contracts"`
+	Premium   float64 `json:"premium"`
+	Fee       float64 `json:"fee"`
+	Date      string  `json:"date"`
+}
+
+// handleOptionOpen and handleOptionClose follow trade.go's execBuy/execSell
+// shape exactly (decode -> resolve date -> call the TradeExecutor seam ->
+// Notify regardless of outcome -> map err to 400) — see trade.go's doc
+// comment on that seam for why bot-layer behavior (the naked-call warning,
+// the ASSIGNED/EXERCISED stock-side trade) can't be skipped by writing
+// db.RecordOption directly here.
+func (s *Server) handleOptionOpen(w http.ResponseWriter, r *http.Request) {
+	var req optionOpenRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	date, ok := resolveTradeDate(req.Date)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid date")
+		return
+	}
+	msg, err := s.trade.ExecuteOptionOpen(req.Symbol, req.Side, req.Contracts, req.Premium, req.Fee, date)
+	s.trade.Notify(msg)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, tradeResponse{Message: msg})
+}
+
+func (s *Server) handleOptionClose(w http.ResponseWriter, r *http.Request) {
+	var req optionCloseRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	date, ok := resolveTradeDate(req.Date)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid date")
+		return
+	}
+	msg, err := s.trade.ExecuteOptionClose(req.Symbol, req.Action, req.Contracts, req.Premium, req.Fee, date)
+	s.trade.Notify(msg)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, tradeResponse{Message: msg})
 }
 
 // fetchOptionMarkAndGreeks fetches p's live chain via service.FindOptionQuote

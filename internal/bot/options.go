@@ -72,7 +72,8 @@ func (b *Bot) handleOBuy(args string) {
 	if date == "" {
 		date = todayDate()
 	}
-	b.Send(b.recordOption(symbol, "BUY", contracts, premium, fee, date))
+	msg, _ := b.recordOption(symbol, "BUY", contracts, premium, fee, date)
+	b.Send(msg)
 }
 
 func (b *Bot) handleOSell(args string) {
@@ -84,26 +85,75 @@ func (b *Bot) handleOSell(args string) {
 	if date == "" {
 		date = todayDate()
 	}
-	b.Send(b.recordOption(symbol, "SELL", contracts, premium, fee, date))
+	msg, _ := b.recordOption(symbol, "SELL", contracts, premium, fee, date)
+	b.Send(msg)
 }
 
 // recordOption is handleOBuy/handleOSell's shared core — see recordBuy's
 // doc comment for why this split exists (the expiry-scan pending-action
 // executor doesn't reuse this one, since ASSIGNED/EXPIRED/EXERCISED go
-// through resolveOption instead).
-func (b *Bot) recordOption(symbol, side string, contracts, premium, fee float64, date string) string {
+// through resolveOption instead). The returned error is nil on success, same
+// "for a programmatic caller, not for re-parsing msg" purpose as recordBuy's
+// (see ExecuteOptionOpen/ExecuteOptionClose) — every existing caller ignores
+// it exactly like recordBuy/recordSell's callers do.
+func (b *Bot) recordOption(symbol, side string, contracts, premium, fee float64, date string) (string, error) {
 	pos, realizedPnL, err := b.db.RecordOption(symbol, side, contracts, premium, fee, date)
 	if err != nil {
 		if errors.Is(err, db.ErrCrossesZero) {
-			return i18n.T(b.lang, i18n.KeyOptionCrossesZero, symbol)
+			return i18n.T(b.lang, i18n.KeyOptionCrossesZero, symbol), err
 		}
-		return i18n.T(b.lang, i18n.KeyOptionTradeFailed, err)
+		return i18n.T(b.lang, i18n.KeyOptionTradeFailed, err), err
 	}
 	msg := i18n.T(b.lang, i18n.KeyOptionTradeSuccess, side, symbol, contracts, premium, fee, realizedPnL, pos.Contracts, pos.AvgPremium)
 	if side == "SELL" {
 		msg += b.nakedCallWarning(pos)
 	}
-	return msg
+	return msg, nil
+}
+
+// ExecuteOptionOpen is options.go's counterpart to ExecuteBuy (handlers.go)
+// — internal/web's POST /api/options/open calls this instead of
+// db.RecordOption directly, so a web-submitted order gets the exact same
+// naked-call warning /obuy and /osell produce (nakedCallWarning). side is
+// "BUY" or "SELL"; date is expected already resolved (defaulted to today) by
+// the caller, matching ExecuteBuy's convention. Unlike /obuy /osell this
+// never pushes to Telegram itself — the caller (internal/web) decides that
+// via Notify, same as ExecuteBuy/ExecuteSell.
+func (b *Bot) ExecuteOptionOpen(symbol, side string, contracts, premium, fee float64, date string) (string, error) {
+	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	if !option.IsOCC(symbol) || (side != "BUY" && side != "SELL") || contracts <= 0 || premium < 0 || fee < 0 {
+		return i18n.T(b.lang, i18n.KeyOptionUsage), fmt.Errorf("invalid option order arguments")
+	}
+	return b.recordOption(symbol, side, contracts, premium, fee, date)
+}
+
+// ExecuteOptionClose is ExecuteOptionOpen's counterpart for POST
+// /api/options/close. action is one of db.OptionActionBuyToClose/
+// SellToClose (a closing trade — needs contracts/premium/fee, routed through
+// recordOption with the opposite side) or db.OptionActionExpired/Assigned/
+// Exercised (a resolution at premium 0, routed through resolveOption exactly
+// like /oassign, /oexercise, and the daily expiry scan — contracts/premium/
+// fee are ignored for these, the whole remaining position always closes).
+func (b *Bot) ExecuteOptionClose(symbol, action string, contracts, premium, fee float64, date string) (string, error) {
+	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	if !option.IsOCC(symbol) {
+		return i18n.T(b.lang, i18n.KeyOptionUsage), fmt.Errorf("invalid option symbol %q", symbol)
+	}
+	switch action {
+	case db.OptionActionBuyToClose, db.OptionActionSellToClose:
+		if contracts <= 0 || premium < 0 || fee < 0 {
+			return i18n.T(b.lang, i18n.KeyOptionUsage), fmt.Errorf("invalid option order arguments")
+		}
+		side := "SELL"
+		if action == db.OptionActionBuyToClose {
+			side = "BUY"
+		}
+		return b.recordOption(symbol, side, contracts, premium, fee, date)
+	case db.OptionActionExpired, db.OptionActionAssigned, db.OptionActionExercised:
+		return b.resolveOption(symbol, date, action)
+	default:
+		return i18n.T(b.lang, i18n.KeyOptionResolutionUsage), fmt.Errorf("invalid close action %q", action)
+	}
 }
 
 // nakedCallWarning fires the moment a /osell leaves the underlying with more
@@ -176,7 +226,8 @@ func (b *Bot) handleOAssign(args string) {
 	if date == "" {
 		date = todayDate()
 	}
-	b.Send(b.resolveOption(symbol, date, db.OptionActionAssigned))
+	msg, _ := b.resolveOption(symbol, date, db.OptionActionAssigned)
+	b.Send(msg)
 }
 
 func (b *Bot) handleOExercise(args string) {
@@ -188,7 +239,8 @@ func (b *Bot) handleOExercise(args string) {
 	if date == "" {
 		date = todayDate()
 	}
-	b.Send(b.resolveOption(symbol, date, db.OptionActionExercised))
+	msg, _ := b.resolveOption(symbol, date, db.OptionActionExercised)
+	b.Send(msg)
 }
 
 // resolveOption closes symbol's remaining position at premium 0 (the
@@ -200,24 +252,24 @@ func (b *Bot) handleOExercise(args string) {
 // for the daily expiry scan (jobs.go), which always resolves as
 // EXPIRED/ASSIGNED — EXERCISED is manual-only (/oexercise), since a buyer
 // choosing to exercise is a deliberate decision a scan can't infer.
-func (b *Bot) resolveOption(symbol, date, action string) string {
+func (b *Bot) resolveOption(symbol, date, action string) (string, error) {
 	pos, ok, err := b.db.GetOptionPosition(symbol)
 	if err != nil {
-		return i18n.T(b.lang, i18n.KeyOptionResolveFailed, err)
+		return i18n.T(b.lang, i18n.KeyOptionResolveFailed, err), err
 	}
 	if !ok {
-		return i18n.T(b.lang, i18n.KeyOptionNoPosition, symbol)
+		return i18n.T(b.lang, i18n.KeyOptionNoPosition, symbol), db.ErrNoPosition
 	}
 	if action == db.OptionActionAssigned && pos.Contracts >= 0 {
-		return i18n.T(b.lang, i18n.KeyOptionAssignRequiresShort, symbol)
+		return i18n.T(b.lang, i18n.KeyOptionAssignRequiresShort, symbol), fmt.Errorf("assign requires a short position")
 	}
 	if action == db.OptionActionExercised && pos.Contracts <= 0 {
-		return i18n.T(b.lang, i18n.KeyOptionExerciseRequiresLong, symbol)
+		return i18n.T(b.lang, i18n.KeyOptionExerciseRequiresLong, symbol), fmt.Errorf("exercise requires a long position")
 	}
 
 	_, realizedPnL, err := b.db.ResolveOption(symbol, action, date)
 	if err != nil {
-		return i18n.T(b.lang, i18n.KeyOptionResolveFailed, err)
+		return i18n.T(b.lang, i18n.KeyOptionResolveFailed, err), err
 	}
 	msg := i18n.T(b.lang, i18n.KeyOptionResolveSuccess, action, symbol, realizedPnL)
 
@@ -236,7 +288,7 @@ func (b *Bot) resolveOption(symbol, date, action string) string {
 	if stockMsg != "" {
 		msg += "\n" + stockMsg
 	}
-	return msg
+	return msg, nil
 }
 
 // sendPortfolioOptionsSection renders /portfolio's options block — nothing

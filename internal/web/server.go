@@ -266,6 +266,8 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("POST /api/watchlist/remove", s.requireWritable(s.requireAuth(s.handleWatchlistRemove)))
 	s.mux.HandleFunc("POST /api/buy-alerts/add", s.requireWritable(s.requireAuth(s.requireTrade(s.handleBuyAlertAdd))))
 	s.mux.HandleFunc("POST /api/buy-alerts/remove", s.requireWritable(s.requireAuth(s.handleBuyAlertRemove)))
+	s.mux.HandleFunc("POST /api/options/open", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionOpen))))
+	s.mux.HandleFunc("POST /api/options/close", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionClose))))
 	// /api/thesis (Phase 21) is a DB write like any other above — no reason
 	// to give it a looser gate than /api/trade/*.
 	s.mux.HandleFunc("POST /api/thesis", s.requireWritable(s.requireAuth(s.handleThesisSet)))

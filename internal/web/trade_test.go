@@ -19,10 +19,14 @@ func feePtr(v float64) *float64 { return &v }
 type fakeTrade struct {
 	buyMsg, sellMsg, stopMsg, buyAlertMsg, deleteMsg string
 	buyErr, sellErr, stopErr, buyAlertErr, deleteErr error
+	optOpenMsg, optCloseMsg                          string
+	optOpenErr, optCloseErr                          error
 	lastBuy, lastSell                                tradeRequest
 	lastStop                                         stopRequest
 	lastBuyAlert                                     buyAlertRequest
 	lastDeleteID                                     int64
+	lastOptOpen                                      optionOpenRequest
+	lastOptClose                                     optionCloseRequest
 	notified                                         []string
 }
 
@@ -53,6 +57,16 @@ func (f *fakeTrade) ExecuteAddBuyAlert(ticker string, price float64) (string, er
 func (f *fakeTrade) ExecuteDeleteTransaction(id int64) (string, error) {
 	f.lastDeleteID = id
 	return f.deleteMsg, f.deleteErr
+}
+
+func (f *fakeTrade) ExecuteOptionOpen(symbol, side string, contracts, premium, fee float64, date string) (string, error) {
+	f.lastOptOpen = optionOpenRequest{Symbol: symbol, Side: side, Contracts: contracts, Premium: premium, Fee: fee, Date: date}
+	return f.optOpenMsg, f.optOpenErr
+}
+
+func (f *fakeTrade) ExecuteOptionClose(symbol, action string, contracts, premium, fee float64, date string) (string, error) {
+	f.lastOptClose = optionCloseRequest{Symbol: symbol, Action: action, Contracts: contracts, Premium: premium, Fee: fee, Date: date}
+	return f.optCloseMsg, f.optCloseErr
 }
 
 // fakeWatchlistDB is a watchlistWriter stub.
@@ -119,6 +133,8 @@ func newTradeTestServer(password string, trade TradeExecutor, wl watchlistWriter
 	s.mux.HandleFunc("POST /api/buy-alerts/add", s.requireWritable(s.requireAuth(s.requireTrade(s.handleBuyAlertAdd))))
 	s.mux.HandleFunc("POST /api/buy-alerts/remove", s.requireWritable(s.requireAuth(s.handleBuyAlertRemove)))
 	s.mux.HandleFunc("POST /api/thesis", s.requireWritable(s.requireAuth(s.handleThesisSet)))
+	s.mux.HandleFunc("POST /api/options/open", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionOpen))))
+	s.mux.HandleFunc("POST /api/options/close", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionClose))))
 	return s
 }
 
@@ -269,6 +285,89 @@ func TestHandleTradeBuy(t *testing.T) {
 		// behavior where ExecuteBuy sent the failure message too.
 		if last := trade.notified[len(trade.notified)-1]; last != "no position" {
 			t.Errorf("last Notify() call = %q, want %q (failures still notify)", last, "no position")
+		}
+	})
+}
+
+func TestHandleOptionOpenClose(t *testing.T) {
+	trade := &fakeTrade{optOpenMsg: "opened", optCloseMsg: "closed"}
+	s := newTradeTestServer("secret", trade, &fakeWatchlistDB{})
+	cookie := loginAndGetCookie(t, s, "secret")
+
+	t.Run("open defaults an omitted date to today and notifies", func(t *testing.T) {
+		body, _ := json.Marshal(optionOpenRequest{Symbol: "aapl260116c00200000", Side: "BUY", Contracts: 1, Premium: 4.2})
+		req := httptest.NewRequest(http.MethodPost, "/api/options/open", bytes.NewReader(body))
+		req.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+		}
+		var got tradeResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if got.Message != "opened" {
+			t.Errorf("Message = %q, want %q", got.Message, "opened")
+		}
+		if trade.lastOptOpen.Date == "" {
+			t.Errorf("ExecuteOptionOpen() date = %q, want today's date (non-empty)", trade.lastOptOpen.Date)
+		}
+		if trade.lastOptOpen.Symbol != "aapl260116c00200000" {
+			t.Errorf("ExecuteOptionOpen() symbol = %q, want %q (uppercasing is bot-layer's job)", trade.lastOptOpen.Symbol, "aapl260116c00200000")
+		}
+		if len(trade.notified) != 1 || trade.notified[0] != "opened" {
+			t.Errorf("Notify() calls = %v, want exactly [%q]", trade.notified, "opened")
+		}
+	})
+
+	t.Run("open rejects a malformed date", func(t *testing.T) {
+		body, _ := json.Marshal(optionOpenRequest{Symbol: "AAPL260116C00200000", Side: "BUY", Contracts: 1, Premium: 4.2, Date: "07/01/2026"})
+		req := httptest.NewRequest(http.MethodPost, "/api/options/open", bytes.NewReader(body))
+		req.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400", rec.Code)
+		}
+	})
+
+	t.Run("open maps an executor error to 400 with its message", func(t *testing.T) {
+		trade.optOpenErr = db.ErrCrossesZero
+		trade.optOpenMsg = "crosses zero"
+		defer func() { trade.optOpenErr = nil }()
+
+		body, _ := json.Marshal(optionOpenRequest{Symbol: "AAPL260116C00200000", Side: "BUY", Contracts: 1, Premium: 4.2})
+		req := httptest.NewRequest(http.MethodPost, "/api/options/open", bytes.NewReader(body))
+		req.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400", rec.Code)
+		}
+		var got map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if got["error"] != "crosses zero" {
+			t.Errorf("error = %q, want %q", got["error"], "crosses zero")
+		}
+	})
+
+	t.Run("close passes action and contracts through", func(t *testing.T) {
+		body, _ := json.Marshal(optionCloseRequest{Symbol: "AAPL260116C00200000", Action: db.OptionActionBuyToClose, Contracts: 1, Premium: 1.1})
+		req := httptest.NewRequest(http.MethodPost, "/api/options/close", bytes.NewReader(body))
+		req.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+		}
+		if trade.lastOptClose.Action != db.OptionActionBuyToClose {
+			t.Errorf("ExecuteOptionClose() action = %q, want %q", trade.lastOptClose.Action, db.OptionActionBuyToClose)
 		}
 	})
 }

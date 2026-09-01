@@ -1340,6 +1340,38 @@ export function setThesis(ticker: string, text: string): Promise<TradeResponse> 
   return postJSON("/api/thesis", { ticker, text });
 }
 
+// OptionOpenRequest/OptionCloseRequest mirror internal/web/options.go's
+// optionOpenRequest/optionCloseRequest — the options page's write half
+// (OptionsView's Add/Close modals). action is one of the
+// OPTION_CLOSE_ACTIONS below; a resolution action (EXPIRED/ASSIGNED/
+// EXERCISED) ignores contracts/premium/fee server-side (resolveOption
+// always closes the whole remaining position at premium 0).
+export interface OptionOpenRequest {
+  symbol: string;
+  side: "BUY" | "SELL";
+  contracts: number;
+  premium: number;
+  fee?: number;
+  date?: string;
+}
+
+export interface OptionCloseRequest {
+  symbol: string;
+  action: string;
+  contracts?: number;
+  premium?: number;
+  fee?: number;
+  date?: string;
+}
+
+export function executeOptionOpen(req: OptionOpenRequest): Promise<TradeResponse> {
+  return postJSON("/api/options/open", req);
+}
+
+export function executeOptionClose(req: OptionCloseRequest): Promise<TradeResponse> {
+  return postJSON("/api/options/close", req);
+}
+
 // --- Phase 5 §B CSV import (optional, docs/phase-5-web-dashboard.md) ---
 // Mirrors internal/web/csvimport.go's importRow/importResponse.
 

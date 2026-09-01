@@ -238,7 +238,14 @@ export default function App() {
       />
     ) : null;
   } else if (path === "/options") {
-    body = <OptionsView dict={dict} market={market} />;
+    body = (
+      <OptionsView
+        dict={dict}
+        market={market}
+        writable={status?.writable ?? false}
+        onUnauthorized={(retry) => setAuthRetry(() => retry)}
+      />
+    );
   } else if (path === "/llm") {
     body = llmAuditEnabled && devMode ? (
       <LlmRunsView
