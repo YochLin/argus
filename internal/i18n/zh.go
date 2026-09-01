@@ -710,7 +710,7 @@ var zhMessages = map[Key]string{
 	KeyPodcastSavedHeader:   "已從這集抽出 %d 則觀點並存檔：\n\n",
 	KeyPodcastSavedLine:     "• %s [%s] %s\n",
 	KeyPodcastMacroLabel:    "總體經濟",
-	KeyPodcastPromptIntro: "使用者分享了一段股市相關 podcast/影音節目的逐字稿，內容可能包含業配、開場閒聊、聽眾 Q&A 等與投資無關的段落。請只從市場分析段落抽取重點，忽略業配、廣告、以及與投資無關的個人閒聊。\n\n標題：%s\n網址：%s\n\n逐字稿：\n%s\n\n",
+	KeyPodcastPromptIntro:   "使用者分享了一段股市相關 podcast/影音節目的逐字稿，內容可能包含業配、開場閒聊、聽眾 Q&A 等與投資無關的段落。請只從市場分析段落抽取重點，忽略業配、廣告、以及與投資無關的個人閒聊。\n\n標題：%s\n網址：%s\n\n逐字稿：\n%s\n\n",
 	KeyPodcastTaskBlock: `
 ## 任務
 
@@ -721,8 +721,17 @@ var zhMessages = map[Key]string{
 %s 觀點只能是 BULLISH、BEARISH、NEUTRAL、WATCH 四者之一
 %s 一句話貼近原文的重點，不要自行延伸腦補（100字以內）
 
+如果逐字稿提到某檔標的的需求成長或利多，而你根據自己的產業知識判斷有明確、有機會受惠的下游供應鏈廠商
+（美股或台股皆可），也請額外為該廠商輸出一個區塊，並多加一行：
+%s <被提到的原標的代號>：<受惠的原因，例如什麼需求成長>
+這行代表是你自己根據產業知識做的推論，不是逐字稿原文直接點名的公司，請只在關聯明確時才輸出，
+不要為了填滿而亂猜。
+
 如果整段逐字稿沒有任何值得抽取的市場相關內容，不要輸出任何區塊。
 `,
-	KeyPodcastMarketMarker: "市場:",
-	KeyPodcastStanceMarker: "觀點:",
+	KeyPodcastMarketMarker:     "市場:",
+	KeyPodcastStanceMarker:     "觀點:",
+	KeyPodcastDerivedMarker:    "推論自:",
+	KeyPodcastDerivedLine:      "　└ 推論自：%s（非逐字稿原文直接提及）\n",
+	KeyPodcastDuplicateWarning: "⚠️ 這個連結先前已經分析過，已有 %d 則記錄，這次仍會繼續分析並新增。",
 }

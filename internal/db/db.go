@@ -709,6 +709,17 @@ var migrations = []string{
 	);
 	CREATE INDEX IF NOT EXISTS idx_podcast_insights_ticker ON podcast_insights(ticker);
 	`,
+
+	// 26: podcast_insights.derived_from (see PodcastInsight's doc comment) —
+	// "" for a row grounded in something the transcript actually said, and a
+	// short note (e.g. "NVDA: GPU demand") for a downstream-beneficiary row
+	// the model inferred from its own supply-chain knowledge rather than the
+	// transcript naming it directly — same "unverified, LLM's own claim"
+	// shape as llm.ExploreNomination, so it needs to stay visibly
+	// distinguishable from a grounded mention.
+	`
+	ALTER TABLE podcast_insights ADD COLUMN derived_from TEXT NOT NULL DEFAULT '';
+	`,
 }
 
 func (d *DB) migrate() error {

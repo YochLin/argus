@@ -722,7 +722,7 @@ Write only from the data actually provided above — omit any section you have n
 	KeyPodcastSavedHeader:   "Extracted and saved %d view(s) from this episode:\n\n",
 	KeyPodcastSavedLine:     "• %s [%s] %s\n",
 	KeyPodcastMacroLabel:    "Macro",
-	KeyPodcastPromptIntro: "The user shared a stock-market podcast/video transcript. It may contain sponsor reads, small talk, or listener Q&A unrelated to investing. Only extract points from market-analysis passages — ignore ads, sponsor reads, and unrelated personal chatter.\n\nTitle: %s\nURL: %s\n\nTranscript:\n%s\n\n",
+	KeyPodcastPromptIntro:   "The user shared a stock-market podcast/video transcript. It may contain sponsor reads, small talk, or listener Q&A unrelated to investing. Only extract points from market-analysis passages — ignore ads, sponsor reads, and unrelated personal chatter.\n\nTitle: %s\nURL: %s\n\nTranscript:\n%s\n\n",
 	KeyPodcastTaskBlock: `
 ## Task
 
@@ -733,8 +733,18 @@ Find every per-stock view and macro view mentioned in the transcript (leave the 
 %s Stance must be exactly one of BULLISH, BEARISH, NEUTRAL, WATCH
 %s One sentence close to the original wording — do not embellish or infer beyond it (under 100 words)
 
+If the transcript mentions growing demand or a tailwind for some ticker, and based on your own
+industry/supply-chain knowledge there's a clear, plausible downstream beneficiary (US or TW listed),
+output an extra block for that company too, with one more line:
+%s <the ticker actually mentioned>: <why it benefits, e.g. what demand is growing>
+This line marks the block as your own supply-chain inference, not a company the transcript named
+directly — only output it when the connection is clear, don't guess just to fill space.
+
 If nothing in the transcript is worth extracting, output nothing.
 `,
-	KeyPodcastMarketMarker: "Market:",
-	KeyPodcastStanceMarker: "Stance:",
+	KeyPodcastMarketMarker:     "Market:",
+	KeyPodcastStanceMarker:     "Stance:",
+	KeyPodcastDerivedMarker:    "Derived from:",
+	KeyPodcastDerivedLine:      "   └ derived from: %s (not directly named in the transcript)\n",
+	KeyPodcastDuplicateWarning: "⚠️ This link has already been analyzed before (%d record(s) on file) — proceeding to analyze it again.",
 }

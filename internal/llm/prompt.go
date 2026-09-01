@@ -832,7 +832,8 @@ func buildPodcastPrompt(lang i18n.Lang, title, url, transcript string) string {
 	sb.WriteString(i18n.T(lang, i18n.KeyPodcastTaskBlock,
 		i18n.T(lang, i18n.KeyPodcastMarketMarker),
 		i18n.T(lang, i18n.KeyPodcastStanceMarker),
-		i18n.T(lang, i18n.KeyReasonMarker)))
+		i18n.T(lang, i18n.KeyReasonMarker),
+		i18n.T(lang, i18n.KeyPodcastDerivedMarker)))
 	return sb.String()
 }
 
