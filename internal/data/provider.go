@@ -20,6 +20,13 @@ type NewsItem struct {
 	Source      string
 	URL         string
 	PublishedAt time.Time
+
+	// RelatedTickers holds the tickers a provider itself says the item is
+	// about — cnyes's editor-assigned market[] tags (Phase 19 後續 PR5-1)
+	// and Yahoo's relatedTickers (5-3, not yet wired). Empty for providers
+	// with no such field (Finnhub, Google News); never inferred from the
+	// headline text.
+	RelatedTickers []string
 }
 
 type Provider interface {
