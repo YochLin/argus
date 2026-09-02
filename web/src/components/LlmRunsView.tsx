@@ -10,6 +10,7 @@ import {
   type BlockedNewsSource,
   type LLMNewsItem,
   type LLMRunDetail,
+  type LLMRunInput,
   type LLMRunSummary,
   type LLMStockData,
 } from "../api";
@@ -55,9 +56,44 @@ function duplicateTitleSet(news: LLMNewsItem[]): Set<string> {
   return dupes;
 }
 
-function allNews(detail: LLMRunDetail): LLMNewsItem[] {
-  const stocks = [...detail.input.watchlist, ...detail.input.candidates];
-  return [...detail.input.marketNews, ...stocks.flatMap((s) => s.News ?? [])];
+// price_event runs store a completely different payload than
+// recommend/daily_report's recommendationInputs — {ticker,gapPct,...,news}
+// instead of {watchlist,candidates,marketNews} (internal/bot/pipeline.go's
+// recordPriceEventLLMRun). Folding its news into marketNews here, rather
+// than growing a second render path, keeps the whole data-quality audit —
+// stale/blocked/no-summary/duplicate counts — working on it, which is the
+// entire point of this page. Everything below reads this, never input.
+interface RunInput {
+  watchlist: LLMStockData[];
+  candidates: LLMStockData[];
+  marketNews: LLMNewsItem[];
+}
+
+export function runInput(input: LLMRunInput): RunInput {
+  return {
+    watchlist: input.watchlist ?? [],
+    candidates: input.candidates ?? [],
+    marketNews: input.marketNews ?? input.news ?? [],
+  };
+}
+
+export function runKindLabel(kind: string, dict: Dictionary): string {
+  if (kind === "recommend") return dict.llmRunRecommend;
+  if (kind === "price_event") return dict.llmRunPriceEvent;
+  return dict.llmRunDailyReport;
+}
+
+// Local copy of PositionsTable/ReportsView/PaperView's signed-percent
+// formatter — three of them already exist, a fourth is a smaller diff than
+// hoisting a shared util through four files.
+function signedPct(v: number | undefined): string {
+  if (v === undefined) return "—";
+  return `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+}
+
+function allNews(input: RunInput): LLMNewsItem[] {
+  const stocks = [...input.watchlist, ...input.candidates];
+  return [...input.marketNews, ...stocks.flatMap((s) => s.News ?? [])];
 }
 
 function countLowQuality(news: LLMNewsItem[], blocked: Set<string>): number {
@@ -77,14 +113,14 @@ function countNoSummary(news: LLMNewsItem[]): number {
 // bound to any one ticker's five slots). Phase 19 後續 PR6 needs this to
 // tell apart two very different things the flat duplicate count used to
 // conflate — see countDuplicateTitlesByScope.
-function newsWithScope(detail: LLMRunDetail): { item: LLMNewsItem; scope: string }[] {
-  const stocks = [...detail.input.watchlist, ...detail.input.candidates];
+function newsWithScope(input: RunInput): { item: LLMNewsItem; scope: string }[] {
+  const stocks = [...input.watchlist, ...input.candidates];
   const out: { item: LLMNewsItem; scope: string }[] = [];
   stocks.forEach((s, i) => {
     const ticker = (s.Quote?.Ticker as string | undefined) ?? `stock-${i}`;
     for (const n of s.News ?? []) out.push({ item: n, scope: ticker });
   });
-  detail.input.marketNews.forEach((n, i) => out.push({ item: n, scope: `marketNews-${i}` }));
+  input.marketNews.forEach((n, i) => out.push({ item: n, scope: `marketNews-${i}` }));
   return out;
 }
 
@@ -96,8 +132,8 @@ function newsWithScope(detail: LLMRunDetail): { item: LLMNewsItem; scope: string
 // within one ticker's own News (or a single marketNews item repeating,
 // which can't happen); crossTicker=true counts a title whose occurrences
 // span more than one such scope — the 2026-08-27 audit finding.
-function countDuplicateTitlesByScope(detail: LLMRunDetail, crossTicker: boolean): number {
-  const entries = newsWithScope(detail);
+function countDuplicateTitlesByScope(input: RunInput, crossTicker: boolean): number {
+  const entries = newsWithScope(input);
   const countByTitle = new Map<string, number>();
   const scopesByTitle = new Map<string, Set<string>>();
   for (const { item, scope } of entries) {
@@ -315,9 +351,7 @@ function RunSidebar({
           onClick={() => onOpenRun(r.id)}
         >
           <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span className={`tag${r.kind === "recommend" ? " tint" : ""}`}>
-              {r.kind === "recommend" ? dict.llmRunRecommend : dict.llmRunDailyReport}
-            </span>
+            <span className={`tag${r.kind === "recommend" ? " tint" : ""}`}>{runKindLabel(r.kind, dict)}</span>
           </span>
           <span className="mono">{r.createdAt}</span>
           <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
@@ -377,8 +411,10 @@ function RunDetail({
   if (!detail || !blockedSources) return <div className="loading">{dict.loading}</div>;
 
   const blocked = new Set(blockedSources.map((b) => normTitle(b.source)));
-  const news = allNews(detail);
-  const stocks = [...detail.input.watchlist, ...detail.input.candidates];
+  const input = runInput(detail.input);
+  const news = allNews(input);
+  const stocks = [...input.watchlist, ...input.candidates];
+  const event = detail.kind === "price_event" ? detail.input : null;
   const dupes = duplicateTitleSet(news);
 
   return (
@@ -391,16 +427,25 @@ function RunDetail({
           <span className="mono" style={{ fontSize: 12, color: "var(--ink-2)" }}>
             {detail.createdAt}
           </span>
-          <span className={`tag${detail.kind === "recommend" ? " tint" : ""}`}>
-            {detail.kind === "recommend" ? dict.llmRunRecommend : dict.llmRunDailyReport}
-          </span>
+          <span className={`tag${detail.kind === "recommend" ? " tint" : ""}`}>{runKindLabel(detail.kind, dict)}</span>
           <span className="tag">{detail.market.toUpperCase()}</span>
         </div>
         <div className="dash-kpi-strip" style={{ marginTop: 12, marginBottom: 0 }}>
           <StatBlock label={dict.llmModel} value={detail.model} />
           <StatBlock label={dict.llmLatency} value={formatDuration(detail.latencyMs)} />
-          <StatBlock label={dict.llmWatchlist} value={detail.watchlistCount} />
-          <StatBlock label={dict.llmCandidates} value={detail.candidateCount} />
+          {event ? (
+            <>
+              <StatBlock label={dict.ticker} value={tickerLabel(event.ticker ?? "?", names)} />
+              <StatBlock label={dict.llmEventGap} value={signedPct(event.gapPct)} />
+              <StatBlock label={dict.llmEventChange} value={signedPct(event.changePct)} />
+              <StatBlock label={dict.llmEventCumulative} value={signedPct(event.cumulativePct)} />
+            </>
+          ) : (
+            <>
+              <StatBlock label={dict.llmWatchlist} value={detail.watchlistCount} />
+              <StatBlock label={dict.llmCandidates} value={detail.candidateCount} />
+            </>
+          )}
         </div>
       </div>
 
@@ -421,13 +466,13 @@ function RunDetail({
           />
           <QualityBlock
             label={dict.llmDuplicateTitlesSameTicker}
-            value={countDuplicateTitlesByScope(detail, false)}
-            warn={countDuplicateTitlesByScope(detail, false) > 0}
+            value={countDuplicateTitlesByScope(input, false)}
+            warn={countDuplicateTitlesByScope(input, false) > 0}
           />
           <QualityBlock
             label={dict.llmDuplicateTitlesCrossTicker}
-            value={countDuplicateTitlesByScope(detail, true)}
-            warn={countDuplicateTitlesByScope(detail, true) > 0}
+            value={countDuplicateTitlesByScope(input, true)}
+            warn={countDuplicateTitlesByScope(input, true) > 0}
           />
           <QualityBlock label={dict.llmCandleGaps} value={detail.candleGapCount} warn={detail.candleGapCount > 0} />
           <QualityBlock
@@ -460,7 +505,7 @@ function RunDetail({
       </div>
 
       <div className="card" style={{ overflowX: "auto" }}>
-        <div className="eyebrow">{dict.llmNewsMarket}</div>
+        <div className="eyebrow">{event ? dict.llmNewsPerTicker : dict.llmNewsMarket}</div>
         <table className="mono" style={{ width: "100%" }}>
           <thead>
             <tr>
@@ -471,7 +516,7 @@ function RunDetail({
             </tr>
           </thead>
           <tbody>
-            {detail.input.marketNews.map((n, i) => (
+            {input.marketNews.map((n, i) => (
               <NewsRow
                 key={i}
                 dict={dict}
@@ -486,50 +531,56 @@ function RunDetail({
           </tbody>
         </table>
 
-        <div className="eyebrow" style={{ marginTop: 14 }}>
-          {dict.llmNewsPerTicker}
-        </div>
-        <table className="mono" style={{ width: "100%" }}>
-          <thead>
-            <tr>
-              <th>{dict.llmSource}</th>
-              <th>{dict.llmScope}</th>
-              <th>{dict.llmPublishedAt}</th>
-              <th>{dict.llmHeadline}</th>
-              {writable && <th />}
-            </tr>
-          </thead>
-          <tbody>
-            {stocks.flatMap((s, si) => {
-              const ticker = (s.Quote?.Ticker as string) || "?";
-              return (s.News ?? []).map((n, ni) => (
-                <NewsRow
-                  key={`${si}-${ni}`}
-                  dict={dict}
-                  news={n}
-                  scope={tickerLabel(ticker, names)}
-                  createdAt={detail.createdAt}
-                  isDuplicate={dupes.has(normTitle(n.Headline))}
-                  blocked={blocked}
-                  writable={writable}
-                  onBlock={doBlock}
-                />
-              ));
-            })}
-          </tbody>
-        </table>
+        {stocks.length > 0 && (
+          <>
+            <div className="eyebrow" style={{ marginTop: 14 }}>
+              {dict.llmNewsPerTicker}
+            </div>
+            <table className="mono" style={{ width: "100%" }}>
+              <thead>
+                <tr>
+                  <th>{dict.llmSource}</th>
+                  <th>{dict.llmScope}</th>
+                  <th>{dict.llmPublishedAt}</th>
+                  <th>{dict.llmHeadline}</th>
+                  {writable && <th />}
+                </tr>
+              </thead>
+              <tbody>
+                {stocks.flatMap((s, si) => {
+                  const ticker = (s.Quote?.Ticker as string) || "?";
+                  return (s.News ?? []).map((n, ni) => (
+                    <NewsRow
+                      key={`${si}-${ni}`}
+                      dict={dict}
+                      news={n}
+                      scope={tickerLabel(ticker, names)}
+                      createdAt={detail.createdAt}
+                      isDuplicate={dupes.has(normTitle(n.Headline))}
+                      blocked={blocked}
+                      writable={writable}
+                      onBlock={doBlock}
+                    />
+                  ));
+                })}
+              </tbody>
+            </table>
+          </>
+        )}
       </div>
 
-      <div className="card">
-        <div className="eyebrow" style={{ marginBottom: 10 }}>
-          {dict.llmStocksTitle}
+      {stocks.length > 0 && (
+        <div className="card">
+          <div className="eyebrow" style={{ marginBottom: 10 }}>
+            {dict.llmStocksTitle}
+          </div>
+          <div className="llm-cards-grid">
+            {stocks.map((s, i) => (
+              <StockCard key={i} dict={dict} names={names} stock={s} />
+            ))}
+          </div>
         </div>
-        <div className="llm-cards-grid">
-          {stocks.map((s, i) => (
-            <StockCard key={i} dict={dict} names={names} stock={s} />
-          ))}
-        </div>
-      </div>
+      )}
 
       <div className="llm-pair-grid">
         {detail.input.marketContext && (

@@ -1471,13 +1471,24 @@ export interface LLMStockData {
   [key: string]: unknown;
 }
 
+// Every field is optional because two different Go payloads land in this
+// one column: recommend/daily_report runs store bot.recordLLMRun's
+// recommendationInputs (watchlist/candidates/marketNews), price_event runs
+// store recordPriceEventLLMRun's single-ticker struct (ticker/gapPct/news).
+// LlmRunsView's runInput() is the one place that reconciles the two.
 export interface LLMRunInput {
-  watchlist: LLMStockData[];
-  candidates: LLMStockData[];
-  marketNews: LLMNewsItem[];
+  watchlist?: LLMStockData[];
+  candidates?: LLMStockData[];
+  marketNews?: LLMNewsItem[];
   marketContext?: Record<string, unknown>;
   recentLessons?: LLMPastLesson[];
-  isTW: boolean;
+  isTW?: boolean;
+  // price_event only (internal/bot/pipeline.go recordPriceEventLLMRun)
+  ticker?: string;
+  gapPct?: number;
+  changePct?: number;
+  cumulativePct?: number;
+  news?: LLMNewsItem[];
 }
 
 export function fetchLLMRuns(): Promise<{ runs: LLMRunSummary[] }> {

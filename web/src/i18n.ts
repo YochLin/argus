@@ -124,6 +124,10 @@ export interface Dictionary {
   llmNews: string;
   llmRunRecommend: string;
   llmRunDailyReport: string;
+  llmRunPriceEvent: string;
+  llmEventGap: string;
+  llmEventChange: string;
+  llmEventCumulative: string;
   llmNoRuns: string;
   llmNewsMarket: string;
   llmNewsPerTicker: string;
@@ -547,6 +551,10 @@ const en: Dictionary = {
   llmNews: "News",
   llmRunRecommend: "/recommend",
   llmRunDailyReport: "Daily report",
+  llmRunPriceEvent: "Price event",
+  llmEventGap: "Gap",
+  llmEventChange: "Change",
+  llmEventCumulative: "Cumulative",
   llmNoRuns: "No LLM runs recorded yet.",
   llmNewsMarket: "Market news",
   llmNewsPerTicker: "Per-ticker news",
@@ -937,6 +945,10 @@ const zh: Dictionary = {
   llmNews: "新聞",
   llmRunRecommend: "/recommend",
   llmRunDailyReport: "每日報告",
+  llmRunPriceEvent: "價格事件",
+  llmEventGap: "跳空",
+  llmEventChange: "當日漲跌",
+  llmEventCumulative: "累計漲跌",
   llmNoRuns: "尚無 LLM 執行紀錄。",
   llmNewsMarket: "市場新聞",
   llmNewsPerTicker: "個股新聞",
