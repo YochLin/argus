@@ -172,3 +172,48 @@ func TestPortfolioBacktest_MaxPositionPctCaps(t *testing.T) {
 	}
 	_ = entryPrice
 }
+
+// TestPortfolioBacktest_PartialExitAtR pins §8.4②'s portfolio-layer wiring:
+// once cfg.PartialExitAtR fires, the position must stay open (not appear in
+// result.Trades, which is only round trips — see the `stillOpen` skip this
+// added to runPortfolioBacktest's sell-pairing loop) with its cash proceeds
+// landing in the curve, and the same holding must eventually close for real
+// once the rally reverses.
+func TestPortfolioBacktest_PartialExitAtR(t *testing.T) {
+	bench := benchPath(90, 0)
+	ticker := sweepCandles(append(repeatMove(0.5, 40), repeatMove(-5, 20)...))
+	hists := map[string]tickerHist{"A": newTickerHist(ticker)}
+	entryDate := ticker[5].Date.Format("2006-01-02")
+	entries := map[string][]string{entryDate: {"A"}}
+
+	cfg := paper.Config{StopATRMult: 2, StopLossPct: 10, TrailingPct: 18, Market: market.US, RiskPct: 1.0, MaxPositionPct: 40, PartialExitAtR: 1}
+	result := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "", "")
+
+	var cashAfterEntry float64
+	for _, p := range result.Curve {
+		if p.Date == entryDate {
+			cashAfterEntry = p.Cash
+			break
+		}
+	}
+	if cashAfterEntry <= 0 {
+		t.Fatal("no cash recorded on the entry date")
+	}
+
+	var midCash float64
+	for _, p := range result.Curve {
+		if p.Date > entryDate && p.Cash > midCash {
+			midCash = p.Cash
+		}
+	}
+	if midCash <= cashAfterEntry+1e-6 {
+		t.Fatalf("expected cash to rise above %.2f after the partial exit's proceeds, got max %.2f", cashAfterEntry, midCash)
+	}
+
+	if len(result.Trades) != 1 {
+		t.Fatalf("expected exactly one closed round trip (the eventual full exit after the crash), got %d: %+v", len(result.Trades), result.Trades)
+	}
+	if result.Trades[0].EntryDate != entryDate {
+		t.Errorf("closed trade's EntryDate = %s, want %s (the partial fill must not have been paired off as its own round trip)", result.Trades[0].EntryDate, entryDate)
+	}
+}

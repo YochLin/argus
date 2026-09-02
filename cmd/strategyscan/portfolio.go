@@ -260,6 +260,14 @@ func runPortfolioBacktest(hists map[string]tickerHist, entriesByDate map[string]
 			}
 		}
 		for _, sell := range acct.MarkClose(date, closes, atrs, cfg) {
+			// §8.4②: a "partial_target" fill (paper.Config.PartialExitAtR)
+			// doesn't close the position — the ticker is still in
+			// acct.Holdings afterward — so it isn't a round trip yet; leave
+			// `open`'s original entry alone for whenever the remainder does
+			// fully close.
+			if _, stillOpen := acct.Holdings[sell.Ticker]; stillOpen {
+				continue
+			}
 			if e, ok := open[sell.Ticker]; ok {
 				trades = append(trades, closedPortfolioTrade{
 					Ticker: sell.Ticker, EntryDate: e.EntryDate, ExitDate: date,
@@ -375,9 +383,9 @@ func annualizedReturnPct(curve []equityPoint) float64 {
 	return (math.Pow(curve[len(curve)-1].Equity/curve[0].Equity, 1/years) - 1) * 100
 }
 
-func printPortfolioResult(initialCash float64, r portfolioResult, volTarget bool) {
+func printPortfolioResult(initialCash float64, r portfolioResult, volTarget bool, partialExitAtR float64) {
 	fmt.Printf("\n=======================================================\n")
-	fmt.Printf(" 組合回測（Phase 25 §3.3 portfolio-layer backtest, vol-target=%v）\n", volTarget)
+	fmt.Printf(" 組合回測（Phase 25 §3.3 portfolio-layer backtest, vol-target=%v, partial-exit-at-r=%.2f）\n", volTarget, partialExitAtR)
 	fmt.Printf("=======================================================\n")
 	fmt.Printf("起始資金 $%.0f -> 期末權益 $%.0f（%d 個交易日、%d 筆平倉交易）\n",
 		initialCash, r.FinalEquity, len(r.Curve), len(r.Trades))
