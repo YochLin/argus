@@ -213,6 +213,109 @@ func volMultiplierAt(rv20 []float64, i int) float64 {
 	return volMultCeil - pct*(volMultCeil-volMultFloor)
 }
 
+// Phase 25 §8.6's diversification gate: `paper.Config.MaxPositionPct` caps a
+// single position's size but has no notion of "these N concurrently-held
+// positions are really the same bet" (same sector/factor moving together).
+// Rather than building sector classification (TW has one via FinMind, US
+// doesn't — see docs/phase-25-new-strategy-candidates.md §8.6), this uses
+// trailing correlationWindow-day daily-return correlation between a BUY
+// candidate and each currently-held ticker as a market-agnostic proxy: two
+// tickers that have been moving together ARE the same bet, whatever the
+// reason. correlationWindow=60 (~3 months) and the 0.7 threshold tested below
+// are pre-registered per §4.4, not swept — this is a portfolio-only overlay
+// (like -vol-target), never wired into paper.Config/simulateTrade, since it
+// only means anything once more than one position can be held at once.
+//
+// Measured 2026-09-02 via -portfolio-backtest -max-correlation-at-entry=0.7
+// vs =0 (US S&P 500, 10y cache, -portfolio-cash=100000 -portfolio-risk-pct=1.0
+// -portfolio-max-position-pct=25 — same settings as §3/§8.3/§8.4②),
+// acceptance metric Sharpe+max-drawdown per the doc's §8.6 note (same
+// instrument as §3/§8.4②, not per-trade return):
+//
+//	slice              Sharpe (off -> on)   MaxDD% (off -> on)   Ann.Ret% (off -> on)   trades
+//	holdout 16-21     0.50 -> 0.36         28.51 -> 26.90        +6.36 -> +4.18          145 -> 141
+//	in-sample 21-26   0.69 -> 0.68         24.05 -> 23.81       +13.46 -> +12.55          236 -> 215
+//
+// NO-SHIP: max drawdown improves in both slices, but Sharpe — the
+// pre-registered primary metric — gets WORSE in both, sharply so in the
+// holdout (0.50 -> 0.36). Skipping a correlated entry doesn't just cut the
+// crowded-bet risk the gate targets; on this signal set it disproportionately
+// skips entries that would have been winners, so the return given up costs
+// more than the smoother ride is worth. Fails the "both metrics improve in
+// both slices" bar, the same rejection shape as §3's vol-target, §8.3's
+// regime gate, and §8.4③'s breakeven stop. Flag stays default off; this is
+// not a parameter to re-tune post hoc (§4.4) — a different threshold/window
+// would need its own pre-registered run.
+const correlationWindow = 60
+
+// pearson is the standard product-moment correlation coefficient. Returns 0
+// when either series has no variance (a flat run), rather than NaN.
+func pearson(a, b []float64) float64 {
+	n := len(a)
+	if n == 0 {
+		return 0
+	}
+	ma, mb := mean(a), mean(b)
+	var cov, va, vb float64
+	for i := 0; i < n; i++ {
+		da, db := a[i]-ma, b[i]-mb
+		cov += da * db
+		va += da * da
+		vb += db * db
+	}
+	if va == 0 || vb == 0 {
+		return 0
+	}
+	return cov / math.Sqrt(va*vb)
+}
+
+// trailingCorrelation pairs hA's and hB's daily log returns over the
+// correlationWindow trading days ending at hA's bar idxA, matched by
+// calendar date (hB may have gaps hA doesn't, e.g. a later listing date) —
+// ok is false when fewer than half the window's days align, too thin a
+// sample to trust.
+func trailingCorrelation(hA, hB tickerHist, idxA int) (corr float64, ok bool) {
+	if idxA < correlationWindow {
+		return 0, false
+	}
+	retsA := make([]float64, 0, correlationWindow)
+	retsB := make([]float64, 0, correlationWindow)
+	for i := idxA - correlationWindow + 1; i <= idxA; i++ {
+		date := hA.candles[i].Date.Format("2006-01-02")
+		prevDate := hA.candles[i-1].Date.Format("2006-01-02")
+		jb, okB := hB.idxByDate[date]
+		jbPrev, okBPrev := hB.idxByDate[prevDate]
+		if !okB || !okBPrev {
+			continue
+		}
+		if hA.closes[i-1] <= 0 || hA.closes[i] <= 0 || hB.closes[jbPrev] <= 0 || hB.closes[jb] <= 0 {
+			continue
+		}
+		retsA = append(retsA, math.Log(hA.closes[i]/hA.closes[i-1]))
+		retsB = append(retsB, math.Log(hB.closes[jb]/hB.closes[jbPrev]))
+	}
+	if len(retsA) < correlationWindow/2 {
+		return 0, false
+	}
+	return pearson(retsA, retsB), true
+}
+
+// tooCorrelated reports whether ticker h (at bar idx) is correlated at or
+// above threshold with any currently-held position — the gate
+// runPortfolioBacktest's entry loop applies before opening a new position.
+func tooCorrelated(hists map[string]tickerHist, holdings map[string]paper.Holding, h tickerHist, idx int, threshold float64) bool {
+	for heldTicker := range holdings {
+		hb, ok := hists[heldTicker]
+		if !ok {
+			continue
+		}
+		if corr, ok := trailingCorrelation(h, hb, idx); ok && corr >= threshold {
+			return true
+		}
+	}
+	return false
+}
+
 type openPosition struct {
 	EntryDate  string
 	EntryPrice float64
@@ -231,7 +334,7 @@ type openPosition struct {
 // the same way -date-from/-date-to bound which triggers get recorded
 // upstream, so a time-sliced run's curve doesn't include days outside the
 // slice it's studying.
-func runPortfolioBacktest(hists map[string]tickerHist, entriesByDate map[string][]string, benchCandles []data.Candle, cfg paper.Config, initialCash float64, volTarget bool, fromDate, toDate string) portfolioResult {
+func runPortfolioBacktest(hists map[string]tickerHist, entriesByDate map[string][]string, benchCandles []data.Candle, cfg paper.Config, initialCash float64, volTarget bool, maxCorrelationAtEntry float64, fromDate, toDate string) portfolioResult {
 	rv20 := computeRV20(data.Closes(benchCandles))
 	acct := paper.NewAccount(initialCash)
 	open := make(map[string]openPosition)
@@ -276,8 +379,11 @@ func runPortfolioBacktest(hists map[string]tickerHist, entriesByDate map[string]
 			if !ok {
 				continue
 			}
-			price, atr, _, ok := h.closeAndATR(date)
+			price, atr, idx, ok := h.closeAndATR(date)
 			if !ok || price <= 0 {
+				continue
+			}
+			if maxCorrelationAtEntry > 0 && tooCorrelated(hists, acct.Holdings, h, idx, maxCorrelationAtEntry) {
 				continue
 			}
 			entryCfg := cfg
@@ -375,9 +481,9 @@ func annualizedReturnPct(curve []equityPoint) float64 {
 	return (math.Pow(curve[len(curve)-1].Equity/curve[0].Equity, 1/years) - 1) * 100
 }
 
-func printPortfolioResult(initialCash float64, r portfolioResult, volTarget bool) {
+func printPortfolioResult(initialCash float64, r portfolioResult, volTarget bool, maxCorrelationAtEntry float64) {
 	fmt.Printf("\n=======================================================\n")
-	fmt.Printf(" 組合回測（Phase 25 §3.3 portfolio-layer backtest, vol-target=%v）\n", volTarget)
+	fmt.Printf(" 組合回測（Phase 25 §3.3 portfolio-layer backtest, vol-target=%v, max-correlation-at-entry=%.2f）\n", volTarget, maxCorrelationAtEntry)
 	fmt.Printf("=======================================================\n")
 	fmt.Printf("起始資金 $%.0f -> 期末權益 $%.0f（%d 個交易日、%d 筆平倉交易）\n",
 		initialCash, r.FinalEquity, len(r.Curve), len(r.Trades))

@@ -573,6 +573,11 @@ func main() {
 	// volMultiplierAt's doc comment in portfolio.go for the pre-registered
 	// formula/constants).
 	volTargetFlag := flag.Bool("vol-target", false, "Phase 25 §3: market-level volatility-targeted exposure overlay (SPY's 20d realized vol vs. its trailing 1y percentile scales RiskPct) — requires -portfolio-backtest, default off")
+	// Phase 25 §8.4/§8.6: concurrent-position diversification gate — requires
+	// -portfolio-backtest, since a single-ticker replay never holds more than
+	// one position to correlate against. 0 = off (default). See
+	// portfolio.go's tooCorrelated doc comment for the mechanism.
+	maxCorrelationFlag := flag.Float64("max-correlation-at-entry", 0, "Phase 25 §8.6: skip a BUY signal if its trailing 60-trading-day return correlation with any currently-held position is >= this threshold (e.g. 0.7); requires -portfolio-backtest, 0 = off (default)")
 	// Phase 25 §8.4①: alongside each of confirmableStrategies, evaluate a
 	// same-signal "<strategy>_confirm" variant in the SAME run (so it shares
 	// the SAME random-entry control the base strategy is compared against —
@@ -582,6 +587,10 @@ func main() {
 
 	if *volTargetFlag && !*portfolioBacktestFlag {
 		fmt.Printf("Error: -vol-target requires -portfolio-backtest (it has nothing to multiply otherwise)\n")
+		os.Exit(1)
+	}
+	if *maxCorrelationFlag > 0 && !*portfolioBacktestFlag {
+		fmt.Printf("Error: -max-correlation-at-entry requires -portfolio-backtest (it has nothing to correlate against otherwise)\n")
 		os.Exit(1)
 	}
 
@@ -1359,8 +1368,8 @@ func main() {
 		pcfg := exitCfg
 		pcfg.RiskPct = *portfolioRiskPctFlag
 		pcfg.MaxPositionPct = *portfolioMaxPositionPctFlag
-		result := runPortfolioBacktest(tickerHists, portfolioEntries, benchCandles, pcfg, *portfolioCashFlag, *volTargetFlag, *dateFromFlag, *dateToFlag)
-		printPortfolioResult(*portfolioCashFlag, result, *volTargetFlag)
+		result := runPortfolioBacktest(tickerHists, portfolioEntries, benchCandles, pcfg, *portfolioCashFlag, *volTargetFlag, *maxCorrelationFlag, *dateFromFlag, *dateToFlag)
+		printPortfolioResult(*portfolioCashFlag, result, *volTargetFlag, *maxCorrelationFlag)
 
 		eqPath := *portfolioEquityOutFlag
 		if eqPath == "" {
