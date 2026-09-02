@@ -230,6 +230,10 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 	// never carried. See internal/data/twse_t86.go's GetTrustNetSeries doc
 	// comment for the capped live lookback this implies.
 	var trustNetProvider data.TrustNetProvider = twMovers
+	// twCalendarProvider is the same *TWSE instance — one process-lifetime
+	// holiday-schedule cache shared with GetMarketMovers/GetInstitutionalFlow
+	// rather than a second client.
+	var twCalendarProvider data.TWTradingDayProvider = twMovers
 	twMarketNews := data.MarketNewsProvider(data.NewMarketNewsFilter(data.NewCnyes(), newsBlocked))
 	var twMoversProvider data.TWMarketMoversProvider = twMovers
 	if core.Sinopac != nil {
@@ -305,6 +309,7 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 		MarketNews:             marketNewsProvider,
 		TWMarketNews:           twMarketNews,
 		TWMovers:               twMoversProvider,
+		TWCalendar:             twCalendarProvider,
 		CompanyNames:           core.CompanyNames,
 		TrustNet:               trustNetProvider,
 		OptionChain:            core.Yahoo,
