@@ -573,6 +573,14 @@ func main() {
 	// volMultiplierAt's doc comment in portfolio.go for the pre-registered
 	// formula/constants).
 	volTargetFlag := flag.Bool("vol-target", false, "Phase 25 §3: market-level volatility-targeted exposure overlay (SPY's 20d realized vol vs. its trailing 1y percentile scales RiskPct) — requires -portfolio-backtest, default off")
+	// Phase 25 §8.3: a single switch applied uniformly across every
+	// strategy's pooled entries (not a per-strategy weight — see §8.3.4's
+	// multiple-comparisons objection) — bull-only skips every entry signal
+	// on a bear-regime day (marketRegimeAt), same MA50 definition
+	// splitRegime/printRegimeGroup already use. Requires -portfolio-backtest,
+	// since that's the only place §8.3's accept bar (Sharpe + max drawdown,
+	// both slices) is measured — see portfolio.go's regimeGate doc comment.
+	regimeGateFlag := flag.String("regime-gate", "off", "Phase 25 §8.3: gate every -portfolio-backtest entry on the benchmark's own regime (off|bull-only) — requires -portfolio-backtest, default off")
 	// Phase 25 §8.4①: alongside each of confirmableStrategies, evaluate a
 	// same-signal "<strategy>_confirm" variant in the SAME run (so it shares
 	// the SAME random-entry control the base strategy is compared against —
@@ -582,6 +590,15 @@ func main() {
 
 	if *volTargetFlag && !*portfolioBacktestFlag {
 		fmt.Printf("Error: -vol-target requires -portfolio-backtest (it has nothing to multiply otherwise)\n")
+		os.Exit(1)
+	}
+
+	if *regimeGateFlag != "off" && *regimeGateFlag != "bull-only" {
+		fmt.Printf("Error: -regime-gate must be off or bull-only, got %q\n", *regimeGateFlag)
+		os.Exit(1)
+	}
+	if *regimeGateFlag != "off" && !*portfolioBacktestFlag {
+		fmt.Printf("Error: -regime-gate requires -portfolio-backtest (it has nothing to gate otherwise)\n")
 		os.Exit(1)
 	}
 
@@ -1155,12 +1172,8 @@ func main() {
 			// evalDate, never its latest bar.
 			sIdx, hasBench := benchDateIdx[evalDateStr]
 			marketRegime := "bull"
-			if hasBench && sIdx >= 49 {
-				benchSub := benchCandles[:sIdx+1]
-				benchMA50 := signals.MA(data.Closes(benchSub), 50)
-				if benchMA50 > 0 && benchCandles[sIdx].Close < benchMA50 {
-					marketRegime = "bear"
-				}
+			if hasBench {
+				marketRegime = marketRegimeAt(benchCandles, sIdx)
 			}
 
 			// §10.3: forward returns computed for every day, not just hit days,
@@ -1359,8 +1372,8 @@ func main() {
 		pcfg := exitCfg
 		pcfg.RiskPct = *portfolioRiskPctFlag
 		pcfg.MaxPositionPct = *portfolioMaxPositionPctFlag
-		result := runPortfolioBacktest(tickerHists, portfolioEntries, benchCandles, pcfg, *portfolioCashFlag, *volTargetFlag, *dateFromFlag, *dateToFlag)
-		printPortfolioResult(*portfolioCashFlag, result, *volTargetFlag)
+		result := runPortfolioBacktest(tickerHists, portfolioEntries, benchCandles, pcfg, *portfolioCashFlag, *volTargetFlag, *regimeGateFlag, *dateFromFlag, *dateToFlag)
+		printPortfolioResult(*portfolioCashFlag, result, *volTargetFlag, *regimeGateFlag)
 
 		eqPath := *portfolioEquityOutFlag
 		if eqPath == "" {
@@ -1540,6 +1553,22 @@ func computeControl(recs []TriggerRecord) control {
 	_, c.bear10, _ = summaryStats5d10d20d(bear)
 	c.bullTrade, c.bearTrade = computeTradeStats(bull), computeTradeStats(bear)
 	return c
+}
+
+// marketRegimeAt is the single definition of "bull" vs "bear" every regime
+// split in this tool reads (§8.3): benchCandles[idx]'s close against its own
+// trailing MA50, recomputed at idx so there is no lookahead. "bull" is the
+// default whenever there isn't yet a full 50-day window (idx < 49) or idx is
+// out of range, matching the scan loop's original inline behavior.
+func marketRegimeAt(benchCandles []data.Candle, idx int) string {
+	if idx < 49 || idx >= len(benchCandles) {
+		return "bull"
+	}
+	benchMA50 := signals.MA(data.Closes(benchCandles[:idx+1]), 50)
+	if benchMA50 > 0 && benchCandles[idx].Close < benchMA50 {
+		return "bear"
+	}
+	return "bull"
 }
 
 // splitRegime partitions by the benchmark's regime at entry (MarketRegime,
@@ -1876,7 +1905,11 @@ func writeCSV(path string, recs []TriggerRecord) {
 // (§11.2 point 1) — not the raw few-hundred-thousand-row population, which
 // would defeat the "CSV is for manual spot-checks" purpose (§10.3 point 3).
 // This lets anyone independently re-derive every excess number in §8 without
-// re-fetching a baseline themselves.
+// re-fetching a baseline themselves. §8.3.3 step 1: also split by Regime
+// (all/bull/bear, same MA50 definition as marketRegimeAt) — before this, a
+// regime-split excess (screen's bull hits vs baseline) could only be read
+// off a run's own terminal output (printRegimeGroup), not recomputed from
+// the CSV later.
 // writeTradeDumpCSV writes one row per replayed baseline trade. Date and
 // Ticker are what make it joinable against another run's dump, which is the
 // whole point — the pairing is by entry, not by row order.
@@ -1946,21 +1979,30 @@ func writeBaselineSummaryCSV(path string, baselineRecs []TriggerRecord) {
 	w := csv.NewWriter(f)
 	defer w.Flush()
 
-	w.Write([]string{"Window", "N", "WinRatePct", "MeanRetPct", "MedianRetPct"})
-	d5, d10, d20 := summaryStats5d10d20d(baselineRecs)
-	for _, row := range []struct {
-		window string
-		s      windowStats
+	w.Write([]string{"Window", "Regime", "N", "WinRatePct", "MeanRetPct", "MedianRetPct"})
+	bull, bear := splitRegime(baselineRecs)
+	for _, group := range []struct {
+		regime string
+		recs   []TriggerRecord
 	}{
-		{"5d", d5}, {"10d", d10}, {"20d", d20},
+		{"all", baselineRecs}, {"bull", bull}, {"bear", bear},
 	} {
-		w.Write([]string{
-			row.window,
-			fmt.Sprintf("%d", row.s.n),
-			fmt.Sprintf("%.2f", row.s.winRate),
-			fmt.Sprintf("%.2f", row.s.meanRet),
-			fmt.Sprintf("%.2f", row.s.medRet),
-		})
+		d5, d10, d20 := summaryStats5d10d20d(group.recs)
+		for _, row := range []struct {
+			window string
+			s      windowStats
+		}{
+			{"5d", d5}, {"10d", d10}, {"20d", d20},
+		} {
+			w.Write([]string{
+				row.window,
+				group.regime,
+				fmt.Sprintf("%d", row.s.n),
+				fmt.Sprintf("%.2f", row.s.winRate),
+				fmt.Sprintf("%.2f", row.s.meanRet),
+				fmt.Sprintf("%.2f", row.s.medRet),
+			})
+		}
 	}
 	fmt.Printf("Saved baseline summary CSV to %s\n", path)
 }

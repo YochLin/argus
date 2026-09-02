@@ -96,8 +96,8 @@ func TestPortfolioBacktest_VolTargetInvariant(t *testing.T) {
 	// TestPortfolioBacktest_MaxPositionPctCaps).
 	cfg := paper.Config{StopATRMult: 2, StopLossPct: 10, TrailingPct: 18, Market: market.US, RiskPct: 1.0}
 
-	off := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "", "")
-	on := runPortfolioBacktest(hists, entries, bench, cfg, 100000, true, "", "")
+	off := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "off", "", "")
+	on := runPortfolioBacktest(hists, entries, bench, cfg, 100000, true, "off", "", "")
 
 	if len(off.Trades) == 0 {
 		t.Fatal("test setup produced no closed trades — widen the entry/price paths")
@@ -140,7 +140,7 @@ func TestPortfolioBacktest_MaxPositionPctCaps(t *testing.T) {
 
 	const capPct = 5.0
 	cfg := paper.Config{StopATRMult: 2, StopLossPct: 10, TrailingPct: 18, Market: market.US, RiskPct: 50, MaxPositionPct: capPct}
-	result := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "", "")
+	result := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "off", "", "")
 
 	// Find the day the position was opened and check its notional against
 	// equity that same day.
@@ -171,4 +171,64 @@ func TestPortfolioBacktest_MaxPositionPctCaps(t *testing.T) {
 		t.Fatal("no position was opened — test setup produced no fill")
 	}
 	_ = entryPrice
+}
+
+// TestPortfolioBacktest_RegimeGateBullOnly pins §8.3.3 step 2: -regime-gate
+// bull-only must withhold a NEW entry whose day marketRegimeAt scores
+// "bear", while leaving a same-shaped entry on a "bull" day untouched — and
+// must never touch an already-open position (that's what "gate every ENTRY
+// signal" means, not "flatten on a regime flip").
+func TestPortfolioBacktest_RegimeGateBullOnly(t *testing.T) {
+	bench := sweepCandles(append(repeatMove(0.5, 100), repeatMove(-1.0, 30)...))
+
+	var bullIdx, bearIdx = -1, -1
+	for i := range bench {
+		switch marketRegimeAt(bench, i) {
+		case "bull":
+			if bullIdx == -1 && i >= 60 {
+				bullIdx = i
+			}
+		case "bear":
+			if bearIdx == -1 {
+				bearIdx = i
+			}
+		}
+	}
+	if bullIdx == -1 || bearIdx == -1 {
+		t.Fatalf("test setup did not produce both regimes: bullIdx=%d bearIdx=%d — widen the bench path", bullIdx, bearIdx)
+	}
+
+	// Two distinct tickers, one entry apiece, so the bear-day entry being
+	// gated can't be masked by the ticker already being held from the
+	// bull-day entry.
+	tickerA := sweepCandles(repeatMove(0.05, 130))
+	tickerB := sweepCandles(repeatMove(0.05, 130))
+	hists := map[string]tickerHist{"A": newTickerHist(tickerA), "B": newTickerHist(tickerB)}
+	entries := map[string][]string{
+		bench[bullIdx].Date.Format("2006-01-02"): {"A"},
+		bench[bearIdx].Date.Format("2006-01-02"): {"B"},
+	}
+
+	// MaxPositionPct caps each fill to 40% of equity so A's bull-day entry
+	// can't exhaust the cash B's bear-day entry would otherwise need — this
+	// test isolates the gate, not the cash/position-size caps already
+	// covered by TestPortfolioBacktest_MaxPositionPctCaps.
+	cfg := paper.Config{StopATRMult: 2, StopLossPct: 10, TrailingPct: 18, Market: market.US, RiskPct: 1.0, MaxPositionPct: 40}
+
+	off := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "off", "", "")
+	on := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "bull-only", "", "")
+
+	lastHeld := func(r portfolioResult) int {
+		if len(r.Curve) == 0 {
+			return -1
+		}
+		return r.Curve[len(r.Curve)-1].PositionsHeld
+	}
+
+	if got := lastHeld(off); got != 2 {
+		t.Fatalf("regime-gate off: %d positions held at end, want 2 (A and B both fill)", got)
+	}
+	if got := lastHeld(on); got != 1 {
+		t.Fatalf("regime-gate bull-only: %d positions held at end, want 1 (A fills, B's bear-day entry is gated)", got)
+	}
 }
