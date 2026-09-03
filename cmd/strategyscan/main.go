@@ -574,6 +574,11 @@ func main() {
 	// volMultiplierAt's doc comment in portfolio.go for the pre-registered
 	// formula/constants).
 	volTargetFlag := flag.Bool("vol-target", false, "Phase 25 §3: market-level volatility-targeted exposure overlay (SPY's 20d realized vol vs. its trailing 1y percentile scales RiskPct) — requires -portfolio-backtest, default off")
+	// Phase 25 §8.4/§8.6: concurrent-position diversification gate — requires
+	// -portfolio-backtest, since a single-ticker replay never holds more than
+	// one position to correlate against. 0 = off (default). See
+	// portfolio.go's tooCorrelated doc comment for the mechanism.
+	maxCorrelationFlag := flag.Float64("max-correlation-at-entry", 0, "Phase 25 §8.6: skip a BUY signal if its trailing 60-trading-day return correlation with any currently-held position is >= this threshold (e.g. 0.7); requires -portfolio-backtest, 0 = off (default)")
 	// Phase 25 §8.4②: unlike -breakeven-at-r, this is portfolio-backtest-only
 	// on purpose (doc §8.4.3 / PLAN.md's §8.4 entry) — a partial exit's value
 	// (if any) is in reduced drawdown, invisible to simulateTrade's per-trade
@@ -597,6 +602,10 @@ func main() {
 
 	if *volTargetFlag && !*portfolioBacktestFlag {
 		fmt.Printf("Error: -vol-target requires -portfolio-backtest (it has nothing to multiply otherwise)\n")
+		os.Exit(1)
+	}
+	if *maxCorrelationFlag > 0 && !*portfolioBacktestFlag {
+		fmt.Printf("Error: -max-correlation-at-entry requires -portfolio-backtest (it has nothing to correlate against otherwise)\n")
 		os.Exit(1)
 	}
 	if *partialExitAtRFlag > 0 && !*portfolioBacktestFlag {
@@ -1385,8 +1394,8 @@ func main() {
 		pcfg.RiskPct = *portfolioRiskPctFlag
 		pcfg.MaxPositionPct = *portfolioMaxPositionPctFlag
 		pcfg.PartialExitAtR = *partialExitAtRFlag
-		result := runPortfolioBacktest(tickerHists, portfolioEntries, benchCandles, pcfg, *portfolioCashFlag, *volTargetFlag, *regimeGateFlag, *dateFromFlag, *dateToFlag)
-		printPortfolioResult(*portfolioCashFlag, result, *volTargetFlag, *regimeGateFlag, *partialExitAtRFlag)
+		result := runPortfolioBacktest(tickerHists, portfolioEntries, benchCandles, pcfg, *portfolioCashFlag, *volTargetFlag, *regimeGateFlag, *maxCorrelationFlag, *dateFromFlag, *dateToFlag)
+		printPortfolioResult(*portfolioCashFlag, result, *volTargetFlag, *regimeGateFlag, *partialExitAtRFlag, *maxCorrelationFlag)
 
 		eqPath := *portfolioEquityOutFlag
 		if eqPath == "" {

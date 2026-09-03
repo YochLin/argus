@@ -96,8 +96,8 @@ func TestPortfolioBacktest_VolTargetInvariant(t *testing.T) {
 	// TestPortfolioBacktest_MaxPositionPctCaps).
 	cfg := paper.Config{StopATRMult: 2, StopLossPct: 10, TrailingPct: 18, Market: market.US, RiskPct: 1.0}
 
-	off := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "off", "", "")
-	on := runPortfolioBacktest(hists, entries, bench, cfg, 100000, true, "off", "", "")
+	off := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "off", 0, "", "")
+	on := runPortfolioBacktest(hists, entries, bench, cfg, 100000, true, "off", 0, "", "")
 
 	if len(off.Trades) == 0 {
 		t.Fatal("test setup produced no closed trades — widen the entry/price paths")
@@ -140,7 +140,7 @@ func TestPortfolioBacktest_MaxPositionPctCaps(t *testing.T) {
 
 	const capPct = 5.0
 	cfg := paper.Config{StopATRMult: 2, StopLossPct: 10, TrailingPct: 18, Market: market.US, RiskPct: 50, MaxPositionPct: capPct}
-	result := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "off", "", "")
+	result := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "off", 0, "", "")
 
 	// Find the day the position was opened and check its notional against
 	// equity that same day.
@@ -173,6 +173,53 @@ func TestPortfolioBacktest_MaxPositionPctCaps(t *testing.T) {
 	_ = entryPrice
 }
 
+// TestPortfolioBacktest_MaxCorrelationAtEntry pins §8.6's diversification
+// gate: a BUY candidate whose trailing 60-day return correlation with an
+// already-held position is >= the threshold must not fill, while the exact
+// same setup with the gate off (0) fills normally.
+func TestPortfolioBacktest_MaxCorrelationAtEntry(t *testing.T) {
+	bench := benchPath(150, 0)
+	// A and B trace the IDENTICAL move sequence (sweepCandles always starts
+	// from the same date/price), so their trailing-return correlation is
+	// exactly 1.0 by construction — as correlated as two tickers can get.
+	moves := repeatMove(0.3, 150)
+	tickerA := sweepCandles(moves)
+	tickerB := sweepCandles(moves)
+	hists := map[string]tickerHist{
+		"A": newTickerHist(tickerA),
+		"B": newTickerHist(tickerB),
+	}
+	entryDateA := tickerA[10].Date.Format("2006-01-02")
+	// B's signal lands well past correlationWindow (60), with A still open
+	// (a smooth uptrend never trips a trailing stop).
+	entryDateB := tickerA[100].Date.Format("2006-01-02")
+	entries := map[string][]string{
+		entryDateA: {"A"},
+		entryDateB: {"B"},
+	}
+
+	cfg := paper.Config{StopATRMult: 2, StopLossPct: 10, TrailingPct: 18, Market: market.US, RiskPct: 1.0, MaxPositionPct: 40}
+
+	gated := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "off", 0.9, "", "")
+	ungated := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "off", 0, "", "")
+
+	heldAt := func(result portfolioResult, date string) int {
+		for _, p := range result.Curve {
+			if p.Date == date {
+				return p.PositionsHeld
+			}
+		}
+		return -1
+	}
+
+	if got := heldAt(gated, entryDateB); got != 1 {
+		t.Errorf("gate on (threshold=0.9): positions held on B's signal date = %d, want 1 (B's perfectly-correlated entry must be skipped)", got)
+	}
+	if got := heldAt(ungated, entryDateB); got != 2 {
+		t.Errorf("gate off (threshold=0): positions held on B's signal date = %d, want 2 (B must fill normally)", got)
+	}
+}
+
 // TestPortfolioBacktest_PartialExitAtR pins §8.4②'s portfolio-layer wiring:
 // once cfg.PartialExitAtR fires, the position must stay open (not appear in
 // result.Trades, which is only round trips — see the `stillOpen` skip this
@@ -187,7 +234,7 @@ func TestPortfolioBacktest_PartialExitAtR(t *testing.T) {
 	entries := map[string][]string{entryDate: {"A"}}
 
 	cfg := paper.Config{StopATRMult: 2, StopLossPct: 10, TrailingPct: 18, Market: market.US, RiskPct: 1.0, MaxPositionPct: 40, PartialExitAtR: 1}
-	result := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "off", "", "")
+	result := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "off", 0, "", "")
 
 	var cashAfterEntry float64
 	for _, p := range result.Curve {
@@ -260,8 +307,8 @@ func TestPortfolioBacktest_RegimeGateBullOnly(t *testing.T) {
 	// covered by TestPortfolioBacktest_MaxPositionPctCaps.
 	cfg := paper.Config{StopATRMult: 2, StopLossPct: 10, TrailingPct: 18, Market: market.US, RiskPct: 1.0, MaxPositionPct: 40}
 
-	off := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "off", "", "")
-	on := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "bull-only", "", "")
+	off := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "off", 0, "", "")
+	on := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "bull-only", 0, "", "")
 
 	lastHeld := func(r portfolioResult) int {
 		if len(r.Curve) == 0 {
