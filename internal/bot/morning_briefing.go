@@ -80,18 +80,17 @@ func (b *Bot) RunUSMorningBriefing(ctx context.Context) {
 	b.Send(result)
 }
 
-// twPreOpenStaleness gates RunTWMorningBriefing's market-closed check — much
-// looser than twMarketClosedStaleness (12h, used by isTWMarketClosed for the
-// 11:30 daily report) because at 08:30 TW pre-open, the latest 0050 close is
-// already ~19h old on an ordinary trading day; isTWMarketClosed would report
-// "closed" every single morning if reused here. Must clear a bare weekend
-// gap (Friday 13:30 close to Monday 08:30 pre-open is 67h — 48h was live-
-// verified to misfire on every single Monday) with slack to spare; 72h
-// covers weekend + a single adjacent holiday. Known gap: a multi-day holiday
-// (e.g. Lunar New Year) still exceeds this and correctly reports closed for
-// its first post-holiday morning — that day's prior-session recap content
-// would still be valid, just not same-day-fresh, so this is an accepted
-// trade-off rather than an attempt to cover every holiday length.
+// twPreOpenStaleness is RunTWMorningBriefing's fallback market-closed check,
+// used only when b.twCalendar (TWSE's own published schedule,
+// twse_calendar.go) fails to answer — a network hiccup shouldn't take the
+// whole job down. Must clear a bare weekend gap (Friday 13:30 close to
+// Monday 08:30 pre-open is 67h — 48h was live-verified to misfire on every
+// single Monday) with slack to spare; 72h covers weekend + a single adjacent
+// holiday. Known gap in fallback-only mode: a multi-day holiday (e.g. Lunar
+// New Year) exceeds this and would misreport closed on the first post-
+// holiday morning — accepted, since the calendar (the primary path) doesn't
+// have that gap and this branch only runs when TWSE's schedule endpoint is
+// itself unreachable.
 const twPreOpenStaleness = 72 * time.Hour
 
 // RunTWMorningBriefing is the 08:30 CST scheduler entry point (see
@@ -110,7 +109,24 @@ func (b *Bot) RunTWMorningBriefing(ctx context.Context) {
 		b.Send(i18n.T(b.lang, i18n.KeyTWMorningBriefingMarketClosed))
 		return
 	}
-	if time.Since(q.Timestamp) > twPreOpenStaleness {
+	// Primary market-closed gate: TWSE's own published schedule, which (unlike
+	// a quote-staleness heuristic) tells "single-day holiday" and "first
+	// trading day after a long break" apart correctly. Falls back to the
+	// staleness heuristic only if the calendar itself is unavailable/errors —
+	// see twPreOpenStaleness's doc comment.
+	calendarOK := false
+	if b.twCalendar != nil {
+		tradingDay, err := b.twCalendar.IsTWTradingDay(b.now().In(cst))
+		if err != nil {
+			logger.Errorf("tw morning briefing: trading calendar: %v", err)
+		} else if !tradingDay {
+			b.Send(i18n.T(b.lang, i18n.KeyTWMorningBriefingMarketClosed))
+			return
+		} else {
+			calendarOK = true
+		}
+	}
+	if !calendarOK && time.Since(q.Timestamp) > twPreOpenStaleness {
 		b.Send(i18n.T(b.lang, i18n.KeyTWMorningBriefingMarketClosed))
 		return
 	}

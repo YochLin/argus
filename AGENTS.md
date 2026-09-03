@@ -62,7 +62,12 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   `yahoo.go` (`.TW`/`.TWO` suffix resolution), `finmind.go` (TW fundamentals), `twse_movers.go` (TW
   market movers), `cnyes.go` (TW market news), `googlenews.go` (TW per-ticker Chinese news — a keyless
   Google News RSS search wired into the `Multi` chain between Finnhub and Yahoo, TW-only so the US path
-  is unchanged), and `tw_earnings.go` (a statutory-deadline earnings proxy, no real API). `options.go`'s
+  is unchanged), `tw_earnings.go` (a statutory-deadline earnings proxy, no real API), and
+  `twse_calendar.go` (`TWTradingDayProvider`, TWSE's own published open/close schedule — the same
+  `*TWSE` instance as `twse_movers.go`/`institutional_tw.go`, cached per calendar year — backing
+  `RunTWMorningBriefing`'s market-closed gate; a schedule entry whose name marks a trading-resumption/
+  last-trading-day boundary around a multi-day break, e.g. "農曆春節後開始交易日", is itself a real
+  trading day and filtered out rather than treated as a holiday). `options.go`'s
   `OptionChainProvider` (US-only, Phase 12) is implemented by `yahoo.go`, which authenticates with a
   cookie + crumb handshake (`ensureCrumb`, cached on the `Yahoo` struct, retried once on a 401) that no
   other Yahoo endpoint needs — quote/history/news stay on the plain (cookie-less) `client`.
