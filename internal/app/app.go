@@ -230,6 +230,10 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 	// never carried. See internal/data/twse_t86.go's GetTrustNetSeries doc
 	// comment for the capped live lookback this implies.
 	var trustNetProvider data.TrustNetProvider = twMovers
+	// twCalendarProvider is the same *TWSE instance — one process-lifetime
+	// holiday-schedule cache shared with GetMarketMovers/GetInstitutionalFlow
+	// rather than a second client.
+	var twCalendarProvider data.TWTradingDayProvider = twMovers
 	// core.Cnyes (not a fresh data.NewCnyes()) — NewCoreProviders already
 	// built and chained one instance for GetNews (Phase 19 後續 PR5-2); a
 	// second instance here would mean its per-ticker news cache gets built
@@ -309,6 +313,7 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 		MarketNews:             marketNewsProvider,
 		TWMarketNews:           twMarketNews,
 		TWMovers:               twMoversProvider,
+		TWCalendar:             twCalendarProvider,
 		CompanyNames:           core.CompanyNames,
 		TrustNet:               trustNetProvider,
 		OptionChain:            core.Yahoo,
