@@ -598,6 +598,13 @@ func main() {
 	// the SAME random-entry control the base strategy is compared against —
 	// no separate run needed). 0 = off, byte-identical to today's output.
 	entryConfirmDaysFlag := flag.Int("entry-confirm-days", 0, "Phase 25 §8.4①: also evaluate a same-signal '<strategy>_confirm' variant per confirmableStrategies entry, whose entry waits up to N trading days for a close <= MA5 or <= the signal bar's low; no pullback within N days = no trade for that variant (legal, not an error). 0 = off (default)")
+	// Phase 25 §8.5: cross-sectional native-form momentum — genuinely
+	// independent of the six screens (never asks "is this ticker a signal
+	// today", ranks the whole universe pool and rebalances monthly), so it
+	// only needs tickerHists' full-history pool, not -portfolio-backtest's
+	// screen-entries bookkeeping. See momentum.go's doc comment.
+	momentumBacktestFlag := flag.Bool("momentum-backtest", false, "Phase 25 §8.5: monthly-rebalanced, equal-weight top-decile 12-1 cross-sectional momentum backtest over the whole -universe pool, plus an equal-weight buy-and-hold control of the same pool — independent of the six screens, default off")
+	momentumCashFlag := flag.Float64("momentum-cash", 100000, "momentum backtest: starting cash")
 	flag.Parse()
 
 	if *volTargetFlag && !*portfolioBacktestFlag {
@@ -1101,8 +1108,10 @@ func main() {
 	// copies, no entry-event bookkeeping) and its output stays untouched.
 	var tickerHists map[string]tickerHist
 	var portfolioEntries map[string][]string
-	if *portfolioBacktestFlag {
+	if *portfolioBacktestFlag || *momentumBacktestFlag {
 		tickerHists = make(map[string]tickerHist, len(tickers))
+	}
+	if *portfolioBacktestFlag {
 		portfolioEntries = make(map[string][]string)
 	}
 
@@ -1408,6 +1417,14 @@ func main() {
 			tradesPath = fmt.Sprintf("strategyscan_portfolio_trades_%s.csv", m)
 		}
 		writePortfolioTradesCSV(tradesPath, result.Trades)
+	}
+
+	if *momentumBacktestFlag {
+		strat := runMomentumBacktest(tickerHists, benchCandles, *momentumCashFlag, m, *dateFromFlag, *dateToFlag)
+		ctrl := runEqualWeightBuyHold(tickerHists, benchCandles, *momentumCashFlag, m, *dateFromFlag, *dateToFlag)
+		printMomentumResult(*momentumCashFlag, strat, ctrl)
+		writeEquityCurveCSV(fmt.Sprintf("strategyscan_momentum_equity_%s.csv", m), strat.Curve)
+		writeEquityCurveCSV(fmt.Sprintf("strategyscan_momentum_control_equity_%s.csv", m), ctrl.Curve)
 	}
 }
 
