@@ -1080,6 +1080,9 @@ func writeNewsItem(sb *strings.Builder, lang i18n.Lang, idx int, n data.NewsItem
 	if n.Summary != "" {
 		fmt.Fprint(sb, i18n.T(lang, i18n.KeyNewsSummaryLine, n.Summary))
 	}
+	if len(n.RelatedTickers) > 0 {
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyNewsTickersLine, strings.Join(n.RelatedTickers, ", ")))
+	}
 }
 
 // newsDate formats n's publish timestamp for a prompt news line, in CST
