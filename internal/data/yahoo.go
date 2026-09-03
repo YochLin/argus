@@ -354,10 +354,11 @@ func (y *Yahoo) getNews(ticker string, limit int) ([]NewsItem, error) {
 
 	var result struct {
 		News []struct {
-			Title               string `json:"title"`
-			Publisher           string `json:"publisher"`
-			Link                string `json:"link"`
-			ProviderPublishTime int64  `json:"providerPublishTime"`
+			Title               string   `json:"title"`
+			Publisher           string   `json:"publisher"`
+			Link                string   `json:"link"`
+			ProviderPublishTime int64    `json:"providerPublishTime"`
+			RelatedTickers      []string `json:"relatedTickers"`
 		} `json:"news"`
 	}
 
@@ -368,10 +369,11 @@ func (y *Yahoo) getNews(ticker string, limit int) ([]NewsItem, error) {
 	var items []NewsItem
 	for _, n := range result.News {
 		items = append(items, NewsItem{
-			Headline:    n.Title,
-			Source:      n.Publisher,
-			URL:         n.Link,
-			PublishedAt: time.Unix(n.ProviderPublishTime, 0),
+			Headline:       n.Title,
+			Source:         n.Publisher,
+			URL:            n.Link,
+			PublishedAt:    time.Unix(n.ProviderPublishTime, 0),
+			RelatedTickers: n.RelatedTickers,
 		})
 	}
 	return items, nil

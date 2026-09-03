@@ -230,7 +230,11 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 	// never carried. See internal/data/twse_t86.go's GetTrustNetSeries doc
 	// comment for the capped live lookback this implies.
 	var trustNetProvider data.TrustNetProvider = twMovers
-	twMarketNews := data.MarketNewsProvider(data.NewMarketNewsFilter(data.NewCnyes(), newsBlocked))
+	// core.Cnyes (not a fresh data.NewCnyes()) — NewCoreProviders already
+	// built and chained one instance for GetNews (Phase 19 後續 PR5-2); a
+	// second instance here would mean its per-ticker news cache gets built
+	// twice for the same data.
+	twMarketNews := data.MarketNewsProvider(data.NewMarketNewsFilter(core.Cnyes, newsBlocked))
 	var twMoversProvider data.TWMarketMoversProvider = twMovers
 	if core.Sinopac != nil {
 		// Scanner's AmountRank covers TPEx-listed movers too, which

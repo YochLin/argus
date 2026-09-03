@@ -18,6 +18,7 @@ type CoreProviders struct {
 	Finnhub      *data.Finnhub
 	FinMind      *data.FinMind
 	Sinopac      *sinopac.Client
+	Cnyes        *data.Cnyes
 	Fundamentals data.FundamentalsProvider
 	CompanyNames data.CompanyNameProvider
 	InsiderTx    data.InsiderTransactionProvider
@@ -25,17 +26,25 @@ type CoreProviders struct {
 }
 
 // NewCoreProviders builds the provider chain Boot and runMCPServer both
-// need: Finnhub (if finnhubKey set) → Shioaji (if shioajiAddr set) →
+// need: Finnhub (if finnhubKey set) → Shioaji (if shioajiAddr set) → Cnyes →
 // GoogleNews → Yahoo, merged into a Multi and wrapped in
 // data.NewNewsFilter(newsBlocked) — same ordering rationale in both
-// callers: Shioaji sits ahead of GoogleNews/Yahoo for broker-grade TW quotes,
-// and GoogleNews sits ahead of Yahoo so TW tickers get Chinese-language news
-// (Finnhub's /company-news is US-only, Yahoo's search API answers a .TW
-// symbol with mostly English wire coverage) — constructed after FinMind
-// because it takes CompanyNames (with a token it searches "台積電", without
-// one the bare "2330"). fundamentalsRouter (and so Fundamentals) stays nil,
-// not a router wrapping two nil fields, when neither key is set — preserving
-// every `if x.fundamentals != nil` check's behavior.
+// callers: Shioaji sits ahead of the news sources for broker-grade TW
+// quotes; Cnyes sits ahead of GoogleNews because its category-feed tags are
+// editor-assigned (not a full-text keyword match) and a TW ticker it has no
+// news for deliberately returns no fallback rather than GoogleNews's
+// noisier full-text hits (Phase 19 後續 PR5-2, see cnyes.go's GetNews doc
+// comment); GoogleNews sits ahead of Yahoo so TW tickers still get
+// Chinese-language coverage for whatever Cnyes doesn't tag (Finnhub's
+// /company-news is US-only, Yahoo's search API answers a .TW symbol with
+// mostly English wire coverage) — constructed after FinMind because it
+// takes CompanyNames (with a token it searches "台積電", without one the
+// bare "2330"). The returned Cnyes instance is also Boot's TWMarketNews
+// source (app.go) — one shared instance, not two, so its per-ticker news
+// cache (cnyes.go's stockNewsCache) isn't built twice for no reason.
+// fundamentalsRouter (and so Fundamentals) stays nil, not a router wrapping
+// two nil fields, when neither key is set — preserving every
+// `if x.fundamentals != nil` check's behavior.
 //
 // Only the Finnhub/FinMind-derived fields both callers actually use
 // (InsiderTx/Earnings from Finnhub, CompanyNames from FinMind) are returned;
@@ -68,6 +77,8 @@ func NewCoreProviders(finnhubKey, finMindToken, shioajiAddr string, newsBlocked 
 		cp.Sinopac = sinopac.New(shioajiAddr)
 		providers = append(providers, data.NewShioaji(cp.Sinopac))
 	}
+	cp.Cnyes = data.NewCnyes()
+	providers = append(providers, cp.Cnyes)
 	providers = append(providers, data.NewGoogleNews(cp.CompanyNames))
 	cp.Yahoo = data.NewYahoo()
 	providers = append(providers, cp.Yahoo)
