@@ -104,6 +104,33 @@ func TestYahooGetHistory_MaxRangeRewrittenTo10y(t *testing.T) {
 	}
 }
 
+// TestYahooGetNews_RelatedTickers covers Phase 19 後續 PR5-3: the search API's
+// relatedTickers array (previously discarded) should surface as
+// NewsItem.RelatedTickers, same free tag Cnyes's market[] already provides
+// for TW.
+func TestYahooGetNews_RelatedTickers(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"news":[{"title":"a","publisher":"Motley Fool","link":"https://example.com","providerPublishTime":1700000000,"relatedTickers":["AAPL","NVDA"]}]}`)
+	}))
+	defer srv.Close()
+
+	y := NewYahoo()
+	y.searchBaseURL = srv.URL
+
+	items, err := y.GetNews("AAPL", 10)
+	if err != nil {
+		t.Fatalf("GetNews: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("GetNews() = %d items, want 1", len(items))
+	}
+	want := []string{"AAPL", "NVDA"}
+	if !equalStrSlices(items[0].RelatedTickers, want) {
+		t.Errorf("RelatedTickers = %v, want %v", items[0].RelatedTickers, want)
+	}
+}
+
 func TestIsUSEquitySymbol(t *testing.T) {
 	tests := []struct {
 		symbol string

@@ -69,6 +69,11 @@ type Bot struct {
 	marketNews       data.MarketNewsProvider        // nil if FINNHUB_API_KEY isn't set
 	twMarketNews     data.MarketNewsProvider        // TW's marketNews counterpart (cnyes), always non-nil — no API key required
 	twMovers         data.TWMarketMoversProvider    // TW's GetMarketMovers counterpart (TWSE OpenAPI), always non-nil — no API key required
+	// twCalendar is TWSE's published trading-day schedule (twse_calendar.go),
+	// always non-nil — no API key required, same as twMovers/institutional
+	// above. RunTWMorningBriefing's primary market-closed gate; nil-checked
+	// anyway for tests that build a partial Bot.
+	twCalendar data.TWTradingDayProvider
 	companyNames     data.CompanyNameProvider       // nil if FINMIND_TOKEN isn't set
 	trustNet         data.TrustNetProvider          // Phase 15 網 5【主力跟單】, TW only; Phase 25 §4.4 switched this from FinMind to TWSE's own T86 report, so — like institutional/twMarketNews/twMovers — always non-nil, no API key required
 	optionChain      data.OptionChainProvider       // Phase 12, US-only; always non-nil in real use (Yahoo needs no API key), nil-checked anyway for tests that build a partial Bot
@@ -212,6 +217,7 @@ type Config struct {
 	MarketNews       data.MarketNewsProvider         // nil if FINNHUB_API_KEY isn't set
 	TWMarketNews     data.MarketNewsProvider         // TW's MarketNews counterpart (cnyes) — always non-nil, no API key required
 	TWMovers         data.TWMarketMoversProvider     // TW's GetMarketMovers counterpart (TWSE OpenAPI) — always non-nil, no API key required
+	TWCalendar       data.TWTradingDayProvider       // TWSE's published trading-day schedule — always non-nil, no API key required
 	CompanyNames     data.CompanyNameProvider        // nil if FINMIND_TOKEN isn't set
 	TrustNet         data.TrustNetProvider           // Phase 15 網 5【主力跟單】, TW only; nil if FINMIND_TOKEN isn't set
 	OptionChain      data.OptionChainProvider        // Phase 12, US-only; always non-nil in real use
@@ -316,6 +322,7 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		marketNews:             cfg.MarketNews,
 		twMarketNews:           cfg.TWMarketNews,
 		twMovers:               cfg.TWMovers,
+		twCalendar:             cfg.TWCalendar,
 		companyNames:           cfg.CompanyNames,
 		trustNet:               cfg.TrustNet,
 		optionChain:            cfg.OptionChain,

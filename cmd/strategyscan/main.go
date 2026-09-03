@@ -394,6 +394,7 @@ func main() {
 	trailingPctFlag := flag.Float64("trailing-pct", -1, "full-trade replay: fixed trailing-stop distance, %%; 0 disables, -1 = paper.DefaultExits")
 	trailingATRFlag := flag.Float64("trailing-atr", -1, "full-trade replay: ATR-based trailing distance multiple; 0 = fixed %% only, -1 = paper.DefaultExits")
 	takeProfitATRFlag := flag.Float64("take-profit-atr", -1, "full-trade replay: ATR(14) multiple above entry for the take-profit target; 0 = disabled, -1 = paper.DefaultExits")
+	breakevenAtRFlag := flag.Float64("breakeven-at-r", 0, "Phase 25 §8.4③: once a trade's profit reaches this many R (R=entry-initial stop), move its stop up to breakeven; 0 = off (default). Judged the same way as the other full-trade-replay exit flags above (§4.4 per-trade excess vs the random control) — see internal/paper.Config.BreakevenAtR")
 	// 60 was chosen to match the 數週到數月 position style, and the sweep
 	// below confirms it is a safe place to sit rather than a tuned one.
 	// Replaying every entry at 5/10/20/30/40/60/90/120 days (US, 10y, ~59k
@@ -578,6 +579,20 @@ func main() {
 	// one position to correlate against. 0 = off (default). See
 	// portfolio.go's tooCorrelated doc comment for the mechanism.
 	maxCorrelationFlag := flag.Float64("max-correlation-at-entry", 0, "Phase 25 §8.6: skip a BUY signal if its trailing 60-trading-day return correlation with any currently-held position is >= this threshold (e.g. 0.7); requires -portfolio-backtest, 0 = off (default)")
+	// Phase 25 §8.4②: unlike -breakeven-at-r, this is portfolio-backtest-only
+	// on purpose (doc §8.4.3 / PLAN.md's §8.4 entry) — a partial exit's value
+	// (if any) is in reduced drawdown, invisible to simulateTrade's per-trade
+	// return, so it's judged by -portfolio-backtest's Sharpe/max-drawdown, not
+	// wired into exitCfg/simulateTrade at all.
+	partialExitAtRFlag := flag.Float64("partial-exit-at-r", 0, "Phase 25 §8.4②: once a trade's profit reaches this many R, sell half the position and let the rest run on the trailing stop alone; requires -portfolio-backtest, 0 = off (default)")
+	// Phase 25 §8.3: a single switch applied uniformly across every
+	// strategy's pooled entries (not a per-strategy weight — see §8.3.4's
+	// multiple-comparisons objection) — bull-only skips every entry signal
+	// on a bear-regime day (marketRegimeAt), same MA50 definition
+	// splitRegime/printRegimeGroup already use. Requires -portfolio-backtest,
+	// since that's the only place §8.3's accept bar (Sharpe + max drawdown,
+	// both slices) is measured — see portfolio.go's regimeGate doc comment.
+	regimeGateFlag := flag.String("regime-gate", "off", "Phase 25 §8.3: gate every -portfolio-backtest entry on the benchmark's own regime (off|bull-only) — requires -portfolio-backtest, default off")
 	// Phase 25 §8.4①: alongside each of confirmableStrategies, evaluate a
 	// same-signal "<strategy>_confirm" variant in the SAME run (so it shares
 	// the SAME random-entry control the base strategy is compared against —
@@ -591,6 +606,19 @@ func main() {
 	}
 	if *maxCorrelationFlag > 0 && !*portfolioBacktestFlag {
 		fmt.Printf("Error: -max-correlation-at-entry requires -portfolio-backtest (it has nothing to correlate against otherwise)\n")
+		os.Exit(1)
+	}
+	if *partialExitAtRFlag > 0 && !*portfolioBacktestFlag {
+		fmt.Printf("Error: -partial-exit-at-r requires -portfolio-backtest (it has nothing to multiply otherwise)\n")
+		os.Exit(1)
+	}
+
+	if *regimeGateFlag != "off" && *regimeGateFlag != "bull-only" {
+		fmt.Printf("Error: -regime-gate must be off or bull-only, got %q\n", *regimeGateFlag)
+		os.Exit(1)
+	}
+	if *regimeGateFlag != "off" && !*portfolioBacktestFlag {
+		fmt.Printf("Error: -regime-gate requires -portfolio-backtest (it has nothing to gate otherwise)\n")
 		os.Exit(1)
 	}
 
@@ -745,11 +773,12 @@ func main() {
 		TrailingPct:       *trailingPctFlag,
 		TrailingATRMult:   *trailingATRFlag,
 		TakeProfitATRMult: *takeProfitATRFlag,
+		BreakevenAtR:      *breakevenAtRFlag,
 		Market:            m,
 		FeeDiscount:       *feeDiscountFlag,
 	}
-	fmt.Printf("Exit model (PR3, live-aligned): stop-atr=%.1f stop-pct=%.1f%% trailing-pct=%.1f%% trailing-atr=%.1f take-profit-atr=%.1f max-hold-days=%d slippage=%.2f%%/side fee-discount=%.2f\n",
-		*stopATRFlag, *stopPctFlag, *trailingPctFlag, *trailingATRFlag, *takeProfitATRFlag, *maxHoldDaysFlag, *slippagePctFlag, *feeDiscountFlag)
+	fmt.Printf("Exit model (PR3, live-aligned): stop-atr=%.1f stop-pct=%.1f%% trailing-pct=%.1f%% trailing-atr=%.1f take-profit-atr=%.1f breakeven-at-r=%.2f max-hold-days=%d slippage=%.2f%%/side fee-discount=%.2f\n",
+		*stopATRFlag, *stopPctFlag, *trailingPctFlag, *trailingATRFlag, *takeProfitATRFlag, *breakevenAtRFlag, *maxHoldDaysFlag, *slippagePctFlag, *feeDiscountFlag)
 	if *dateFromFlag != "" || *dateToFlag != "" {
 		fmt.Printf("Out-of-sample window (PR4): [%s .. %s] — make sure -range is wide enough to actually reach %s (e.g. -range=10y for a 2016 start)\n",
 			orDash(*dateFromFlag), orDash(*dateToFlag), orDash(*dateFromFlag))
@@ -1164,12 +1193,8 @@ func main() {
 			// evalDate, never its latest bar.
 			sIdx, hasBench := benchDateIdx[evalDateStr]
 			marketRegime := "bull"
-			if hasBench && sIdx >= 49 {
-				benchSub := benchCandles[:sIdx+1]
-				benchMA50 := signals.MA(data.Closes(benchSub), 50)
-				if benchMA50 > 0 && benchCandles[sIdx].Close < benchMA50 {
-					marketRegime = "bear"
-				}
+			if hasBench {
+				marketRegime = marketRegimeAt(benchCandles, sIdx)
 			}
 
 			// §10.3: forward returns computed for every day, not just hit days,
@@ -1368,8 +1393,9 @@ func main() {
 		pcfg := exitCfg
 		pcfg.RiskPct = *portfolioRiskPctFlag
 		pcfg.MaxPositionPct = *portfolioMaxPositionPctFlag
-		result := runPortfolioBacktest(tickerHists, portfolioEntries, benchCandles, pcfg, *portfolioCashFlag, *volTargetFlag, *maxCorrelationFlag, *dateFromFlag, *dateToFlag)
-		printPortfolioResult(*portfolioCashFlag, result, *volTargetFlag, *maxCorrelationFlag)
+		pcfg.PartialExitAtR = *partialExitAtRFlag
+		result := runPortfolioBacktest(tickerHists, portfolioEntries, benchCandles, pcfg, *portfolioCashFlag, *volTargetFlag, *regimeGateFlag, *maxCorrelationFlag, *dateFromFlag, *dateToFlag)
+		printPortfolioResult(*portfolioCashFlag, result, *volTargetFlag, *regimeGateFlag, *partialExitAtRFlag, *maxCorrelationFlag)
 
 		eqPath := *portfolioEquityOutFlag
 		if eqPath == "" {
@@ -1549,6 +1575,22 @@ func computeControl(recs []TriggerRecord) control {
 	_, c.bear10, _ = summaryStats5d10d20d(bear)
 	c.bullTrade, c.bearTrade = computeTradeStats(bull), computeTradeStats(bear)
 	return c
+}
+
+// marketRegimeAt is the single definition of "bull" vs "bear" every regime
+// split in this tool reads (§8.3): benchCandles[idx]'s close against its own
+// trailing MA50, recomputed at idx so there is no lookahead. "bull" is the
+// default whenever there isn't yet a full 50-day window (idx < 49) or idx is
+// out of range, matching the scan loop's original inline behavior.
+func marketRegimeAt(benchCandles []data.Candle, idx int) string {
+	if idx < 49 || idx >= len(benchCandles) {
+		return "bull"
+	}
+	benchMA50 := signals.MA(data.Closes(benchCandles[:idx+1]), 50)
+	if benchMA50 > 0 && benchCandles[idx].Close < benchMA50 {
+		return "bear"
+	}
+	return "bull"
 }
 
 // splitRegime partitions by the benchmark's regime at entry (MarketRegime,
@@ -1885,7 +1927,11 @@ func writeCSV(path string, recs []TriggerRecord) {
 // (§11.2 point 1) — not the raw few-hundred-thousand-row population, which
 // would defeat the "CSV is for manual spot-checks" purpose (§10.3 point 3).
 // This lets anyone independently re-derive every excess number in §8 without
-// re-fetching a baseline themselves.
+// re-fetching a baseline themselves. §8.3.3 step 1: also split by Regime
+// (all/bull/bear, same MA50 definition as marketRegimeAt) — before this, a
+// regime-split excess (screen's bull hits vs baseline) could only be read
+// off a run's own terminal output (printRegimeGroup), not recomputed from
+// the CSV later.
 // writeTradeDumpCSV writes one row per replayed baseline trade. Date and
 // Ticker are what make it joinable against another run's dump, which is the
 // whole point — the pairing is by entry, not by row order.
@@ -1955,21 +2001,30 @@ func writeBaselineSummaryCSV(path string, baselineRecs []TriggerRecord) {
 	w := csv.NewWriter(f)
 	defer w.Flush()
 
-	w.Write([]string{"Window", "N", "WinRatePct", "MeanRetPct", "MedianRetPct"})
-	d5, d10, d20 := summaryStats5d10d20d(baselineRecs)
-	for _, row := range []struct {
-		window string
-		s      windowStats
+	w.Write([]string{"Window", "Regime", "N", "WinRatePct", "MeanRetPct", "MedianRetPct"})
+	bull, bear := splitRegime(baselineRecs)
+	for _, group := range []struct {
+		regime string
+		recs   []TriggerRecord
 	}{
-		{"5d", d5}, {"10d", d10}, {"20d", d20},
+		{"all", baselineRecs}, {"bull", bull}, {"bear", bear},
 	} {
-		w.Write([]string{
-			row.window,
-			fmt.Sprintf("%d", row.s.n),
-			fmt.Sprintf("%.2f", row.s.winRate),
-			fmt.Sprintf("%.2f", row.s.meanRet),
-			fmt.Sprintf("%.2f", row.s.medRet),
-		})
+		d5, d10, d20 := summaryStats5d10d20d(group.recs)
+		for _, row := range []struct {
+			window string
+			s      windowStats
+		}{
+			{"5d", d5}, {"10d", d10}, {"20d", d20},
+		} {
+			w.Write([]string{
+				row.window,
+				group.regime,
+				fmt.Sprintf("%d", row.s.n),
+				fmt.Sprintf("%.2f", row.s.winRate),
+				fmt.Sprintf("%.2f", row.s.meanRet),
+				fmt.Sprintf("%.2f", row.s.medRet),
+			})
+		}
 	}
 	fmt.Printf("Saved baseline summary CSV to %s\n", path)
 }

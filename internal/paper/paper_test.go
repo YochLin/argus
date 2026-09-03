@@ -274,6 +274,93 @@ func TestFeeFor_TWDiscountAndMinFee(t *testing.T) {
 	}
 }
 
+// TestMarkClose_BreakevenStop pins §8.4③: once Peak reaches AvgCost + R
+// (R = AvgCost-Stop at entry), Stop moves up to AvgCost — so a later close
+// that dips below cost but is still above the ORIGINAL stop now exits at
+// (near) breakeven instead of running down to the wider original stop.
+func TestMarkClose_BreakevenStop(t *testing.T) {
+	cfg := baseConfig()
+	cfg.BreakevenAtR = 1 // move to breakeven once profit >= 1R
+	acct := NewAccount(cfg.InitialCash)
+	acct.ApplySignal(Signal{Date: "2024-01-02", Ticker: "AAA", Action: "BUY", Price: 100}, 100, 1, cfg)
+	h := acct.Holdings["AAA"]
+	if h.Stop != 98 {
+		t.Fatalf("setup: stop = %v, want 98 (R=2)", h.Stop)
+	}
+
+	// Rally to exactly the 1R breakeven trigger (100 + 1*2 = 102) — no exit
+	// yet, but Stop should have moved up to AvgCost.
+	if trades := acct.MarkClose("2024-01-03", map[string]float64{"AAA": 102}, map[string]float64{"AAA": 1}, cfg); len(trades) != 0 {
+		t.Fatalf("expected no exit on the trigger day itself, got %+v", trades)
+	}
+	if got := acct.Holdings["AAA"].Stop; got != 100 {
+		t.Fatalf("stop after breakeven trigger: got %v, want 100 (AvgCost)", got)
+	}
+
+	// Pull back to 99 — above the ORIGINAL stop (98) but at/below the new
+	// breakeven stop (100), so it should now exit.
+	trades := acct.MarkClose("2024-01-04", map[string]float64{"AAA": 99}, map[string]float64{"AAA": 1}, cfg)
+	if len(trades) != 1 || trades[0].Reason != "stop" {
+		t.Fatalf("expected a breakeven stop exit at 99, got %+v", trades)
+	}
+}
+
+// TestMarkClose_BreakevenStop_OffLeavesOriginalStop is the control: the same
+// price path with BreakevenAtR unset must NOT exit at 99, since 99 is still
+// above the original (wider) stop of 98.
+func TestMarkClose_BreakevenStop_OffLeavesOriginalStop(t *testing.T) {
+	cfg := baseConfig() // BreakevenAtR left at its zero value (off)
+	acct := NewAccount(cfg.InitialCash)
+	acct.ApplySignal(Signal{Date: "2024-01-02", Ticker: "AAA", Action: "BUY", Price: 100}, 100, 1, cfg)
+
+	acct.MarkClose("2024-01-03", map[string]float64{"AAA": 102}, map[string]float64{"AAA": 1}, cfg)
+	if got := acct.Holdings["AAA"].Stop; got != 98 {
+		t.Fatalf("stop should be unchanged with BreakevenAtR off: got %v, want 98", got)
+	}
+	if trades := acct.MarkClose("2024-01-04", map[string]float64{"AAA": 99}, map[string]float64{"AAA": 1}, cfg); len(trades) != 0 {
+		t.Fatalf("expected no exit at 99 (above the original stop of 98), got %+v", trades)
+	}
+}
+
+// TestMarkClose_PartialExit pins §8.4②: once Peak reaches AvgCost + R, half
+// the position (floored) sells at that close, the rest stays open with
+// Target cleared, and a later day above the trigger must not sell a second
+// half (PartialExited latches).
+func TestMarkClose_PartialExit(t *testing.T) {
+	cfg := baseConfig()
+	cfg.PartialExitAtR = 1 // sell half once profit >= 1R
+	acct := NewAccount(cfg.InitialCash)
+	acct.ApplySignal(Signal{Date: "2024-01-02", Ticker: "AAA", Action: "BUY", Price: 100}, 100, 1, cfg)
+	h := acct.Holdings["AAA"]
+	if h.Shares < 2 {
+		t.Fatalf("setup: need >= 2 shares to exercise a partial exit, got %v", h.Shares)
+	}
+	wantHalf := math.Trunc(h.Shares / 2)
+
+	trades := acct.MarkClose("2024-01-03", map[string]float64{"AAA": 102}, map[string]float64{"AAA": 1}, cfg)
+	if len(trades) != 1 || trades[0].Reason != "partial_target" {
+		t.Fatalf("expected one partial-exit trade, got %+v", trades)
+	}
+	if trades[0].Shares != wantHalf {
+		t.Errorf("partial exit shares: got %v, want %v", trades[0].Shares, wantHalf)
+	}
+	remaining := acct.Holdings["AAA"]
+	if !remaining.PartialExited {
+		t.Error("PartialExited should latch true after the partial fill")
+	}
+	if wantShares := h.Shares - wantHalf; remaining.Shares != wantShares {
+		t.Errorf("remaining shares: got %v, want %v", remaining.Shares, wantShares)
+	}
+
+	// Further rally must not sell a second half.
+	trades2 := acct.MarkClose("2024-01-04", map[string]float64{"AAA": 110}, map[string]float64{"AAA": 1}, cfg)
+	for _, tr := range trades2 {
+		if tr.Reason == "partial_target" {
+			t.Fatalf("partial exit fired a second time: %+v", tr)
+		}
+	}
+}
+
 // TestFeeFor_TWSellMinFeeAppliesBeforeTax guards against the twMinFee floor
 // being (mis)applied to commission+tax combined: a small sell whose
 // commission alone rounds below the floor must still pay floor+tax, not

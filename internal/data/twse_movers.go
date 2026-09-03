@@ -52,6 +52,12 @@ type TWSE struct {
 	// most days get reused across tickers), not N times that.
 	t86DayCache map[string]map[string]TrustNetDay
 	t86Mu       sync.Mutex
+
+	// holidayCache/holidayMu (twse_calendar.go) memoize the holiday schedule
+	// per calendar year, process-lifetime — one request per year actually
+	// queried, negligible next to t86DayCache's WAF concerns above.
+	holidayCache map[int]map[string]bool
+	holidayMu    sync.Mutex
 }
 
 func NewTWSE() *TWSE {

@@ -96,8 +96,8 @@ func TestPortfolioBacktest_VolTargetInvariant(t *testing.T) {
 	// TestPortfolioBacktest_MaxPositionPctCaps).
 	cfg := paper.Config{StopATRMult: 2, StopLossPct: 10, TrailingPct: 18, Market: market.US, RiskPct: 1.0}
 
-	off := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, 0, "", "")
-	on := runPortfolioBacktest(hists, entries, bench, cfg, 100000, true, 0, "", "")
+	off := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "off", 0, "", "")
+	on := runPortfolioBacktest(hists, entries, bench, cfg, 100000, true, "off", 0, "", "")
 
 	if len(off.Trades) == 0 {
 		t.Fatal("test setup produced no closed trades — widen the entry/price paths")
@@ -140,7 +140,7 @@ func TestPortfolioBacktest_MaxPositionPctCaps(t *testing.T) {
 
 	const capPct = 5.0
 	cfg := paper.Config{StopATRMult: 2, StopLossPct: 10, TrailingPct: 18, Market: market.US, RiskPct: 50, MaxPositionPct: capPct}
-	result := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, 0, "", "")
+	result := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "off", 0, "", "")
 
 	// Find the day the position was opened and check its notional against
 	// equity that same day.
@@ -200,8 +200,8 @@ func TestPortfolioBacktest_MaxCorrelationAtEntry(t *testing.T) {
 
 	cfg := paper.Config{StopATRMult: 2, StopLossPct: 10, TrailingPct: 18, Market: market.US, RiskPct: 1.0, MaxPositionPct: 40}
 
-	gated := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, 0.9, "", "")
-	ungated := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, 0, "", "")
+	gated := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "off", 0.9, "", "")
+	ungated := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "off", 0, "", "")
 
 	heldAt := func(result portfolioResult, date string) int {
 		for _, p := range result.Curve {
@@ -217,5 +217,110 @@ func TestPortfolioBacktest_MaxCorrelationAtEntry(t *testing.T) {
 	}
 	if got := heldAt(ungated, entryDateB); got != 2 {
 		t.Errorf("gate off (threshold=0): positions held on B's signal date = %d, want 2 (B must fill normally)", got)
+	}
+}
+
+// TestPortfolioBacktest_PartialExitAtR pins §8.4②'s portfolio-layer wiring:
+// once cfg.PartialExitAtR fires, the position must stay open (not appear in
+// result.Trades, which is only round trips — see the `stillOpen` skip this
+// added to runPortfolioBacktest's sell-pairing loop) with its cash proceeds
+// landing in the curve, and the same holding must eventually close for real
+// once the rally reverses.
+func TestPortfolioBacktest_PartialExitAtR(t *testing.T) {
+	bench := benchPath(90, 0)
+	ticker := sweepCandles(append(repeatMove(0.5, 40), repeatMove(-5, 20)...))
+	hists := map[string]tickerHist{"A": newTickerHist(ticker)}
+	entryDate := ticker[5].Date.Format("2006-01-02")
+	entries := map[string][]string{entryDate: {"A"}}
+
+	cfg := paper.Config{StopATRMult: 2, StopLossPct: 10, TrailingPct: 18, Market: market.US, RiskPct: 1.0, MaxPositionPct: 40, PartialExitAtR: 1}
+	result := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "off", 0, "", "")
+
+	var cashAfterEntry float64
+	for _, p := range result.Curve {
+		if p.Date == entryDate {
+			cashAfterEntry = p.Cash
+			break
+		}
+	}
+	if cashAfterEntry <= 0 {
+		t.Fatal("no cash recorded on the entry date")
+	}
+
+	var midCash float64
+	for _, p := range result.Curve {
+		if p.Date > entryDate && p.Cash > midCash {
+			midCash = p.Cash
+		}
+	}
+	if midCash <= cashAfterEntry+1e-6 {
+		t.Fatalf("expected cash to rise above %.2f after the partial exit's proceeds, got max %.2f", cashAfterEntry, midCash)
+	}
+
+	if len(result.Trades) != 1 {
+		t.Fatalf("expected exactly one closed round trip (the eventual full exit after the crash), got %d: %+v", len(result.Trades), result.Trades)
+	}
+	if result.Trades[0].EntryDate != entryDate {
+		t.Errorf("closed trade's EntryDate = %s, want %s (the partial fill must not have been paired off as its own round trip)", result.Trades[0].EntryDate, entryDate)
+	}
+}
+
+// TestPortfolioBacktest_RegimeGateBullOnly pins §8.3.3 step 2: -regime-gate
+// bull-only must withhold a NEW entry whose day marketRegimeAt scores
+// "bear", while leaving a same-shaped entry on a "bull" day untouched — and
+// must never touch an already-open position (that's what "gate every ENTRY
+// signal" means, not "flatten on a regime flip").
+func TestPortfolioBacktest_RegimeGateBullOnly(t *testing.T) {
+	bench := sweepCandles(append(repeatMove(0.5, 100), repeatMove(-1.0, 30)...))
+
+	var bullIdx, bearIdx = -1, -1
+	for i := range bench {
+		switch marketRegimeAt(bench, i) {
+		case "bull":
+			if bullIdx == -1 && i >= 60 {
+				bullIdx = i
+			}
+		case "bear":
+			if bearIdx == -1 {
+				bearIdx = i
+			}
+		}
+	}
+	if bullIdx == -1 || bearIdx == -1 {
+		t.Fatalf("test setup did not produce both regimes: bullIdx=%d bearIdx=%d — widen the bench path", bullIdx, bearIdx)
+	}
+
+	// Two distinct tickers, one entry apiece, so the bear-day entry being
+	// gated can't be masked by the ticker already being held from the
+	// bull-day entry.
+	tickerA := sweepCandles(repeatMove(0.05, 130))
+	tickerB := sweepCandles(repeatMove(0.05, 130))
+	hists := map[string]tickerHist{"A": newTickerHist(tickerA), "B": newTickerHist(tickerB)}
+	entries := map[string][]string{
+		bench[bullIdx].Date.Format("2006-01-02"): {"A"},
+		bench[bearIdx].Date.Format("2006-01-02"): {"B"},
+	}
+
+	// MaxPositionPct caps each fill to 40% of equity so A's bull-day entry
+	// can't exhaust the cash B's bear-day entry would otherwise need — this
+	// test isolates the gate, not the cash/position-size caps already
+	// covered by TestPortfolioBacktest_MaxPositionPctCaps.
+	cfg := paper.Config{StopATRMult: 2, StopLossPct: 10, TrailingPct: 18, Market: market.US, RiskPct: 1.0, MaxPositionPct: 40}
+
+	off := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "off", 0, "", "")
+	on := runPortfolioBacktest(hists, entries, bench, cfg, 100000, false, "bull-only", 0, "", "")
+
+	lastHeld := func(r portfolioResult) int {
+		if len(r.Curve) == 0 {
+			return -1
+		}
+		return r.Curve[len(r.Curve)-1].PositionsHeld
+	}
+
+	if got := lastHeld(off); got != 2 {
+		t.Fatalf("regime-gate off: %d positions held at end, want 2 (A and B both fill)", got)
+	}
+	if got := lastHeld(on); got != 1 {
+		t.Fatalf("regime-gate bull-only: %d positions held at end, want 1 (A fills, B's bear-day entry is gated)", got)
 	}
 }
