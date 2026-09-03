@@ -9,6 +9,7 @@
 package paper
 
 import (
+	"math"
 	"sort"
 
 	"argus/internal/market"
@@ -28,6 +29,56 @@ type Config struct {
 	TakeProfitATRMult float64 // ATR(14) multiple above entry for the take-profit target; <=0 = disabled
 	Market            market.MarketID
 	FeeDiscount       float64 // TW brokerage discount on the commission leg only (statutory tax never discounts); 1.0 = no discount. Unused for US.
+
+	// BreakevenAtR and PartialExitAtR are Phase 25 §8.4②③'s exit-shape
+	// overlays, both <=0 by default (off) — see MarkClose for the mechanism.
+	// R is the initial per-share risk, AvgCost-Stop as set at entry; both are
+	// read against that same initial R even after BreakevenAtR has moved
+	// Stop, so turning both on in the same run is well-defined but was never
+	// how either was measured — §4.4 requires each pre-registered and tested
+	// independently, at R=1 (the textbook "1R" choice; not swept — a sweep
+	// over several R values before picking the best is exactly the multiple-
+	// comparisons problem §8.3's regime-gate result was written up to avoid).
+	//
+	// BreakevenAtR: measured 2026-09-02 via cmd/strategyscan -breakeven-at-r,
+	// paired against the SAME baseline (random-entry) trades at R=0 vs R=1,
+	// -dump-trades + breakeven_study.py's bootstrap paired diff (400
+	// resamples), both pre-registered §4.4 slices:
+	//
+	//	slice              n       mean ExitRet (off -> on)   win% (off -> on)   paired diff    sigma
+	//	holdout 16-21     58893   +2.89% -> +2.60%            43.6 -> 34.7       -0.29pp        16.8
+	//	in-sample 21-26   59588   +0.97% -> +0.88%            34.6 -> 27.0       -0.09pp         4.9
+	//
+	// NO-SHIP, overwhelmingly: mean return and win rate both fall in BOTH
+	// slices, at 16.8σ/4.9σ — moving the stop to breakeven at 1R cuts off
+	// exactly the trades that pull back through cost before continuing to a
+	// real winner, which this data shows happens often enough to cost more
+	// than it protects. Flag stays default off.
+	//
+	// PartialExitAtR: measured 2026-09-02 via cmd/strategyscan
+	// -portfolio-backtest -partial-exit-at-r=1 vs =0 (US S&P 500, 10y cache,
+	// -portfolio-cash=100000 -portfolio-risk-pct=1.0
+	// -portfolio-max-position-pct=25 — same settings as §3/§8.3), acceptance
+	// metric Sharpe+max-drawdown per PLAN.md's §8.4② note (per-trade return
+	// is the wrong instrument here — see doc §1.2 gap B — the overlay's
+	// value if any is in reduced drawdown, not return):
+	//
+	//	slice              Sharpe (off -> on)   MaxDD% (off -> on)   Ann.Ret% (off -> on)   trades
+	//	holdout 16-21     0.50 -> 0.62         28.51 -> 23.45        +6.36 -> +8.37          145 -> 586
+	//	in-sample 21-26   0.69 -> 0.62         24.05 -> 22.79       +13.46 -> +10.75          236 -> 642
+	//
+	// NO-SHIP: max drawdown improves in BOTH slices, and the holdout clears
+	// the full bar (Sharpe and MaxDD both better) — but in-sample Sharpe gets
+	// WORSE (0.69 -> 0.62), so it fails §3.5's "both slices must improve"
+	// requirement on the primary metric, the same shape of rejection as §3's
+	// vol-target and §8.3's regime gate. The trade-count jump (freed-up cash
+	// from early partial exits lets more later entries fill — same mechanism
+	// closedPortfolioTrade's doc comment describes for -vol-target) is
+	// expected, not a bug. Flag stays default off; this is not a parameter to
+	// re-tune post hoc (§4.4) — a different R would need its own
+	// pre-registered run.
+	BreakevenAtR   float64 // once Peak reaches AvgCost + this many R, Stop moves up to AvgCost (breakeven); never moves back down
+	PartialExitAtR float64 // once Peak reaches AvgCost + this many R, sell half the position (floored) at that close, clear Target, and let the remainder run on the trailing stop alone
 }
 
 // Signal is one recommendation to apply: BUY/SELL/HOLD/"" at Price on Date.
@@ -45,6 +96,7 @@ type Signal struct {
 type Holding struct {
 	Shares, AvgCost, Stop, Peak, Target float64
 	EntryDate                           string
+	PartialExited                       bool // true once §8.4②'s one partial exit has fired for this holding, so a still-climbing Peak doesn't sell it again
 }
 
 // Account is one book's live state — either a backtest replay's running
@@ -285,17 +337,39 @@ func (a *Account) sell(date, ticker string, h Holding, price float64, cfg Config
 	}
 }
 
+// partialSell is §8.4②'s "1R out half" — unlike sell, it leaves the position
+// open (mutates h in place, doesn't touch a.Holdings/delete) so the caller
+// can keep running the remainder under the normal stop/trailing rules.
+func (a *Account) partialSell(date, ticker string, h *Holding, sellShares, price float64, cfg Config) Trade {
+	notional := price * sellShares
+	fee := FeeFor(cfg.Market, "SELL", notional, cfg.FeeDiscount)
+	proceeds := notional - fee
+	realized := proceeds - h.AvgCost*sellShares
+	a.Cash += proceeds
+	h.Shares -= sellShares
+	return Trade{
+		Date: date, Ticker: ticker, Side: "SELL",
+		Shares: sellShares, Price: price, Fee: fee, RealizedPnL: realized, Stop: h.Stop,
+		Reason: "partial_target",
+	}
+}
+
 // MarkClose settles every open holding against date's closing prices before
 // that day's signals are applied (docs/phase-11-paper-account.md §4.3/§5.1:
 // "yesterday's positions face today's stop first"). A holding missing from
 // closes is left untouched (no price to judge it against, same
 // degrade-by-omission convention as elsewhere). Order: fixed stop first
 // (close <= Stop, exits at the close — ponytail: no gap-down simulation,
-// switch to daily Low if that matters more than simplicity), then peak
-// update, then the trailing-stop distance (TrailingStopThreshold); a holding
-// can only exit once per call. Iterates tickers in sorted order purely for
-// deterministic output (trade order never affects any one ticker's outcome,
-// since each ticker's exit depends only on its own state).
+// switch to daily Low if that matters more than simplicity), then target,
+// then peak update, then §8.4②③'s breakeven-stop/partial-exit overlays
+// (both off by default), then the trailing-stop distance
+// (TrailingStopThreshold). A FULL exit (stop/target/trailing) can only
+// happen once per call, same as before §8.4②; a PartialExitAtR fill does not
+// `continue`, so on the same day it can be followed by a trailing exit on
+// what's left of the position — two trades, one holding, one call. Iterates
+// tickers in sorted order purely for deterministic output (trade order never
+// affects any one ticker's outcome, since each ticker's exit depends only on
+// its own state).
 func (a *Account) MarkClose(date string, closes, atrs map[string]float64, cfg Config) []Trade {
 	tickers := make([]string, 0, len(a.Holdings))
 	for t := range a.Holdings {
@@ -324,6 +398,23 @@ func (a *Account) MarkClose(date string, closes, atrs map[string]float64, cfg Co
 		if close > h.Peak {
 			h.Peak = close
 		}
+
+		// §8.4②③: both read R off the Stop as it stood at entry, before
+		// either overlay might move it — computed once here so PartialExitAtR
+		// doesn't see a degenerate R=0 on a day BreakevenAtR has already
+		// moved Stop up to AvgCost.
+		r := h.AvgCost - h.Stop
+		if cfg.BreakevenAtR > 0 && r > 0 && h.Stop < h.AvgCost && h.Peak >= h.AvgCost+cfg.BreakevenAtR*r {
+			h.Stop = h.AvgCost
+		}
+		if cfg.PartialExitAtR > 0 && !h.PartialExited && r > 0 && h.Peak >= h.AvgCost+cfg.PartialExitAtR*r {
+			if half := math.Trunc(h.Shares / 2); half >= 1 {
+				trades = append(trades, a.partialSell(date, t, &h, half, close, cfg))
+				h.PartialExited = true
+				h.Target = 0
+			}
+		}
+
 		if thresholdPct, _, ok := TrailingStopThreshold(cfg.TrailingPct, cfg.TrailingATRMult, atrs[t], h.Peak); ok {
 			drawdownPct := (h.Peak - close) / h.Peak * 100
 			if drawdownPct >= thresholdPct {

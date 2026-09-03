@@ -394,6 +394,7 @@ func main() {
 	trailingPctFlag := flag.Float64("trailing-pct", -1, "full-trade replay: fixed trailing-stop distance, %%; 0 disables, -1 = paper.DefaultExits")
 	trailingATRFlag := flag.Float64("trailing-atr", -1, "full-trade replay: ATR-based trailing distance multiple; 0 = fixed %% only, -1 = paper.DefaultExits")
 	takeProfitATRFlag := flag.Float64("take-profit-atr", -1, "full-trade replay: ATR(14) multiple above entry for the take-profit target; 0 = disabled, -1 = paper.DefaultExits")
+	breakevenAtRFlag := flag.Float64("breakeven-at-r", 0, "Phase 25 §8.4③: once a trade's profit reaches this many R (R=entry-initial stop), move its stop up to breakeven; 0 = off (default). Judged the same way as the other full-trade-replay exit flags above (§4.4 per-trade excess vs the random control) — see internal/paper.Config.BreakevenAtR")
 	// 60 was chosen to match the 數週到數月 position style, and the sweep
 	// below confirms it is a safe place to sit rather than a tuned one.
 	// Replaying every entry at 5/10/20/30/40/60/90/120 days (US, 10y, ~59k
@@ -573,6 +574,12 @@ func main() {
 	// volMultiplierAt's doc comment in portfolio.go for the pre-registered
 	// formula/constants).
 	volTargetFlag := flag.Bool("vol-target", false, "Phase 25 §3: market-level volatility-targeted exposure overlay (SPY's 20d realized vol vs. its trailing 1y percentile scales RiskPct) — requires -portfolio-backtest, default off")
+	// Phase 25 §8.4②: unlike -breakeven-at-r, this is portfolio-backtest-only
+	// on purpose (doc §8.4.3 / PLAN.md's §8.4 entry) — a partial exit's value
+	// (if any) is in reduced drawdown, invisible to simulateTrade's per-trade
+	// return, so it's judged by -portfolio-backtest's Sharpe/max-drawdown, not
+	// wired into exitCfg/simulateTrade at all.
+	partialExitAtRFlag := flag.Float64("partial-exit-at-r", 0, "Phase 25 §8.4②: once a trade's profit reaches this many R, sell half the position and let the rest run on the trailing stop alone; requires -portfolio-backtest, 0 = off (default)")
 	// Phase 25 §8.3: a single switch applied uniformly across every
 	// strategy's pooled entries (not a per-strategy weight — see §8.3.4's
 	// multiple-comparisons objection) — bull-only skips every entry signal
@@ -590,6 +597,10 @@ func main() {
 
 	if *volTargetFlag && !*portfolioBacktestFlag {
 		fmt.Printf("Error: -vol-target requires -portfolio-backtest (it has nothing to multiply otherwise)\n")
+		os.Exit(1)
+	}
+	if *partialExitAtRFlag > 0 && !*portfolioBacktestFlag {
+		fmt.Printf("Error: -partial-exit-at-r requires -portfolio-backtest (it has nothing to multiply otherwise)\n")
 		os.Exit(1)
 	}
 
@@ -753,11 +764,12 @@ func main() {
 		TrailingPct:       *trailingPctFlag,
 		TrailingATRMult:   *trailingATRFlag,
 		TakeProfitATRMult: *takeProfitATRFlag,
+		BreakevenAtR:      *breakevenAtRFlag,
 		Market:            m,
 		FeeDiscount:       *feeDiscountFlag,
 	}
-	fmt.Printf("Exit model (PR3, live-aligned): stop-atr=%.1f stop-pct=%.1f%% trailing-pct=%.1f%% trailing-atr=%.1f take-profit-atr=%.1f max-hold-days=%d slippage=%.2f%%/side fee-discount=%.2f\n",
-		*stopATRFlag, *stopPctFlag, *trailingPctFlag, *trailingATRFlag, *takeProfitATRFlag, *maxHoldDaysFlag, *slippagePctFlag, *feeDiscountFlag)
+	fmt.Printf("Exit model (PR3, live-aligned): stop-atr=%.1f stop-pct=%.1f%% trailing-pct=%.1f%% trailing-atr=%.1f take-profit-atr=%.1f breakeven-at-r=%.2f max-hold-days=%d slippage=%.2f%%/side fee-discount=%.2f\n",
+		*stopATRFlag, *stopPctFlag, *trailingPctFlag, *trailingATRFlag, *takeProfitATRFlag, *breakevenAtRFlag, *maxHoldDaysFlag, *slippagePctFlag, *feeDiscountFlag)
 	if *dateFromFlag != "" || *dateToFlag != "" {
 		fmt.Printf("Out-of-sample window (PR4): [%s .. %s] — make sure -range is wide enough to actually reach %s (e.g. -range=10y for a 2016 start)\n",
 			orDash(*dateFromFlag), orDash(*dateToFlag), orDash(*dateFromFlag))
@@ -1372,8 +1384,9 @@ func main() {
 		pcfg := exitCfg
 		pcfg.RiskPct = *portfolioRiskPctFlag
 		pcfg.MaxPositionPct = *portfolioMaxPositionPctFlag
+		pcfg.PartialExitAtR = *partialExitAtRFlag
 		result := runPortfolioBacktest(tickerHists, portfolioEntries, benchCandles, pcfg, *portfolioCashFlag, *volTargetFlag, *regimeGateFlag, *dateFromFlag, *dateToFlag)
-		printPortfolioResult(*portfolioCashFlag, result, *volTargetFlag, *regimeGateFlag)
+		printPortfolioResult(*portfolioCashFlag, result, *volTargetFlag, *regimeGateFlag, *partialExitAtRFlag)
 
 		eqPath := *portfolioEquityOutFlag
 		if eqPath == "" {
