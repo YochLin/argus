@@ -218,6 +218,39 @@ type openPosition struct {
 	EntryPrice float64
 }
 
+// regimeGate is §8.3's single switch, applied uniformly across every
+// strategy's pooled entriesByDate (never per-strategy — see main.go's
+// -regime-gate flag doc comment on the multiple-comparisons objection this
+// avoids): "bull-only" skips every entry signal on a day marketRegimeAt
+// scores "bear", using the SAME benchCandles index the day's own MarkClose
+// already reads, so there's no separate lookahead-prone lookup. Exits are
+// never gated — a stop/trailing/target must still fire in a bear day, only
+// NEW positions are withheld. "off" (default) runs unchanged.
+//
+// Measured 2026-09-02 (US, S&P 500, same config as volMultiplierAt's own
+// measured run above: 10y cache, -portfolio-cash=100000
+// -portfolio-risk-pct=1.0 -portfolio-max-position-pct=25), both halves of
+// the standard 2021-11 split, -regime-gate=off vs bull-only:
+//
+//	slice              Sharpe (off -> on)   MaxDD% (off -> on)   Ann.Ret% (off -> on)   trades
+//	holdout 16-21     0.50 -> 0.53         28.51 -> 30.61        +6.36 -> +7.02          145 -> 147
+//	in-sample 21-26   0.69 -> 0.43         24.05 -> 22.29        +13.46 -> +6.13         236 -> 164
+//
+// NO-SHIP: §8.3.4's bar is Sharpe AND max drawdown BOTH improving in BOTH
+// slices. Neither slice clears it, and the two metrics don't even agree
+// with each other within a slice: the holdout's Sharpe improves but its
+// drawdown gets WORSE (28.51 -> 30.61); the in-sample's drawdown improves
+// but its Sharpe collapses (0.69 -> 0.43, driven by trade count dropping
+// 236 -> 164 — bear days withheld more of the in-sample's best trades than
+// they protected against). This is the same shape of result as
+// volMultiplierAt's rejection above (mechanism sound, doesn't clear the bar
+// on this market/window) and confirms §8.3.4's own "反對理由②samples"
+// worry: gating out roughly half the calendar days measurably thins the
+// trade set without the drawdown benefit gate-on-regime is supposed to buy.
+// The flag stays default OFF — not a parameter to re-tune post hoc (a
+// different regime definition, e.g. MA200, would need its own
+// pre-registered run, not a retry against these numbers).
+//
 // runPortfolioBacktest replays a single paper.Account chronologically across
 // the benchmark's own trading calendar, applying entriesByDate's BUY signals
 // (built from every strategy's deduped hits — never the baseline, which is a
@@ -231,7 +264,7 @@ type openPosition struct {
 // the same way -date-from/-date-to bound which triggers get recorded
 // upstream, so a time-sliced run's curve doesn't include days outside the
 // slice it's studying.
-func runPortfolioBacktest(hists map[string]tickerHist, entriesByDate map[string][]string, benchCandles []data.Candle, cfg paper.Config, initialCash float64, volTarget bool, fromDate, toDate string) portfolioResult {
+func runPortfolioBacktest(hists map[string]tickerHist, entriesByDate map[string][]string, benchCandles []data.Candle, cfg paper.Config, initialCash float64, volTarget bool, regimeGate string, fromDate, toDate string) portfolioResult {
 	rv20 := computeRV20(data.Closes(benchCandles))
 	acct := paper.NewAccount(initialCash)
 	open := make(map[string]openPosition)
@@ -271,22 +304,25 @@ func runPortfolioBacktest(hists map[string]tickerHist, entriesByDate map[string]
 			}
 		}
 
-		for _, ticker := range entriesByDate[date] {
-			h, ok := hists[ticker]
-			if !ok {
-				continue
-			}
-			price, atr, _, ok := h.closeAndATR(date)
-			if !ok || price <= 0 {
-				continue
-			}
-			entryCfg := cfg
-			if volTarget {
-				entryCfg.RiskPct = cfg.RiskPct * volMultiplierAt(rv20, i)
-			}
-			trade, filled := acct.ApplySignal(paper.Signal{Date: date, Ticker: ticker, Action: "BUY", Price: price}, price, atr, entryCfg)
-			if filled {
-				open[ticker] = openPosition{EntryDate: date, EntryPrice: trade.Price}
+		gated := regimeGate == "bull-only" && marketRegimeAt(benchCandles, i) == "bear"
+		if !gated {
+			for _, ticker := range entriesByDate[date] {
+				h, ok := hists[ticker]
+				if !ok {
+					continue
+				}
+				price, atr, _, ok := h.closeAndATR(date)
+				if !ok || price <= 0 {
+					continue
+				}
+				entryCfg := cfg
+				if volTarget {
+					entryCfg.RiskPct = cfg.RiskPct * volMultiplierAt(rv20, i)
+				}
+				trade, filled := acct.ApplySignal(paper.Signal{Date: date, Ticker: ticker, Action: "BUY", Price: price}, price, atr, entryCfg)
+				if filled {
+					open[ticker] = openPosition{EntryDate: date, EntryPrice: trade.Price}
+				}
 			}
 		}
 
@@ -375,9 +411,9 @@ func annualizedReturnPct(curve []equityPoint) float64 {
 	return (math.Pow(curve[len(curve)-1].Equity/curve[0].Equity, 1/years) - 1) * 100
 }
 
-func printPortfolioResult(initialCash float64, r portfolioResult, volTarget bool) {
+func printPortfolioResult(initialCash float64, r portfolioResult, volTarget bool, regimeGate string) {
 	fmt.Printf("\n=======================================================\n")
-	fmt.Printf(" 組合回測（Phase 25 §3.3 portfolio-layer backtest, vol-target=%v）\n", volTarget)
+	fmt.Printf(" 組合回測（Phase 25 §3.3 portfolio-layer backtest, vol-target=%v, regime-gate=%s）\n", volTarget, regimeGate)
 	fmt.Printf("=======================================================\n")
 	fmt.Printf("起始資金 $%.0f -> 期末權益 $%.0f（%d 個交易日、%d 筆平倉交易）\n",
 		initialCash, r.FinalEquity, len(r.Curve), len(r.Trades))
