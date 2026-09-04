@@ -466,6 +466,29 @@ Keep the reply concise — under 300 words total.
 `,
 	KeyLessonMarker: "Lesson:",
 
+	KeyTradeFollowupBlock: "\nPrice action since the exit (through trading day %d): sold at avg $%.2f -> close $%.2f (%+.1f%%), high $%.2f / low $%.2f over that span\n",
+	KeyTradeFollowupPromptTask: `
+Give an honest, unvarnished follow-up review of this sell, in English:
+1. Was the exit right? Against the "price action since the exit" numbers above, did this sell leave money on
+   the table (it kept rising after the exit), was it a good exit / correct stop-loss (it weakened after the
+   exit), or was the timing roughly a wash? Argue from the numbers, not vague impressions.
+2. If a holding thesis or recommendations are shown above, check them against what happened after the exit too —
+   did the follow-through confirm or contradict them?
+3. What should change in the exit mechanism next time this pattern shows up (staged exits? a trailing stop?
+   a looser or tighter stop level?) — be concrete, not "be more careful."
+4. Remember this is only a 5-trading-day sample after the exit — don't treat short-term noise as a hard rule.
+
+End your reply with one final line starting with exactly:
+%s <the lesson, 2-4 sentences max>
+
+Keep the reply concise — under 300 words total.
+`,
+
+	KeyTradeFollowupResultTitle:      "📓 *Sell Follow-up: %s* (trading day %d)\n%s\n\n%s",
+	KeyTradeFollowupVerdictSoldEarly: "Sold too early: it kept rising after the exit",
+	KeyTradeFollowupVerdictGoodExit:  "Good exit / correct stop-loss",
+	KeyTradeFollowupVerdictNeutral:   "Exit timing was roughly a wash",
+
 	KeyPriceEventPromptIntro:    "You are a stock analyst. *%s* triggered a price event worth recording today — based on the data below, summarize what happened.\n\n",
 	KeyPriceEventGapLine:        "Opening gap: %+.1f%% (vs prior close)%s\n",
 	KeyPriceEventChangeLine:     "Day's change: %+.1f%% (close vs prior close)%s\n",

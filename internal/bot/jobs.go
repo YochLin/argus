@@ -100,6 +100,11 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context, m market.MarketID) {
 		b.checkBuyAlerts(buyAlerts, prices)
 	}
 
+	// Phase 26: post-sell follow-up review, 5 trading days after a full
+	// close (see docs/phase-26-sell-followup.md) — rides the closing
+	// snapshot for both markets rather than a new cron entry (§4.1).
+	b.checkSellFollowups(ctx, m, date)
+
 	// Phase 12: US-only (options.go's OptionChainProvider is US-only, see
 	// its own doc comment) — both the expiry-scan confirm-flow and the
 	// daily ATM IV snapshot ride the US closing snapshot rather than

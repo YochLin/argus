@@ -263,6 +263,14 @@ const (
 	KeyReviewNoClosedTrade    Key = "review_no_closed_trade"
 	KeyTradeReviewResultTitle Key = "trade_review_result_title"
 
+	// Phase 26's post-sell follow-up review (see
+	// docs/phase-26-sell-followup.md) — bot.checkSellFollowups' Telegram
+	// result title plus the three followupVerdict labels it's built from.
+	KeyTradeFollowupResultTitle      Key = "trade_followup_result_title"
+	KeyTradeFollowupVerdictSoldEarly Key = "trade_followup_verdict_sold_early"
+	KeyTradeFollowupVerdictGoodExit  Key = "trade_followup_verdict_good_exit"
+	KeyTradeFollowupVerdictNeutral   Key = "trade_followup_verdict_neutral"
+
 	KeyCashUsage         Key = "cash_usage"
 	KeyCashCurrent       Key = "cash_current"
 	KeyCashCurrentTWD    Key = "cash_current_twd"
@@ -525,6 +533,15 @@ const (
 	KeyTradeReviewRecLine    Key = "trade_review_rec_line"
 	KeyTradeReviewPromptTask Key = "trade_review_prompt_task"
 	KeyLessonMarker          Key = "lesson_marker"
+
+	// Phase 26's post-sell follow-up review (see
+	// docs/phase-26-sell-followup.md) — rendered by buildTradeReviewPrompt
+	// only when ClosedTrade.Followup is non-nil, replacing
+	// KeyTradeReviewPromptTask with KeyTradeFollowupPromptTask for that
+	// call. Both share KeyLessonMarker as their %s task-section arg, so
+	// parseLesson/ReviewTrade/saveLesson need no changes.
+	KeyTradeFollowupBlock      Key = "trade_followup_block"
+	KeyTradeFollowupPromptTask Key = "trade_followup_prompt_task"
 
 	// Phase 20's gap/big-move event log (see
 	// docs/phase-20-price-event-log.md) — buildPriceEventPrompt/

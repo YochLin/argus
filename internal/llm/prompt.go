@@ -291,6 +291,31 @@ type ClosedTrade struct {
 	Thesis          *string
 	Recommendations []TradeRecommendation
 	StopPrice       float64
+	// Followup is Phase 26's post-sell follow-up review input (see
+	// docs/phase-26-sell-followup.md) — nil for the existing at-close
+	// review (Phase 3.8), set for the 5-trading-day-later look-back. When
+	// non-nil, buildTradeReviewPrompt renders an extra post-exit price
+	// block and swaps in the follow-up task section instead of the
+	// standard one.
+	Followup *TradeFollowup
+}
+
+// TradeFollowup is Phase 26's post-sell follow-up input: how ticker traded
+// in the 5 trading days after the exit that closed ClosedTrade's round
+// trip. TradingDaysAfterExit is precomputed by the caller
+// (bot.followupClosedTrade), same "no date math in this package" convention
+// as ClosedTrade.HoldingDays. Verdict is bot.followupVerdict's pure
+// three-way classification ("sold_early"/"good_exit"/"neutral") computed
+// before the LLM call, so the prompt (and the message it renders even if
+// the LLM call fails) always says something meaningful.
+type TradeFollowup struct {
+	TradingDaysAfterExit int
+	ExitPrice            float64
+	PriceAfter           float64
+	HighAfter            float64
+	LowAfter             float64
+	PctSinceExit         float64
+	Verdict              string
 }
 
 // MarketContext is Phase 3.7 追加項's broad-market regime block (see
@@ -972,7 +997,12 @@ func buildTradeReviewPrompt(lang i18n.Lang, trade ClosedTrade) string {
 		}
 	}
 
-	sb.WriteString(i18n.T(lang, i18n.KeyTradeReviewPromptTask, i18n.T(lang, i18n.KeyLessonMarker)))
+	task := i18n.KeyTradeReviewPromptTask
+	if f := trade.Followup; f != nil {
+		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyTradeFollowupBlock, f.TradingDaysAfterExit, f.ExitPrice, f.PriceAfter, f.PctSinceExit, f.HighAfter, f.LowAfter))
+		task = i18n.KeyTradeFollowupPromptTask
+	}
+	sb.WriteString(i18n.T(lang, task, i18n.T(lang, i18n.KeyLessonMarker)))
 	return sb.String()
 }
 

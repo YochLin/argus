@@ -132,7 +132,10 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   downstream-beneficiary row the model proposed from its own supply-chain knowledge (e.g. a TW foundry
   benefiting from an
   NVDA demand story) rather than something the transcript named directly — kept as its own column so
-  that weaker, self-inferred claim stays visibly distinguishable from a grounded mention.
+  that weaker, self-inferred claim stays visibly distinguishable from a grounded mention. Migration 27
+  added `sell_followups` (`sell_followups.go`) — Phase 26's post-sell follow-up dedup table, one row per
+  `(ticker, exit_date)` unique index, written only after a follow-up message actually sends (see
+  `internal/bot`'s `sell_followup.go` entry below for why that's deliberate, not an oversight).
   Full table/method rationale: **[docs/architecture/db.md](docs/architecture/db.md)**.
 
 - `internal/i18n` — every user/LLM-facing string, split into `zh.go` (default) and `en.go`, keyed by
@@ -222,7 +225,15 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   digestion mode) but, unlike that free-form chat reply, runs a dedicated one-shot LLM call
   (`llm.ExtractPodcastInsights`) that parses structured per-stock/macro market views out of a pasted
   podcast/video transcript and persists each one via `db.SavePodcastInsight` — building a queryable
-  log of past outside-source views rather than a one-off summary.
+  log of past outside-source views rather than a one-off summary. `sell_followup.go`'s
+  `checkSellFollowups` (Phase 26) rides `RunClosingSnapshot`'s tail for both markets (no new cron entry)
+  and, for a ticker whose most recent fully closed round trip exited 5 trading days ago, runs a second
+  `llm.ReviewTrade` looking back at how it traded since — "5 trading days" is counted off
+  `b.history.GetHistory`'s daily candle count past the exit date, not a trading calendar, since a candle
+  only exists for a session that actually traded (US holidays, TW multi-day breaks, and individual-ticker
+  halts are then all automatically correct); the `sell_followups` table's `(ticker, exit_date)` row is
+  only written once the follow-up message actually sends, so an LLM failure or not-yet-enough history
+  just retries on the next closing snapshot rather than being treated as done.
   Full command-by-command and job-by-job rationale: **[docs/architecture/bot.md](docs/architecture/bot.md)**.
 
 - `internal/mcptools` — Phase 3.5's MCP (Model Context Protocol) tool surface for chat, using the
