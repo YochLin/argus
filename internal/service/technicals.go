@@ -90,6 +90,14 @@ func ComputeTechnicals(history RiskHistoryReader, ticker string, spyCloses []flo
 	if hit := signals.TrendPullback(candles, screenParams); hit != nil {
 		stratHits = append(stratHits, llm.StrategyHitInfo{Name: hit.Name, DaysAgo: hit.DaysAgo})
 	}
+	// TW only — see signals.CheckMTFCrossExact for the measured US numbers
+	// behind the exclusion. Detector.CheckMTFCross gates the alert path the
+	// same way; this is the prompt path, which has no Detector.
+	if market.Of(ticker) == market.TW {
+		if hit := signals.MTFCross(candles); hit != nil {
+			stratHits = append(stratHits, llm.StrategyHitInfo{Name: hit.Name, DaysAgo: hit.DaysAgo})
+		}
+	}
 
 	recent := candles
 	if len(recent) > PromptCandleCount {

@@ -281,6 +281,7 @@ var enMessages = map[Key]string{
 	KeyStrategyUnvalidatedBoxBottom:       "ℹ️ Screen 2 failed out-of-sample validation: negative or insignificant excess return in both S&P 500 and S&P 400, both time splits (cmd/strategyscan). Reference only — not an entry trigger on its own.",
 	KeyStrategyUnvalidatedTrustFollow:     "ℹ️ Screen 5 failed out-of-sample validation: negative in one time split, insignificant in the other (cmd/strategyscan, retest against the TWSE T86 canonical data source). Reference only — not an entry trigger on its own.",
 	KeyStrategyUnvalidatedSqueezeBreakout: "ℹ️ Screen 1 failed out-of-sample validation: excess return doesn't clear 1 SE in either time split, on S&P 500 or TW (cmd/strategyscan). Reference only — not an entry trigger on its own.",
+	KeyStrategyUnvalidatedMTF:             "ℹ️ This screen failed out-of-sample validation: on TW the early split is significant (P(20-day return > 10%) +4.5pp, 2.4 sigma) but the late split is zero (+0.0pp, 0.0 sigma); on US both splits are significantly negative, so it is enabled for TW only (measured 2026-09-04). Watchlist material only — not an entry trigger on its own.",
 	KeyStrategyUnvalidatedTrendPullback:   "ℹ️ Screen 4 failed out-of-sample validation: excess return doesn't clear 1 SE in both time splits, on S&P 500 or TW (cmd/strategyscan). Reference only — not an entry trigger on its own.",
 	KeyTechGuidanceBlock:                  "\n[Technical & Volume-Price Guidance]\n1. Support & Resistance: Long wicks/double bottoms are strong support; breakout candle low is institutional support; broken resistance turns into support.\n2. Volume & Price: Vol Up + Price Up = Trend Start; Vol Down + Price Down = Healthy Correction; Vol Down + Price Up = Weak Rally; Vol Up + Price Down = Panic Dumping.\n3. MACD: Golden crosses above zero line are stronger; price higher high with lower MACD peak indicates bearish divergence.\n4. KD/RSI: Act when KD leaves oversold (>20/25); RSI 50 is bullish/bearish watershed; pullback to 50 is a strong entry.\n5. Moving Averages: Bullish alignment (MA5 > MA20 > MA60 all sloping up) makes 20MA pullback dynamic support.\n6. When giving a BUY, your reasoning must name a specific suggested stop level (a structural support — e.g. the 10/20-day low — or price minus 2x ATR) and why. This is a reference for the human executing the trade, not something you need to size a position around.\n",
 	KeyVolUpPriceUp:                       "Vol Up Price Up (Bullish)",
@@ -734,6 +735,8 @@ Write only from the data actually provided above — omit any section you have n
 	KeyStrategyTrendPullback: "🎯 %s triggered [Trend Pullback] (%s): MA60 sloping up + pullback to MA20 volume dry-up + KD oversold turn + reversal bar",
 	KeyStrategyBreakoutName:  "Trend Breakout",
 	KeyStrategyPullbackName:  "Trend Pullback",
+	KeyStrategyMTFCross:      "📈 %s triggered [Daily-Weekly MA Cross] (%s): daily MA5/MA7 rising and just crossed above MA30, weekly MA5/MA7 both rising",
+	KeyStrategyMTFName:       "Daily-Weekly MA Cross",
 	KeyStrategyTrustFollow:   "🐳 %s triggered [Trust Follow] (%s): %d-day trust buying at %.1f%% of volume + above rising MA60",
 
 	KeyRestrictedStockAlertTitle: "⚠️ *Disposition/Attention Stock Alert*\n\n",
