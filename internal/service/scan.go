@@ -261,6 +261,24 @@ func (s *ScanService) CheckStatefulSignals(ticker string, candles []data.Candle)
 		}
 	}
 
+	// Strategy 6: 日週共振穿越 (TW only, watchlist tag) — Detector.
+	// CheckMTFCross owns the market gate rather than a RequireX ScreenParams
+	// flag, since the screen takes no ScreenParams at all (see
+	// signals.CheckMTFCrossExact for why, and for its §4.4 status).
+	prevMTF, err := s.store.GetSignalState(ticker, signals.FamilyStrategyMTF)
+	if err != nil {
+		logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategyMTF, err)
+	}
+	sig, newMTF := s.detector.CheckMTFCross(ticker, candles, prevMTF)
+	if sig != nil {
+		out = append(out, *sig)
+	}
+	if newMTF != prevMTF {
+		if err := s.store.SetSignalState(ticker, signals.FamilyStrategyMTF, newMTF); err != nil {
+			logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategyMTF, err)
+		}
+	}
+
 	return out
 }
 
@@ -538,6 +556,13 @@ func (s *ScanService) RestrictedTickers(ctx context.Context, m market.MarketID) 
 //     annotation at all up to this point — indistinguishable, on Telegram,
 //     from a validated entry trigger — see signals.CheckSqueezeBreakoutExact/
 //     CheckTrendPullbackExact for the numbers and repro commands.
+//   - 【日週共振穿越】 carries one too, and is the only screen here that never
+//     shipped without it: it went in already knowing it misses §4.4 (TW's
+//     late split is 0.0 sigma), as a TW-only watchlist tag. It is also the
+//     only screen whose market gate is a measured exclusion rather than a
+//     tuning choice — on US it is negative past 1 SE in both splits at every
+//     return threshold tested, so it does not fire there at all. See
+//     signals.CheckMTFCrossExact.
 func DecorateStrategyHits(sigs []signals.Signal, isBear bool, lang i18n.Lang) []signals.Signal {
 	for i := range sigs {
 		if !strings.HasPrefix(sigs[i].Type, "strategy_") {
@@ -560,6 +585,9 @@ func DecorateStrategyHits(sigs []signals.Signal, isBear bool, lang i18n.Lang) []
 		}
 		if sigs[i].Type == signals.TypeTrendPullback {
 			sigs[i].Message += "\n" + i18n.T(lang, i18n.KeyStrategyUnvalidatedTrendPullback)
+		}
+		if sigs[i].Type == signals.TypeMTFCross {
+			sigs[i].Message += "\n" + i18n.T(lang, i18n.KeyStrategyUnvalidatedMTF)
 		}
 	}
 	return sigs

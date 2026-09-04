@@ -638,6 +638,8 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 			nameStr = i18n.T(lang, i18n.KeyStrategyBreakoutName)
 		} else if hit.Name == "trend_pullback" {
 			nameStr = i18n.T(lang, i18n.KeyStrategyPullbackName)
+		} else if hit.Name == "mtf_cross" {
+			nameStr = i18n.T(lang, i18n.KeyStrategyMTFName)
 		}
 		daysAgoStr := i18n.T(lang, i18n.KeyDaysAgoToday)
 		if hit.DaysAgo > 0 {

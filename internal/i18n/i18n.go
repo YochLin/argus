@@ -435,6 +435,7 @@ const (
 	KeyStrategyUnvalidatedTrustFollow     Key = "strategy_unvalidated_trust_follow"
 	KeyStrategyUnvalidatedSqueezeBreakout Key = "strategy_unvalidated_squeeze_breakout"
 	KeyStrategyUnvalidatedTrendPullback   Key = "strategy_unvalidated_trend_pullback"
+	KeyStrategyUnvalidatedMTF             Key = "strategy_unvalidated_mtf"
 	KeyTechGuidanceBlock                  Key = "tech_guidance_block"
 	KeyVolUpPriceUp                       Key = "vol_up_price_up"
 	KeyVolDownPriceDown                   Key = "vol_down_price_down"
@@ -831,6 +832,13 @@ const (
 	// alert-message shape as the four screens above.
 	KeyStrategyTrustFollow  Key = "strategy_trust_follow"
 	KeyStrategyPullbackName Key = "strategy_pullback_name"
+
+	// KeyStrategyMTFCross/KeyStrategyMTFName (【日週共振穿越】, TW only) —
+	// same alert-message/display-name pair as every other screen. Its
+	// KeyStrategyUnvalidatedMTF notice sits with the other §4.4 downgrade
+	// notices above; see signals.CheckMTFCrossExact for the numbers.
+	KeyStrategyMTFCross Key = "strategy_mtf_cross"
+	KeyStrategyMTFName  Key = "strategy_mtf_name"
 
 	// KeyRestrictedStockAlertTitle/Line (Phase 16, TW only) fire once per
 	// held position that enters TWSE/TPEx disposition (處置) or attention
