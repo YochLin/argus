@@ -454,6 +454,27 @@ var zhMessages = map[Key]string{
 `,
 	KeyLessonMarker: "教訓:",
 
+	KeyTradeFollowupBlock: "\n賣出後走勢（第 %d 個交易日收盤）：賣出均價 $%.2f → 收盤 $%.2f（%+.1f%%），期間最高 $%.2f／最低 $%.2f\n",
+	KeyTradeFollowupPromptTask: `
+請用繁體中文，事後回頭評估這筆賣出，誠實、不粉飾：
+1. 這個出場點對不對：對照上方「賣出後走勢」的數字，這筆賣出是賣飛了（賣完繼續漲）、賣在相對高點／
+   止損正確（賣完轉弱），還是時點差不多？用數字說話，不要空泛評語。
+2. 若上方附有「持有論點」或推薦紀錄，一併對照——賣出後的走勢有沒有印證或推翻它們？
+3. 下次遇到同樣的型態，出場機制該怎麼調整（分批出場？移動停利？停損位放寬或收緊？）——給具體建議，
+   不要「要更謹慎」這種空話。
+4. 提醒自己：這只是賣出後 5 個交易日的短期樣本，不要把短期雜訊講成鐵律。
+
+回覆最後另起一行，開頭必須是：
+%s <這條教訓，2–4 句話以內>
+
+回覆請簡潔，總字數控制在 300 字以內。
+`,
+
+	KeyTradeFollowupResultTitle:      "📓 *賣後追蹤：%s*（第 %d 個交易日）\n%s\n\n%s",
+	KeyTradeFollowupVerdictSoldEarly: "賣飛了：賣出後續漲",
+	KeyTradeFollowupVerdictGoodExit:  "賣在相對高點／止損正確",
+	KeyTradeFollowupVerdictNeutral:   "出場時點差不多",
+
 	KeyPriceEventPromptIntro:    "你是一位股票分析師，*%s* 今天觸發了值得記錄的價格事件，請根據以下資料整理這次事件的情況說明。\n\n",
 	KeyPriceEventGapLine:        "開盤跳空：%+.1f%%（相對前收）%s\n",
 	KeyPriceEventChangeLine:     "當日漲跌：%+.1f%%（收盤相對前收）%s\n",

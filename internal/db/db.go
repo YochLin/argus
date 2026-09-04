@@ -720,6 +720,38 @@ var migrations = []string{
 	`
 	ALTER TABLE podcast_insights ADD COLUMN derived_from TEXT NOT NULL DEFAULT '';
 	`,
+
+	// 27: sell_followups backs Phase 26's post-sell follow-up review (see
+	// docs/phase-26-sell-followup.md) — one row per (ticker, exit_date),
+	// written only after a follow-up message actually sends successfully.
+	// The unique index on (ticker, exit_date) IS the dedup mechanism (no
+	// signal_states-style state machine needed, same as price_events
+	// migration 18): RunClosingSnapshot already runs at most once per
+	// market per day, so "row exists" is exactly "already followed up on
+	// this exit." Writing only on success is deliberate, not an oversight —
+	// an LLM failure or a not-yet-5-trading-days history simply leaves no
+	// row, so bot.checkSellFollowups retries the same candidate the next
+	// closing snapshot, up to its own 30-day age cutoff.
+	// review_date is when the follow-up actually ran (may be later than the
+	// 5th trading day if a retry was needed); price_at_review is always
+	// that 5th trading day's close regardless of when the retry happened —
+	// kept as two separate columns so a backfilled row is distinguishable
+	// from an on-time one.
+	`
+	CREATE TABLE IF NOT EXISTS sell_followups (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		ticker TEXT NOT NULL,
+		market TEXT NOT NULL,
+		exit_date TEXT NOT NULL,
+		review_date TEXT NOT NULL,
+		exit_price REAL NOT NULL DEFAULT 0,
+		price_at_review REAL NOT NULL DEFAULT 0,
+		pct_since_exit REAL NOT NULL DEFAULT 0,
+		verdict TEXT NOT NULL DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_sell_followups_ticker_exit ON sell_followups(ticker, exit_date);
+	`,
 }
 
 func (d *DB) migrate() error {

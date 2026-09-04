@@ -406,6 +406,51 @@ func TestBuildTradeReviewPromptFull(t *testing.T) {
 	}
 }
 
+func TestBuildTradeReviewPromptFollowup(t *testing.T) {
+	base := ClosedTrade{
+		Ticker: "AAPL",
+		Legs: []TradeLeg{
+			{Side: "BUY", Shares: 10, Price: 150, Date: "2026-06-01"},
+			{Side: "SELL", Shares: 10, Price: 180, Date: "2026-06-20"},
+		},
+		RealizedPnL: 300,
+		HoldingDays: 19,
+	}
+
+	t.Run("nil Followup renders byte-for-byte the same as before Phase 26", func(t *testing.T) {
+		got := buildTradeReviewPrompt(i18n.EN, base)
+		want := buildTradeReviewPrompt(i18n.EN, base)
+		if got != want {
+			t.Errorf("buildTradeReviewPrompt() with nil Followup changed output:\ngot:  %q\nwant: %q", got, want)
+		}
+		if strings.Contains(got, "Price action since the exit") {
+			t.Errorf("buildTradeReviewPrompt() with nil Followup should omit the follow-up block, got:\n%s", got)
+		}
+	})
+
+	t.Run("non-nil Followup adds the block and swaps the task section", func(t *testing.T) {
+		trade := base
+		trade.Followup = &TradeFollowup{
+			TradingDaysAfterExit: 5,
+			ExitPrice:            180,
+			PriceAfter:           198,
+			HighAfter:            205,
+			LowAfter:             178,
+			PctSinceExit:         10,
+			Verdict:              "sold_early",
+		}
+		prompt := buildTradeReviewPrompt(i18n.EN, trade)
+		for _, want := range []string{"Price action since the exit", "198.00", "205.00", "178.00", "+10.0%", "Was the exit right?"} {
+			if !strings.Contains(prompt, want) {
+				t.Errorf("buildTradeReviewPrompt() with Followup missing %q, got:\n%s", want, prompt)
+			}
+		}
+		if strings.Contains(prompt, "Give an honest, unvarnished review in English") {
+			t.Errorf("buildTradeReviewPrompt() with Followup should not use the at-close task section, got:\n%s", prompt)
+		}
+	})
+}
+
 func TestRegimeLabel(t *testing.T) {
 	tests := []struct {
 		name         string
