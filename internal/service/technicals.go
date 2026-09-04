@@ -90,9 +90,12 @@ func ComputeTechnicals(history RiskHistoryReader, ticker string, spyCloses []flo
 	if hit := signals.TrendPullback(candles, screenParams); hit != nil {
 		stratHits = append(stratHits, llm.StrategyHitInfo{Name: hit.Name, DaysAgo: hit.DaysAgo})
 	}
-	// TW only — see signals.CheckMTFCrossExact for the measured US numbers
-	// behind the exclusion. Detector.CheckMTFCross gates the alert path the
-	// same way; this is the prompt path, which has no Detector.
+	// TW only, deliberately unlike the alert path. Detector.CheckMTFCross
+	// fires on US too (the user asked to observe it there), but US is
+	// measured NEGATIVE past 1 SE in both splits — a Telegram notice can
+	// carry that warning, an LLM prompt block cannot, and feeding a
+	// measured-harmful screen into the recommendation prompt would degrade
+	// the recommendation. See signals.CheckMTFCrossExact.
 	if market.Of(ticker) == market.TW {
 		if hit := signals.MTFCross(candles); hit != nil {
 			stratHits = append(stratHits, llm.StrategyHitInfo{Name: hit.Name, DaysAgo: hit.DaysAgo})

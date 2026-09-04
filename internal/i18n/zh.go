@@ -284,7 +284,8 @@ var zhMessages = map[Key]string{
 	KeyStrategyUnvalidatedBoxBottom:       "ℹ️ 網 2 未通過出樣本驗證：大型股與中型股、兩個時間切片的超額報酬皆為負或不顯著（cmd/strategyscan）。僅供參考，勿單獨作為進場依據。",
 	KeyStrategyUnvalidatedTrustFollow:     "ℹ️ 網 5 未通過出樣本驗證：兩個時間切片的超額報酬一負一不顯著（cmd/strategyscan，對 TWSE T86 正典資料源的重測）。僅供參考，勿單獨作為進場依據。",
 	KeyStrategyUnvalidatedSqueezeBreakout: "ℹ️ 網 1 未通過出樣本驗證：S&P 500 與台股，兩個時間切片的超額報酬皆未過 1 個標準誤（cmd/strategyscan）。僅供參考，勿單獨作為進場依據。",
-	KeyStrategyUnvalidatedMTF:             "ℹ️ 此網未通過出樣本驗證：台股早切片超額顯著（20 日漲逾 10% 的機率 +4.5pp，2.4σ）但晚切片歸零（+0.0pp，0.0σ）；美股兩切片皆顯著為負，故僅在台股啟用（2026-09-04 實測）。僅供關注清單，勿單獨作為進場依據。",
+	KeyStrategyUnvalidatedMTF:             "ℹ️ 台股實測（2026-09-04，同股自比）：20 日漲逾 10% 的機率，早切片 +4.8pp（2.7σ）、晚切片 +5.7pp（3.2σ）；命中率 22.0%，母體基準 14.6%。但 20°/30° 門檻是看過兩個切片後才選定的，切片檢定對它已非出樣本；且 116 檔中 60 正 56 負，拿掉最好的 5% 之後平均 20 日報酬從 +2.90% 掉到 +0.43%——獲利集中在右尾，挑檔挑單會把優勢還回去。僅供關注清單，勿單獨作為進場依據。",
+	KeyStrategyMTFCrossUS:                 "⚠️ 美股僅供觀察：此網在美股實測為負（20 日漲逾 10% 的機率，早切片 −6.9pp／10.9σ、晚切片 −3.7pp／4.8σ，2026-09-04 同股自比）。觸發當下中位數已漲 20%、六成剛創一年新高，是波段末端不是起點。依你要求照常通知，但它在美股是反指標。",
 	KeyStrategyUnvalidatedTrendPullback:   "ℹ️ 網 4 未通過出樣本驗證：S&P 500 與台股，兩個時間切片的超額報酬皆未過 1 個標準誤（cmd/strategyscan）。僅供參考，勿單獨作為進場依據。",
 	KeyTechGuidanceBlock:                  "\n【技術面與量價判讀指引】\n1. 支撐壓力：連續長下影線/雙重底(W底)為強支撐；爆量長紅 K 低點為主力成本支撐，跌破即棄守；突破後舊壓力轉支撐。\n2. 量價配合：量增價漲=趨勢啟動；量縮價跌=健康洗盤；量縮價漲=虛胖誘多；量增價跌=恐慌倒貨勿接刀。\n3. MACD：零軸上金叉力道較強，零軸下金叉多為弱反彈；價格創新高但柱狀體峰值遞減為頂背離警訊。\n4. KD/RSI：KD 出超賣區(翻越20/25)再動作，避免低檔鈍化接刀；RSI 50 為多空分界線，站穩 50 之拉回為強勢點。\n5. 多頭排列 (MA5 > MA20 > MA60 全朝上) 時拉回 MA20 為動態支撐點。\n6. 給出 BUY 建議時，原因中務必點名一個具體的建議停損位（結構性支撐位，如近10/20日低點，或現價減2倍ATR），並說明依據——這是給人工執行的參考，不是要你去算股數。\n",
 	KeyVolUpPriceUp:                       "量增價漲 (多頭發力)",
@@ -721,7 +722,7 @@ var zhMessages = map[Key]string{
 	KeyStrategyTrendPullback: "🎯 %s 觸發【趨勢回檔】(%s)：季線上彎 + 拉回月線量縮 + KD 低檔轉折 + 止跌 K 線",
 	KeyStrategyBreakoutName:  "趨勢突破",
 	KeyStrategyPullbackName:  "趨勢回檔",
-	KeyStrategyMTFCross:      "📈 %s 觸發【日週共振穿越】(%s)：日 MA5/MA7 上彎且剛站上 MA30，週 MA5/MA7 同步上彎",
+	KeyStrategyMTFCross:      "📈 %s 觸發【日週共振穿越】(%s)：日 MA5/MA7 角度 ≥20°，週 MA5/MA7 角度 ≥30°，RSI ≤80",
 	KeyStrategyMTFName:       "日週共振穿越",
 	KeyStrategyTrustFollow:   "🐳 %s 觸發【主力跟單】(%s)：投信近 %d 日買超佔量 %.1f%% + 站上季線且上彎",
 

@@ -436,6 +436,7 @@ const (
 	KeyStrategyUnvalidatedSqueezeBreakout Key = "strategy_unvalidated_squeeze_breakout"
 	KeyStrategyUnvalidatedTrendPullback   Key = "strategy_unvalidated_trend_pullback"
 	KeyStrategyUnvalidatedMTF             Key = "strategy_unvalidated_mtf"
+	KeyStrategyMTFCrossUS                 Key = "strategy_mtf_cross_us"
 	KeyTechGuidanceBlock                  Key = "tech_guidance_block"
 	KeyVolUpPriceUp                       Key = "vol_up_price_up"
 	KeyVolDownPriceDown                   Key = "vol_down_price_down"
@@ -833,9 +834,12 @@ const (
 	KeyStrategyTrustFollow  Key = "strategy_trust_follow"
 	KeyStrategyPullbackName Key = "strategy_pullback_name"
 
-	// KeyStrategyMTFCross/KeyStrategyMTFName (【日週共振穿越】, TW only) —
-	// same alert-message/display-name pair as every other screen. Its
-	// KeyStrategyUnvalidatedMTF notice sits with the other §4.4 downgrade
+	// KeyStrategyMTFCross/KeyStrategyMTFName (【日週共振穿越】) — same
+	// alert-message/display-name pair as every other screen. It fires on BOTH
+	// markets, and which notice rides along depends on the market:
+	// KeyStrategyUnvalidatedMTF for TW (positive but selection-caveated),
+	// KeyStrategyMTFCrossUS for US (measured negative, kept firing only
+	// because the user asked to observe it). Both sit with the other §4.4
 	// notices above; see signals.CheckMTFCrossExact for the numbers.
 	KeyStrategyMTFCross Key = "strategy_mtf_cross"
 	KeyStrategyMTFName  Key = "strategy_mtf_name"

@@ -261,10 +261,11 @@ func (s *ScanService) CheckStatefulSignals(ticker string, candles []data.Candle)
 		}
 	}
 
-	// Strategy 6: 日週共振穿越 (TW only, watchlist tag) — Detector.
-	// CheckMTFCross owns the market gate rather than a RequireX ScreenParams
-	// flag, since the screen takes no ScreenParams at all (see
-	// signals.CheckMTFCrossExact for why, and for its §4.4 status).
+	// Strategy 6: 日週共振穿越 (watchlist tag, BOTH markets) — Detector.
+	// CheckMTFCross takes no ScreenParams at all (see
+	// signals.CheckMTFCrossExact for why, and for its §4.4 status). It used
+	// to be gated to TW; US now fires too, at the user's request, carrying
+	// the measured-negative notice DecorateStrategyHits attaches.
 	prevMTF, err := s.store.GetSignalState(ticker, signals.FamilyStrategyMTF)
 	if err != nil {
 		logger.Errorf("signal state %s/%s: %v", ticker, signals.FamilyStrategyMTF, err)
@@ -557,11 +558,11 @@ func (s *ScanService) RestrictedTickers(ctx context.Context, m market.MarketID) 
 //     from a validated entry trigger — see signals.CheckSqueezeBreakoutExact/
 //     CheckTrendPullbackExact for the numbers and repro commands.
 //   - 【日週共振穿越】 carries one too, and is the only screen here that never
-//     shipped without it: it went in already knowing it misses §4.4 (TW's
-//     late split is 0.0 sigma), as a TW-only watchlist tag. It is also the
-//     only screen whose market gate is a measured exclusion rather than a
-//     tuning choice — on US it is negative past 1 SE in both splits at every
-//     return threshold tested, so it does not fire there at all. See
+//     shipped without it. It is also the only one whose notice depends on the
+//     market: TW gets KeyStrategyUnvalidatedMTF (positive in both splits, but
+//     the thresholds were chosen with both splits visible), US gets
+//     KeyStrategyMTFCrossUS (negative past 1 SE in both splits — it fires
+//     there only because the user asked to observe it, 2026-09-04). See
 //     signals.CheckMTFCrossExact.
 func DecorateStrategyHits(sigs []signals.Signal, isBear bool, lang i18n.Lang) []signals.Signal {
 	for i := range sigs {
@@ -587,7 +588,15 @@ func DecorateStrategyHits(sigs []signals.Signal, isBear bool, lang i18n.Lang) []
 			sigs[i].Message += "\n" + i18n.T(lang, i18n.KeyStrategyUnvalidatedTrendPullback)
 		}
 		if sigs[i].Type == signals.TypeMTFCross {
-			sigs[i].Message += "\n" + i18n.T(lang, i18n.KeyStrategyUnvalidatedMTF)
+			// The only screen whose notice depends on the market: TW's
+			// numbers are positive (with a threshold-selection caveat), US's
+			// are measurably negative and it fires there anyway because the
+			// user asked to watch it. See signals.CheckMTFCrossExact.
+			key := i18n.KeyStrategyUnvalidatedMTF
+			if market.Of(sigs[i].Ticker) == market.US {
+				key = i18n.KeyStrategyMTFCrossUS
+			}
+			sigs[i].Message += "\n" + i18n.T(lang, key)
 		}
 	}
 	return sigs

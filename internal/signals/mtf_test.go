@@ -26,42 +26,67 @@ func mtfCandles(count int, closeAt func(i int) float64) []data.Candle {
 	return out
 }
 
-// tw1101Closes is 台泥 (1101) daily closes for the 75 sessions ending
-// 2023-01-05 — a real trigger from the measurement run behind
-// CheckMTFCrossExact's doc comment (TW, WeeklyB reading). Pinning the
-// implementation to a real firing day is worth more than a synthetic
-// fixture here: BOTH bugs this screen went through (weekly lookahead, and
-// comparing weekly MAs day-to-day instead of bar-to-bar) produced code that
-// still passed hand-built V-shapes while being wrong on real data.
-var tw1101Closes = []struct {
+// tw2059Closes is 川湖 (2059) daily closes for the 170 sessions ending
+// 2025-10-13 — a real trigger of the shipped rule (daily angles 42.0/36.0,
+// weekly 36.2/37.7, RSI 65.5, so every leg clears its threshold with room).
+// Pinning the implementation to a real firing day is worth more than a
+// synthetic fixture here: BOTH bugs this screen went through (weekly
+// lookahead, and comparing weekly MAs day-to-day instead of bar-to-bar)
+// produced code that still passed hand-built V-shapes while being wrong on
+// real data.
+var tw2059Closes = []struct {
 	date  string
 	close float64
 }{
-	{"2022-09-21", 38.1000}, {"2022-09-22", 37.5500}, {"2022-09-23", 37.0000}, {"2022-09-26", 35.8500},
-	{"2022-09-27", 35.8000}, {"2022-09-28", 34.9000}, {"2022-09-29", 34.1500}, {"2022-09-30", 33.8000},
-	{"2022-10-03", 33.6500}, {"2022-10-04", 33.8500}, {"2022-10-05", 34.1500}, {"2022-10-06", 34.3000},
-	{"2022-10-07", 34.2500}, {"2022-10-11", 33.8000}, {"2022-10-12", 33.7500}, {"2022-10-13", 32.6500},
-	{"2022-10-14", 32.4000}, {"2022-10-17", 31.7000}, {"2022-10-18", 31.4500}, {"2022-10-19", 31.6000},
-	{"2022-10-20", 30.9000}, {"2022-10-21", 31.0000}, {"2022-10-24", 30.6000}, {"2022-10-25", 29.9000},
-	{"2022-10-26", 30.3000}, {"2022-10-27", 30.8500}, {"2022-10-28", 30.5000}, {"2022-10-31", 30.2500},
-	{"2022-11-01", 30.6500}, {"2022-11-02", 30.7500}, {"2022-11-03", 30.3000}, {"2022-11-04", 30.4500},
-	{"2022-11-07", 31.0000}, {"2022-11-08", 31.6500}, {"2022-11-09", 31.9000}, {"2022-11-10", 31.7000},
-	{"2022-11-11", 32.1500}, {"2022-11-14", 34.1500}, {"2022-11-15", 33.8500}, {"2022-11-16", 32.9000},
-	{"2022-11-17", 34.2500}, {"2022-11-18", 33.3000}, {"2022-11-21", 32.8500}, {"2022-11-22", 32.6500},
-	{"2022-11-23", 32.7000}, {"2022-11-24", 33.2000}, {"2022-11-25", 33.5500}, {"2022-11-28", 33.0000},
-	{"2022-11-29", 33.5500}, {"2022-11-30", 33.9000}, {"2022-12-01", 34.0500}, {"2022-12-02", 33.6500},
-	{"2022-12-05", 33.7000}, {"2022-12-06", 33.3000}, {"2022-12-07", 33.3500}, {"2022-12-08", 33.2000},
-	{"2022-12-09", 33.7000}, {"2022-12-12", 33.8500}, {"2022-12-13", 33.7000}, {"2022-12-14", 33.5000},
-	{"2022-12-15", 33.5500}, {"2022-12-16", 34.6000}, {"2022-12-19", 33.8500}, {"2022-12-20", 33.7000},
-	{"2022-12-21", 34.0500}, {"2022-12-22", 34.4500}, {"2022-12-23", 34.0500}, {"2022-12-26", 34.4000},
-	{"2022-12-27", 34.3000}, {"2022-12-28", 34.3000}, {"2022-12-29", 33.7000}, {"2022-12-30", 33.6500},
-	{"2023-01-03", 33.5000}, {"2023-01-04", 33.5000}, {"2023-01-05", 34.4500},
+	{"2025-02-05", 1410}, {"2025-02-06", 1425}, {"2025-02-07", 1565}, {"2025-02-10", 1570},
+	{"2025-02-11", 1620}, {"2025-02-12", 1655}, {"2025-02-13", 1670}, {"2025-02-14", 1675},
+	{"2025-02-17", 1755}, {"2025-02-18", 1855}, {"2025-02-19", 1870}, {"2025-02-20", 1875},
+	{"2025-02-21", 1865}, {"2025-02-24", 1930}, {"2025-02-25", 1955}, {"2025-02-26", 2050},
+	{"2025-02-27", 1990}, {"2025-03-03", 2000}, {"2025-03-04", 2005}, {"2025-03-05", 1960},
+	{"2025-03-06", 1970}, {"2025-03-07", 1925}, {"2025-03-10", 1900}, {"2025-03-11", 1870},
+	{"2025-03-12", 1840}, {"2025-03-13", 1880}, {"2025-03-14", 1895}, {"2025-03-17", 1915},
+	{"2025-03-18", 1980}, {"2025-03-19", 1925}, {"2025-03-20", 1965}, {"2025-03-21", 1865},
+	{"2025-03-24", 1840}, {"2025-03-25", 1845}, {"2025-03-26", 1895}, {"2025-03-27", 1900},
+	{"2025-03-28", 1825}, {"2025-03-31", 1650}, {"2025-04-01", 1665}, {"2025-04-02", 1640},
+	{"2025-04-07", 1480}, {"2025-04-08", 1335}, {"2025-04-09", 1205}, {"2025-04-10", 1325},
+	{"2025-04-11", 1455}, {"2025-04-14", 1585}, {"2025-04-15", 1640}, {"2025-04-16", 1570},
+	{"2025-04-17", 1615}, {"2025-04-18", 1640}, {"2025-04-21", 1645}, {"2025-04-22", 1570},
+	{"2025-04-23", 1670}, {"2025-04-24", 1675}, {"2025-04-25", 1795}, {"2025-04-28", 1770},
+	{"2025-04-29", 1815}, {"2025-04-30", 1745}, {"2025-05-02", 1840}, {"2025-05-05", 1815},
+	{"2025-05-06", 1855}, {"2025-05-07", 1865}, {"2025-05-08", 1920}, {"2025-05-09", 1890},
+	{"2025-05-12", 1880}, {"2025-05-13", 1925}, {"2025-05-14", 1940}, {"2025-05-15", 2000},
+	{"2025-05-16", 2020}, {"2025-05-19", 1965}, {"2025-05-20", 2010}, {"2025-05-21", 2050},
+	{"2025-05-22", 2130}, {"2025-05-23", 2095}, {"2025-05-26", 2090}, {"2025-05-27", 2050},
+	{"2025-05-28", 2060}, {"2025-05-29", 2050}, {"2025-06-02", 2030}, {"2025-06-03", 2160},
+	{"2025-06-04", 2175}, {"2025-06-05", 2200}, {"2025-06-06", 2135}, {"2025-06-09", 2145},
+	{"2025-06-10", 2180}, {"2025-06-11", 2140}, {"2025-06-12", 2130}, {"2025-06-13", 2165},
+	{"2025-06-16", 2185}, {"2025-06-17", 2130}, {"2025-06-18", 2150}, {"2025-06-19", 2150},
+	{"2025-06-20", 2075}, {"2025-06-23", 2100}, {"2025-06-24", 2145}, {"2025-06-25", 2135},
+	{"2025-06-26", 2050}, {"2025-06-27", 2050}, {"2025-06-30", 2035}, {"2025-07-01", 2010},
+	{"2025-07-02", 2015}, {"2025-07-03", 1990}, {"2025-07-04", 2050}, {"2025-07-07", 2025},
+	{"2025-07-08", 2145}, {"2025-07-09", 2150}, {"2025-07-10", 2160}, {"2025-07-11", 2120},
+	{"2025-07-14", 2055}, {"2025-07-15", 2130}, {"2025-07-16", 2185}, {"2025-07-17", 2240},
+	{"2025-07-18", 2415}, {"2025-07-21", 2500}, {"2025-07-22", 2495}, {"2025-07-23", 2500},
+	{"2025-07-24", 2520}, {"2025-07-25", 2565}, {"2025-07-28", 2605}, {"2025-07-29", 2595},
+	{"2025-07-30", 2605}, {"2025-07-31", 2665}, {"2025-08-04", 2600}, {"2025-08-05", 2725},
+	{"2025-08-06", 2810}, {"2025-08-07", 2925}, {"2025-08-08", 2960}, {"2025-08-11", 3005},
+	{"2025-08-12", 2990}, {"2025-08-13", 3055}, {"2025-08-14", 3105}, {"2025-08-15", 3130},
+	{"2025-08-18", 3180}, {"2025-08-19", 3085}, {"2025-08-20", 2855}, {"2025-08-21", 2965},
+	{"2025-08-22", 2955}, {"2025-08-25", 3035}, {"2025-08-26", 2980}, {"2025-08-27", 2940},
+	{"2025-08-28", 2925}, {"2025-08-29", 3025}, {"2025-09-01", 2965}, {"2025-09-02", 2930},
+	{"2025-09-03", 3130}, {"2025-09-04", 2995}, {"2025-09-05", 3210}, {"2025-09-08", 3220},
+	{"2025-09-09", 3335}, {"2025-09-10", 3485}, {"2025-09-11", 3415}, {"2025-09-12", 3430},
+	{"2025-09-15", 3410}, {"2025-09-16", 3370}, {"2025-09-17", 3370}, {"2025-09-18", 3415},
+	{"2025-09-19", 3335}, {"2025-09-22", 3250}, {"2025-09-23", 3220}, {"2025-09-24", 3220},
+	{"2025-09-25", 3170}, {"2025-09-26", 3100}, {"2025-09-30", 3290}, {"2025-10-01", 3310},
+	{"2025-10-02", 3340}, {"2025-10-03", 3415}, {"2025-10-07", 3470}, {"2025-10-08", 3575},
+	{"2025-10-09", 3745}, {"2025-10-13", 3720},
 }
 
-func tw1101Candles(t *testing.T) []data.Candle {
+func tw2059Candles(t *testing.T) []data.Candle {
 	t.Helper()
-	out := make([]data.Candle, len(tw1101Closes))
-	for i, r := range tw1101Closes {
+	out := make([]data.Candle, len(tw2059Closes))
+	for i, r := range tw2059Closes {
 		d, err := time.Parse("2006-01-02", r.date)
 		if err != nil {
 			t.Fatalf("bad fixture date %q: %v", r.date, err)
@@ -78,23 +103,39 @@ func tw1101Candles(t *testing.T) []data.Candle {
 // actually flagged. A drift here means the shipped screen no longer matches
 // the numbers in CheckMTFCrossExact's doc comment.
 func TestMTFCrossRealTrigger(t *testing.T) {
-	candles := tw1101Candles(t)
+	candles := tw2059Candles(t)
 
 	if !CheckMTFCrossExact(candles) {
-		t.Error("2023-01-05 is a measured trigger for 1101 but the screen did not fire")
+		t.Error("2025-10-13 is a measured trigger for 2059 but the screen did not fire")
 	}
-	// "Just crossed" — the day before the same cross must not fire.
+	// The state has to be new: the prior bar must not already satisfy it,
+	// or Detector's dedup would have alerted a day early.
 	if CheckMTFCrossExact(candles[:len(candles)-1]) {
-		t.Error("fired on 2023-01-04 too: the prevClose <= prevMA30 leg is not enforcing a cross")
+		t.Error("fired on 2025-10-10 too: this is not the day the state turns true")
 	}
 	if CheckMTFCrossExact(candles[:mtfMinBars-1]) {
 		t.Error("should return false below mtfMinBars rather than indexing short slices")
 	}
 
-	// MTFCross's lookback should surface the same hit as DaysAgo=0, and as
-	// DaysAgo=1 when evaluated one session later.
+	// MTFCross's lookback should surface the same hit as DaysAgo=0.
 	if hit := MTFCross(candles); hit == nil || hit.DaysAgo != 0 {
 		t.Errorf("MTFCross() = %v, want a hit with DaysAgo=0", hit)
+	}
+}
+
+// TestMTFCrossRSICap isolates the RSI leg. Changing only the LAST close
+// cannot touch the weekly legs at all — weeklyCloses excludes the week the
+// last bar sits in — and a jump only makes the daily angles steeper, so RSI
+// is the one thing that can turn the screen off.
+func TestMTFCrossRSICap(t *testing.T) {
+	candles := tw2059Candles(t)
+	candles[len(candles)-1].Close *= 1.30
+
+	if got := RSI(data.Closes(candles), 14); got <= mtfRSIMax {
+		t.Fatalf("RSI after the spike = %.1f, want > %.0f for this test to mean anything", got, mtfRSIMax)
+	}
+	if CheckMTFCrossExact(candles) {
+		t.Error("fired with RSI above the cap; the overheat leg is not being enforced")
 	}
 }
 
@@ -135,15 +176,15 @@ func TestWMAComparesWeeklyBars(t *testing.T) {
 	}
 }
 
-// TestMTFCrossDetectorTWOnly pins the market gate. The US exclusion is a
-// measured one (negative past 1 SE in both splits at every threshold, see
-// CheckMTFCrossExact) — if this ever starts firing on US tickers, the screen
-// is actively working against the user there.
-func TestMTFCrossDetectorTWOnly(t *testing.T) {
-	candles := tw1101Candles(t)
+// TestMTFCrossDetectorBothMarkets pins the market policy: it USED to be
+// TW-only, and now fires on US too at the user's explicit request even
+// though US is measured negative (see CheckMTFCrossExact). If this ever goes
+// back to returning nil for US, that is a policy change, not a fix.
+func TestMTFCrossDetectorBothMarkets(t *testing.T) {
+	candles := tw2059Candles(t)
 	d := NewDetector(i18n.ZH)
 
-	sig, state := d.CheckMTFCross("1101", candles, "")
+	sig, state := d.CheckMTFCross("2059", candles, "")
 	if sig == nil {
 		t.Fatal("CheckMTFCross(TW) = nil, want a signal on a measured trigger day")
 	}
@@ -154,11 +195,11 @@ func TestMTFCrossDetectorTWOnly(t *testing.T) {
 		t.Errorf("newState = %q, want \"hit\"", state)
 	}
 	// Dedup: the same occurrence must not alert twice.
-	if sig, _ := d.CheckMTFCross("1101", candles, "hit"); sig != nil {
+	if sig, _ := d.CheckMTFCross("2059", candles, "hit"); sig != nil {
 		t.Error("fired again with prevState=hit; dedup is not working")
 	}
 
-	if sig, _ := d.CheckMTFCross("AAPL", candles, ""); sig != nil {
-		t.Errorf("CheckMTFCross(US) = %v, want nil — the screen is TW-only", sig)
+	if sig, _ := d.CheckMTFCross("AAPL", candles, ""); sig == nil {
+		t.Error("CheckMTFCross(US) = nil; US is expected to fire (with a warning notice attached downstream)")
 	}
 }

@@ -167,15 +167,25 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
 - `internal/signals` — pure functions for rule-based technical signals (RSI, MACD, Stochastic KD,
   Bollinger Bandwidth, MA Alignment, Volume-Price, New High, Relative Strength, Lowest Close) and
   strategy screens (Squeeze Breakout, Box Bottom Rebound, and Phase 14's Trend Breakout/Trend Pullback),
-  independent of Telegram/LLM/DB. `mtf.go`'s 【日週共振穿越】 is the one screen here that ships
-  knowing it misses §4.4 — a TW-only *watchlist* tag (daily MA5/MA7 rising + close just crossed MA30 +
-  weekly MA5/MA7 rising), wired at the user's explicit direction and always carrying
-  `i18n.KeyStrategyUnvalidatedMTF`. Its market gate is measured, not stylistic: on US it is negative past
-  1 SE in BOTH pre-registered splits at every return threshold from 0% to +20%, so `Detector.CheckMTFCross`
-  refuses to fire there at all rather than annotating. It takes no `ScreenParams` on purpose — the five
-  periods are the rule as specified and as measured, and a knob would invite re-tuning against the same
-  slices the result came from. See `CheckMTFCrossExact` for the numbers and for the two weekly-resampling
-  bugs (lookahead; day-to-day instead of bar-to-bar MA comparison) it went through. Every screen follows the same three-layer shape: `Check<Name>Exact(candles,
+  independent of Telegram/LLM/DB. `mtf.go`'s 【日週共振穿越】 is the one *watchlist* tag here rather than
+  an entry signal, and the only screen whose annotation depends on the market. Since 2026-09-04 the rule
+  is a two-timeframe **angle** gate — daily MA5/MA7 and weekly MA5/MA7 each rising at ≥20°/≥30°, plus
+  RSI14 ≤ 80 — where the angle is `atan(MA rise / that timeframe's trailing stdev of bar-to-bar moves)`,
+  i.e. volatility-normalised so it matches what a chart reader sees on an autoscaled y-axis. It replaced
+  a `close just crossed MA30` version; the two are structurally near-mutually-exclusive (a steep weekly
+  MA means the cross already happened), which is why the cross leg is gone rather than kept alongside.
+  It is a STATE, not an event: the alert semantics come from `MTFCross`'s 5-day lookback plus the
+  `Detector` dedup, which together give "fires when true after being false for 5 bars" — and that is the
+  form that was measured. It takes no `ScreenParams` on purpose — the thresholds are the rule as
+  measured, and a knob would invite re-tuning against the same slices the result came from. **It fires on
+  BOTH markets, but only TW's numbers are positive**: TW carries `i18n.KeyStrategyUnvalidatedMTF`
+  (+4.8pp/2.7σ early, +5.7pp/3.2σ late, within-ticker), US carries `i18n.KeyStrategyMTFCrossUS` and is
+  measured NEGATIVE past 1 SE in both splits (−6.9pp/10.9σ, −3.7pp/4.8σ) — it fires there only because
+  the user asked to observe it, and `service.ComputeTechnicals` still keeps the LLM prompt path TW-only
+  so a measured-harmful screen never reaches the recommendation prompt. See `CheckMTFCrossExact` for the
+  full numbers, for the long list of variants measured and rejected (平轉向上, RSI caps on US, market
+  breadth gates, %/week slopes), for the survivorship caveat, and for the two weekly-resampling bugs
+  (lookahead; day-to-day instead of bar-to-bar MA comparison) it went through. Every screen follows the same three-layer shape: `Check<Name>Exact(candles,
   params) bool` (pure boolean gate), `<Name>(candles, params) *StrategyHit` (wraps the exact check with a
   5-day lookback so a signal from a few days ago still surfaces), and `Detector.Check<Name>(ticker, candles,
   prevState) (*Signal, newState)` (adds alert-once-per-occurrence dedup on top). All four screens take a
