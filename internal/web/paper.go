@@ -7,6 +7,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/logger"
 	"argus/internal/market"
+	"argus/internal/service"
 )
 
 // paperResponse is /api/paper's body — one market's live paper account
@@ -67,9 +68,9 @@ type paperClosedResponse struct {
 	ExitReason  string  `json:"exitReason"` // "stop" | "llm_sell" — see closedPositionFromRound
 }
 
-// paperInitialCashFor mirrors internal/bot's Bot.paperInitialCashFor —
-// duplicated for the same can't-share-an-import reason as
-// cashSettingKeyFor/spyTicker elsewhere in this package.
+// paperInitialCashFor mirrors internal/bot's Bot.paperInitialCashFor — not
+// yet extracted into internal/service, unlike service.CashSettingKey/
+// service.BenchmarkFor elsewhere in this package.
 func paperInitialCashFor(m market.MarketID, usd, twd float64) float64 {
 	if m == market.TW {
 		return twd
@@ -186,7 +187,7 @@ func buildPaper(paperDB dbReader, quotes quoteGetter, m market.MarketID, initial
 		for _, t := range txs {
 			tickerSet[t.Ticker] = true
 		}
-		benchTicker := benchmarkFor(m)
+		benchTicker := service.BenchmarkFor(m)
 		snapshotTickers := make([]string, 0, len(tickerSet)+1)
 		for t := range tickerSet {
 			snapshotTickers = append(snapshotTickers, t)

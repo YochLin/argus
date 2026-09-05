@@ -286,28 +286,6 @@ func (d *DB) GetAllOptionTransactions() ([]OptionTransaction, error) {
 	return out, rows.Err()
 }
 
-// GetOptionTransactionsByUnderlying returns underlying's full option order
-// history, newest first.
-func (d *DB) GetOptionTransactionsByUnderlying(underlying string) ([]OptionTransaction, error) {
-	rows, err := d.conn.Query(`
-		SELECT id, contract_symbol, underlying, right, strike, expiry, multiplier, action, contracts, premium, fee, date, realized_pnl, created_at
-		FROM option_transactions WHERE underlying = ? ORDER BY id DESC`, underlying)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var out []OptionTransaction
-	for rows.Next() {
-		var t OptionTransaction
-		if err := rows.Scan(&t.ID, &t.ContractSymbol, &t.Underlying, &t.Right, &t.Strike, &t.Expiry, &t.Multiplier, &t.Action, &t.Contracts, &t.Premium, &t.Fee, &t.Date, &t.RealizedPnL, &t.CreatedAt); err != nil {
-			return nil, err
-		}
-		out = append(out, t)
-	}
-	return out, rows.Err()
-}
-
 // SetOptionStop sets symbol's per-contract stop premium — mirrors
 // SetStopPrice's ErrNoPosition-via-RowsAffected shape.
 func (d *DB) SetOptionStop(symbol string, premium float64) error {

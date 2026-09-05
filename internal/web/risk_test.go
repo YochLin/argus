@@ -11,6 +11,7 @@ import (
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/market"
+	"argus/internal/service"
 )
 
 // approxEqual guards against Go's untyped-constant-vs-runtime-float64
@@ -30,7 +31,7 @@ func TestBuildRisk_HeatOnlyCountsStopsSet(t *testing.T) {
 			{Ticker: "NVDA", Shares: 10, AvgCost: 120.5, StopPrice: 118},
 			{Ticker: "MSFT", Shares: 5, AvgCost: 300},
 		},
-		settings: map[string]string{cashSettingKey: "5000"},
+		settings: map[string]string{service.CashSettingKeyUSD: "5000"},
 	}
 	quotes := &fakeQuotes{quotes: map[string]*data.Quote{
 		"NVDA": {Ticker: "NVDA", Price: 135.2},

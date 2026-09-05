@@ -215,13 +215,32 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   extraction under ~200 chars as a failure (paywall/JS-rendered signature). Extracted text is capped at
   20,000 runes. Details: **[docs/architecture/webfetch.md](docs/architecture/webfetch.md)**.
 
+- `internal/service` — the business-logic layer Phase 24 pulled out of `internal/bot`: 15 services
+  (`RiskService`, `ScanService`, `PaperService`, `OptionsService`, `BrokerSyncService`,
+  `PortfolioService`, `SnapshotService`, `RecommendationService`, `TradeService`, `WatchlistService`,
+  plus the smaller `NewsPicker`/candidate-ranking/technicals/report/briefing helpers) built on 15 narrow
+  `XxxStore` interfaces (`RiskStore`, `ScanStore`, `PaperStore`, `PortfolioStore`, ... — one per
+  service, each with exactly one production implementation, `*db.DB`, and a test fake), so a service can
+  be unit-tested without opening SQLite. `internal/bot`/`internal/web`/`internal/mcptools` all call into
+  this layer rather than each independently reimplementing the same rule — **when a value or function
+  already lives here, don't write a second copy in a caller package just because it used to be
+  unexported in `internal/bot`; that "can't import bot's unexported X" reasoning stopped being true the
+  moment the logic moved to `service`.** Confirmed already-centralized and not to be re-duplicated:
+  `BenchmarkFor`, `CashSettingKey`, `NewsPicker`, `OptionMark`, `ComputeTechnicals`/`ComputeMarketRegime`,
+  `TrackHit`, `TradePayload`. `internal/bot` itself has shrunk to Telegram transport + command parsing +
+  message assembly (see below) — most of what its doc entry described pre-Phase-24 as "business logic"
+  now actually lives here.
+
 - `internal/bot` — Telegram command dispatch (`/add`, `/remove`, `/list`, `/status`, `/recommend`,
   `/check`, `/track`, `/buy`, `/sell`, `/portfolio`, `/dailyreport`, `/fundamentals`, `/universe`,
   `/stop`, `/review`, `/reset`, and more) plus scheduler-invoked jobs (`RunDailyReport`,
   `RunClosingSnapshot`, `RunUniverseScan`, `RunWeeklyReview`). Split across five files along the
   transport-vs-business line: `bot.go` (dispatch), `handlers.go` (command handlers), `jobs.go`
   (scheduler jobs + alert checks), `pipeline.go` (recommendation data assembly), `format.go` (pure
-  formatting helpers). `internal/bot/channel.go`'s `Channel` interface abstracts the transport —
+  formatting helpers) — post-Phase-24, most of the actual rule logic behind those handlers/jobs is a call
+  into `internal/service` (see above); what's left here is Telegram-specific glue: parsing command
+  arguments, assembling `service` calls, and formatting the reply. `internal/bot/channel.go`'s `Channel`
+  interface abstracts the transport —
   `telegram.go` is the only file that imports `tgbotapi`, leaving room for a future second messaging
   channel, and `headless.go` is the no-op implementation a Telegram-less process runs on (Phase 24
   Stage 3: the absence of a transport must not take the orchestration with it). `pending_actions.go` is the bot-side half of Phase 4's write-gating flow (confirm/reject
@@ -295,6 +314,35 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   `DB_PATH` and the other paths are excluded permanently, since a typo there would crash-loop before
   `web.New` and leave no UI to fix it from. Details:
   **[docs/architecture/web.md](docs/architecture/web.md)**.
+
+- `internal/paper` — Phase 11's pure rule engine shared by `argus backtest`'s historical replay
+  (`cmd/server/backtest.go`) and the live paper account's forward accumulation
+  (`internal/bot/paper.go`): `Account.ApplySignal`/`MarkClose`/`Equity` are the entire trading rulebook,
+  fed plain values by both callers (same "no DB/network/Telegram" discipline as `internal/signals`/
+  `internal/receval`) so backtest and live behavior can't structurally diverge. Details:
+  **[docs/phase-11-paper-account.md](docs/phase-11-paper-account.md)** §1.
+
+- `internal/receval` — scores the `recommendations` table against actual subsequent price action for
+  the `eval` subcommand; pure functions over plain structs (`db.Recommendation` rows + `data.Candle`
+  history handed in by the caller), same no-DB/network discipline as `internal/signals`/`internal/paper`.
+  Details: **[docs/offline-rec-eval.md](docs/offline-rec-eval.md)**.
+
+- `internal/notification` — Phase 24 Stage 2's event bus: the seam between business logic that decides
+  something is alert-worthy (stop-loss breach, restricted-stock warning, price event, ...) and the
+  channel(s) that deliver it (Telegram today, plus an in-app store so a future Web/App surface has
+  history to read). Doesn't replace synchronous command replies (`/list`, `/portfolio`, ...) — those
+  still go straight through `bot.Channel.Send`.
+
+- `internal/logger` — the application's small logging facade (`log/slog` underneath), imported as
+  `logger` by 57 files across the codebase so the bot, scheduler, web server, and CLI tools share one
+  handler/level configuration.
+
+- `cmd/strategyscan` — the standalone research tool (4,688 lines, independent of the daemon) behind
+  every strategy-screen go/no-go decision referenced elsewhere in this file (Phase 14 trend
+  breakout/pullback, Phase 25's §8.x studies, etc.) — its output numbers are the evidence trail for
+  "tried this, didn't clear the bar." Deliberately not deduped against `internal/paper` for small
+  overlaps like `maxDrawdownPct` (three implementations, different input types) — that's a kept boundary
+  between the research tool and the live trading path, not an oversight.
 
 ## Key behaviors to preserve
 

@@ -9,6 +9,7 @@ import (
 	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/receval"
+	"argus/internal/service"
 )
 
 // recPerfHorizons widens argus eval's own default -horizons ("5,20,60") to
@@ -208,7 +209,7 @@ func buildRecPerformance(database dbReader, history data.HistoryProvider, m mark
 		return resp, nil
 	}
 
-	benchTicker := benchmarkFor(m)
+	benchTicker := service.BenchmarkFor(m)
 	fetchSet := map[string]bool{benchTicker: true}
 	for _, r := range scorable {
 		fetchSet[r.Ticker] = true

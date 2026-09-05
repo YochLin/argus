@@ -8,6 +8,7 @@ import (
 
 	"argus/internal/data"
 	"argus/internal/i18n"
+	"argus/internal/render"
 	"argus/internal/signals"
 )
 
@@ -98,7 +99,7 @@ func formatTechnicals(lang i18n.Lang, candles []data.Candle, spyCloses []float64
 		{200, signals.MA(closes, 200)},
 	} {
 		if ma.value > 0 {
-			sb.WriteString(i18n.T(lang, i18n.KeyTechnicalsMALine, maLabel(lang, price, ma.value), ma.period, ma.value))
+			sb.WriteString(i18n.T(lang, i18n.KeyTechnicalsMALine, render.MALabel(lang, price, ma.value), ma.period, ma.value))
 		}
 	}
 
@@ -171,14 +172,4 @@ func formatTechnicals(lang i18n.Lang, candles []data.Candle, spyCloses []float64
 	}
 
 	return sb.String()
-}
-
-// maLabel mirrors internal/llm's unexported helper of the same name —
-// small enough that duplicating it beats importing internal/llm for one
-// two-line function (same reasoning as formatTechnicals' doc comment).
-func maLabel(lang i18n.Lang, price, ma float64) string {
-	if price > ma {
-		return i18n.T(lang, i18n.KeyAboveMA)
-	}
-	return i18n.T(lang, i18n.KeyBelowMA)
 }

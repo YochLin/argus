@@ -768,27 +768,6 @@ func (d *Detector) CheckTrendBreakout(ticker string, candles []data.Candle, prev
 	}, newState
 }
 
-// PostGapDrift evaluates candles for Post-Earnings-Announcement-Drift (網 6)
-// triggers within the last strategyLookbackDays. Returns the most recent hit
-// (smallest DaysAgo) or nil if none triggered.
-func PostGapDrift(candles []data.Candle, p ScreenParams) *StrategyHit {
-	n := len(candles)
-	for offset := 0; offset < strategyLookbackDays; offset++ {
-		evalIdx := n - 1 - offset
-		if evalIdx < 60 {
-			break
-		}
-		sub := candles[:evalIdx+1]
-		if CheckPostGapDriftExact(sub, p) {
-			return &StrategyHit{
-				Name:    "post_gap_drift",
-				DaysAgo: offset,
-			}
-		}
-	}
-	return nil
-}
-
 // CheckPostGapDriftExact evaluates candles' last bar (網 6【財報後漂移】):
 // a stock that gapped up hard on heavy volume, held the gap into the close,
 // and did it at a new high. Phase 25 §2.
@@ -980,26 +959,6 @@ func CheckPostGapDriftExact(candles []data.Candle, p ScreenParams) bool {
 	}
 
 	return true
-}
-
-// InsiderClusterBuy evaluates candles/txs for Insider Cluster Buy (Phase 25
-// §8.2) triggers within the last strategyLookbackDays. txs is passed
-// unsliced at every offset — unlike TrustFollow's trustNet, insider filings
-// are sparse events, not one row per trading day, so
-// CheckInsiderClusterBuyExact does its own date-window filtering off
-// candles' last bar rather than needing a pre-aligned same-length slice.
-func InsiderClusterBuy(candles []data.Candle, txs []data.InsiderTransaction, p ScreenParams) *StrategyHit {
-	n := len(candles)
-	for offset := 0; offset < strategyLookbackDays; offset++ {
-		evalIdx := n - 1 - offset
-		if evalIdx+1 < 60+p.MA60SlopeLookback {
-			break
-		}
-		if CheckInsiderClusterBuyExact(candles[:evalIdx+1], txs, p) {
-			return &StrategyHit{Name: "insider_cluster_buy", DaysAgo: offset}
-		}
-	}
-	return nil
 }
 
 // CheckInsiderClusterBuyExact evaluates candles/txs' last bar (Phase 25

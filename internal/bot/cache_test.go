@@ -6,14 +6,14 @@ import (
 )
 
 func TestTTLCache(t *testing.T) {
-	c := newTTLCache()
+	c := newTTLCache[string]()
 
 	if _, ok := c.get("missing"); ok {
 		t.Error("get(missing) = ok, want not found")
 	}
 
 	c.set("k", "v", 20*time.Millisecond)
-	if v, ok := c.get("k"); !ok || v.(string) != "v" {
+	if v, ok := c.get("k"); !ok || v != "v" {
 		t.Errorf("get(k) = %v, %v, want v, true", v, ok)
 	}
 

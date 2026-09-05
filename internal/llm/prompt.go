@@ -565,7 +565,7 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 			value  float64
 		}{{5, t.MA5}, {20, t.MA20}, {50, t.MA50}, {60, t.MA60}, {200, t.MA200}} {
 			if ma.value > 0 {
-				fmt.Fprint(sb, i18n.T(lang, i18n.KeyTechnicalsMALine, maLabel(lang, q.Price, ma.value), ma.period, ma.value))
+				fmt.Fprint(sb, i18n.T(lang, i18n.KeyTechnicalsMALine, render.MALabel(lang, q.Price, ma.value), ma.period, ma.value))
 			}
 		}
 		if t.MAAlign != "" {
@@ -1136,16 +1136,6 @@ func newsDate(n data.NewsItem) string {
 // speaks. A fixed zone rather than a tzdata lookup, same reasoning as
 // internal/scheduler's.
 var newsDateZone = time.FixedZone("CST", 8*3600)
-
-// maLabel renders whether price sits above or below a moving average as an
-// already-localized string, so writeStockSection never builds display text
-// outside of internal/i18n.
-func maLabel(lang i18n.Lang, price, ma float64) string {
-	if price > ma {
-		return i18n.T(lang, i18n.KeyAboveMA)
-	}
-	return i18n.T(lang, i18n.KeyBelowMA)
-}
 
 // pctFrom returns the percentage difference of price from ref (e.g. a 52-week
 // high/low), or 0 if ref is unavailable (0) to avoid a divide-by-zero.
