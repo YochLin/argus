@@ -209,11 +209,11 @@ func BollingerPctB(closes []float64, period int, numStdDev float64) (pctB float6
 	return (latest - lower) / width, true
 }
 
-// CheckRSIState is the deduplicated version of CheckRSI: it only returns a
-// signal when RSI newly enters overbought/oversold territory relative to
-// prevState (the state persisted after the previous check; "" reads as
-// normal). While RSI stays in the same zone on consecutive days, no repeat
-// signal fires. newState is what the caller should persist for next time.
+// CheckRSIState only returns a signal when RSI newly enters
+// overbought/oversold territory relative to prevState (the state persisted
+// after the previous check; "" reads as normal). While RSI stays in the same
+// zone on consecutive days, no repeat signal fires. newState is what the
+// caller should persist for next time.
 func (d *Detector) CheckRSIState(ticker string, closes []float64, prevState string) (sig *Signal, newState string) {
 	rsi := RSI(closes, 14)
 	newState = StateNormal
@@ -237,26 +237,6 @@ func (d *Detector) CheckRSIState(ticker string, closes []float64, prevState stri
 		Type:    "rsi_oversold",
 		Message: i18n.T(d.lang, i18n.KeyRSIOversold, ticker, rsi),
 	}, newState
-}
-
-// CheckRSI returns a signal if RSI is overbought or oversold.
-func (d *Detector) CheckRSI(ticker string, closes []float64) *Signal {
-	rsi := RSI(closes, 14)
-	if rsi >= d.rsiOverbought {
-		return &Signal{
-			Ticker:  ticker,
-			Type:    "rsi_overbought",
-			Message: i18n.T(d.lang, i18n.KeyRSIOverbought, ticker, rsi),
-		}
-	}
-	if rsi <= d.rsiOversold {
-		return &Signal{
-			Ticker:  ticker,
-			Type:    "rsi_oversold",
-			Message: i18n.T(d.lang, i18n.KeyRSIOversold, ticker, rsi),
-		}
-	}
-	return nil
 }
 
 // MACD returns the MACD line, its 9-period EMA signal line, and their
@@ -323,9 +303,9 @@ func MACDTrend(closes []float64) string {
 
 // CheckMACDCross detects an actual golden/death cross by comparing today's
 // MACD trend against prevState (the trend persisted after the previous
-// check). Unlike CheckMACD — which reflects the standing trend and fires
-// every call while it holds — this only signals on the day the trend flips:
-// bearish→bullish is a golden cross, bullish→bearish a death cross. A first
+// check) — it only signals on the day the trend flips, not on every call
+// while a trend holds: bearish→bullish is a golden cross, bullish→bearish a
+// death cross. A first
 // observation (prevState == "") just establishes the baseline without
 // signaling, since no flip can be seen yet. newState is what the caller
 // should persist for next time; when there's no data it stays prevState so
@@ -351,30 +331,4 @@ func (d *Detector) CheckMACDCross(ticker string, closes []float64, prevState str
 		Type:    "macd_death_cross",
 		Message: i18n.T(d.lang, i18n.KeyMACDDeathCross, ticker, macdLine, signalLine),
 	}, trend
-}
-
-// CheckMACD returns a signal when the MACD line and its signal line disagree
-// in direction with the histogram, indicating trending momentum. It reflects
-// the latest bar's state, not a fresh crossover — it will keep firing every
-// call while the trend holds, not just on the day it flips.
-func (d *Detector) CheckMACD(ticker string, closes []float64) *Signal {
-	macdLine, signalLine, histogram := MACD(closes)
-	if macdLine == 0 && signalLine == 0 && histogram == 0 {
-		return nil
-	}
-	if histogram > 0 && macdLine > signalLine {
-		return &Signal{
-			Ticker:  ticker,
-			Type:    "macd_bullish",
-			Message: i18n.T(d.lang, i18n.KeyMACDBullish, ticker, macdLine, signalLine),
-		}
-	}
-	if histogram < 0 && macdLine < signalLine {
-		return &Signal{
-			Ticker:  ticker,
-			Type:    "macd_bearish",
-			Message: i18n.T(d.lang, i18n.KeyMACDBearish, ticker, macdLine, signalLine),
-		}
-	}
-	return nil
 }

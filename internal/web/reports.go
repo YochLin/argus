@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -234,16 +235,9 @@ func buildFeeSummary(txs []db.Transaction) FeeSummary {
 	}
 	summary := FeeSummary{TotalFees: totalFees}
 	if totalRealizedPnL != 0 {
-		summary.PctOfRealizedPnL = totalFees / abs(totalRealizedPnL) * 100
+		summary.PctOfRealizedPnL = totalFees / math.Abs(totalRealizedPnL) * 100
 	}
 	return summary
-}
-
-func abs(v float64) float64 {
-	if v < 0 {
-		return -v
-	}
-	return v
 }
 
 // StreakStats is the design doc's A5 "便宜 KPI 補完" — best/worst trade and

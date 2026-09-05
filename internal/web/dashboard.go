@@ -9,26 +9,6 @@ import (
 	"argus/internal/service"
 )
 
-// spyTicker/twBenchmarkTicker mirror internal/bot's own benchmarkTicker/
-// benchmarkFor — SPY/0050 are deliberately never added to the watchlist
-// table (they're not holdings), so daily_snapshots is the only place either
-// is recorded; internal/web can't import internal/bot's unexported
-// constant/function, so this is duplicated the same way formatFundamentals/
-// commaf are elsewhere in the project rather than restructuring package
-// boundaries for one string literal.
-const (
-	spyTicker         = "SPY"
-	twBenchmarkTicker = "0050"
-)
-
-// benchmarkFor returns m's daily-snapshot benchmark ticker.
-func benchmarkFor(m market.MarketID) string {
-	if m == market.TW {
-		return twBenchmarkTicker
-	}
-	return spyTicker
-}
-
 // filterByMarket returns the subset of tickers belonging to market m.
 func filterByMarket(tickers []string, m market.MarketID) []string {
 	out := make([]string, 0, len(tickers))
@@ -79,7 +59,7 @@ type dbReader interface {
 	GetNetWorthOnOrBefore(date string, m market.MarketID) (float64, bool, error)
 	GetNetWorthRange(from, to string, m market.MarketID) ([]db.NetWorthPoint, error)
 	// GetSetting backs risk.go's cash-balance lookup (Phase 8 PR1) — the same
-	// settings key internal/bot's loadCash reads, see cashSettingKeyFor.
+	// settings key internal/bot's loadCash reads, see service.CashSettingKey.
 	GetSetting(key string) (string, bool, error)
 	// GetRecommendationsSince backs recperf.go's /api/rec-performance (Phase
 	// 8 PR3) — the same whole-history read argus eval's CLI uses, so the two
@@ -182,7 +162,7 @@ func buildStatusWithPortfolio(database dbReader, portfolio *service.PortfolioSer
 	} else {
 		status.WatchingCount = len(filterByMarket(watchlist, m))
 	}
-	if bench, ok, err := database.GetLatestSnapshot(benchmarkFor(m)); err != nil {
+	if bench, ok, err := database.GetLatestSnapshot(service.BenchmarkFor(m)); err != nil {
 		logger.Errorf("web: status: get benchmark snapshot: %v", err)
 	} else if ok {
 		status.SPYChangePct = bench.ChangePercent
@@ -275,7 +255,7 @@ func buildDashboardWithPortfolio(database dbReader, portfolio *service.Portfolio
 		// DailyPnL safely ignores a ticker with no matching transactions
 		// (openingShares is 0 for it, so its snapshot rows never contribute
 		// P&L), so including it here costs nothing extra.
-		benchTicker := benchmarkFor(m)
+		benchTicker := service.BenchmarkFor(m)
 		snapshotTickers := tickers
 		if !tickerSet[benchTicker] {
 			snapshotTickers = append(snapshotTickers, benchTicker)

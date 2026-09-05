@@ -433,13 +433,6 @@ func TestPostGapDriftSynthetic(t *testing.T) {
 	if CheckPostGapDriftExact(gapCandles(7, 1.5, 108, 109, 106), p) {
 		t.Error("1.5x volume triggered, want no trigger below GapVolMult")
 	}
-
-	if hit := PostGapDrift(gapCandles(7, 4, 108, 109, 106), p); hit == nil || hit.Name != "post_gap_drift" {
-		t.Errorf("PostGapDrift = %+v, want a post_gap_drift hit", hit)
-	}
-	if hit := PostGapDrift(generateBaseCandles(50), p); hit != nil {
-		t.Error("triggered on 50 candles, want nil below the 60-bar minimum")
-	}
 }
 
 // 好消息出盡: gapped +7% and was sold all the way back down to the low. The

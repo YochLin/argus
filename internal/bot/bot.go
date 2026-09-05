@@ -73,10 +73,10 @@ type Bot struct {
 	// always non-nil — no API key required, same as twMovers/institutional
 	// above. RunTWMorningBriefing's primary market-closed gate; nil-checked
 	// anyway for tests that build a partial Bot.
-	twCalendar data.TWTradingDayProvider
-	companyNames     data.CompanyNameProvider       // nil if FINMIND_TOKEN isn't set
-	trustNet         data.TrustNetProvider          // Phase 15 網 5【主力跟單】, TW only; Phase 25 §4.4 switched this from FinMind to TWSE's own T86 report, so — like institutional/twMarketNews/twMovers — always non-nil, no API key required
-	optionChain      data.OptionChainProvider       // Phase 12, US-only; always non-nil in real use (Yahoo needs no API key), nil-checked anyway for tests that build a partial Bot
+	twCalendar   data.TWTradingDayProvider
+	companyNames data.CompanyNameProvider // nil if FINMIND_TOKEN isn't set
+	trustNet     data.TrustNetProvider    // Phase 15 網 5【主力跟單】, TW only; Phase 25 §4.4 switched this from FinMind to TWSE's own T86 report, so — like institutional/twMarketNews/twMovers — always non-nil, no API key required
+	optionChain  data.OptionChainProvider // Phase 12, US-only; always non-nil in real use (Yahoo needs no API key), nil-checked anyway for tests that build a partial Bot
 	// secFundamentals is Phase 23 PR6's SEC EDGAR-derived valuation
 	// percentile/cash-flow quality source, US-only; nil unless SEC_USER_AGENT
 	// is set — SEC's edge filter requires the UA to look like a real contact
@@ -116,12 +116,20 @@ type Bot struct {
 	detector        *signals.Detector
 	lang            i18n.Lang
 
-	// dataCache holds fundamentals/analyst-rating/insider-tx results, keyed
-	// by ticker (see slowDataCacheTTL in pipeline.go) — these change slowly
-	// enough that refetching them from Finnhub every single daily report
-	// wastes free-tier quota as the watchlist grows. Quote/news stay
-	// uncached since those need to be fresh every report.
-	dataCache *ttlCache
+	// fundamentalsCache/analystRatingCache/insiderTxCache/earningsSurpriseCache
+	// hold cachedFundamentals/cachedAnalystRating/cachedInsiderTx/
+	// cachedEarningsSurprises' results, keyed by ticker (see slowDataCacheTTL
+	// in pipeline.go) — these change slowly enough that refetching them from
+	// Finnhub every single daily report wastes free-tier quota as the
+	// watchlist grows. Quote/news stay uncached since those need to be fresh
+	// every report. Four separate typed caches, not one any-typed map keyed
+	// by a "kind:ticker" prefix — a copy-pasted cachedX with the wrong key
+	// prefix used to be a runtime panic on the next cache hit; now it's a
+	// compile error.
+	fundamentalsCache     *ttlCache[*data.Fundamentals]
+	analystRatingCache    *ttlCache[*data.AnalystRating]
+	insiderTxCache        *ttlCache[[]data.InsiderTransaction]
+	earningsSurpriseCache *ttlCache[[]data.EarningsSurprise]
 
 	// stopLossPct/trailingStopPct (STOP_LOSS_PCT/TRAILING_STOP_PCT env,
 	// Phase 3.8) are positive percentage thresholds for RunDailyReport's
@@ -356,7 +364,10 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 		paperMaxPositionPct:    cfg.PaperMaxPositionPct,
 		paperTakeProfitATRMult: cfg.PaperTakeProfitATRMult,
 		chatQueue:              make(chan string, 32),
-		dataCache:              newTTLCache(),
+		fundamentalsCache:      newTTLCache[*data.Fundamentals](),
+		analystRatingCache:     newTTLCache[*data.AnalystRating](),
+		insiderTxCache:         newTTLCache[[]data.InsiderTransaction](),
+		earningsSurpriseCache:  newTTLCache[[]data.EarningsSurprise](),
 		now:                    time.Now,
 	}
 	b.scanService = newScanService(b)

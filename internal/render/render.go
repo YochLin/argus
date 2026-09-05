@@ -130,3 +130,13 @@ func commaf2(v float64) string {
 	whole := Commaf(float64(cents / 100))
 	return whole + "." + fmt.Sprintf("%02d", cents%100)
 }
+
+// MALabel renders whether price sits above or below a moving average as an
+// already-localized string, so callers never build this display text
+// outside of internal/i18n.
+func MALabel(lang i18n.Lang, price, ma float64) string {
+	if price > ma {
+		return i18n.T(lang, i18n.KeyAboveMA)
+	}
+	return i18n.T(lang, i18n.KeyBelowMA)
+}

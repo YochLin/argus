@@ -12,28 +12,12 @@ import (
 	"argus/internal/service"
 )
 
-// cashSettingKey/cashSettingKeyTWD mirror internal/bot/handlers.go's own
-// constants of the same name — the settings table key /cash writes to.
-// internal/web can't import internal/bot's unexported constants, so this is
-// duplicated the same way spyTicker/twBenchmarkTicker are in dashboard.go
-// rather than restructuring package boundaries for two string literals.
-const (
-	cashSettingKey    = "cash_balance"
-	cashSettingKeyTWD = "cash_balance_twd"
-)
-
-func cashSettingKeyFor(m market.MarketID) string {
-	if m == market.TW {
-		return service.CashSettingKeyTWD
-	}
-	return service.CashSettingKeyUSD
-}
-
 // loadCash returns m's declared cash balance (0 if /cash has never set it) —
-// mirrors internal/bot's Bot.loadCash, duplicated for the same
-// can't-share-an-import reason as cashSettingKeyFor above.
+// mirrors internal/bot's Bot.loadCash. Not yet extracted into
+// service.PortfolioService; the key itself is service.CashSettingKey, shared
+// with internal/bot.
 func loadCash(database dbReader, m market.MarketID) (float64, error) {
-	raw, ok, err := database.GetSetting(cashSettingKeyFor(m))
+	raw, ok, err := database.GetSetting(service.CashSettingKey(m))
 	if err != nil || !ok {
 		return 0, err
 	}

@@ -8,6 +8,7 @@ import (
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/market"
+	"argus/internal/service"
 )
 
 // fakeDB implements dbReader for tests without touching real SQLite.
@@ -75,9 +76,9 @@ func (f *fakeDB) GetWatchlistByMarket(m market.MarketID) ([]string, error) {
 }
 func (f *fakeDB) GetLatestSnapshot(ticker string) (db.DailySnapshot, bool, error) {
 	switch ticker {
-	case spyTicker:
+	case service.BenchmarkFor(market.US):
 		return f.spy, f.spyOK, nil
-	case twBenchmarkTicker:
+	case service.BenchmarkFor(market.TW):
 		return f.twBench, f.twBenchOK, nil
 	}
 	return db.DailySnapshot{}, false, nil
@@ -136,7 +137,9 @@ func (f *fakeDB) GetLLMRun(id int64) (db.LLMRunDetail, bool, error) {
 	run, ok := f.llmRunByID[id]
 	return run, ok, nil
 }
-func (f *fakeDB) ListBlockedNewsSources() ([]db.BlockedNewsSource, error) { return f.blockedSources, nil }
+func (f *fakeDB) ListBlockedNewsSources() ([]db.BlockedNewsSource, error) {
+	return f.blockedSources, nil
+}
 func (f *fakeDB) GetRecentPriceEvents(limit int) ([]db.PriceEvent, error) {
 	if limit < len(f.priceEvents) {
 		return f.priceEvents[:limit], nil
@@ -324,7 +327,7 @@ func TestBuildStatus_AccountOverview(t *testing.T) {
 			{Ticker: "AAPL", Side: "SELL", Shares: 5, Price: 120, Date: "2026-07-10", RealizedPnL: 100},
 			{Ticker: "AAPL", Side: "SELL", Shares: 5, Price: 90, Date: "2026-07-12", RealizedPnL: -50},
 		},
-		settings:    map[string]string{cashSettingKey: "5000"},
+		settings:    map[string]string{service.CashSettingKeyUSD: "5000"},
 		realizedPnL: map[market.MarketID]float64{market.US: 50},
 	}
 	quotes := &fakeQuotes{quotes: map[string]*data.Quote{"AAPL": {Ticker: "AAPL", Price: 160}}}
