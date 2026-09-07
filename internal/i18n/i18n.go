@@ -116,6 +116,8 @@ const (
 	KeyChatFailed                  Key = "chat_failed"
 	KeyResetDone                   Key = "reset_done"
 	KeySignalAlertTitle            Key = "signal_alert_title"
+	KeyUniverseScanAlertTitleUS    Key = "universe_scan_alert_title_us"
+	KeyUniverseScanAlertTitleTW    Key = "universe_scan_alert_title_tw"
 	KeyDailyReportStart            Key = "daily_report_start"
 	KeyMorningBriefingStart        Key = "morning_briefing_start"
 	KeyMorningBriefingMarketClosed Key = "morning_briefing_market_closed"

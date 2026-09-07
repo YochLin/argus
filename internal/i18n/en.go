@@ -42,6 +42,8 @@ var enMessages = map[Key]string{
 	KeyChatFailed:                    "Chat failed: %v",
 	KeyResetDone:                     "Conversation memory has been reset.",
 	KeySignalAlertTitle:              "🚨 *Market Signal Alert*\n\n",
+	KeyUniverseScanAlertTitleUS:      "🔭 *US Universe Scan Alert*\n\n",
+	KeyUniverseScanAlertTitleTW:      "🔭 *TW Universe Scan Alert*\n\n",
 	KeyDailyReportStart:              "📅 *Generating daily report...*",
 	KeyMorningBriefingStart:          "📅 *Generating US market morning briefing...*",
 	KeyMorningBriefingMarketClosed:   "📅 US markets were closed yesterday — skipping the morning briefing.",

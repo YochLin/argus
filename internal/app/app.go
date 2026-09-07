@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -471,10 +472,11 @@ func (a *App) registerJobs(ctx context.Context) {
 
 	// The universe scan is Phase 24 Stage 3 Step 3.2's first fully inverted
 	// job: the scheduler calls a service and gets a DTO back, with no *Bot in
-	// the path at all. It's outside the Telegram block above on purpose — the
-	// job has never sent a Telegram message (its output is scan_hits rows the
-	// daily report reads later), so there was never a reason for it to be
-	// gated on Telegram being configured, only an accident of where it lived.
+	// the path at all. It's outside the Telegram block above on purpose:
+	// runScan pushes hits through a.Notifier directly (not through *Bot), so
+	// it stays safe to run even when Telegram isn't configured — Publish
+	// just fans out to whatever Notifiers got registered, a no-op Telegram
+	// leg included, same as any other publishAlert call in that case.
 	a.Scheduler.AddUniverseScan(ctx, func(ctx context.Context) {
 		a.runScan(ctx, market.US)
 	})
@@ -508,6 +510,22 @@ func (a *App) runScan(ctx context.Context, m market.MarketID) {
 	}
 	if !res.Skipped {
 		logger.Infof("universe scan: market=%s checked %d tickers, %d hits", m, res.Scanned, res.Hits)
+	}
+	if len(res.HitSignals) > 0 {
+		titleKey := i18n.KeyUniverseScanAlertTitleUS
+		if m == market.TW {
+			titleKey = i18n.KeyUniverseScanAlertTitleTW
+		}
+		var sb strings.Builder
+		sb.WriteString(i18n.T(a.cfg.Lang, titleKey))
+		for _, sig := range res.HitSignals {
+			sb.WriteString("• " + sig.Message + "\n")
+		}
+		a.Notifier.Publish(ctx, notification.Event{
+			Type:  "universe_scan_alert",
+			Text:  sb.String(),
+			Level: notification.LevelInfo,
+		})
 	}
 }
 
