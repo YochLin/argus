@@ -336,6 +336,10 @@ type UniverseScanResult struct {
 	Scanned int
 	Hits    int
 	Skipped bool
+	// HitSignals carries the same signals as Hits (already SaveScanHit'd)
+	// back to the caller, so a notification-aware layer can push them
+	// without this service needing to know about Telegram/Dispatcher.
+	HitSignals []signals.Signal
 }
 
 // RunUniverseScan is Phase 2.6's candidate-pool scan, generalized by
@@ -353,13 +357,15 @@ type UniverseScanResult struct {
 // Any hit is logged to scan_hits for the daily report/handleRecommend to
 // pick up the same day and upgrade into an LLM candidate.
 //
-// Moved here from bot.runUniverseScan (Phase 24 Stage 3 Step 3.2): this is
-// the one scheduled job that never sent anything to Telegram in the first
-// place — results have always gone to the DB and the log — so inverting it
-// to "scheduler calls a service, gets a DTO" needed no notification path at
-// all. One consequence, deliberate: the scan now also runs on a process with
-// no Telegram configured, where it previously sat inside main.go's
-// Telegram-only job block and silently never ran.
+// Moved here from bot.runUniverseScan (Phase 24 Stage 3 Step 3.2): originally
+// the one scheduled job that never sent anything to Telegram — results only
+// went to the DB and the log — so inverting it to "scheduler calls a
+// service, gets a DTO" needed no notification path at first. It still runs
+// fine on a process with no Telegram configured (unlike its old home inside
+// main.go's Telegram-only job block); the DTO's HitSignals just goes
+// unpublished in that case, same as the DB write still happening below.
+// Pushing HitSignals to Telegram is now the caller's job (see app.runScan) —
+// this service stays notification-agnostic on purpose.
 func (s *ScanService) RunUniverseScan(ctx context.Context, m market.MarketID) (UniverseScanResult, error) {
 	// Trading-day gate (Phase 13 §8) — silent, same closed-market signals
 	// the closing snapshot/daily report already use per market (US: NYSE
@@ -439,6 +445,7 @@ func (s *ScanService) RunUniverseScan(ctx context.Context, m market.MarketID) (U
 				continue
 			}
 			out.Hits++
+			out.HitSignals = append(out.HitSignals, sig)
 		}
 
 		if i < len(chunk)-1 {

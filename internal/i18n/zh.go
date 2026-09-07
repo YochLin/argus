@@ -45,6 +45,8 @@ var zhMessages = map[Key]string{
 	KeyChatFailed:                    "對話失敗：%v",
 	KeyResetDone:                     "已重置對話記憶。",
 	KeySignalAlertTitle:              "🚨 *市場訊號提醒*\n\n",
+	KeyUniverseScanAlertTitleUS:      "🔭 *美股全市場掃描訊號*\n\n",
+	KeyUniverseScanAlertTitleTW:      "🔭 *台股全市場掃描訊號*\n\n",
 	KeyDailyReportStart:              "📅 *每日報告開始生成...*",
 	KeyMorningBriefingStart:          "📅 *美股日報生成中...*",
 	KeyMorningBriefingMarketClosed:   "📅 昨日美股休市，暫停產出美股日報。",
