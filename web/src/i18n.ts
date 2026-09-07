@@ -435,6 +435,27 @@ export interface Dictionary {
   sectorFlowRefresh: string;
   sectorFlowRefreshing: string;
   sectorFlowRefreshError: string;
+  // Research-notes card (chart page): one upserted note per ticker per day,
+  // same add/edit-toggle shape as the thesisXxx keys above, plus a fixed
+  // tag taxonomy and a pinned-notes sub-list.
+  notesLabel: string;
+  notesAddToggle: string;
+  notesEditToggle: string;
+  notesFieldPlaceholder: string;
+  notesEmptyNote: string;
+  notesSearchPlaceholder: string;
+  notesClearSearch: string;
+  notesPinnedLabel: string;
+  notesPinLabel: string;
+  notesUnpinLabel: string;
+  notesDeleteLabel: string;
+  notesDeleteConfirm: string;
+  notesLoadMore: string;
+  notesFilterAllLabel: string;
+  notesTagTechnical: string;
+  notesTagFlow: string;
+  notesTagNews: string;
+  notesTagOther: string;
 }
 
 const en: Dictionary = {
@@ -829,6 +850,24 @@ const en: Dictionary = {
   sectorFlowRefresh: "Trigger Scan Now",
   sectorFlowRefreshing: "Scan started — this can take several minutes for US (~500 tickers). Reload this page to check.",
   sectorFlowRefreshError: "Failed to start the scan.",
+  notesLabel: "RESEARCH NOTES",
+  notesAddToggle: "+ Add Today's Note",
+  notesEditToggle: "Edit Today's Note",
+  notesFieldPlaceholder: "What did you see on the chart today?",
+  notesEmptyNote: "No research notes yet for this ticker.",
+  notesSearchPlaceholder: "Search notes...",
+  notesClearSearch: "Clear",
+  notesPinnedLabel: "PINNED",
+  notesPinLabel: "Pin",
+  notesUnpinLabel: "Unpin",
+  notesDeleteLabel: "Delete",
+  notesDeleteConfirm: "Delete this note? This can't be undone.",
+  notesLoadMore: "Load more",
+  notesFilterAllLabel: "All",
+  notesTagTechnical: "Technical",
+  notesTagFlow: "Flow",
+  notesTagNews: "News",
+  notesTagOther: "Other",
 };
 
 const zh: Dictionary = {
@@ -1217,6 +1256,24 @@ const zh: Dictionary = {
   sectorFlowRefresh: "立即觸發掃描",
   sectorFlowRefreshing: "掃描已開始，美股約 500 檔可能需要數分鐘，稍後重新整理本頁查看結果。",
   sectorFlowRefreshError: "觸發掃描失敗。",
+  notesLabel: "研究筆記",
+  notesAddToggle: "+ 新增今日筆記",
+  notesEditToggle: "編輯今日筆記",
+  notesFieldPlaceholder: "今天在圖上看到了什麼？",
+  notesEmptyNote: "這支標的還沒有研究筆記。",
+  notesSearchPlaceholder: "搜尋筆記...",
+  notesClearSearch: "清除",
+  notesPinnedLabel: "已釘選",
+  notesPinLabel: "釘選",
+  notesUnpinLabel: "取消釘選",
+  notesDeleteLabel: "刪除",
+  notesDeleteConfirm: "確定要刪除這則筆記嗎？此動作無法復原。",
+  notesLoadMore: "載入更多",
+  notesFilterAllLabel: "全部",
+  notesTagTechnical: "技術面",
+  notesTagFlow: "籌碼面",
+  notesTagNews: "消息面",
+  notesTagOther: "其他",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

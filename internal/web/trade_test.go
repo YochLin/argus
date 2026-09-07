@@ -107,6 +107,30 @@ func (f *fakeThesisDB) SetThesis(ticker, text string) error {
 	return f.err
 }
 
+// fakeResearchNotesDB is a researchNotesWriter stub.
+type fakeResearchNotesDB struct {
+	lastTicker, lastTag, lastText string
+	lastPinID                     int64
+	lastPinned                    bool
+	lastDeleteID                  int64
+	err                           error
+}
+
+func (f *fakeResearchNotesDB) UpsertResearchNote(ticker, tag, text string) error {
+	f.lastTicker, f.lastTag, f.lastText = ticker, tag, text
+	return f.err
+}
+
+func (f *fakeResearchNotesDB) SetResearchNotePinned(id int64, pinned bool) error {
+	f.lastPinID, f.lastPinned = id, pinned
+	return f.err
+}
+
+func (f *fakeResearchNotesDB) DeleteResearchNote(id int64) error {
+	f.lastDeleteID = id
+	return f.err
+}
+
 // newTradeTestServer builds a Server with the write routes registered
 // (mirroring New's own registration for password != "") over fakes, so
 // tests don't need a real *db.DB — see testServer's own reasoning above.
@@ -116,6 +140,7 @@ func newTradeTestServer(password string, trade TradeExecutor, wl watchlistWriter
 		watchlistDB: wl,
 		buyAlertDB:  &fakeBuyAlertDB{},
 		thesisDB:    &fakeThesisDB{},
+		notesDB:     &fakeResearchNotesDB{},
 		quotes:      &fakeQuotes{},
 		history:     &fakeHistory{},
 		lang:        i18n.EN,
@@ -133,6 +158,10 @@ func newTradeTestServer(password string, trade TradeExecutor, wl watchlistWriter
 	s.mux.HandleFunc("POST /api/buy-alerts/add", s.requireWritable(s.requireAuth(s.requireTrade(s.handleBuyAlertAdd))))
 	s.mux.HandleFunc("POST /api/buy-alerts/remove", s.requireWritable(s.requireAuth(s.handleBuyAlertRemove)))
 	s.mux.HandleFunc("POST /api/thesis", s.requireWritable(s.requireAuth(s.handleThesisSet)))
+	s.mux.HandleFunc("GET /api/research-notes", s.handleResearchNotesGet)
+	s.mux.HandleFunc("POST /api/research-notes", s.requireWritable(s.requireAuth(s.handleResearchNoteSave)))
+	s.mux.HandleFunc("POST /api/research-notes/pin", s.requireWritable(s.requireAuth(s.handleResearchNotePin)))
+	s.mux.HandleFunc("POST /api/research-notes/delete", s.requireWritable(s.requireAuth(s.handleResearchNoteDelete)))
 	s.mux.HandleFunc("POST /api/options/open", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionOpen))))
 	s.mux.HandleFunc("POST /api/options/close", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionClose))))
 	return s
@@ -459,6 +488,104 @@ func TestHandleThesisSet(t *testing.T) {
 			t.Errorf("status = %d, want 401", rec.Code)
 		}
 	})
+}
+
+func TestHandleResearchNoteSave(t *testing.T) {
+	s := newTradeTestServer("secret", &fakeTrade{}, &fakeWatchlistDB{})
+	fnd := s.notesDB.(*fakeResearchNotesDB)
+	cookie := loginAndGetCookie(t, s, "secret")
+
+	post := func(req researchNoteSaveRequest) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(req)
+		r := httptest.NewRequest(http.MethodPost, "/api/research-notes", bytes.NewReader(body))
+		r.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, r)
+		return rec
+	}
+
+	t.Run("saves, uppercases the ticker and tag", func(t *testing.T) {
+		rec := post(researchNoteSaveRequest{Ticker: "aapl", Tag: "technical", Text: "  broke above the 20d  "})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+		}
+		if fnd.lastTicker != "AAPL" || fnd.lastTag != "TECHNICAL" || fnd.lastText != "broke above the 20d" {
+			t.Errorf("UpsertResearchNote(%q, %q, %q), want (AAPL, TECHNICAL, trimmed text)", fnd.lastTicker, fnd.lastTag, fnd.lastText)
+		}
+	})
+
+	t.Run("rejects a tag outside the fixed taxonomy", func(t *testing.T) {
+		rec := post(researchNoteSaveRequest{Ticker: "AAPL", Tag: "VIBES", Text: "x"})
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400", rec.Code)
+		}
+	})
+
+	t.Run("rejects blank text", func(t *testing.T) {
+		rec := post(researchNoteSaveRequest{Ticker: "AAPL", Tag: "TECHNICAL", Text: "   "})
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400", rec.Code)
+		}
+	})
+
+	t.Run("requires auth", func(t *testing.T) {
+		body, _ := json.Marshal(researchNoteSaveRequest{Ticker: "AAPL", Tag: "TECHNICAL", Text: "x"})
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/research-notes", bytes.NewReader(body)))
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("status = %d, want 401", rec.Code)
+		}
+	})
+}
+
+func TestHandleResearchNotePinAndDelete(t *testing.T) {
+	s := newTradeTestServer("secret", &fakeTrade{}, &fakeWatchlistDB{})
+	fnd := s.notesDB.(*fakeResearchNotesDB)
+	cookie := loginAndGetCookie(t, s, "secret")
+
+	pinBody, _ := json.Marshal(researchNotePinRequest{ID: 7, Pinned: true})
+	r := httptest.NewRequest(http.MethodPost, "/api/research-notes/pin", bytes.NewReader(pinBody))
+	r.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, r)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("pin status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	if fnd.lastPinID != 7 || !fnd.lastPinned {
+		t.Errorf("SetResearchNotePinned(%d, %v), want (7, true)", fnd.lastPinID, fnd.lastPinned)
+	}
+
+	delBody, _ := json.Marshal(researchNoteDeleteRequest{ID: 7})
+	r = httptest.NewRequest(http.MethodPost, "/api/research-notes/delete", bytes.NewReader(delBody))
+	r.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, r)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	if fnd.lastDeleteID != 7 {
+		t.Errorf("DeleteResearchNote(%d), want 7", fnd.lastDeleteID)
+	}
+}
+
+func TestHandleResearchNotesGet(t *testing.T) {
+	s := newTradeTestServer("secret", &fakeTrade{}, &fakeWatchlistDB{})
+	s.db = &fakeDB{researchNotes: map[string][]db.ResearchNote{
+		"AAPL": {{ID: 1, Ticker: "AAPL", Tag: "TECHNICAL", Text: "watching support", Pinned: true, CreatedAt: "2026-07-14"}},
+	}}
+
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/research-notes?ticker=aapl", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	var got researchNotesListResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(got.Notes) != 1 || got.Notes[0].Text != "watching support" || !got.Notes[0].Pinned {
+		t.Errorf("GET /api/research-notes = %+v, want the one AAPL note", got.Notes)
+	}
 }
 
 func TestNew_WriteRoutesGatedByPassword(t *testing.T) {

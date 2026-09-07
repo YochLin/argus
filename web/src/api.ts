@@ -171,6 +171,28 @@ export interface ThesisEntry {
   text: string;
 }
 
+// ResearchNote is one row of the chart page's notebook card — one upserted
+// note per ticker per calendar day (see internal/db/research_notes.go),
+// with a fixed-taxonomy Tag and a Pinned flag the card surfaces above the
+// chronological list. Search/tag-filter/month-grouping/"load more" are all
+// derived client-side from the one fetchResearchNotes(ticker) list.
+export interface ResearchNote {
+  id: number;
+  tag: string;
+  text: string;
+  pinned: boolean;
+  date: string;
+}
+
+export interface ResearchNotes {
+  notes: ResearchNote[];
+}
+
+// NOTE_TAGS is the fixed set of tag chips the compose form offers — must
+// stay in sync with internal/web/research_notes.go's researchNoteTags map.
+export const NOTE_TAGS = ["TECHNICAL", "CHIPS", "NEWS", "OTHER"] as const;
+export type NoteTag = (typeof NOTE_TAGS)[number];
+
 export interface RoundDetail {
   ticker: string;
   start: string;
@@ -827,6 +849,15 @@ function getMockData(url: string): any {
       ],
     };
   }
+  if (path === "/api/research-notes") {
+    return {
+      notes: [
+        { id: 3, tag: "TECHNICAL", text: "站上月線且量增，觀察是否能守住前高。", pinned: true, date: "2026-07-14" },
+        { id: 2, tag: "NEWS", text: "法說會優於預期，法人上修目標價。", pinned: false, date: "2026-06-30" },
+        { id: 1, tag: "OTHER", text: "首次建立觀察筆記。", pinned: false, date: "2026-06-02" },
+      ],
+    };
+  }
   if (path === "/api/risk") {
     return {
       accountValue: market === "tw" ? 3850000 : 125400,
@@ -1192,6 +1223,10 @@ export function fetchChart(ticker: string): Promise<Chart> {
   return getJSON<Chart>(`/api/chart?ticker=${encodeURIComponent(ticker)}`);
 }
 
+export function fetchResearchNotes(ticker: string): Promise<ResearchNotes> {
+  return getJSON<ResearchNotes>(`/api/research-notes?ticker=${encodeURIComponent(ticker)}`);
+}
+
 export function fetchTickers(market: Market = "us"): Promise<Tickers> {
   return getJSON<Tickers>(`/api/tickers?market=${market}`);
 }
@@ -1338,6 +1373,22 @@ export function removeBuyAlert(id: number): Promise<TradeResponse> {
 // buy-form textarea and ChartView's round-detail edit (open rounds only).
 export function setThesis(ticker: string, text: string): Promise<TradeResponse> {
   return postJSON("/api/thesis", { ticker, text });
+}
+
+// saveResearchNote upserts ticker's research note for today — the server
+// overwrites whatever was already recorded today (one row per ticker per
+// calendar day), so this doubles as both "add today's note" and "edit
+// today's note."
+export function saveResearchNote(ticker: string, tag: NoteTag, text: string): Promise<TradeResponse> {
+  return postJSON("/api/research-notes", { ticker, tag, text });
+}
+
+export function setResearchNotePinned(id: number, pinned: boolean): Promise<TradeResponse> {
+  return postJSON("/api/research-notes/pin", { id, pinned });
+}
+
+export function deleteResearchNote(id: number): Promise<TradeResponse> {
+  return postJSON("/api/research-notes/delete", { id });
 }
 
 // OptionOpenRequest/OptionCloseRequest mirror internal/web/options.go's

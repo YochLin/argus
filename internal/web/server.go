@@ -155,6 +155,7 @@ type Server struct {
 	envPath    string
 	csvDB      csvWriter
 	thesisDB   thesisWriter
+	notesDB    researchNotesWriter
 	// paperDB stays *db.DB (not dbReader) so nil-checking it in
 	// handlePaper can't fall into the classic "non-nil interface wrapping
 	// a nil pointer" trap — it's passed into buildPaper's dbReader
@@ -201,6 +202,7 @@ func New(cfg Config) *Server {
 		envPath:             cmp.Or(cfg.EnvPath, ".env"),
 		csvDB:               cfg.DB,
 		thesisDB:            cfg.DB,
+		notesDB:             cfg.DB,
 		paperDB:             cfg.PaperDB,
 		paperInitialCashUSD: cfg.PaperInitialCashUSD,
 		paperInitialCashTWD: cfg.PaperInitialCashTWD,
@@ -227,6 +229,7 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /api/monthly", s.handleMonthly)
 	s.mux.HandleFunc("GET /api/distributions", s.handleDistributions)
 	s.mux.HandleFunc("GET /api/chart", s.handleChart)
+	s.mux.HandleFunc("GET /api/research-notes", s.handleResearchNotesGet)
 	s.mux.HandleFunc("GET /api/tickers", s.handleTickers)
 	s.mux.HandleFunc("GET /api/watchlist-summary", s.handleWatchlistSummary)
 	s.mux.HandleFunc("GET /api/company-names", s.handleCompanyNames)
@@ -271,6 +274,12 @@ func New(cfg Config) *Server {
 	// /api/thesis (Phase 21) is a DB write like any other above — no reason
 	// to give it a looser gate than /api/trade/*.
 	s.mux.HandleFunc("POST /api/thesis", s.requireWritable(s.requireAuth(s.handleThesisSet)))
+	// /api/research-notes/* (chart page's notebook card) is a DB write like
+	// /api/thesis above — same gate, body-based id targeting for pin/delete
+	// rather than a new {id} path pattern, matching /api/trade/delete.
+	s.mux.HandleFunc("POST /api/research-notes", s.requireWritable(s.requireAuth(s.handleResearchNoteSave)))
+	s.mux.HandleFunc("POST /api/research-notes/pin", s.requireWritable(s.requireAuth(s.handleResearchNotePin)))
+	s.mux.HandleFunc("POST /api/research-notes/delete", s.requireWritable(s.requireAuth(s.handleResearchNoteDelete)))
 	// /api/settings (Phase 17 PR2) sits behind the same gate as every write
 	// route, GET included: the read side reports which credentials are
 	// configured, which is not something to hand out unauthenticated.

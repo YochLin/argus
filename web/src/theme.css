@@ -1859,6 +1859,106 @@ th {
   line-height: 1.7;
 }
 
+/* Research-notes card (chart page): reuses .round-chip (tag/filter chips),
+   .form-field/.modal-actions/.btn-primary (compose form) and .lessons-list
+   (row container) from above — only the note-row layout itself and the
+   search input are new. */
+.note-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.note-search-input {
+  flex: 1;
+  min-width: 180px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+}
+
+.note-month-label {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10px;
+  color: var(--ink-3);
+  padding: 12px 0 4px;
+}
+
+.note-pinned-block {
+  margin-top: 14px;
+  padding: 10px 14px 4px;
+  border: 1px solid var(--accent-tint-border);
+  border-radius: 12px;
+  background: var(--accent-tint-bg);
+}
+
+.note-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.note-row-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+  width: 96px;
+}
+
+.note-tag-pill {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--accent);
+}
+
+.note-row-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  line-height: 1.75;
+}
+
+.note-row-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.note-row-action {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.note-row-action:hover {
+  color: var(--accent);
+  border-color: var(--accent-tint-border);
+}
+
+.note-row-action-danger:hover {
+  color: var(--loss);
+}
+
 /* Phase 10 write-input UI (docs/phase-10-web-trade-input.md §4.3):
    TradeModal/LoginModal chrome plus PositionsTable/ChartListView's new
    inline row-action buttons and add-ticker form. Reuses existing tokens

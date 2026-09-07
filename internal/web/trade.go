@@ -87,6 +87,16 @@ type thesisWriter interface {
 	SetThesis(ticker, text string) error
 }
 
+// researchNotesWriter backs the chart page's research-notes card writes —
+// like thesisWriter, a direct DB write with no bot-layer behavior. The read
+// side (GetResearchNotesByTicker) lives on dbReader instead, since GET
+// /api/research-notes reads through s.db like every other GET route.
+type researchNotesWriter interface {
+	UpsertResearchNote(ticker, tag, text string) error
+	SetResearchNotePinned(id int64, pinned bool) error
+	DeleteResearchNote(id int64) error
+}
+
 // Fee is a *float64 so an omitted JSON field (nil) can be told apart from an
 // explicit 0 — nil triggers ExecuteBuy/ExecuteSell's TW fee auto-calc
 // (Phase 13 §3.2), matching parseTradeArgs' feeSet distinction.

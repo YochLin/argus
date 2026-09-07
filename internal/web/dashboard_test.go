@@ -63,6 +63,8 @@ type fakeDB struct {
 	// priceEvents backs GetRecentPriceEvents/GetPriceEventsForTicker for
 	// events_test.go.
 	priceEvents []db.PriceEvent
+	// researchNotes backs GetResearchNotesByTicker for research_notes_test.go.
+	researchNotes map[string][]db.ResearchNote
 }
 
 func (f *fakeDB) GetPositions() ([]db.Position, error)          { return f.positions, nil }
@@ -154,6 +156,9 @@ func (f *fakeDB) GetPriceEventsForTicker(ticker string, limit int) ([]db.PriceEv
 		}
 	}
 	return out, nil
+}
+func (f *fakeDB) GetResearchNotesByTicker(ticker string) ([]db.ResearchNote, error) {
+	return f.researchNotes[ticker], nil
 }
 
 // BlockNewsSource/UnblockNewsSource let fakeDB double as a newsSourceWriter
