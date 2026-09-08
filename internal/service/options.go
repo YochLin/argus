@@ -64,7 +64,7 @@ func GatherOptionCandidates(chain data.OptionChainProvider, ticker string, spot 
 
 	var quoteChain []data.OptionQuote
 	for _, expiry := range expirations {
-		dte := int(math.Ceil(time.Until(expiry).Hours() / 24))
+		dte := int(math.Ceil(expiry.Sub(now).Hours() / 24))
 		if dte < profile.DTEMin || dte > profile.DTEMax {
 			continue
 		}
