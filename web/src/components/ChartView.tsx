@@ -10,15 +10,22 @@ import {
 import {
   ApiError,
   currencySymbol,
+  deleteResearchNote,
   deleteTransaction,
   fetchChart,
+  fetchResearchNotes,
   fetchRoundDetail,
   marketOf,
+  NOTE_TAGS,
+  saveResearchNote,
+  setResearchNotePinned,
   setThesis,
   tickerLabel,
   type Candle,
   type Chart,
   type ChartLevel,
+  type NoteTag,
+  type ResearchNote,
   type RoundDetail,
   type RoundSummary,
   type Transaction,
@@ -127,6 +134,21 @@ function computeQuickStats(candles: Candle[]) {
   };
 }
 
+function noteTagLabel(dict: Dictionary, tag: string): string {
+  switch (tag) {
+    case "TECHNICAL":
+      return dict.notesTagTechnical;
+    case "CHIPS":
+      return dict.notesTagFlow;
+    case "NEWS":
+      return dict.notesTagNews;
+    default:
+      return dict.notesTagOther;
+  }
+}
+
+const noteLoadMoreStep = 20;
+
 function MAEMFEBar({ dict, maePct, mfePct }: { dict: Dictionary; maePct: number; mfePct: number }) {
   const range = Math.max(Math.abs(maePct), Math.abs(mfePct), 1) * 1.15;
   const losePct = (Math.abs(Math.min(maePct, 0)) / range) * 100;
@@ -172,6 +194,16 @@ export function ChartView({
   const [thesisSubmitting, setThesisSubmitting] = useState(false);
   const [thesisError, setThesisError] = useState<string | null>(null);
 
+  const [notes, setNotes] = useState<ResearchNote[]>([]);
+  const [noteComposing, setNoteComposing] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [noteTag, setNoteTag] = useState<NoteTag>("TECHNICAL");
+  const [noteSubmitting, setNoteSubmitting] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [noteQuery, setNoteQuery] = useState("");
+  const [noteTagFilter, setNoteTagFilter] = useState<NoteTag | null>(null);
+  const [noteVisibleCount, setNoteVisibleCount] = useState(noteLoadMoreStep);
+
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
@@ -203,6 +235,79 @@ export function ChartView({
       .then(setRoundDetail)
       .catch(() => setRoundDetail(null));
   }, [ticker, selectedRoundStart]);
+
+  useEffect(() => {
+    setNotes([]);
+    setNoteComposing(false);
+    setNoteDraft("");
+    setNoteError(null);
+    setNoteQuery("");
+    setNoteTagFilter(null);
+    setNoteVisibleCount(noteLoadMoreStep);
+    if (!ticker) return;
+    fetchResearchNotes(ticker)
+      .then((r) => setNotes(r.notes))
+      .catch(() => setNotes([]));
+  }, [ticker]);
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayNote = notes.find((n) => n.date === todayStr) ?? null;
+
+  function openNoteCompose() {
+    setNoteDraft(todayNote?.text ?? "");
+    setNoteTag((todayNote?.tag as NoteTag) ?? "TECHNICAL");
+    setNoteError(null);
+    setNoteComposing(true);
+  }
+
+  async function submitNote() {
+    if (!ticker || !noteDraft.trim()) return;
+    setNoteSubmitting(true);
+    setNoteError(null);
+    try {
+      await saveResearchNote(ticker, noteTag, noteDraft.trim());
+      setNoteComposing(false);
+      setNoteDraft("");
+      setNotes((await fetchResearchNotes(ticker)).notes);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401 && onUnauthorized) {
+        onUnauthorized(submitNote);
+      } else {
+        setNoteError(e instanceof ApiError ? e.message : dict.error);
+      }
+    } finally {
+      setNoteSubmitting(false);
+    }
+  }
+
+  async function toggleNotePin(note: ResearchNote) {
+    if (!ticker) return;
+    try {
+      await setResearchNotePinned(note.id, !note.pinned);
+      setNotes((await fetchResearchNotes(ticker)).notes);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401 && onUnauthorized) {
+        onUnauthorized(() => toggleNotePin(note));
+      } else {
+        window.alert(e instanceof ApiError ? e.message : dict.error);
+      }
+    }
+  }
+
+  async function handleDeleteNote(note: ResearchNote) {
+    if (!ticker) return;
+    if (!window.confirm(dict.notesDeleteConfirm)) return;
+    try {
+      await deleteResearchNote(note.id);
+      setNotes((await fetchResearchNotes(ticker)).notes);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401 && onUnauthorized) {
+        onUnauthorized(() => handleDeleteNote(note));
+      } else {
+        window.alert(e instanceof ApiError ? e.message : dict.error);
+      }
+    }
+  }
 
   async function submitThesis() {
     if (!ticker || !selectedRoundStart || !thesisDraft.trim()) return;
@@ -285,6 +390,48 @@ export function ChartView({
     chart && chart.candles.length > 0
       ? classifyLevels(chart.levels, chart.candles[chart.candles.length - 1].close)
       : [];
+
+  const noteQueryLower = noteQuery.trim().toLowerCase();
+  const filteredNotes = notes.filter(
+    (n) =>
+      (!noteTagFilter || n.tag === noteTagFilter) &&
+      (!noteQueryLower || n.text.toLowerCase().includes(noteQueryLower)),
+  );
+  const pinnedNotes = filteredNotes.filter((n) => n.pinned);
+  const unpinnedNotes = filteredNotes.filter((n) => !n.pinned);
+  const visibleNotes = unpinnedNotes.slice(0, noteVisibleCount);
+  const hasMoreNotes = unpinnedNotes.length > noteVisibleCount;
+
+  function renderNoteRow(n: ResearchNote, monthLabel?: string) {
+    return (
+      <div key={n.id}>
+        {monthLabel && <div className="note-month-label">{monthLabel}</div>}
+        <div className="note-row">
+          <div className="note-row-meta">
+            <span className="stat-note">{n.date}</span>
+            <span className="note-tag-pill">{noteTagLabel(dict, n.tag)}</span>
+          </div>
+          <div className="note-row-text">{n.text}</div>
+          {writable && (
+            <div className="note-row-actions">
+              <button type="button" className="note-row-action" onClick={() => toggleNotePin(n)}>
+                {n.pinned ? dict.notesUnpinLabel : dict.notesPinLabel}
+              </button>
+              <button
+                type="button"
+                className="note-row-action note-row-action-danger"
+                onClick={() => handleDeleteNote(n)}
+              >
+                {dict.notesDeleteLabel}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  let lastNoteMonth = "";
 
   useEffect(() => {
     const series = seriesRef.current;
@@ -547,6 +694,133 @@ export function ChartView({
       )}
 
       <div className="card chart-card" ref={containerRef} />
+
+      <div className="card">
+        <div className="thesis-header">
+          <div className="eyebrow">{dict.notesLabel}</div>
+          <span className="stat-note">{notes.length}</span>
+          {writable && !noteComposing && (
+            <button type="button" className="thesis-edit-btn" onClick={openNoteCompose}>
+              <span>{todayNote ? dict.notesEditToggle : dict.notesAddToggle}</span>
+            </button>
+          )}
+        </div>
+
+        {noteComposing && (
+          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="round-chips" style={{ marginBottom: 0 }}>
+              {NOTE_TAGS.map((tg) => (
+                <button
+                  key={tg}
+                  type="button"
+                  className={`round-chip ${noteTag === tg ? "active" : ""}`}
+                  onClick={() => setNoteTag(tg)}
+                >
+                  {noteTagLabel(dict, tg)}
+                </button>
+              ))}
+            </div>
+            <label className="form-field">
+              <textarea
+                rows={4}
+                autoFocus
+                value={noteDraft}
+                placeholder={dict.notesFieldPlaceholder}
+                onChange={(e) => setNoteDraft(e.target.value)}
+              />
+            </label>
+            {noteError && <div className="error-message">{noteError}</div>}
+            <div className="modal-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setNoteComposing(false);
+                  setNoteDraft("");
+                  setNoteError(null);
+                }}
+              >
+                {dict.cancel}
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={!noteDraft.trim() || noteSubmitting}
+                onClick={submitNote}
+              >
+                {dict.submit}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {notes.length === 0 ? (
+          <div className="thesis-empty-box">{dict.notesEmptyNote}</div>
+        ) : (
+          <>
+            <div className="note-toolbar">
+              <input
+                className="note-search-input"
+                value={noteQuery}
+                placeholder={dict.notesSearchPlaceholder}
+                onChange={(e) => setNoteQuery(e.target.value)}
+              />
+              {noteQuery && (
+                <button type="button" className="note-row-action" onClick={() => setNoteQuery("")}>
+                  {dict.notesClearSearch}
+                </button>
+              )}
+              <div className="round-chips" style={{ marginBottom: 0 }}>
+                <button
+                  type="button"
+                  className={`round-chip ${noteTagFilter === null ? "active" : ""}`}
+                  onClick={() => setNoteTagFilter(null)}
+                >
+                  {dict.notesFilterAllLabel}
+                </button>
+                {NOTE_TAGS.map((tg) => (
+                  <button
+                    key={tg}
+                    type="button"
+                    className={`round-chip ${noteTagFilter === tg ? "active" : ""}`}
+                    onClick={() => setNoteTagFilter(tg)}
+                  >
+                    {noteTagLabel(dict, tg)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {pinnedNotes.length > 0 && (
+              <div className="note-pinned-block">
+                <div className="eyebrow">{dict.notesPinnedLabel}</div>
+                <div className="lessons-list">{pinnedNotes.map((n) => renderNoteRow(n))}</div>
+              </div>
+            )}
+
+            <div className="lessons-list" style={{ marginTop: 12 }}>
+              {(() => {
+                lastNoteMonth = "";
+                return visibleNotes.map((n) => {
+                  const month = n.date.slice(0, 7);
+                  const monthLabel = month !== lastNoteMonth ? month : undefined;
+                  lastNoteMonth = month;
+                  return renderNoteRow(n, monthLabel);
+                });
+              })()}
+            </div>
+            {hasMoreNotes && (
+              <div className="modal-actions" style={{ justifyContent: "flex-start", marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setNoteVisibleCount((c) => c + noteLoadMoreStep)}
+                >
+                  {dict.notesLoadMore} · +{unpinnedNotes.length - noteVisibleCount}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       {roundDetail && (
         <div className="detail-grid-2col">

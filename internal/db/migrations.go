@@ -561,4 +561,25 @@ var migrations = []string{
 	);
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_sell_followups_ticker_exit ON sell_followups(ticker, exit_date);
 	`,
+
+	// 28: research_notes backs the chart page's per-ticker research-notes
+	// card (see internal/db/research_notes.go) — one row per (ticker,
+	// calendar day), same upsert-on-same-day shape as thesis_entries
+	// (migration 18), plus tag (a fixed frontend-chosen category, stored as
+	// a plain string — no enum coupling on this side) and pinned (a note
+	// surfaced above the chronological list). No market column: unlike the
+	// four tables migration 12 touched, this is always queried by a single
+	// ticker on its own chart page, never across markets, so ticker alone
+	// already disambiguates.
+	`
+	CREATE TABLE IF NOT EXISTS research_notes (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		ticker TEXT NOT NULL,
+		tag TEXT NOT NULL DEFAULT '',
+		text TEXT NOT NULL,
+		pinned INTEGER NOT NULL DEFAULT 0,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_research_notes_ticker_day ON research_notes(ticker, date(created_at));
+	`,
 }

@@ -99,6 +99,10 @@ type dbReader interface {
 	// disagree about what was recorded.
 	GetRecentPriceEvents(limit int) ([]db.PriceEvent, error)
 	GetPriceEventsForTicker(ticker string, limit int) ([]db.PriceEvent, error)
+	// GetResearchNotesByTicker backs research_notes.go's GET
+	// /api/research-notes — the chart page's notebook card history for one
+	// ticker; writes go through the separate researchNotesWriter interface.
+	GetResearchNotesByTicker(ticker string) ([]db.ResearchNote, error)
 }
 
 // netWorthBaseline resolves the capital base for a period starting at
