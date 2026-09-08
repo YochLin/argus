@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**Argus** is a personal (single-user) US stock monitoring bot that talks over Telegram. Built in Go, runs
+**Argus** is a personal (single-user) US/Taiwan stock monitoring bot that talks over Telegram. Built in Go, runs
 in Docker, persists to SQLite. There is no multi-tenant/multi-user design anywhere — `chatID` is a single
 fixed value from env, not a per-user table. The name (and the Go module path, `argus`) reflects an intent
 to grow this beyond stocks into a broader personal assistant — the free-form `Chat` mode in `internal/llm`
@@ -27,8 +27,10 @@ go vet ./...                # static checks
 docker compose up --build   # build + run in Docker (uses .env, mounts ./data -> /app/data)
 ```
 
-There's no broad test suite; `internal/i18n` has the one exception (`go test ./internal/i18n/...`), which
-checks the zh/en message tables stay in sync — see that package's entry below. Setup: copy `.env.example`
+`go test ./...` runs the full suite; every package has one except `cmd/server` and `internal/scheduler`.
+`internal/i18n`'s `TestTablesMatch` (`go test ./internal/i18n/...`) is worth calling out on its own since
+it guards a cross-file invariant rather than ordinary unit coverage: the zh/en message tables staying in
+sync — see that package's entry below. Setup: copy `.env.example`
 to `.env` and fill in `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` — since Phase 17 these may be left
 blank, in which case the process starts with the Telegram transport disabled (no inbound commands, no
 outbound messages) but everything else — scheduled jobs included — still running, so they can be filled
@@ -67,7 +69,11 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   `*TWSE` instance as `twse_movers.go`/`institutional_tw.go`, cached per calendar year — backing
   `RunTWMorningBriefing`'s market-closed gate; a schedule entry whose name marks a trading-resumption/
   last-trading-day boundary around a multi-day break, e.g. "農曆春節後開始交易日", is itself a real
-  trading day and filtered out rather than treated as a holiday). `options.go`'s
+  trading day and filtered out rather than treated as a holiday). `shioaji.go` wraps `internal/sinopac`'s
+  `Client` (see below) as a `Provider`/`TWMarketMoversProvider` for broker-grade TW quotes and movers
+  when `SHIOAJI_ADDR` points at a running Shioaji daemon, ahead of Yahoo's unofficial suffix-guessing
+  chart API; falls back to Yahoo/TWSE otherwise, same nil-degrade convention as the optional API keys
+  above. `options.go`'s
   `OptionChainProvider` (US-only, Phase 12) is implemented by `yahoo.go`, which authenticates with a
   cookie + crumb handshake (`ensureCrumb`, cached on the `Yahoo` struct, retried once on a 401) that no
   other Yahoo endpoint needs — quote/history/news stay on the plain (cookie-less) `client`.
@@ -93,7 +99,17 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   signal, not a crippled version of something that needed more). No DB cache — unlike PR6/PR7's valuation
   snapshot, Finnhub's response is already the whole useful window every call, so it rides the same
   in-memory `dataCache`/`slowDataCacheTTL` as Fundamentals/AnalystRating/InsiderTx.
-  Full rationale, live-endpoint gotchas, and TW-specific design notes: **[docs/architecture/data.md](docs/architecture/data.md)**.
+
+- `internal/sinopac` — a thin REST client for a locally-running Shioaji daemon (`shioaji server start`,
+  Sinopac Securities' 永豐證券 Python trading SDK, exposed as a local HTTP server rather than a
+  shelled-out Python process); this package only ever talks to an already-running daemon, started and
+  logged into separately by the operator since token decryption needs a key only they hold. `client.go`'s
+  `Client` covers quotes/scanner/position endpoints, live-verified against daemon v1.7.2, with two
+  response-shape quirks that don't match its OpenAPI spec: the regulatory-notice endpoints return a
+  single object of parallel arrays (pandas' `DataFrame.to_dict("list")` shape) instead of an array of row
+  objects, and the scanner's `ascending` flag is inverted from its name. `trades.go`'s `Trades`
+  reconstructs discrete trade events from `PositionDetail`/`ProfitLoss` for `service.BrokerSyncService`
+  (see below); `internal/data/shioaji.go` and `internal/bot/sinopac.go` are its only other callers.
 
 - `internal/option` — Phase 12's pure functions for US equity options, independent of
   `internal/db`/`internal/bot` like `internal/signals`. `contract.go`'s `Parse`/`Format`/`IsOCC` handle
@@ -107,18 +123,22 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   `Profile` (`LongCall`/`LongPut`/`CSP`/`CoveredCall` — delta/DTE bands and the liquidity gate are all
   `Profile` fields, not constants, since they're real-world calibration knobs); the liquidity gate
   (OI/volume/spread%) is checked before delta — a contract with a wide spread loses money even when the
-  direction call is right. Full design: **[docs/phase-12-options.md](docs/phase-12-options.md)**.
+  direction call is right.
 
-- `internal/db` — thin wrapper around `database/sql` + `modernc.org/sqlite` (pure-Go, no cgo). Nine
-  tables (`watchlist`, `daily_snapshots`, `recommendations`, `signal_states`, `positions`,
+- `internal/db` — thin wrapper around `database/sql` + `modernc.org/sqlite` (pure-Go, no cgo). The
+  original nine tables (`watchlist`, `daily_snapshots`, `recommendations`, `signal_states`, `positions`,
   `transactions`, `net_worth_snapshots`, `universe`, `scan_hits`) plus `pending_actions` (Phase 4
-  write-gating) — migrations are versioned via `PRAGMA user_version`, append-only in `db.migrations`,
+  write-gating) have since grown well past that count across 27 migrations, not all narrated below
+  (`thesis`/`thesis_entries`, `trade_lessons`, `price_events`, `buy_alerts`, `notifications`, `llm_runs`,
+  `iv_history`, `settings`, `blocked_news_sources` among them) — grep `CREATE TABLE` in `migrations.go`
+  for the current full list rather than trusting a count here. Migrations are versioned via
+  `PRAGMA user_version`, append-only in `db.migrations`,
   never edited/reordered once shipped. `RecordBuy`/`RecordSell` own all `positions`/`transactions`
   writes with weighted-average cost and realized P&L math. TW support added a `market` column to four
   tables (migration 12) and rebuilt `net_worth_snapshots`'s primary key to `(date, market)`. Phase 12
   (migration 15) added `option_positions`/`option_transactions` (`options.go`) as two fully independent
   tables — an OCC symbol never enters `positions.ticker` — with `RecordOption` as their single write
-  path so the signed-`contracts` realized-P&L formula (docs/phase-12-options.md §3.2) only exists once.
+  path so the signed-`contracts` realized-P&L formula only exists once.
   Phase 23 PR6/PR7 (migration 21) added `fundamental_snapshots` (`fundamentals.go`) — one upserted row per
   ticker (no `market` column needed; a ticker's own value already disambiguates) caching either
   `internal/data.SEC` (US) or FinMind's `TaiwanStockPER` (TW) valuation percentile/cash-flow quality on a
@@ -143,7 +163,7 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   enforces both tables stay in sync (same keys, same verb count). Covers both bot UI copy and LLM
   prompt text — `KeyReasonMarker`/`KeyActionMarker` are parsed by `parseRecommendations`, so prompt and
   parser must change together. Language is selected once at startup via `BOT_LANGUAGE`, no per-message
-  override. Details: **[docs/architecture/i18n.md](docs/architecture/i18n.md)**.
+  override.
 
 - `internal/llm` — `Client` talks to an LLM through an ordered chain of `Provider`s (one-shot `Prompt`
   or persistent `ChatSession`), always seeded with `acpProvider` (Claude via the Agent Client Protocol,
@@ -161,8 +181,7 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   supplier that benefits from a US chipmaker's demand story mentioned in the transcript) marked with a
   `DerivedFrom` line — an `ExploreNomination`-style "model's own claim, not grounded in the source
   text" case nested inside an already-unverified struct, so it's its own field rather than folded into
-  Thesis where a reader couldn't tell a transcript quote from a supply-chain guess. Full provider/prompt
-  rationale: **[docs/architecture/llm.md](docs/architecture/llm.md)**.
+  Thesis where a reader couldn't tell a transcript quote from a supply-chain guess.
 
 - `internal/signals` — pure functions for rule-based technical signals (RSI, MACD, Stochastic KD,
   Bollinger Bandwidth, MA Alignment, Volume-Price, New High, Relative Strength, Lowest Close) and
@@ -191,29 +210,26 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   prevState) (*Signal, newState)` (adds alert-once-per-occurrence dedup on top). All four screens take a
   `ScreenParams` (from `DefaultScreenParams(market.MarketID)`, Phase 13) rather than package-level constants,
   since thresholds differ between TW and US. Stateful checks (`CheckRSIState`, `CheckMACDCross`, etc.) take
-  and return persisted state as parameters — the DB round-trip lives in `internal/bot`, not here. Details:
-  **[docs/architecture/signals.md](docs/architecture/signals.md)**.
+  and return persisted state as parameters — the DB round-trip lives in `internal/bot`, not here.
 
 - `internal/scheduler` — thin wrapper around `robfig/cron` fixed to `time.FixedZone("CST", 8*3600)`
-  (avoids needing `tzdata` in the Alpine Docker image). Registers the daily report, closing snapshot
-  (US + TW variants), universe scan, weekly review, log rotation, and SQLite backup jobs at fixed CST
-  times. Full cron-time rationale: **[docs/architecture/scheduler.md](docs/architecture/scheduler.md)**.
+  (avoids needing `tzdata` in the Alpine Docker image). Registers the daily report, morning briefing,
+  closing snapshot, universe scan, and sector-flow scan (each with US and TW variants), plus the weekly
+  review, monthly report, Sinopac sync, log rotation, and SQLite backup jobs, all at fixed CST times.
 
 - `internal/market` — pure, dependency-free NYSE trading-calendar logic (`IsTradingDay`/`IsHoliday`,
   computed per-year including a Meeus/Jones/Butcher Good Friday calculation) plus `MarketID`/`Of(ticker)`
   — the project-wide single source of truth for US-vs-TW ticker classification (leading digit = TW).
-  Known gap: only fixed annual holidays are covered, not ad-hoc closures. Details:
-  **[docs/architecture/market.md](docs/architecture/market.md)**.
+  Known gap: only fixed annual holidays are covered, not ad-hoc closures.
 
 - `internal/render` — Telegram/chat-facing text formatting (`Fundamentals`/`FinancialStatement`/
   `Commaf`) shared between `internal/bot` and `internal/mcptools`, depending only on `internal/data` +
-  `internal/i18n` so both packages can import it without a hand-synced duplicate. Details:
-  **[docs/architecture/render.md](docs/architecture/render.md)**.
+  `internal/i18n` so both packages can import it without a hand-synced duplicate.
 
 - `internal/webfetch` — Phase 3's "article digestion" chat mode: `ExtractURL` (pure regex) finds a URL
   in a chat message, `Fetch` downloads and extracts readable text via `golang.org/x/net/html`, treating
   extraction under ~200 chars as a failure (paywall/JS-rendered signature). Extracted text is capped at
-  20,000 runes. Details: **[docs/architecture/webfetch.md](docs/architecture/webfetch.md)**.
+  20,000 runes.
 
 - `internal/service` — the business-logic layer Phase 24 pulled out of `internal/bot`: 15 services
   (`RiskService`, `ScanService`, `PaperService`, `OptionsService`, `BrokerSyncService`,
@@ -233,7 +249,7 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
 
 - `internal/bot` — Telegram command dispatch (`/add`, `/remove`, `/list`, `/status`, `/recommend`,
   `/check`, `/track`, `/buy`, `/sell`, `/portfolio`, `/dailyreport`, `/fundamentals`, `/universe`,
-  `/stop`, `/review`, `/reset`, and more) plus scheduler-invoked jobs (`RunDailyReport`,
+  `/stop`, `/review`, `/reset`, `/paper`, `/sinopac`, `/podcast`, and more) plus scheduler-invoked jobs (`RunDailyReport`,
   `RunClosingSnapshot`, `RunUniverseScan`, `RunWeeklyReview`). Split across five files along the
   transport-vs-business line: `bot.go` (dispatch), `handlers.go` (command handlers), `jobs.go`
   (scheduler jobs + alert checks), `pipeline.go` (recommendation data assembly), `format.go` (pure
@@ -270,8 +286,18 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   only exists for a session that actually traded (US holidays, TW multi-day breaks, and individual-ticker
   halts are then all automatically correct); the `sell_followups` table's `(ticker, exit_date)` row is
   only written once the follow-up message actually sends, so an LLM failure or not-yet-enough history
-  just retries on the next closing snapshot rather than being treated as done.
-  Full command-by-command and job-by-job rationale: **[docs/architecture/bot.md](docs/architecture/bot.md)**.
+  just retries on the next closing snapshot rather than being treated as done. `paper.go` backs `/paper`
+  (view or reset the live paper-trading account, which forward-accumulates through the same
+  `internal/paper.Account` rules `argus backtest` replays historically, see below) — `paperConfig` builds
+  its `paper.Config` from the bot's own exit-discipline thresholds (`STOP_LOSS_PCT`/`TRAILING_STOP_PCT`
+  and their TW variants) rather than duplicating them, so the paper account trades by the same rules the
+  live dashboard alerts on. `sinopac.go` backs `/sinopac` (TW-only; dry-run unless called as
+  `/sinopac sync`) and its scheduled counterpart `RunSinopacSync` (Phase 16), which reconstructs manual
+  (non-定期定額) trades from `internal/sinopac` portfolio data and files each as a `pending_actions` row
+  for confirmation; the schedule defaults to dry-run (gated live by `SINOPAC_SYNC_LIVE`) until
+  `PositionDetail`/`ProfitLoss`'s price-field semantics are reconciled against a real brokerage statement,
+  but the manually-typed `/sinopac sync` always runs live, since typing it is already the confirmation
+  that gate exists to wait for.
 
 - `internal/mcptools` — Phase 3.5's MCP (Model Context Protocol) tool surface for chat, using the
   official `github.com/modelcontextprotocol/go-sdk`. Registers read tools (`get_quote`, `get_history`,
@@ -281,10 +307,10 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   Reached via `cmd/server/main.go`'s `mcp` subcommand — same binary as the daemon, so it can never drift out of
   version sync. All provider calls go through `withCache`+`tokenBucket` rate limiting. Dependency graph
   stays narrow (`internal/data`/`internal/db`/`internal/render`/`internal/i18n`, never `internal/llm`/
-  `internal/bot`) so the tool surface survives an LLM provider swap. Details:
-  **[docs/architecture/mcptools.md](docs/architecture/mcptools.md)**.
+  `internal/bot`) so the tool surface survives an LLM provider swap.
 
-- `internal/web` — Phase 5's read-only web dashboard: an in-process HTTP server gated by `WEB_ADDR`,
+- `internal/web` — Phase 5's web dashboard (read-only until Phase 10 added trade-input write endpoints):
+  an in-process HTTP server gated by `WEB_ADDR`,
   sharing the bot's live `data.Provider` chain and `*db.DB` connection directly. `pnl.go`'s pure
   `DailyPnL`/`CumulativeCurve`/KPI functions are the daily-P&L replay engine backing every dashboard
   view. The embedded frontend build lives at `internal/web/dist` (React/Vite source at repo-root `web/`);
@@ -312,20 +338,17 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   new config — there is no hot reload, matching the codebase-wide "wire everything once at boot" rule.
   Its whitelist admits a variable on "would a wrong value still boot?", not "is it a credential":
   `DB_PATH` and the other paths are excluded permanently, since a typo there would crash-loop before
-  `web.New` and leave no UI to fix it from. Details:
-  **[docs/architecture/web.md](docs/architecture/web.md)**.
+  `web.New` and leave no UI to fix it from.
 
 - `internal/paper` — Phase 11's pure rule engine shared by `argus backtest`'s historical replay
   (`cmd/server/backtest.go`) and the live paper account's forward accumulation
   (`internal/bot/paper.go`): `Account.ApplySignal`/`MarkClose`/`Equity` are the entire trading rulebook,
   fed plain values by both callers (same "no DB/network/Telegram" discipline as `internal/signals`/
-  `internal/receval`) so backtest and live behavior can't structurally diverge. Details:
-  **[docs/phase-11-paper-account.md](docs/phase-11-paper-account.md)** §1.
+  `internal/receval`) so backtest and live behavior can't structurally diverge.
 
 - `internal/receval` — scores the `recommendations` table against actual subsequent price action for
   the `eval` subcommand; pure functions over plain structs (`db.Recommendation` rows + `data.Candle`
   history handed in by the caller), same no-DB/network discipline as `internal/signals`/`internal/paper`.
-  Details: **[docs/offline-rec-eval.md](docs/offline-rec-eval.md)**.
 
 - `internal/notification` — Phase 24 Stage 2's event bus: the seam between business logic that decides
   something is alert-worthy (stop-loss breach, restricted-stock warning, price event, ...) and the
@@ -333,9 +356,8 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   history to read). Doesn't replace synchronous command replies (`/list`, `/portfolio`, ...) — those
   still go straight through `bot.Channel.Send`.
 
-- `internal/logger` — the application's small logging facade (`log/slog` underneath), imported as
-  `logger` by 57 files across the codebase so the bot, scheduler, web server, and CLI tools share one
-  handler/level configuration.
+- `internal/logger` — the application's small logging facade (`log/slog` underneath), imported by nearly
+  every package so the bot, scheduler, web server, and CLI tools share one handler/level configuration.
 
 - `cmd/strategyscan` — the standalone research tool (4,688 lines, independent of the daemon) behind
   every strategy-screen go/no-go decision referenced elsewhere in this file (Phase 14 trend
