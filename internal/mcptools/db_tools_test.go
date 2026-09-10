@@ -163,6 +163,131 @@ func TestGetPortfolioQuoteFailureDegradesPosition(t *testing.T) {
 	}
 }
 
+// testCall mirrors internal/db/options_test.go's fixture symbol.
+const testCall = "AAPL260918C00320000"
+
+func TestGetPortfolioIncludesOptionPositions(t *testing.T) {
+	d := newTestDB(t)
+	if _, _, err := d.RecordOption(testCall, "BUY", 2, 5.40, 0, "2026-08-01"); err != nil {
+		t.Fatal(err)
+	}
+
+	expiry := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
+	ts := &toolset{
+		lang:     i18n.EN,
+		provider: &fakeProvider{quote: &data.Quote{Ticker: "AAPL", Price: 300}},
+		history:  &fakeHistory{},
+		db:       d,
+		optionChain: fakeOptionChain{
+			expirations: []time.Time{expiry},
+			quotes: map[time.Time][]data.OptionQuote{
+				expiry: {{ContractSymbol: testCall, Bid: 8.0, Ask: 8.4, Expiration: expiry}},
+			},
+		},
+	}
+	session := connectTool(t, ts)
+
+	text, isError := callText(t, session, "get_portfolio", map[string]any{})
+	if isError {
+		t.Fatalf("get_portfolio returned an error result: %s", text)
+	}
+	if !strings.Contains(text, testCall) || !strings.Contains(text, "8.20") {
+		t.Errorf("get_portfolio missing option position/mark, got:\n%s", text)
+	}
+}
+
+// TestGetPortfolioOptionsOnlyNotEmpty covers a user who holds only option
+// contracts, no stock positions — get_portfolio must not report "empty".
+func TestGetPortfolioOptionsOnlyNotEmpty(t *testing.T) {
+	d := newTestDB(t)
+	if _, _, err := d.RecordOption(testCall, "BUY", 1, 5.40, 0, "2026-08-01"); err != nil {
+		t.Fatal(err)
+	}
+
+	expiry := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
+	ts := &toolset{
+		lang:     i18n.EN,
+		provider: &fakeProvider{},
+		history:  &fakeHistory{},
+		db:       d,
+		optionChain: fakeOptionChain{
+			expirations: []time.Time{expiry},
+			quotes: map[time.Time][]data.OptionQuote{
+				expiry: {{ContractSymbol: testCall, Bid: 8.0, Ask: 8.4, Expiration: expiry}},
+			},
+		},
+	}
+	session := connectTool(t, ts)
+
+	text, isError := callText(t, session, "get_portfolio", map[string]any{})
+	if isError {
+		t.Fatalf("get_portfolio with only an option position should not report empty, got error: %s", text)
+	}
+	if !strings.Contains(text, testCall) {
+		t.Errorf("get_portfolio missing the option position, got:\n%s", text)
+	}
+}
+
+// TestGetPortfolioOptionsSectionSkippedWithoutChainProvider covers the
+// nil-degrade case — an option position exists but ts.optionChain is nil
+// (no data.OptionChainProvider wired in), same as get_option_chain simply
+// not being registered.
+func TestGetPortfolioOptionsSectionSkippedWithoutChainProvider(t *testing.T) {
+	d := newTestDB(t)
+	if _, err := d.RecordBuy("AAPL", 10, 150, 0, "2026-01-01"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := d.RecordOption(testCall, "BUY", 1, 5.40, 0, "2026-08-01"); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := &toolset{
+		lang:     i18n.EN,
+		provider: &fakeProvider{quote: &data.Quote{Ticker: "AAPL", Price: 200}},
+		history:  &fakeHistory{},
+		db:       d,
+		// optionChain left nil.
+	}
+	session := connectTool(t, ts)
+
+	text, isError := callText(t, session, "get_portfolio", map[string]any{})
+	if isError {
+		t.Fatalf("get_portfolio returned an error result: %s", text)
+	}
+	if strings.Contains(text, testCall) {
+		t.Errorf("get_portfolio should omit the option position without a chain provider, got:\n%s", text)
+	}
+}
+
+func TestGetThesis(t *testing.T) {
+	d := newTestDB(t)
+	if err := d.SetThesis("AAPL", "long-term compounder, hold through volatility"); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := &toolset{lang: i18n.EN, provider: &fakeProvider{}, history: &fakeHistory{}, db: d}
+	session := connectTool(t, ts)
+
+	text, isError := callText(t, session, "get_thesis", map[string]any{"ticker": "aapl"})
+	if isError {
+		t.Fatalf("get_thesis returned an error result: %s", text)
+	}
+	if !strings.Contains(text, "AAPL") || !strings.Contains(text, "long-term compounder") {
+		t.Errorf("get_thesis result missing expected content, got:\n%s", text)
+	}
+}
+
+func TestGetThesisNotSet(t *testing.T) {
+	d := newTestDB(t)
+	ts := &toolset{lang: i18n.EN, provider: &fakeProvider{}, history: &fakeHistory{}, db: d}
+	session := connectTool(t, ts)
+
+	_, isError := callText(t, session, "get_thesis", map[string]any{"ticker": "AAPL"})
+	if !isError {
+		t.Fatal("get_thesis for a ticker with no recorded thesis should return IsError")
+	}
+}
+
 func TestGetRecommendationStats(t *testing.T) {
 	d := newTestDB(t)
 	today := time.Now().In(cst).Format("2006-01-02")
@@ -293,7 +418,7 @@ func TestDBToolsNotRegisteredWithoutDB(t *testing.T) {
 	for _, tool := range res.Tools {
 		names[tool.Name] = true
 	}
-	for _, notWant := range []string{"get_watchlist", "get_portfolio", "get_recommendation_stats", "get_recent_recommendations", "get_universe_summary"} {
+	for _, notWant := range []string{"get_watchlist", "get_portfolio", "get_recommendation_stats", "get_recent_recommendations", "get_universe_summary", "get_thesis"} {
 		if names[notWant] {
 			t.Errorf("tools/list should not advertise %q when db is nil", notWant)
 		}

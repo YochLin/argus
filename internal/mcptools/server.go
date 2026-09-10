@@ -56,6 +56,10 @@ const (
 // 階段就不註冊" decision. provider and history are never nil in practice
 // (Multi always wraps at least Yahoo, and history is Yahoo-only but always
 // constructed — see cmd/server/main.go), so their tools are unconditional.
+// optionChain is the same optional shape as fundamentals/earnings — nil
+// whenever the caller has no data.OptionChainProvider (Yahoo, in practice,
+// same as internal/bot's Bot.optionChain), so get_option_chain is simply
+// not registered rather than always failing.
 // database and writeDatabase are the same nil-check-and-degrade shape once
 // more: nil whenever db.OpenReadOnly/OpenForWrites failed (see
 // runMCPServer), so a DB hiccup takes down only the tools that depend on
@@ -72,7 +76,7 @@ const (
 // callers to behave. The two write tools bypass withCache entirely (see
 // watchlist_write_tools.go) — caching a mutation's result makes no sense,
 // and local SQLite writes need no Finnhub-rate-limit protection.
-func NewServer(lang i18n.Lang, provider data.Provider, history data.HistoryProvider, fundamentals data.FundamentalsProvider, earnings data.EarningsProvider, insiderTx data.InsiderTransactionProvider, institutional data.InstitutionalFlowProvider, database *db.DB, writeDatabase *db.DB) *mcp.Server {
+func NewServer(lang i18n.Lang, provider data.Provider, history data.HistoryProvider, fundamentals data.FundamentalsProvider, earnings data.EarningsProvider, insiderTx data.InsiderTransactionProvider, institutional data.InstitutionalFlowProvider, optionChain data.OptionChainProvider, database *db.DB, writeDatabase *db.DB) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "argus",
 		Version: Version,
@@ -85,6 +89,7 @@ func NewServer(lang i18n.Lang, provider data.Provider, history data.HistoryProvi
 		earnings:       earnings,
 		insiderTx:      insiderTx,
 		institutional:  institutional,
+		optionChain:    optionChain,
 		db:             database,
 		writeDB:        writeDatabase,
 		portfolio:      service.NewPortfolioService(database, provider),
@@ -100,7 +105,7 @@ func NewServer(lang i18n.Lang, provider data.Provider, history data.HistoryProvi
 // invokes — an ACP chat session launches the same binary as a subprocess
 // (os.Executable()) rather than a separately deployed server, so the tool
 // surface can never drift out of version sync with the running bot.
-func Run(ctx context.Context, lang i18n.Lang, provider data.Provider, history data.HistoryProvider, fundamentals data.FundamentalsProvider, earnings data.EarningsProvider, insiderTx data.InsiderTransactionProvider, institutional data.InstitutionalFlowProvider, database *db.DB, writeDatabase *db.DB) error {
-	server := NewServer(lang, provider, history, fundamentals, earnings, insiderTx, institutional, database, writeDatabase)
+func Run(ctx context.Context, lang i18n.Lang, provider data.Provider, history data.HistoryProvider, fundamentals data.FundamentalsProvider, earnings data.EarningsProvider, insiderTx data.InsiderTransactionProvider, institutional data.InstitutionalFlowProvider, optionChain data.OptionChainProvider, database *db.DB, writeDatabase *db.DB) error {
+	server := NewServer(lang, provider, history, fundamentals, earnings, insiderTx, institutional, optionChain, database, writeDatabase)
 	return server.Run(ctx, &mcp.StdioTransport{})
 }

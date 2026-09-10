@@ -175,7 +175,7 @@ func runMCPServer() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	if err := mcptools.Run(ctx, lang, core.Provider, core.Yahoo, core.Fundamentals, core.Earnings, core.InsiderTx, twInstitutional, database, writeDatabase); err != nil {
+	if err := mcptools.Run(ctx, lang, core.Provider, core.Yahoo, core.Fundamentals, core.Earnings, core.InsiderTx, twInstitutional, core.Yahoo, database, writeDatabase); err != nil {
 		logger.Fatalf("mcp server: %v", err)
 	}
 }

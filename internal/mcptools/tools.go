@@ -11,6 +11,7 @@ import (
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/i18n"
+	"argus/internal/option"
 	"argus/internal/render"
 	"argus/internal/service"
 )
@@ -57,6 +58,7 @@ type toolset struct {
 	earnings       data.EarningsProvider
 	insiderTx      data.InsiderTransactionProvider
 	institutional  data.InstitutionalFlowProvider
+	optionChain    data.OptionChainProvider
 	db             *db.DB
 	writeDB        *db.DB
 	watchlist      *service.WatchlistService
@@ -184,6 +186,13 @@ func registerTools(s *mcp.Server, ts *toolset) {
 		}, ts.getInstitutionalFlow)
 	}
 
+	if ts.optionChain != nil {
+		mcp.AddTool(s, &mcp.Tool{
+			Name:        "get_option_chain",
+			Description: "Screen a US stock ticker's live option chain down to liquid candidates matching a strategy — long call, long put, cash-secured put (csp), or covered call (cc) — via the same delta/DTE/liquidity screen /option uses: contract symbol, mark price, delta, implied volatility, open interest, bid/ask spread %, and days to expiry. US-only; not available for Taiwan tickers.",
+		}, ts.getOptionChain)
+	}
+
 	registerDBTools(s, ts)
 	registerWriteTools(s, ts)
 	registerTradeWriteTools(s, ts)
@@ -211,6 +220,11 @@ type earningsInput struct {
 type insiderTxInput struct {
 	Ticker string `json:"ticker" jsonschema:"US stock ticker symbol, e.g. AAPL"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"max number of transactions to return (default 10)"`
+}
+
+type optionChainInput struct {
+	Ticker string `json:"ticker" jsonschema:"US stock ticker symbol, e.g. AAPL"`
+	Kind   string `json:"kind,omitempty" jsonschema:"strategy to screen for: 'call' (long call), 'put' (long put), 'csp' (cash-secured put), or 'cc' (covered call); defaults to call"`
 }
 
 type emptyInput struct{}
@@ -397,6 +411,76 @@ func (ts *toolset) getInstitutionalFlow(ctx context.Context, _ *mcp.CallToolRequ
 		text := i18n.T(ts.lang, i18n.KeyMCPInstitutionalFlowResult, ticker, fl.Date,
 			fl.ForeignNet+fl.ForeignDealerNet, fl.TrustNet, fl.DealerNet, fl.TotalNet)
 		return textResult(text), nil
+	})
+	return result, nil, err
+}
+
+// mcpOptionChainMaxResults caps get_option_chain output, mirroring
+// internal/bot/options.go's optionSelectMaxResults (/option's own cap) —
+// same reasoning, a wide DTE band across several expiries can otherwise
+// return dozens of contracts.
+const mcpOptionChainMaxResults = 10
+
+// optionProfileFor mirrors internal/bot/options.go's unexported helper of
+// the same name (/option's own kind→Profile mapping). Duplicated rather
+// than imported: this package deliberately never depends on internal/bot
+// (see server.go's package doc), and the mapping is a 4-line switch, not
+// worth a shared export for.
+func optionProfileFor(kind string) (option.Profile, bool) {
+	switch kind {
+	case "", "call":
+		return option.LongCall, true
+	case "put":
+		return option.LongPut, true
+	case "csp":
+		return option.CSP, true
+	case "cc":
+		return option.CoveredCall, true
+	default:
+		return option.Profile{}, false
+	}
+}
+
+// getOptionChain mirrors /option's handleOption (internal/bot/options.go):
+// fetch a live spot quote, gather every expiry within the strategy's DTE
+// band, and run option.Select's liquidity/delta screen over the merged
+// chain. Kept in quoteCacheTTL, not longCacheTTL, since candidates embed a
+// live spot-dependent mark/delta the same way get_quote's numbers are live.
+func (ts *toolset) getOptionChain(ctx context.Context, _ *mcp.CallToolRequest, in optionChainInput) (*mcp.CallToolResult, any, error) {
+	ticker := normalizeTicker(in.Ticker)
+	kind := strings.ToLower(strings.TrimSpace(in.Kind))
+	profile, ok := optionProfileFor(kind)
+	if !ok {
+		return nil, nil, fmt.Errorf("invalid kind %q", in.Kind)
+	}
+
+	key := fmt.Sprintf("get_option_chain:%s:%s", ticker, profile.Name)
+	result, err := ts.withCache(ctx, key, quoteCacheTTL, func() (*mcp.CallToolResult, error) {
+		spot, err := ts.provider.GetQuote(ticker)
+		if err != nil {
+			return nil, ts.mcpErr(i18n.KeyMCPNoOptionChain, ticker)
+		}
+
+		candidates, err := service.GatherOptionCandidates(ts.optionChain, ticker, spot.Price, profile, time.Now())
+		if err != nil {
+			return nil, ts.mcpErr(i18n.KeyMCPNoOptionChain, ticker)
+		}
+		if len(candidates) == 0 {
+			return nil, ts.mcpErr(i18n.KeyOptionSelectNoCandidates, ticker, profile.Name)
+		}
+
+		var sb strings.Builder
+		sb.WriteString(i18n.T(ts.lang, i18n.KeyMCPOptionChainHeader, ticker, profile.Name))
+		for i, c := range candidates {
+			if i >= mcpOptionChainMaxResults {
+				break
+			}
+			sb.WriteString(i18n.T(ts.lang, i18n.KeyOptionSelectLine,
+				c.Quote.ContractSymbol, c.Mark, c.Greeks.Delta, c.Quote.ImpliedVolatility*100,
+				c.Quote.OpenInterest, c.SpreadPct*100, c.DTE))
+			sb.WriteString("\n\n")
+		}
+		return textResult(sb.String()), nil
 	})
 	return result, nil, err
 }
