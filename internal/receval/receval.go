@@ -7,6 +7,7 @@
 package receval
 
 import (
+	"sort"
 	"time"
 
 	"argus/internal/data"
@@ -28,7 +29,7 @@ const maxEntryGap = 7 * 24 * time.Hour
 type Recommendation struct {
 	Date   string // YYYY-MM-DD
 	Ticker string
-	Action string // "BUY" or "SELL" only; callers filter out HOLD/"" before scoring
+	Action string // "BUY", "SELL" or "HOLD"; callers filter out "" (unparsed) before scoring
 	Price  float64
 	Source string
 	Market string
@@ -64,6 +65,29 @@ type ScoredRec struct {
 	Windows    []WindowScore
 	MFEPct     float64
 	MAEPct     float64
+}
+
+// CollapseRepeats keeps only the first of each run of consecutive same-
+// action recommendations per ticker (in date order) and reports how many it
+// dropped. The daily report re-issues the same call on the same name day
+// after day, and scoring every copy counts heavily overlapping windows as
+// independent samples — one name held on BUY for three weeks would outvote
+// fifteen one-off calls. A run is broken only by a different action on that
+// ticker, never by elapsed time, so the same call re-issued after a gap is
+// still merged: conservative on independence, and no gap threshold to tune.
+func CollapseRepeats(recs []Recommendation) (kept []Recommendation, collapsed int) {
+	sorted := append([]Recommendation(nil), recs...)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Date < sorted[j].Date })
+	last := make(map[string]string)
+	for _, r := range sorted {
+		if prev, ok := last[r.Ticker]; ok && prev == r.Action {
+			collapsed++
+			continue
+		}
+		last[r.Ticker] = r.Action
+		kept = append(kept, r)
+	}
+	return kept, collapsed
 }
 
 // Score evaluates rec against candles (rec.Ticker's daily history, oldest
@@ -171,6 +195,11 @@ func entryIndex(candles []data.Candle, recDate time.Time) (idx int, ok, tooOld b
 func hit(action string, excessReturnPct float64) bool {
 	switch action {
 	case "BUY":
+		return excessReturnPct > 0
+	case "HOLD":
+		// HOLD has no direction of its own, so its "hit" is just "beat the
+		// benchmark": its hit rate is the base rate a BUY on the same pool has
+		// to clear for the call to have added anything.
 		return excessReturnPct > 0
 	case "SELL":
 		return excessReturnPct < 0

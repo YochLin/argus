@@ -388,6 +388,7 @@ export interface RecPerfCounts {
   hold: number;
   scorable: number;
   unscorable: number;
+  collapsed: number;
 }
 
 // RecPerfActiveSignal mirrors internal/web/recperf.go's recPerfActiveSignal
@@ -415,7 +416,7 @@ export interface RecPerformance {
   best: RecPerfExtreme[];
   worst: RecPerfExtreme[];
   overall: RecPerfStatsCell[];
-  bestHorizon: number;
+  evalHorizon: number;
   actedVsSkipped: RecPerfGroup[];
   activeSignals: RecPerfActiveSignal[];
 }
@@ -1097,7 +1098,7 @@ function getMockData(url: string): any {
       cell(20, n, hitRatePct - 6, avgExcessPct),
     ];
     return {
-      counts: { total: 312, scorable: 248, unscorable: 31, hold: 33 },
+      counts: { total: 312, scorable: 248, unscorable: 31, hold: 33, collapsed: 0 },
       horizons: [1, 5, 10, 20],
       byAction: [
         { key: "BUY", cells: cells(142, 61.5, 3.2) },
@@ -1125,7 +1126,7 @@ function getMockData(url: string): any {
         excessReturnPct: -6.2 - i * 2.1,
       })),
       overall: [cell(1, 248, 54.2, 0.3), cell(5, 248, 58.1, 1.2), cell(10, 240, 61.4, 2.1), cell(20, 210, 57.8, 2.6)],
-      bestHorizon: 10,
+      evalHorizon: 20,
       actedVsSkipped: [
         { key: "acted", cells: [cell(1, 210, 55.0, 0.4), cell(5, 210, 59.5, 1.4), cell(10, 205, 62.8, 2.3), cell(20, 180, 58.9, 2.9)] },
         { key: "skipped", cells: [cell(1, 33, 49.1, -0.2), cell(5, 33, 47.6, -0.6), cell(10, 32, 50.0, -0.1), cell(20, 28, 46.4, -0.5)] },

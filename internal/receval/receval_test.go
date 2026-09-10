@@ -145,3 +145,49 @@ func TestMFEMAE(t *testing.T) {
 		t.Errorf("MAEPct = %v, want ~-11.8 (low of day 4 vs entry 100)", sr.MAEPct)
 	}
 }
+
+func TestCollapseRepeats(t *testing.T) {
+	// Deliberately out of date order: CollapseRepeats must sort, not trust input order.
+	recs := []Recommendation{
+		{Date: "2026-07-03", Ticker: "AAPL", Action: "BUY"},
+		{Date: "2026-07-01", Ticker: "AAPL", Action: "BUY"},
+		{Date: "2026-07-02", Ticker: "AAPL", Action: "BUY"},
+		{Date: "2026-07-02", Ticker: "MSFT", Action: "HOLD"},
+		{Date: "2026-07-04", Ticker: "AAPL", Action: "HOLD"},
+		{Date: "2026-07-05", Ticker: "MSFT", Action: "HOLD"},
+		{Date: "2026-08-20", Ticker: "AAPL", Action: "HOLD"}, // gap doesn't break a run
+		{Date: "2026-08-21", Ticker: "AAPL", Action: "BUY"},
+	}
+	kept, collapsed := CollapseRepeats(recs)
+	var got []string
+	for _, r := range kept {
+		got = append(got, r.Date+" "+r.Ticker+" "+r.Action)
+	}
+	want := []string{
+		"2026-07-01 AAPL BUY",
+		"2026-07-02 MSFT HOLD",
+		"2026-07-04 AAPL HOLD",
+		"2026-08-21 AAPL BUY",
+	}
+	if len(got) != len(want) || collapsed != len(recs)-len(want) {
+		t.Fatalf("kept = %v (collapsed %d), want %v (collapsed %d)", got, collapsed, want, len(recs)-len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("kept[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestScoreHoldHitIsBeatBenchmark(t *testing.T) {
+	candles := dailyCandles("2026-01-01", []float64{100, 100, 100, 100, 100, 110})
+	bench := dailyCandles("2026-01-01", []float64{100, 100, 100, 100, 100, 105})
+	up := Score(Recommendation{Date: "2026-01-01", Ticker: "AAPL", Action: "HOLD", Price: 100}, candles, bench, []int{5})
+	if !up.Windows[0].Hit {
+		t.Errorf("HOLD that beat the benchmark (+10%% vs +5%%) should count as a hit")
+	}
+	down := Score(Recommendation{Date: "2026-01-01", Ticker: "AAPL", Action: "HOLD", Price: 100}, bench, candles, []int{5})
+	if down.Windows[0].Hit {
+		t.Errorf("HOLD that lagged the benchmark (+5%% vs +10%%) should not count as a hit")
+	}
+}

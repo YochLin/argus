@@ -59,17 +59,19 @@ func runEval() {
 		logger.Fatalf("eval: read recommendations: %v", err)
 	}
 
-	// HOLD/"" recs aren't scorable (same as /track), same reasoning as
-	// bot.handleTrack only evaluating BUY/SELL rows.
-	var holdCount int
+	// HOLD is scored alongside BUY/SELL: on the watchlist (the only source
+	// HOLD comes from) it is the one control the table has — the same names
+	// the model looked at and passed on. "" (an unparsed reply) is the only
+	// action left unscored.
+	var noActionCount int
 	var scorable []receval.Recommendation
 	haveTW := false
 	for _, r := range all {
 		if *marketFlag != "all" && r.Market != *marketFlag {
 			continue
 		}
-		if r.Action != "BUY" && r.Action != "SELL" {
-			holdCount++
+		if r.Action != "BUY" && r.Action != "SELL" && r.Action != "HOLD" {
+			noActionCount++
 			continue
 		}
 		if r.Market == string(market.TW) {
@@ -84,6 +86,7 @@ func runEval() {
 		fmt.Print(i18n.T(lang, i18n.KeyEvalNoData))
 		return
 	}
+	scorable, collapsed := receval.CollapseRepeats(scorable)
 
 	benchByMarket := map[string]string{string(market.US): "SPY"}
 	if haveTW {
@@ -123,7 +126,7 @@ func runEval() {
 		scored = append(scored, receval.Score(r, candles[r.Ticker], candles[benchByMarket[r.Market]], horizons))
 	}
 
-	printEvalReport(lang, scored, horizons, holdCount, *marketFlag)
+	printEvalReport(lang, scored, horizons, noActionCount, collapsed, *marketFlag)
 
 	if *csvFlag != "" {
 		if err := writeEvalCSV(*csvFlag, scored, horizons); err != nil {
@@ -148,25 +151,41 @@ func parseHorizons(s string) ([]int, error) {
 	return horizons, nil
 }
 
-func printEvalReport(lang i18n.Lang, scored []receval.ScoredRec, horizons []int, holdCount int, marketFlag string) {
+func printEvalReport(lang i18n.Lang, scored []receval.ScoredRec, horizons []int, noActionCount, collapsed int, marketFlag string) {
 	fmt.Print(i18n.T(lang, i18n.KeyEvalOverviewTitle))
 	printStatsGroups(lang, receval.Aggregate(scored, func(r receval.Recommendation) string { return r.Action }),
-		[]string{"BUY", "SELL"}, horizons)
+		[]string{"BUY", "HOLD", "SELL"}, horizons)
 
-	bySource := receval.Aggregate(scored, func(r receval.Recommendation) string { return receval.DisplaySource(r.Source) })
+	// Every breakdown is keyed by action too: a group mixing BUY with SELL
+	// (or with the far more numerous HOLDs) averages returns that point in
+	// opposite directions into a meaningless number.
+	bySource := receval.Aggregate(scored, func(r receval.Recommendation) string {
+		return receval.DisplaySource(r.Source) + " " + r.Action
+	})
 	fmt.Print(i18n.T(lang, i18n.KeyEvalSourceTitle))
 	printStatsGroups(lang, bySource, sortedKeys(bySource), horizons)
 
 	if marketFlag == "all" {
-		byMarket := receval.Aggregate(scored, func(r receval.Recommendation) string { return r.Market })
-		for _, m := range sortedKeys(byMarket) {
-			fmt.Print(i18n.T(lang, i18n.KeyEvalMarketTitle, m))
-			printStatsGroups(lang, byMarket, []string{m}, horizons)
+		byMarket := receval.Aggregate(scored, func(r receval.Recommendation) string { return r.Market + " " + r.Action })
+		prev := ""
+		for _, k := range sortedKeys(byMarket) {
+			if m := strings.Fields(k)[0]; m != prev {
+				fmt.Print(i18n.T(lang, i18n.KeyEvalMarketTitle, m))
+				prev = m
+			}
+			printStatsGroups(lang, byMarket, []string{k}, horizons)
 		}
 	}
 
+	// Extremes rank calls, so HOLD (not a call to act) stays out of them.
+	var acted []receval.ScoredRec
+	for _, sr := range scored {
+		if sr.Rec.Action != "HOLD" {
+			acted = append(acted, sr)
+		}
+	}
 	maxHorizon := horizons[len(horizons)-1]
-	best, worst := receval.Extremes(scored, maxHorizon, 5)
+	best, worst := receval.Extremes(acted, maxHorizon, 5)
 	fmt.Print(i18n.T(lang, i18n.KeyEvalExtremesTitle, maxHorizon))
 	fmt.Print(i18n.T(lang, i18n.KeyEvalExtremesBest, len(best)))
 	printExtremeLines(lang, best, maxHorizon)
@@ -175,7 +194,8 @@ func printEvalReport(lang i18n.Lang, scored []receval.ScoredRec, horizons []int,
 
 	counts := receval.CountOutcomes(scored)
 	fmt.Print(i18n.T(lang, i18n.KeyEvalCountsTitle))
-	fmt.Print(i18n.T(lang, i18n.KeyEvalCountHold, holdCount))
+	fmt.Print(i18n.T(lang, i18n.KeyEvalCountHold, noActionCount))
+	fmt.Print(i18n.T(lang, i18n.KeyEvalCountCollapsed, collapsed))
 	fmt.Print(i18n.T(lang, i18n.KeyEvalCountUnscorable, counts.Unscorable))
 	for _, reason := range sortedStringMapKeys(counts.UnscorableByReason) {
 		fmt.Print(i18n.T(lang, i18n.KeyEvalCountUnscorableReason, reason, counts.UnscorableByReason[reason]))
