@@ -18,3 +18,7 @@ docs/
 web/node_modules/
 web/tsconfig.tsbuildinfo
 internal/web/dist/assets/
+
+# cmd/strategyscan research output; keep long-term copies in argus-storage
+# instead of committing them here (see docs/refactor-2026-09-post-service-cleanup.md §6.2)
+/*.csv

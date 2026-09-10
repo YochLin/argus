@@ -1,9 +1,8 @@
 package data
 
 import (
+	"reflect"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestFinnhubGetInsiderTransactions_TWGuard(t *testing.T) {
@@ -27,7 +26,9 @@ func TestBuildInsiderTransactions_WithLimit(t *testing.T) {
 		{Ticker: "AAPL", Name: "COOK TIMOTHY D", Change: -59751, TransactionDate: "2025-10-02", TransactionCode: "S", TransactionPrice: 257.57},
 		{Ticker: "AAPL", Name: "Khan Sabih", Change: -49390, TransactionDate: "2025-10-01", TransactionCode: "F"},
 	}
-	assert.Equal(t, want, got)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("buildInsiderTransactions() = %+v, want %+v", got, want)
+	}
 }
 
 func TestBuildInsiderTransactions_NoLimit(t *testing.T) {
@@ -37,5 +38,7 @@ func TestBuildInsiderTransactions_NoLimit(t *testing.T) {
 		{Ticker: "AAPL", Name: "Khan Sabih", Change: -49390, TransactionDate: "2025-10-01", TransactionCode: "F"},
 		{Ticker: "AAPL", Name: "Khan Sabih", Change: 92403, TransactionDate: "2025-10-01", TransactionCode: "M"},
 	}
-	assert.Equal(t, want, got)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("buildInsiderTransactions() = %+v, want %+v", got, want)
+	}
 }
