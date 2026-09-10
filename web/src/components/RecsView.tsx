@@ -266,14 +266,14 @@ export function RecsView({
     return <div className="empty-message">{dict.noRecData}</div>;
   }
 
-  const bestCell = perf.overall.find((c) => c.horizon === perf.bestHorizon);
-  const bestExcess = bestCell?.avgExcessPct ?? 0;
-  const bestHitRate = bestCell?.hitRatePct ?? 0;
+  const evalCell = perf.overall.find((c) => c.horizon === perf.evalHorizon);
+  const evalExcess = evalCell?.avgExcessPct ?? 0;
+  const evalHitRate = evalCell?.hitRatePct ?? 0;
 
   const acted = perf.actedVsSkipped.find((g) => g.key === "acted");
   const skipped = perf.actedVsSkipped.find((g) => g.key === "skipped");
-  const actedCell = acted?.cells.find((c) => c.horizon === perf.bestHorizon);
-  const skippedCell = skipped?.cells.find((c) => c.horizon === perf.bestHorizon);
+  const actedCell = acted?.cells.find((c) => c.horizon === perf.evalHorizon);
+  const skippedCell = skipped?.cells.find((c) => c.horizon === perf.evalHorizon);
   const followedPct = actedCell?.avgExcessPct ?? 0;
   const followedN = actedCell?.n ?? 0;
   const skippedPct = skippedCell?.avgExcessPct ?? 0;
@@ -287,7 +287,7 @@ export function RecsView({
 
   const diff = followedPct - skippedPct;
   const narrative =
-    `${dict.recNarrativePeakPrefix}${perf.bestHorizon}${dict.recNarrativePeakMid}${fmtPct(bestExcess)}${dict.recNarrativePeakSuffix}` +
+    `${dict.recNarrativePeakPrefix}${perf.evalHorizon}${dict.recNarrativePeakMid}${fmtPct(evalExcess)}${dict.recNarrativePeakSuffix}` +
     (diff >= 0
       ? `${dict.recNarrativeFollowBetterPrefix}${fmtPct(Math.abs(diff))}${dict.recNarrativeFollowBetterSuffix}`
       : `${dict.recNarrativeSkipBetterPrefix}${fmtPct(Math.abs(diff))}${dict.recNarrativeSkipBetterSuffix}`);
@@ -344,16 +344,16 @@ export function RecsView({
       </div>
 
       <div className="stat-grid">
-        <StatCard label={dict.recTotal} value={String(perf.counts.total)} note={`${dict.recScorable} ${perf.counts.scorable}`} />
+        <StatCard label={dict.recTotal} value={String(perf.counts.total)} note={`${dict.recScorable} ${perf.counts.scorable} · ${dict.recCollapsed} ${perf.counts.collapsed}`} />
         <StatCard
           label={dict.recSignalHitRate}
-          value={`${bestHitRate.toFixed(1)}%`}
+          value={`${evalHitRate.toFixed(1)}%`}
           note={`${dict.recRandomBaseline} 50%`}
         />
         <StatCard
           label={dict.recBestHoldingWindow}
-          value={`${perf.bestHorizon}d`}
-          note={`${fmtPct(bestExcess)} ${dict.recExcessReturnNote}`}
+          value={`${perf.evalHorizon}d`}
+          note={`${fmtPct(evalExcess)} ${dict.recExcessReturnNote}`}
         />
         <StatCard label={dict.recUnscorable} value={String(perf.counts.unscorable)} note={dict.recInsufficientData} />
       </div>

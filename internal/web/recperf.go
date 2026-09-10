@@ -20,6 +20,14 @@ import (
 // list below: a rec's shortest window is the first to mature.
 var recPerfHorizons = []int{1, 5, 10, 20}
 
+// recPerfEvalHorizon is the one window the page's headline cards read,
+// declared up front rather than picked from the results. It used to be
+// whichever horizon had the highest hit rate, which by construction always
+// showed the most flattering window — on the 2026-09-03 backup that turned a
+// US 20-day "HOLD beat the calls by 4pp" into a 5-day "the calls add value".
+// 20 is the horizon PLAN.md's hypotheses about the calls are stated at.
+const recPerfEvalHorizon = 20
+
 // recPerfExtremeCount mirrors argus eval's own hardcoded best/worst-5.
 const recPerfExtremeCount = 5
 
@@ -109,11 +117,14 @@ type recPerfExtreme struct {
 // (docs/offline-rec-eval.md §5, referenced by docs/phase-8-trader-
 // analytics.md §5.2) — Unscorable must always be shown alongside Scorable,
 // never silently dropped from the page.
+// Collapsed is how many rows receval.CollapseRepeats merged away before
+// scoring — disclosed for the same reason, since it is most of the table.
 type recPerfCounts struct {
 	Total      int `json:"total"`
 	Hold       int `json:"hold"`
 	Scorable   int `json:"scorable"`
 	Unscorable int `json:"unscorable"`
+	Collapsed  int `json:"collapsed"`
 }
 
 // recPerfActiveSignal is one still-open (unmatured shortest-horizon window)
@@ -142,10 +153,8 @@ type recPerformanceResponse struct {
 	// Overall is the ungrouped hit-rate/return breakdown across every scored
 	// BUY/SELL rec, one cell per horizon — the hero row's top-line stat.
 	Overall []recPerfStatsCell `json:"overall"`
-	// BestHorizon is the horizon (from recPerfHorizons) with the highest
-	// HitRatePct in Overall — ties resolve to the shortest horizon, since
-	// recPerfHorizons is scanned in ascending order.
-	BestHorizon int `json:"bestHorizon"`
+	// EvalHorizon is recPerfEvalHorizon: the window the headline cards use.
+	EvalHorizon int `json:"evalHorizon"`
 
 	// ActedVsSkipped compares acted-on recs (BUY+SELL, key "acted") against
 	// HOLD calls (key "skipped") — did following the recommendation actually
@@ -159,8 +168,11 @@ type recPerformanceResponse struct {
 // table's full history (db.GetRecommendationsSince, whole-table, same as
 // argus eval's own read), scored against actual subsequent price action via
 // internal/receval — reused wholesale rather than reimplemented, so this
-// page's numbers are guaranteed to match a CLI `argus eval` report run
-// against the same database (docs/phase-8-trader-analytics.md §5.2). One
+// page's per-action numbers are guaranteed to match a CLI `argus eval`
+// report run against the same database (docs/phase-8-trader-analytics.md
+// §5.2), consecutive repeats collapsed the same way. Where the two differ is
+// groups that mix BUY with SELL: eval splits them by action, this page keeps
+// its single-number cards and direction-adjusts instead (see directional). One
 // ticker's history fetch failing degrades that ticker's recommendations to
 // "no history data" (receval.Score's own unscorable path), not a whole-
 // response failure — same attach-what's-available convention as
@@ -172,7 +184,7 @@ func buildRecPerformance(database dbReader, history data.HistoryProvider, m mark
 	}
 
 	var total, holdCount int
-	var scorable, holds []receval.Recommendation
+	var recs, allActed []receval.Recommendation
 	for _, r := range all {
 		if market.Of(r.Ticker) != m {
 			continue
@@ -180,23 +192,38 @@ func buildRecPerformance(database dbReader, history data.HistoryProvider, m mark
 		total++
 		if r.Action != "BUY" && r.Action != "SELL" {
 			holdCount++
-			if r.Action == "HOLD" {
-				holds = append(holds, receval.Recommendation{
-					Date: r.Date, Ticker: r.Ticker, Action: r.Action,
-					Price: r.Price, Source: r.Source, Market: r.Market,
-				})
+			if r.Action != "HOLD" {
+				continue
 			}
-			continue
 		}
-		scorable = append(scorable, receval.Recommendation{
+		rec := receval.Recommendation{
 			Date: r.Date, Ticker: r.Ticker, Action: r.Action,
 			Price: r.Price, Source: r.Source, Market: r.Market,
-		})
+		}
+		recs = append(recs, rec)
+		if r.Action != "HOLD" {
+			allActed = append(allActed, rec)
+		}
+	}
+
+	// Statistics count each run of the same call once (see
+	// receval.CollapseRepeats); allActed stays uncollapsed for the
+	// active-signals list, which is about what the model is saying now — a
+	// BUY it has repeated since last month is still an open call today.
+	kept, collapsed := receval.CollapseRepeats(recs)
+	var scorable, holds []receval.Recommendation
+	for _, r := range kept {
+		if r.Action == "HOLD" {
+			holds = append(holds, r)
+		} else {
+			scorable = append(scorable, r)
+		}
 	}
 
 	resp := recPerformanceResponse{
 		Horizons:       recPerfHorizons,
-		Counts:         recPerfCounts{Total: total, Hold: holdCount, Scorable: len(scorable)},
+		EvalHorizon:    recPerfEvalHorizon,
+		Counts:         recPerfCounts{Total: total, Hold: holdCount, Scorable: len(scorable), Collapsed: collapsed},
 		BySource:       []recPerfGroup{},
 		ByAction:       []recPerfGroup{},
 		Best:           []recPerfExtreme{},
@@ -211,10 +238,7 @@ func buildRecPerformance(database dbReader, history data.HistoryProvider, m mark
 
 	benchTicker := service.BenchmarkFor(m)
 	fetchSet := map[string]bool{benchTicker: true}
-	for _, r := range scorable {
-		fetchSet[r.Ticker] = true
-	}
-	for _, r := range holds {
+	for _, r := range recs {
 		fetchSet[r.Ticker] = true
 	}
 	candles := make(map[string][]data.Candle, len(fetchSet))
@@ -235,7 +259,8 @@ func buildRecPerformance(database dbReader, history data.HistoryProvider, m mark
 	counts := receval.CountOutcomes(scored)
 	resp.Counts.Unscorable = counts.Unscorable
 
-	resp.BySource = recPerfGroups(receval.Aggregate(scored, func(r receval.Recommendation) string {
+	dir := directional(scored)
+	resp.BySource = recPerfGroups(receval.Aggregate(dir, func(r receval.Recommendation) string {
 		return receval.DisplaySource(r.Source)
 	}))
 	resp.ByAction = recPerfGroups(receval.Aggregate(scored, func(r receval.Recommendation) string {
@@ -247,38 +272,53 @@ func buildRecPerformance(database dbReader, history data.HistoryProvider, m mark
 	resp.Best = recPerfExtremes(best, maxHorizon)
 	resp.Worst = recPerfExtremes(worst, maxHorizon)
 
-	overallGroups := recPerfGroups(receval.Aggregate(scored, func(receval.Recommendation) string { return "all" }))
+	overallGroups := recPerfGroups(receval.Aggregate(dir, func(receval.Recommendation) string { return "all" }))
 	if len(overallGroups) == 1 {
 		resp.Overall = overallGroups[0].Cells
-		resp.BestHorizon = bestHorizon(resp.Overall)
 	}
 
 	holdScored := make([]receval.ScoredRec, 0, len(holds))
 	for _, r := range holds {
 		holdScored = append(holdScored, receval.Score(r, candles[r.Ticker], candles[benchTicker], recPerfHorizons))
 	}
-	actedVsSkipped := receval.Aggregate(scored, func(receval.Recommendation) string { return "acted" })
+	actedVsSkipped := receval.Aggregate(dir, func(receval.Recommendation) string { return "acted" })
 	for k, v := range receval.Aggregate(holdScored, func(receval.Recommendation) string { return "skipped" }) {
 		actedVsSkipped[k] = v
 	}
 	resp.ActedVsSkipped = recPerfGroups(actedVsSkipped)
 
-	resp.ActiveSignals = recPerfActiveSignals(scored, candles, benchTicker)
+	allScored := make([]receval.ScoredRec, 0, len(allActed))
+	for _, r := range allActed {
+		allScored = append(allScored, receval.Score(r, candles[r.Ticker], candles[benchTicker], recPerfHorizons))
+	}
+	resp.ActiveSignals = recPerfActiveSignals(allScored, candles, benchTicker)
 
 	return resp, nil
 }
 
-// bestHorizon scans an Overall breakdown for the horizon with the highest
-// hit rate, preferring the shortest horizon on a tie (cells is already
-// ordered by ascending recPerfHorizons).
-func bestHorizon(cells []recPerfStatsCell) int {
-	var best recPerfStatsCell
-	for _, c := range cells {
-		if c.N > 0 && c.HitRatePct > best.HitRatePct {
-			best = c
+// directional returns scored with every SELL's returns sign-flipped, for the
+// groups that average BUY and SELL together (overall, by source, acted). A
+// SELL is right when the stock lags, so its raw excess is negative exactly
+// when it worked — averaged raw alongside BUYs, a correct SELL counts as a
+// loss. Flipped, every rec reads as "what following this call earned over
+// the benchmark alternative", the same unit as a HOLD's excess (the value of
+// keeping the stock). Hit needs no flip: receval already scores it by
+// direction. Windows are copied, never flipped in place, since scored also
+// feeds the raw per-action table and extremes.
+func directional(scored []receval.ScoredRec) []receval.ScoredRec {
+	out := make([]receval.ScoredRec, len(scored))
+	for i, sr := range scored {
+		if sr.Rec.Action == "SELL" {
+			ws := make([]receval.WindowScore, len(sr.Windows))
+			for j, w := range sr.Windows {
+				w.TickerReturnPct, w.ExcessReturnPct = -w.TickerReturnPct, -w.ExcessReturnPct
+				ws[j] = w
+			}
+			sr.Windows = ws
 		}
+		out[i] = sr
 	}
-	return best.Horizon
+	return out
 }
 
 // recPerfActiveSignals lists still-open BUY/SELL recs — those whose

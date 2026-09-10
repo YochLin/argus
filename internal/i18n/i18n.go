@@ -757,6 +757,7 @@ const (
 	KeyEvalExtremeLine           Key = "eval_extreme_line"
 	KeyEvalCountsTitle           Key = "eval_counts_title"
 	KeyEvalCountHold             Key = "eval_count_hold"
+	KeyEvalCountCollapsed        Key = "eval_count_collapsed"
 	KeyEvalCountUnscorable       Key = "eval_count_unscorable"
 	KeyEvalCountUnscorableReason Key = "eval_count_unscorable_reason"
 	KeyEvalCountImmature         Key = "eval_count_immature"

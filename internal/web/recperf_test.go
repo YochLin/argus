@@ -75,6 +75,39 @@ func TestBuildRecPerformance(t *testing.T) {
 	}
 }
 
+// A repeated BUY must count once, and a correct SELL must not drag down
+// the groups that average it with BUYs.
+func TestBuildRecPerformance_CollapsesRepeatsAndDirectionAdjustsSells(t *testing.T) {
+	recDate, _ := time.Parse("2006-01-02", "2026-01-05")
+	fdb := &fakeDB{recs: []db.Recommendation{
+		{Date: "2026-01-05", Ticker: "AAPL", Action: "BUY", Price: 100, Source: "watchlist", Market: "us"},
+		{Date: "2026-01-06", Ticker: "AAPL", Action: "BUY", Price: 101, Source: "watchlist", Market: "us"},
+		{Date: "2026-01-05", Ticker: "NVDA", Action: "SELL", Price: 100, Source: "watchlist", Market: "us"},
+	}}
+	fh := &fakeHistory{candles: map[string][]data.Candle{
+		"AAPL": seqCandles(recDate, 100, 100, 1),  // +5% by day 5: the BUY was right
+		"NVDA": seqCandles(recDate, 100, 100, -1), // -5% by day 5: the SELL was right
+		"SPY":  seqCandles(recDate, 100, 500, 0),  // flat benchmark
+	}}
+
+	got, err := buildRecPerformance(fdb, fh, market.US)
+	if err != nil {
+		t.Fatalf("buildRecPerformance() error = %v", err)
+	}
+	if got.Counts.Scorable != 2 || got.Counts.Collapsed != 1 {
+		t.Errorf("Counts = %+v, want Scorable 2 / Collapsed 1 (AAPL's repeat merged)", got.Counts)
+	}
+	const h5 = 1 // recPerfHorizons index of the 5-day window
+	if c := got.Overall[h5]; c.N != 2 || c.AvgExcessPct < 4.9 || c.AvgExcessPct > 5.1 {
+		t.Errorf("Overall 5d = %+v, want n 2 / avg excess +5%% (both calls right; raw would average to 0)", c)
+	}
+	for _, g := range got.ByAction {
+		if g.Key == "SELL" && g.Cells[h5].AvgExcessPct >= 0 {
+			t.Errorf("ByAction SELL 5d avg excess = %v, want raw (negative) — only mixed groups are flipped", g.Cells[h5].AvgExcessPct)
+		}
+	}
+}
+
 func TestBuildRecPerformance_NoScorableRecs(t *testing.T) {
 	fdb := &fakeDB{recs: []db.Recommendation{
 		{Date: "2026-01-05", Ticker: "AAPL", Action: "HOLD", Price: 100, Market: "us"},
