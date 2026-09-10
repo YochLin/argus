@@ -75,6 +75,23 @@ func (f *fakeFundamentals) GetFinancialStatements(string, string) (*data.Financi
 	return f.stmt, f.stmtErr
 }
 
+// fakeOptionChain implements data.OptionChainProvider with a fixed chain,
+// mirroring internal/service/options_test.go's helper of the same name (kept
+// local rather than shared — same "independently-mergeable test files"
+// reasoning that file's doc comment gives).
+type fakeOptionChain struct {
+	expirations []time.Time
+	quotes      map[time.Time][]data.OptionQuote
+	err         error
+}
+
+func (f fakeOptionChain) GetOptionExpirations(string) ([]time.Time, error) {
+	return f.expirations, f.err
+}
+func (f fakeOptionChain) GetOptionChain(_ string, expiry time.Time) ([]data.OptionQuote, error) {
+	return f.quotes[expiry], nil
+}
+
 type fakeEarnings struct {
 	events map[string]data.EarningsEvent
 	err    error
@@ -342,6 +359,85 @@ func TestGetUpcomingEarnings(t *testing.T) {
 	}
 	if strings.Contains(text, "MSFT") {
 		t.Errorf("get_upcoming_earnings should omit tickers with no scheduled earnings, got:\n%s", text)
+	}
+}
+
+func TestOptionChainToolNotRegisteredWithoutProvider(t *testing.T) {
+	ts := &toolset{
+		provider: &fakeProvider{},
+		history:  &fakeHistory{},
+		lang:     i18n.EN,
+		// optionChain left nil.
+	}
+	session := connectTool(t, ts)
+
+	res, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ListTools() error = %v", err)
+	}
+	for _, tool := range res.Tools {
+		if tool.Name == "get_option_chain" {
+			t.Fatal("tools/list should not advertise get_option_chain when its provider is nil")
+		}
+	}
+}
+
+// TestGetOptionChain mirrors internal/service's
+// TestGatherOptionCandidatesFiltersByDTEBand fixture (spot 100/strike
+// 100/45 DTE/IV 0.3 is a known-passing LongCall candidate) since
+// getOptionChain calls time.Now() internally rather than taking an
+// injectable clock.
+func TestGetOptionChain(t *testing.T) {
+	now := time.Now()
+	expiry := now.AddDate(0, 0, 45)
+	ts := &toolset{
+		provider: &fakeProvider{quote: &data.Quote{Ticker: "AAPL", Price: 100}},
+		history:  &fakeHistory{},
+		lang:     i18n.EN,
+		optionChain: fakeOptionChain{
+			expirations: []time.Time{expiry},
+			quotes: map[time.Time][]data.OptionQuote{
+				expiry: {{ContractSymbol: "AAPL260101C00100000", Right: "C", Strike: 100, Bid: 4.9, Ask: 5.1, OpenInterest: 500, Volume: 100, ImpliedVolatility: 0.3, Expiration: expiry}},
+			},
+		},
+	}
+	session := connectTool(t, ts)
+
+	res, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ListTools() error = %v", err)
+	}
+	found := false
+	for _, tool := range res.Tools {
+		if tool.Name == "get_option_chain" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("get_option_chain should be registered when its provider is non-nil")
+	}
+
+	text, isError := callText(t, session, "get_option_chain", map[string]any{"ticker": "aapl"})
+	if isError {
+		t.Fatalf("get_option_chain returned an error result: %s", text)
+	}
+	if !strings.Contains(text, "AAPL260101C00100000") {
+		t.Errorf("get_option_chain result missing expected contract, got:\n%s", text)
+	}
+}
+
+func TestGetOptionChainNoCandidates(t *testing.T) {
+	ts := &toolset{
+		provider:    &fakeProvider{quote: &data.Quote{Ticker: "AAPL", Price: 100}},
+		history:     &fakeHistory{},
+		lang:        i18n.EN,
+		optionChain: fakeOptionChain{},
+	}
+	session := connectTool(t, ts)
+
+	text, isError := callText(t, session, "get_option_chain", map[string]any{"ticker": "aapl"})
+	if !isError {
+		t.Fatalf("get_option_chain with no candidates should return an error result, got: %s", text)
 	}
 }
 

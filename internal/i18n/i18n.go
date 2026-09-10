@@ -693,6 +693,9 @@ const (
 	KeyMCPNoMovers     Key = "mcp_no_movers"
 	KeyMCPMoversResult Key = "mcp_movers_result"
 
+	KeyMCPNoOptionChain     Key = "mcp_no_option_chain"
+	KeyMCPOptionChainHeader Key = "mcp_option_chain_header"
+
 	KeyMCPRecentRecsTitle       Key = "mcp_recent_recs_title"
 	KeyMCPRecentRecsTitleTicker Key = "mcp_recent_recs_title_ticker"
 	KeyMCPRecentRecsTruncated   Key = "mcp_recent_recs_truncated"
