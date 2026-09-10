@@ -652,6 +652,9 @@ Write only from the data actually provided above — omit any section you have n
 	KeyMCPNoOptionChain:     "No option chain data available for %s.",
 	KeyMCPOptionChainHeader: "Option candidates for %s (%s):\n\n",
 
+	KeyMCPThesisNotSet: "No thesis recorded for %s yet.",
+	KeyMCPThesisResult: "%s thesis: %s",
+
 	KeyMCPRecentRecsTitle:       "🗒 *Past recommendations (last %d days, newest first)*\n\n",
 	KeyMCPRecentRecsTitleTicker: "🗒 *Past recommendations for %s (last %d days, newest first)*\n\n",
 	KeyMCPRecentRecsTruncated:   "(showing the most recent %d of %d)\n\n",

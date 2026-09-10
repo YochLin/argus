@@ -8,6 +8,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/logger"
 	"argus/internal/market"
@@ -30,10 +31,10 @@ const (
 
 // registerDBTools adds the Phase 3.5 "追加項" read-only DB query tools —
 // get_watchlist/get_portfolio/get_recommendation_stats/
-// get_recent_recommendations/get_universe_summary — when ts.db is non-nil
-// (see db.OpenReadOnly's doc comment for why this package is now allowed to
-// hold a DB connection at all, and NewServer's doc comment for the
-// nil-degrade contract: a failed open takes down these five tools only, not
+// get_recent_recommendations/get_universe_summary/get_thesis — when ts.db
+// is non-nil (see db.OpenReadOnly's doc comment for why this package is now
+// allowed to hold a DB connection at all, and NewServer's doc comment for
+// the nil-degrade contract: a failed open takes down these tools only, not
 // the whole MCP server).
 func registerDBTools(s *mcp.Server, ts *toolset) {
 	if ts.db == nil {
@@ -64,6 +65,11 @@ func registerDBTools(s *mcp.Server, ts *toolset) {
 		Name:        "get_universe_summary",
 		Description: "Get a count summary of the candidate scan pool (the universe table) by source — S&P 500 seed vs manually added via /universe add.",
 	}, ts.getUniverseSummary)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get_thesis",
+		Description: "Get the user's most recently recorded holding thesis/rationale for a ticker (set via /thesis), if any.",
+	}, ts.getThesis)
 }
 
 type recommendationStatsInput struct {
@@ -85,11 +91,15 @@ func (ts *toolset) getWatchlist(ctx context.Context, _ *mcp.CallToolRequest, _ e
 	return result, nil, err
 }
 
-// getPortfolio renders the shared PortfolioService snapshots into MCP text.
-// The live valuation, market scoping, and best-effort error behavior belong to
-// the service; this adapter only owns the MCP cache and localized formatting.
-// Kept in quoteCacheTTL (not longCacheTTL) since, like get_quote, its numbers
-// are live prices a chat model might reasonably re-check within the same
+// getPortfolio renders the shared PortfolioService snapshots into MCP text,
+// plus (Phase 12) any open option positions — get_option_chain screens the
+// live chain for new candidates, this is the "what do I already hold"
+// counterpart, same as /portfolio's stock section plus
+// sendPortfolioOptionsSection in Telegram. The live valuation, market
+// scoping, and best-effort error behavior belong to the service; this
+// adapter only owns the MCP cache and localized formatting. Kept in
+// quoteCacheTTL (not longCacheTTL) since, like get_quote, its numbers are
+// live prices a chat model might reasonably re-check within the same
 // conversation.
 func (ts *toolset) getPortfolio(ctx context.Context, _ *mcp.CallToolRequest, _ emptyInput) (*mcp.CallToolResult, any, error) {
 	result, err := ts.withCache(ctx, "get_portfolio", quoteCacheTTL, func() (*mcp.CallToolResult, error) {
@@ -106,7 +116,11 @@ func (ts *toolset) getPortfolio(ctx context.Context, _ *mcp.CallToolRequest, _ e
 		if err != nil {
 			return nil, ts.mcpErr(i18n.KeyQueryFailed, err)
 		}
-		if len(usSnapshot.Positions) == 0 && len(twSnapshot.Positions) == 0 {
+		optionPositions, err := ts.db.GetOptionPositions()
+		if err != nil {
+			return nil, ts.mcpErr(i18n.KeyQueryFailed, err)
+		}
+		if len(usSnapshot.Positions) == 0 && len(twSnapshot.Positions) == 0 && len(optionPositions) == 0 {
 			return nil, ts.mcpErr(i18n.KeyPortfolioEmpty)
 		}
 
@@ -114,6 +128,7 @@ func (ts *toolset) getPortfolio(ctx context.Context, _ *mcp.CallToolRequest, _ e
 		sb.WriteString(i18n.T(ts.lang, i18n.KeyPortfolioTitle))
 		ts.writePortfolioSection(&sb, usSnapshot)
 		ts.writePortfolioSection(&sb, twSnapshot)
+		ts.writePortfolioOptionsSection(&sb, optionPositions)
 		return textResult(sb.String()), nil
 	})
 	return result, nil, err
@@ -151,6 +166,31 @@ func (ts *toolset) writePortfolioSection(sb *strings.Builder, snapshot service.P
 		sb.WriteString(i18n.T(ts.lang, i18n.KeyPortfolioSummary, snapshot.TotalMarketValue, snapshot.RealizedPnL))
 	}
 	sb.WriteString("\n\n")
+}
+
+// writePortfolioOptionsSection mirrors internal/bot/options.go's
+// sendPortfolioOptionsSection — same service.OptionMark lookup per
+// position, reusing its i18n keys — but appends to one text blob instead of
+// sending a separate Telegram message per line. Writes nothing when there
+// are no open contracts, or when there's no chain provider to price them
+// (get_option_chain's own nil-degrade — Phase 12 options are US-only).
+func (ts *toolset) writePortfolioOptionsSection(sb *strings.Builder, positions []db.OptionPosition) {
+	if len(positions) == 0 || ts.optionChain == nil {
+		return
+	}
+	sb.WriteString(i18n.T(ts.lang, i18n.KeyPortfolioOptionsSection))
+	sb.WriteString("\n\n")
+	for _, p := range positions {
+		mark, dte, err := service.OptionMark(ts.optionChain, p)
+		if err != nil {
+			sb.WriteString(i18n.T(ts.lang, i18n.KeyPortfolioOptionUnavailable, p.ContractSymbol, err))
+			sb.WriteString("\n\n")
+			continue
+		}
+		marketValue := mark * p.Contracts * float64(p.Multiplier)
+		sb.WriteString(i18n.T(ts.lang, i18n.KeyPortfolioOptionLine, p.ContractSymbol, p.Contracts, p.AvgPremium, mark, marketValue, p.Expiry, dte))
+		sb.WriteString("\n\n")
+	}
 }
 
 // getRecommendationStats uses the same recommendation tracking service as
@@ -308,6 +348,26 @@ func (ts *toolset) getRecentRecommendations(ctx context.Context, _ *mcp.CallTool
 			}
 		}
 		return textResult(sb.String()), nil
+	})
+	return result, nil, err
+}
+
+// getThesis wraps db.GetThesis (also /thesis's read path) — the ticker's
+// most recently recorded holding rationale, if any. Not localized with a
+// tickerLabel (internal/bot's b.tickerLabel needs a company-name lookup
+// this package doesn't have) — a bare ticker matches how every other MCP
+// tool identifies its subject.
+func (ts *toolset) getThesis(ctx context.Context, _ *mcp.CallToolRequest, in tickerInput) (*mcp.CallToolResult, any, error) {
+	ticker := normalizeTicker(in.Ticker)
+	result, err := ts.withCache(ctx, "get_thesis:"+ticker, longCacheTTL, func() (*mcp.CallToolResult, error) {
+		thesis, ok, err := ts.db.GetThesis(ticker)
+		if err != nil {
+			return nil, ts.mcpErr(i18n.KeyQueryFailed, err)
+		}
+		if !ok {
+			return nil, ts.mcpErr(i18n.KeyMCPThesisNotSet, ticker)
+		}
+		return textResult(i18n.T(ts.lang, i18n.KeyMCPThesisResult, ticker, thesis)), nil
 	})
 	return result, nil, err
 }

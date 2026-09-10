@@ -638,6 +638,9 @@ var zhMessages = map[Key]string{
 	KeyMCPNoOptionChain:     "查不到 %s 的選擇權鏈資料。",
 	KeyMCPOptionChainHeader: "「%s」（%s）候選契約：\n\n",
 
+	KeyMCPThesisNotSet: "目前還沒有 %s 的持股邏輯紀錄。",
+	KeyMCPThesisResult: "%s 的持股邏輯：%s",
+
 	KeyMCPRecentRecsTitle:       "🗒 *歷史推薦記錄（過去 %d 天，由新到舊）*\n\n",
 	KeyMCPRecentRecsTitleTicker: "🗒 *%s 的歷史推薦記錄（過去 %d 天，由新到舊）*\n\n",
 	KeyMCPRecentRecsTruncated:   "（僅顯示最近 %d 筆，共 %d 筆）\n\n",
