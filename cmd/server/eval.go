@@ -184,8 +184,12 @@ func printEvalReport(lang i18n.Lang, scored []receval.ScoredRec, horizons []int,
 			acted = append(acted, sr)
 		}
 	}
+	// Direction-adjusted, unlike the tables above: those are each keyed by
+	// action, so a raw SELL row is internally consistent, but a single ranking
+	// over BUY and SELL together is not — read raw it sorts the SELLs that went
+	// most wrong to the top of "best".
 	maxHorizon := horizons[len(horizons)-1]
-	best, worst := receval.Extremes(acted, maxHorizon, 5)
+	best, worst := receval.Extremes(receval.DirectionAdjust(acted), maxHorizon, 5)
 	fmt.Print(i18n.T(lang, i18n.KeyEvalExtremesTitle, maxHorizon))
 	fmt.Print(i18n.T(lang, i18n.KeyEvalExtremesBest, len(best)))
 	printExtremeLines(lang, best, maxHorizon)

@@ -100,6 +100,36 @@ func DisplaySource(source string) string {
 	return source
 }
 
+// DirectionAdjust returns recs with every SELL's returns sign-flipped, so
+// that a number reads the same way regardless of which call produced it:
+// "what following this call earned over the benchmark alternative". A SELL is
+// right when the stock lags, so its raw excess is negative exactly when it
+// worked — read raw, a correct SELL looks like a loss.
+//
+// Any consumer that mixes BUY with SELL needs this: an average over both is
+// otherwise meaningless, and a ranking over both (Extremes) is worse than
+// meaningless, since it sorts the SELLs that went most wrong to the top.
+// A breakdown already split by action can read raw safely, which is what
+// `argus eval`'s tables do — every one of them is keyed by action.
+//
+// Hit needs no flip: Score already decides it by direction. Windows are
+// copied rather than flipped in place, so a caller can hold both views.
+func DirectionAdjust(recs []ScoredRec) []ScoredRec {
+	out := make([]ScoredRec, len(recs))
+	for i, sr := range recs {
+		if sr.Rec.Action == "SELL" {
+			ws := make([]WindowScore, len(sr.Windows))
+			for j, w := range sr.Windows {
+				w.TickerReturnPct, w.ExcessReturnPct = -w.TickerReturnPct, -w.ExcessReturnPct
+				ws[j] = w
+			}
+			sr.Windows = ws
+		}
+		out[i] = sr
+	}
+	return out
+}
+
 // Extremes returns the n best and n worst scored recs, ranked by excess
 // return at horizon (best[0] is the single best, worst[0] the single
 // worst) — only among recs whose horizon window actually matured.

@@ -180,7 +180,7 @@ type recPerformanceResponse struct {
 // report run against the same database (docs/phase-8-trader-analytics.md
 // §5.2), consecutive repeats collapsed the same way. Where the two differ is
 // groups that mix BUY with SELL: eval splits them by action, this page keeps
-// its single-number cards and direction-adjusts instead (see directional). One
+// its single-number cards and direction-adjusts instead (see receval.DirectionAdjust). One
 // ticker's history fetch failing degrades that ticker's recommendations to
 // "no history data" (receval.Score's own unscorable path), not a whole-
 // response failure — same attach-what's-available convention as
@@ -271,7 +271,7 @@ func buildRecPerformance(database dbReader, history data.HistoryProvider, m mark
 	resp.Counts.Unscorable = counts.Unscorable
 	resp.Counts.Scorable = len(scorable) - counts.Unscorable
 
-	dir := directional(scored)
+	dir := receval.DirectionAdjust(scored)
 	resp.BySource = recPerfGroups(receval.Aggregate(dir, func(r receval.Recommendation) string {
 		return receval.DisplaySource(r.Source)
 	}))
@@ -308,36 +308,6 @@ func buildRecPerformance(database dbReader, history data.HistoryProvider, m mark
 	return resp, nil
 }
 
-// directional returns scored with every SELL's returns sign-flipped. A SELL
-// is right when the stock lags, so its raw excess is negative exactly when it
-// worked — read raw, a correct SELL looks like a loss. Flipped, every number
-// on the page reads as "what following this call earned over the benchmark
-// alternative", the same unit as a HOLD's excess (the value of keeping the
-// stock). Hit needs no flip: receval already scores it by direction.
-//
-// EVERY consumer gets the flipped set, not just the groups that average BUY
-// and SELL together. Feeding the raw set to the per-action table and the
-// best/worst lists (as this originally did, on the theory that a per-action
-// row needs no direction adjustment) inverted them: the SELL row rendered
-// red while its hit rate was 87%, and Extremes ranks on the raw value, so
-// the "best" list was populated with the SELLs that had gone most wrong and
-// the "worst" list with the ones that had worked. A table that shows excess
-// but not hit rate gives a reader nothing to catch that with.
-func directional(scored []receval.ScoredRec) []receval.ScoredRec {
-	out := make([]receval.ScoredRec, len(scored))
-	for i, sr := range scored {
-		if sr.Rec.Action == "SELL" {
-			ws := make([]receval.WindowScore, len(sr.Windows))
-			for j, w := range sr.Windows {
-				w.TickerReturnPct, w.ExcessReturnPct = -w.TickerReturnPct, -w.ExcessReturnPct
-				ws[j] = w
-			}
-			sr.Windows = ws
-		}
-		out[i] = sr
-	}
-	return out
-}
 
 // recPerfActiveSignals lists still-open BUY/SELL recs — those whose
 // shortest-horizon window (recPerfHorizons[0]) hasn't matured yet — with an
@@ -363,7 +333,7 @@ func recPerfActiveSignals(scored []receval.ScoredRec, candles map[string][]data.
 				excess = tickerReturn - pctChangeLocal(benchEntry, bench[len(bench)-1].Close)
 			}
 		}
-		// Same direction convention as directional() — this list can't reuse
+		// Same direction convention as receval.DirectionAdjust — this list can't reuse
 		// it, since the excess here is recomputed entry-to-today rather than
 		// read off a Window.
 		if sr.Rec.Action == "SELL" {
