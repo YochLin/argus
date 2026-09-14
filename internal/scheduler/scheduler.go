@@ -276,6 +276,29 @@ func (s *Scheduler) AddSinopacSync(ctx context.Context, fn JobFunc) {
 	logger.Info("scheduler: sinopac sync registered at 14:00 CST (Mon-Fri)")
 }
 
+// AddTWUniverseRefresh schedules the TW scan pool's liquidity rotation at
+// 08:30 CST on the 1st of every month. Monthly, not daily: the top-300 by
+// turnover barely moves week to week, and a pool that churned daily would
+// make the universe scan's signal_states dedup meaningless for anything near
+// the cut line (a ticker rotating in and out re-fires its first signal every
+// time it returns). 08:30 is before the 09:00 TW open, so the ranking it
+// reads is whole trading sessions only, and well clear of that day's 14:40
+// AddTWUniverseScan, which then scans the freshly rotated pool. Day-of-month
+// "1" with day-of-week left "*" for the same cron OR-semantics reason
+// AddMonthlyReport documents. A no-op when SHIOAJI_ADDR is unset — fn handles
+// that internally, same as AddSinopacSync.
+// Cron with seconds: "0 30 8 1 * *"
+func (s *Scheduler) AddTWUniverseRefresh(ctx context.Context, fn JobFunc) {
+	_, err := s.c.AddFunc("0 30 8 1 * *", func() {
+		logger.Info("scheduler: running TW universe refresh")
+		fn(ctx)
+	})
+	if err != nil {
+		logger.Fatalf("scheduler: add TW universe refresh: %v", err)
+	}
+	logger.Info("scheduler: TW universe refresh registered at 08:30 CST (1st of month)")
+}
+
 // AddSectorFlowScan schedules Phase 18's US sector money-flow scan at 06:10
 // CST, Tuesday–Saturday — after the 06:00 backup (this job makes no DB
 // writes, so it can't corrupt that VACUUM INTO read, but starting after it

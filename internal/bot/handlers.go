@@ -1678,6 +1678,23 @@ func (b *Bot) handleUniverse(args string) {
 			return
 		}
 		b.Send(i18n.T(b.lang, i18n.KeyUniverseRemoveSuccess, ticker))
+	case "refresh":
+		// The same rotation the monthly job runs, on demand — without this
+		// the only way to apply a config change (or retry after the daemon
+		// was down on the 1st) is to wait a month. Slow enough (five daemon
+		// round trips) to warrant the placeholder every other slow handler
+		// sends first.
+		b.Send(i18n.T(b.lang, i18n.KeyUniverseRefreshStart))
+		added, dropped, err := b.scans().RefreshTWUniverse(context.Background())
+		if err != nil {
+			b.Send(i18n.T(b.lang, i18n.KeyUniverseRefreshFailed, err))
+			return
+		}
+		if added == nil && dropped == nil {
+			b.Send(i18n.T(b.lang, i18n.KeyUniverseRefreshNoDaemon))
+			return
+		}
+		b.Send(i18n.T(b.lang, i18n.KeyTWUniverseRefreshed, len(added), len(dropped), strings.Join(added, ", ")))
 	default:
 		b.Send(i18n.T(b.lang, i18n.KeyUniverseUsage))
 	}

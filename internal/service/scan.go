@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/signals"
+	"argus/internal/sinopac"
 )
 
 // cst is the scan's clock, matching internal/scheduler's fixed zone — the
@@ -31,6 +33,22 @@ type ScanStore interface {
 	GetUniverse() ([]db.UniverseEntry, error)
 	GetWatchlistByMarket(m market.MarketID) ([]string, error)
 	SaveScanHit(ticker, date, reason string) error
+	RefreshTWLiquidUniverse(tickers []string) (added, dropped []string, err error)
+}
+
+// TWLiquidityRanker is the Shioaji daemon's whole-market daily summary — the
+// narrow slice of *sinopac.Client RefreshTWUniverse needs, same nil-degrade
+// convention as RestrictedProvider. There is no US equivalent (Finnhub/Yahoo
+// expose no whole-market turnover feed), which is why the rotating liquidity
+// tier is TW-only and the 'sp500' tier stays a static embedded list.
+//
+// daily_quotes, not the scanner endpoint that /dailyreport's movers use: the
+// scanner caps a request at sinopac.ScannerMaxCount AND duplicates every row,
+// so it tops out at 100 distinct tickers per call — fewer than the pool this
+// job is meant to build. daily_quotes returns all ~46k listed instruments in
+// one ~2s call with turnover already summed per session.
+type TWLiquidityRanker interface {
+	DailyQuotes(ctx context.Context, date string) ([]sinopac.DailyQuote, error)
 }
 
 // RestrictedProvider is the TWSE/TPEx disposition (處置) and attention (注意)
@@ -76,6 +94,9 @@ type ScanService struct {
 	restricted RestrictedProvider
 	lang       i18n.Lang
 	now        func() time.Time
+	// ranker backs RefreshTWUniverse only; nil (no Shioaji daemon) makes
+	// that one method a no-op and leaves every other path unaffected.
+	ranker TWLiquidityRanker
 }
 
 // ScanConfig is NewScanService's argument. A struct rather than positional
@@ -90,6 +111,7 @@ type ScanConfig struct {
 	History      RiskHistoryReader
 	Quotes       QuoteReader
 	Restricted   RestrictedProvider
+	Ranker       TWLiquidityRanker
 	Lang         i18n.Lang
 	// Now defaults to time.Now — a field only so a test can pin the
 	// trading-day gate and the scan_hits date, same seam bot.Bot's own now
@@ -110,6 +132,7 @@ func NewScanService(cfg ScanConfig) *ScanService {
 		history:      cfg.History,
 		quotes:       cfg.Quotes,
 		restricted:   cfg.Restricted,
+		ranker:       cfg.Ranker,
 		lang:         cfg.Lang,
 		now:          now,
 	}
@@ -453,6 +476,109 @@ func (s *ScanService) RunUniverseScan(ctx context.Context, m market.MarketID) (U
 		}
 	}
 	return out, nil
+}
+
+// The TW liquidity tier's shape. twLiquidSessions sums turnover across
+// several sessions rather than ranking one: a single day's turnover on TW is
+// dominated by whatever 當沖 crowd piled into one stock that morning, and
+// those are exactly the names a scan pool shouldn't inherit — summing five
+// sessions means a one-day spike has to be enormous to carry a stock into the
+// top N. twLiquidLookbackDays bounds the walk back over weekends/holidays
+// (daily_quotes answers a non-trading date with empty arrays, which is the
+// only way this code can tell — TW has no fixed holiday calendar here, the
+// same gap marketClosed works around). twLiquidMinPrice drops the sub-10
+// 水餃股 whose turnover can rank respectably on share count alone.
+const (
+	twLiquidTopN         = 300
+	twLiquidSessions     = 5
+	twLiquidLookbackDays = 21
+	twLiquidMinPrice     = 10.0
+)
+
+// isTWCommonStock keeps ordinary listed/OTC stocks out of a pool that would
+// otherwise inherit ETFs, warrants and ETNs — all of which rank high on
+// turnover (0050 alone routinely out-turns every common stock but TSMC) and
+// none of which the strategy screens were ever measured on. TW common stocks
+// are exactly 4 digits; the length check alone is not enough, since the
+// oldest ETFs are 4-digit too (0050, 0056), hence the "00" prefix check that
+// data.isTWETF also uses.
+func isTWCommonStock(code string) bool {
+	if len(code) != 4 || strings.HasPrefix(code, "00") {
+		return false
+	}
+	for _, r := range code {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// RefreshTWUniverse rotates the TW scan pool to the twLiquidTopN most-traded
+// common stocks, by turnover summed over the last twLiquidSessions trading
+// days. It exists because the 'tw' tier is a hand-maintained 118-ticker list
+// covering ~6% of the market, so the daily scan can only ever find a signal
+// on a stock someone thought to add — and a liquidity rank, unlike an index
+// membership list, is both free here (the daemon already serves it for
+// /dailyreport's movers) and self-maintaining as the market rotates.
+//
+// A no-op returning nils when no Shioaji daemon is configured — the ranking
+// has no other source, so the pool simply stays whatever seedTW150 and
+// /universe put in it. Fetch failures on individual sessions are tolerated
+// (the sum just covers fewer days); only ending up with no sessions at all is
+// an error, since rotating a pool to an empty ranking would wipe the tier.
+func (s *ScanService) RefreshTWUniverse(ctx context.Context) (added, dropped []string, err error) {
+	if s.ranker == nil {
+		return nil, nil, nil
+	}
+	turnover := make(map[string]float64)
+	sessions := 0
+	day := s.now().In(cst)
+	for i := 0; i < twLiquidLookbackDays && sessions < twLiquidSessions; i++ {
+		date := day.AddDate(0, 0, -i).Format("2006-01-02")
+		quotes, ferr := s.ranker.DailyQuotes(ctx, date)
+		if ferr != nil {
+			logger.Warnf("tw universe refresh: daily quotes %s: %v", date, ferr)
+			continue
+		}
+		if len(quotes) == 0 {
+			continue // non-trading day
+		}
+		sessions++
+		for _, q := range quotes {
+			// The price floor is checked per session rather than once at
+			// the end: a stock is only eligible on the days it actually
+			// traded above the floor, so a name that crossed it mid-window
+			// accumulates turnover only from the sessions that qualify.
+			if isTWCommonStock(q.Code) && q.Close >= twLiquidMinPrice {
+				turnover[q.Code] += q.Amount
+			}
+		}
+	}
+	if sessions == 0 {
+		return nil, nil, errors.New("tw universe refresh: no sessions returned a ranking")
+	}
+
+	ranked := make([]string, 0, len(turnover))
+	for t := range turnover {
+		ranked = append(ranked, t)
+	}
+	sort.Slice(ranked, func(i, j int) bool {
+		if turnover[ranked[i]] != turnover[ranked[j]] {
+			return turnover[ranked[i]] > turnover[ranked[j]]
+		}
+		return ranked[i] < ranked[j] // stable across runs on a turnover tie
+	})
+	if len(ranked) > twLiquidTopN {
+		ranked = ranked[:twLiquidTopN]
+	}
+
+	added, dropped, err = s.store.RefreshTWLiquidUniverse(ranked)
+	if err != nil {
+		return nil, nil, err
+	}
+	logger.Infof("tw universe refresh: %d sessions, %d ranked, +%d -%d", sessions, len(ranked), len(added), len(dropped))
+	return added, dropped, nil
 }
 
 // marketClosed answers the trading-day gate for m. US checks *yesterday's*

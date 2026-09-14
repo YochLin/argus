@@ -104,10 +104,15 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   Sinopac Securities' 永豐證券 Python trading SDK, exposed as a local HTTP server rather than a
   shelled-out Python process); this package only ever talks to an already-running daemon, started and
   logged into separately by the operator since token decryption needs a key only they hold. `client.go`'s
-  `Client` covers quotes/scanner/position endpoints, live-verified against daemon v1.7.2, with two
+  `Client` covers quotes/scanner/position endpoints, live-verified against daemon v1.7.2, with three
   response-shape quirks that don't match its OpenAPI spec: the regulatory-notice endpoints return a
   single object of parallel arrays (pandas' `DataFrame.to_dict("list")` shape) instead of an array of row
-  objects, and the scanner's `ascending` flag is inverted from its name. `trades.go`'s `Trades`
+  objects, the scanner's `ascending` flag is inverted from its name, and the scanner returns every row
+  exactly twice with byte-identical fields (live-verified 2026-09-12 — `Scanner` deduplicates, so don't
+  add a second dedup in a caller; it also clamps `count` to `ScannerMaxCount`, since the daemon 422s an
+  over-large count rather than capping it). `dailyquotes.go`'s `DailyQuotes` is the whole-market,
+  point-in-time daily OHLCV feed — no dedup or count ceiling, so it, not the scanner, is what
+  `service.ScanService.RefreshTWUniverse` ranks turnover off. `trades.go`'s `Trades`
   reconstructs discrete trade events from `PositionDetail`/`ProfitLoss` for `service.BrokerSyncService`
   (see below); `internal/data/shioaji.go` and `internal/bot/sinopac.go` are its only other callers.
 
@@ -215,7 +220,14 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
 - `internal/scheduler` — thin wrapper around `robfig/cron` fixed to `time.FixedZone("CST", 8*3600)`
   (avoids needing `tzdata` in the Alpine Docker image). Registers the daily report, morning briefing,
   closing snapshot, universe scan, and sector-flow scan (each with US and TW variants), plus the weekly
-  review, monthly report, Sinopac sync, log rotation, and SQLite backup jobs, all at fixed CST times.
+  review, monthly report, Sinopac sync, TW universe refresh, log rotation, and SQLite backup jobs, all
+  at fixed CST times. The TW universe refresh (monthly) rotates the scan pool's `tw_liquid` tier to the
+  top 300 TW common stocks by turnover — see `service.ScanService.RefreshTWUniverse` and
+  `db.RefreshTWLiquidUniverse`. It is TW-only because Shioaji's `Scanner` is the only whole-market
+  turnover rank available here (Finnhub/Yahoo expose no US equivalent), so the `sp500` tier stays a
+  static embedded list refreshed by `SyncSP500` instead — and note the two have deliberately opposite
+  drop semantics: `SyncSP500` only *reports* what left the index and leaves the row for the user to
+  rule on, while a liquidity rotation prunes its own tier, since otherwise the pool would only ever grow.
 
 - `internal/market` — pure, dependency-free NYSE trading-calendar logic (`IsTradingDay`/`IsHoliday`,
   computed per-year including a Meeus/Jones/Butcher Good Friday calculation) plus `MarketID`/`Of(ticker)`

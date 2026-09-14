@@ -274,8 +274,10 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 	// typed nil-safe pointer, so it's assigned through the interface only
 	// when actually constructed (the coreProviders footgun again).
 	var restricted service.RestrictedProvider
+	var ranker service.TWLiquidityRanker
 	if core.Sinopac != nil {
 		restricted = core.Sinopac
+		ranker = core.Sinopac
 	}
 	a.Scan = service.NewScanService(service.ScanConfig{
 		Store:    database,
@@ -292,6 +294,7 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 		History:      core.Yahoo,
 		Quotes:       core.Provider,
 		Restricted:   restricted,
+		Ranker:       ranker,
 		Lang:         cfg.Lang,
 	})
 
@@ -482,6 +485,27 @@ func (a *App) registerJobs(ctx context.Context) {
 	})
 	a.Scheduler.AddTWUniverseScan(ctx, func(ctx context.Context) {
 		a.runScan(ctx, market.TW)
+	})
+	a.Scheduler.AddTWUniverseRefresh(ctx, func(ctx context.Context) {
+		defer a.recoverJob("tw universe refresh")
+		added, dropped, err := a.Scan.RefreshTWUniverse(ctx)
+		if err != nil {
+			logger.Errorf("tw universe refresh: %v", err)
+			return
+		}
+		// Silent on a no-op, same reasoning as bot.SyncUniverse's:
+		// month-to-month the top 300 barely moves, and a "nothing changed"
+		// message every month is noise. Nothing needs the user's ruling
+		// here either — unlike SyncSP500's delisted list, a rotation is
+		// already applied by the time this runs.
+		if len(added) == 0 && len(dropped) == 0 {
+			return
+		}
+		a.Notifier.Publish(ctx, notification.Event{
+			Type:  "tw_universe_refresh",
+			Text:  i18n.T(a.cfg.Lang, i18n.KeyTWUniverseRefreshed, len(added), len(dropped), strings.Join(added, ", ")),
+			Level: notification.LevelInfo,
+		})
 	})
 
 	a.Scheduler.AddLogRotation(func() {
