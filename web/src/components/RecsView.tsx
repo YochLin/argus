@@ -344,7 +344,15 @@ export function RecsView({
       </div>
 
       <div className="stat-grid">
-        <StatCard label={dict.recTotal} value={String(perf.counts.total)} note={`${dict.recScorable} ${perf.counts.scorable} · ${dict.recCollapsed} ${perf.counts.collapsed}`} />
+        {/* The note lists every post-collapse bucket except unscorable (its
+            own card below), so scorable + holdKept + collapsed + unscorable
+            adds back up to total — without holdKept the surviving HOLDs were
+            invisible and the card's arithmetic didn't close. */}
+        <StatCard
+          label={dict.recTotal}
+          value={String(perf.counts.total)}
+          note={`${dict.recScorable} ${perf.counts.scorable} · ${dict.recHoldKept} ${perf.counts.holdKept} · ${dict.recCollapsed} ${perf.counts.collapsed}`}
+        />
         <StatCard
           label={dict.recSignalHitRate}
           value={`${evalHitRate.toFixed(1)}%`}

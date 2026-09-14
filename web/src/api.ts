@@ -383,9 +383,13 @@ export interface RecPerfExtreme {
   excessReturnPct: number;
 }
 
+// collapsed + scorable + unscorable + holdKept === total (see
+// internal/web/recperf.go's recPerfCounts). `hold` is the pre-collapse raw
+// HOLD count and is not part of that sum.
 export interface RecPerfCounts {
   total: number;
   hold: number;
+  holdKept: number;
   scorable: number;
   unscorable: number;
   collapsed: number;
@@ -1098,7 +1102,7 @@ function getMockData(url: string): any {
       cell(20, n, hitRatePct - 6, avgExcessPct),
     ];
     return {
-      counts: { total: 312, scorable: 248, unscorable: 31, hold: 33, collapsed: 0 },
+      counts: { total: 312, scorable: 248, unscorable: 31, hold: 33, holdKept: 33, collapsed: 0 },
       horizons: [1, 5, 10, 20],
       byAction: [
         { key: "BUY", cells: cells(142, 61.5, 3.2) },

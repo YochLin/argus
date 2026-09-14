@@ -162,6 +162,7 @@ export interface Dictionary {
   recCounts: string;
   recTotal: string;
   recScorable: string;
+  recHoldKept: string;
   recCollapsed: string;
   recUnscorable: string;
   recHold: string;
@@ -611,6 +612,7 @@ const en: Dictionary = {
   recCounts: "RECOMMENDATION COVERAGE",
   recTotal: "Total",
   recScorable: "Scorable",
+  recHoldKept: "HOLD kept",
   recCollapsed: "repeats merged",
   recUnscorable: "Unscorable",
   recHold: "Hold",
@@ -1024,6 +1026,7 @@ const zh: Dictionary = {
   recCounts: "推薦覆蓋率",
   recTotal: "總筆數",
   recScorable: "可評分",
+  recHoldKept: "保留 HOLD",
   recCollapsed: "合併重複",
   recUnscorable: "無法評分",
   recHold: "HOLD",

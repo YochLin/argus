@@ -101,9 +101,29 @@ func TestBuildRecPerformance_CollapsesRepeatsAndDirectionAdjustsSells(t *testing
 	if c := got.Overall[h5]; c.N != 2 || c.AvgExcessPct < 4.9 || c.AvgExcessPct > 5.1 {
 		t.Errorf("Overall 5d = %+v, want n 2 / avg excess +5%% (both calls right; raw would average to 0)", c)
 	}
+	// Every consumer is direction-adjusted, the per-action table included: a
+	// SELL that was right reads positive, the same unit as a right BUY.
+	var sawSell bool
 	for _, g := range got.ByAction {
-		if g.Key == "SELL" && g.Cells[h5].AvgExcessPct >= 0 {
-			t.Errorf("ByAction SELL 5d avg excess = %v, want raw (negative) — only mixed groups are flipped", g.Cells[h5].AvgExcessPct)
+		if g.Key != "SELL" {
+			continue
+		}
+		sawSell = true
+		if c := g.Cells[h5]; c.AvgExcessPct < 4.9 || c.AvgExcessPct > 5.1 {
+			t.Errorf("ByAction SELL 5d avg excess = %v, want +5%% (the SELL was right)", c.AvgExcessPct)
+		}
+	}
+	if !sawSell {
+		t.Errorf("ByAction = %+v, want a SELL group", got.ByAction)
+	}
+	// ...and the extremes rank on the same adjusted value, so a right SELL
+	// belongs in Best, never in Worst.
+	if len(got.Best) != 2 {
+		t.Fatalf("Best = %+v, want both calls", got.Best)
+	}
+	for _, e := range got.Best {
+		if e.ExcessReturnPct < 0 {
+			t.Errorf("Best entry %+v has negative excess — extremes ranked on the raw value", e)
 		}
 	}
 }

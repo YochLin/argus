@@ -79,7 +79,7 @@ func runEval() {
 		}
 		scorable = append(scorable, receval.Recommendation{
 			Date: r.Date, Ticker: r.Ticker, Action: r.Action,
-			Price: r.Price, Source: r.Source, Market: r.Market,
+			Source: r.Source, Market: r.Market,
 		})
 	}
 	if len(scorable) == 0 {

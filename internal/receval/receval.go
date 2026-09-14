@@ -26,11 +26,14 @@ const maxEntryGap = 7 * 24 * time.Hour
 // mini-struct rather than db.Recommendation itself — same
 // doesn't-import-internal/db convention internal/llm's Position/Earnings
 // mini-structs use — so this package's tests don't need a database.
+// The recommendation's own stored price is deliberately NOT carried here:
+// Score anchors every entry on the entry day's close so the ticker and
+// benchmark legs span the same window (see Score), and a Price field sitting
+// unused on this struct is an invitation to wire it back into the math.
 type Recommendation struct {
 	Date   string // YYYY-MM-DD
 	Ticker string
 	Action string // "BUY", "SELL" or "HOLD"; callers filter out "" (unparsed) before scoring
-	Price  float64
 	Source string
 	Market string
 }
@@ -121,10 +124,16 @@ func Score(rec Recommendation, candles, bench []data.Candle, horizons []int) Sco
 		return sr
 	}
 
-	entryPrice := rec.Price
-	if entryPrice == 0 {
-		entryPrice = candles[i].Close
-	}
+	// The entry is the entry day's CLOSE, never rec.Price (the live intraday
+	// quote the recommendation was issued against). Both reports run
+	// mid-session — US 23:30 CST is 11:30 ET, TW 11:30 CST is 2.5h after the
+	// open — so anchoring the ticker leg on that quote while the benchmark
+	// leg below anchors on candles[i].Close made the two legs cover different
+	// spans: every excess return carried an extra, unbenchmarked half-session
+	// of ticker-only drift, which at the 1-day horizon was the same order of
+	// magnitude as the whole number. Close-to-close on both legs is the only
+	// version where "excess over the benchmark" means what it says.
+	entryPrice := candles[i].Close
 	if entryPrice <= 0 {
 		sr.Unscorable = true
 		sr.Reason = "no usable entry price"
@@ -151,12 +160,19 @@ func Score(rec Recommendation, candles, bench []data.Candle, horizons []int) Sco
 	for _, h := range horizons {
 		ws := WindowScore{Horizon: h}
 		exitIdx := i + h
-		if exitIdx < len(candles) {
+		// A window matures only once a LATER bar exists, which is the only
+		// market-hours-free proof that the exit bar itself has closed: a daily
+		// series carries a live, still-moving bar for a session in progress,
+		// and scoring against it made every horizon drift during the session
+		// (a US rec from the previous session "matured" at 11:00 ET against a
+		// price that changed on every refresh). Costs one day of maturity and
+		// needs no timezone/market-hours table.
+		if exitIdx < len(candles)-1 {
 			ws.Matured = true
 			ws.TickerReturnPct = pctChange(entryPrice, candles[exitIdx].Close)
 			if haveBenchAnchor {
 				bExitIdx := benchIdx + h
-				if bExitIdx < len(bench) && bench[benchIdx].Close > 0 {
+				if bExitIdx < len(bench)-1 && bench[benchIdx].Close > 0 {
 					ws.HaveBench = true
 					ws.BenchReturnPct = pctChange(bench[benchIdx].Close, bench[bExitIdx].Close)
 					ws.ExcessReturnPct = ws.TickerReturnPct - ws.BenchReturnPct
