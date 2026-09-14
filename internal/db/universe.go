@@ -258,6 +258,87 @@ func (d *DB) SyncSP500() (added, delisted []string, err error) {
 	return added, delisted, nil
 }
 
+// twLiquidSource is the rotating TW liquidity tier's source tag, kept
+// distinct from seedTW150's static 'tw' so RefreshTWLiquidUniverse can
+// rotate its own rows without ever touching a seeded or manually-added one.
+const twLiquidSource = "tw_liquid"
+
+// RefreshTWLiquidUniverse rotates the 'tw_liquid' tier to exactly tickers —
+// the most-traded TW stocks as of the caller's ranking window (see
+// service.ScanService.RefreshTWUniverse). Unlike SyncSP500, which only ever
+// *reports* what dropped out, this one drops rows itself: an index
+// constituent leaving the index is news the user should rule on, but a stock
+// falling out of the liquidity top-N is just the pool rotating, and never
+// pruning would grow the scan pool without bound.
+//
+// The rotation is deliberately narrow in both directions. It only ever
+// deletes rows that are source='tw_liquid' AND removed=0, so a 'tw'/'manual'/
+// 'sp500' row is untouched even when it's absent from tickers. And it inserts
+// with ON CONFLICT DO NOTHING, so a ticker already in the pool keeps whatever
+// source and tombstone it has — which is what makes a /universe remove stick:
+// the user's removed=1 row is neither re-added here nor deleted, and simply
+// stops being a candidate. That's also why this hard-DELETEs rather than
+// setting removed=1 the way RemoveUniverseTicker does: a tombstone written by
+// the rotation would be indistinguishable from one the user wrote, and the
+// next month's refresh could no longer tell "rotated out" from "user said no".
+func (d *DB) RefreshTWLiquidUniverse(tickers []string) (added, dropped []string, err error) {
+	want := make(map[string]bool, len(tickers))
+	for _, t := range tickers {
+		want[t] = true
+	}
+
+	rows, err := d.conn.Query(`SELECT ticker, source, removed FROM universe`)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	present := make(map[string]bool)
+	for rows.Next() {
+		var ticker, source string
+		var removed bool
+		if err := rows.Scan(&ticker, &source, &removed); err != nil {
+			return nil, nil, err
+		}
+		present[ticker] = true
+		if source == twLiquidSource && !removed && !want[ticker] {
+			dropped = append(dropped, ticker)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	for t := range want {
+		if !present[t] {
+			added = append(added, t)
+		}
+	}
+	sort.Strings(added)
+	sort.Strings(dropped)
+
+	if len(added) == 0 && len(dropped) == 0 {
+		return added, dropped, nil
+	}
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return nil, nil, err
+	}
+	defer tx.Rollback()
+	for _, t := range dropped {
+		if _, err := tx.Exec(`DELETE FROM universe WHERE ticker = ? AND source = ? AND removed = 0`, t, twLiquidSource); err != nil {
+			return nil, nil, err
+		}
+	}
+	for _, t := range added {
+		if _, err := tx.Exec(`INSERT INTO universe (ticker, source) VALUES (?, ?) ON CONFLICT(ticker) DO NOTHING`, t, twLiquidSource); err != nil {
+			return nil, nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, nil, err
+	}
+	return added, dropped, nil
+}
+
 // SaveScanHit logs that ticker's daily universe scan found reason (a signal
 // message) on date. Multiple hits for the same ticker/date are allowed — read
 // back grouped by GetScanHits.

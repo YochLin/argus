@@ -389,11 +389,21 @@ func newScanService(b *Bot) *service.ScanService {
 	if b.fundamentals != nil {
 		fundamentalsReader = b.cachedFundamentals
 	}
+	// Ranker is the one universe-scan-side dependency this instance does
+	// wire: /universe refresh is a typed command, so it has to work from the
+	// bot's own service rather than internal/app's. Assigned through the
+	// interface only when non-nil, or the interface would hold a typed nil
+	// and RefreshTWUniverse's nil check would miss it.
+	var ranker service.TWLiquidityRanker
+	if b.sinopac != nil {
+		ranker = b.sinopac
+	}
 	return service.NewScanService(service.ScanConfig{
 		Store:        b.db,
 		Detector:     b.detector,
 		TrustNet:     b.trustNet,
 		Fundamentals: fundamentalsReader,
+		Ranker:       ranker,
 	})
 }
 

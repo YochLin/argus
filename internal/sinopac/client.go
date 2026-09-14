@@ -171,14 +171,48 @@ const (
 	ScannerVolumeRank ScannerType = "VolumeRank"
 )
 
+// ScannerMaxCount is the daemon's own ceiling on a scanner request: anything
+// above it is rejected with a 422 ("ensure this value is less than or equal
+// to 200"), not silently clamped. Live-verified 2026-09-12, undocumented in
+// the OpenAPI spec's description text. Combined with the row duplication
+// Scanner strips, a single request yields at most ScannerMaxCount/2 distinct
+// tickers — which is why the TW universe refresh ranks off DailyQuotes
+// (dailyquotes.go) instead, whole-market in one call with neither limit.
+const ScannerMaxCount = 200
+
 // Scanner returns the top count ranked tickers for typ on date
 // (YYYY-MM-DD). Always passes ascending:true — see Client's doc comment on
 // why that (not false) is what returns rank-1-first.
+//
+// count above ScannerMaxCount is clamped rather than sent, since the daemon
+// answers an over-large count with a 422 instead of capping it itself.
+//
+// Deduplicates by code, which is not defensive tidying but a fix for a third
+// response-shape quirk alongside the two in Client's doc comment:
+// live-verified 2026-09-12, the daemon returns every row exactly twice, with
+// byte-identical fields — so an un-deduplicated count=20 is 10 distinct
+// tickers listed twice, which is what /dailyreport's TW movers section was
+// rendering. Dedup here rather than in each caller: the duplication is a
+// property of this endpoint, so every caller needs the same fix.
 func (c *Client) Scanner(ctx context.Context, typ ScannerType, date string, count int) ([]ScannerItem, error) {
-	var out []ScannerItem
+	if count > ScannerMaxCount {
+		count = ScannerMaxCount
+	}
+	var raw []ScannerItem
 	req := map[string]any{"scanner_type": typ, "date": date, "ascending": true, "count": count}
-	err := c.do(ctx, http.MethodPost, "/api/v1/data/scanner", req, &out)
-	return out, err
+	if err := c.do(ctx, http.MethodPost, "/api/v1/data/scanner", req, &raw); err != nil {
+		return nil, err
+	}
+	seen := make(map[string]bool, len(raw))
+	out := make([]ScannerItem, 0, len(raw))
+	for _, it := range raw {
+		if seen[it.Code] {
+			continue
+		}
+		seen[it.Code] = true
+		out = append(out, it)
+	}
+	return out, nil
 }
 
 // regulatoryColumns is the parallel-arrays shape both regulatory endpoints

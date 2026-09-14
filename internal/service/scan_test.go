@@ -123,6 +123,7 @@ type fakeScanStore struct {
 	universe  []db.UniverseEntry
 	watchlist map[market.MarketID][]string
 	hits      []string // "TICKER|date|reason"
+	refreshed []string // last RefreshTWLiquidUniverse argument
 }
 
 func (f *fakeScanStore) GetUniverse() ([]db.UniverseEntry, error) { return f.universe, nil }
@@ -134,6 +135,11 @@ func (f *fakeScanStore) GetWatchlistByMarket(m market.MarketID) ([]string, error
 func (f *fakeScanStore) SaveScanHit(ticker, date, reason string) error {
 	f.hits = append(f.hits, ticker+"|"+date+"|"+reason)
 	return nil
+}
+
+func (f *fakeScanStore) RefreshTWLiquidUniverse(tickers []string) (added, dropped []string, err error) {
+	f.refreshed = tickers
+	return tickers, nil, nil
 }
 
 // fakeHistory/fakeQuotes stand in for Yahoo and the provider chain.
