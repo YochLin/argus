@@ -10,6 +10,13 @@ const LANGS: Array<{ id: Lang; flag: string; code: string; label: string }> = [
 interface Props {
   market: Market;
   onMarketChange: (market: Market) => void;
+  // hideMarketToggle (Phase 9, docs/phase-9-asset-platform.md §8.1) hides
+  // the US/TW toggle on wealth pages — assets aren't market-scoped, so
+  // showing it there would imply a distinction that doesn't apply. An
+  // empty placeholder still renders in its place so .topbar's
+  // justify-content:space-between keeps the right-hand cluster pinned
+  // right instead of collapsing to the left with only one child.
+  hideMarketToggle?: boolean;
   isDark: boolean;
   onToggleTheme: () => void;
   lang: Lang;
@@ -29,6 +36,7 @@ interface Props {
 export function TopBar({
   market,
   onMarketChange,
+  hideMarketToggle = false,
   isDark,
   onToggleTheme,
   lang,
@@ -39,20 +47,24 @@ export function TopBar({
 }: Props) {
   return (
     <div className="topbar">
-      <div className="topbar-tabs" role="group" aria-label="market">
-        <button
-          className={`topbar-tab${market === "us" ? " active" : ""}`}
-          onClick={() => onMarketChange("us")}
-        >
-          US
-        </button>
-        <button
-          className={`topbar-tab${market === "tw" ? " active" : ""}`}
-          onClick={() => onMarketChange("tw")}
-        >
-          TW
-        </button>
-      </div>
+      {hideMarketToggle ? (
+        <div />
+      ) : (
+        <div className="topbar-tabs" role="group" aria-label="market">
+          <button
+            className={`topbar-tab${market === "us" ? " active" : ""}`}
+            onClick={() => onMarketChange("us")}
+          >
+            US
+          </button>
+          <button
+            className={`topbar-tab${market === "tw" ? " active" : ""}`}
+            onClick={() => onMarketChange("tw")}
+          >
+            TW
+          </button>
+        </div>
+      )}
       <div className="topbar-right">
         {writable && (
           <button className="theme-toggle" onClick={onAddTrade}>

@@ -2080,6 +2080,7 @@ th {
 }
 
 .form-field input,
+.form-field select,
 .form-field textarea {
   background: var(--bg);
   border: 1px solid var(--border);

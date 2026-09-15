@@ -156,6 +156,8 @@ type Server struct {
 	csvDB      csvWriter
 	thesisDB   thesisWriter
 	notesDB    researchNotesWriter
+	wealthDB   wealthWriter
+	fxDB       fxRateStore
 	// paperDB stays *db.DB (not dbReader) so nil-checking it in
 	// handlePaper can't fall into the classic "non-nil interface wrapping
 	// a nil pointer" trap — it's passed into buildPaper's dbReader
@@ -203,6 +205,8 @@ func New(cfg Config) *Server {
 		csvDB:               cfg.DB,
 		thesisDB:            cfg.DB,
 		notesDB:             cfg.DB,
+		wealthDB:            cfg.DB,
+		fxDB:                cfg.DB,
 		paperDB:             cfg.PaperDB,
 		paperInitialCashUSD: cfg.PaperInitialCashUSD,
 		paperInitialCashTWD: cfg.PaperInitialCashTWD,
@@ -280,6 +284,18 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("POST /api/research-notes", s.requireWritable(s.requireAuth(s.handleResearchNoteSave)))
 	s.mux.HandleFunc("POST /api/research-notes/pin", s.requireWritable(s.requireAuth(s.handleResearchNotePin)))
 	s.mux.HandleFunc("POST /api/research-notes/delete", s.requireWritable(s.requireAuth(s.handleResearchNoteDelete)))
+	// /api/wealth/assets (Phase 9 PR1) — GET is ungated like every other read
+	// route; the three writes (create/snapshot/archive) share the same
+	// requireWritable/requireAuth gate as /api/trade/*, since a human typing
+	// into the quick-add drawer is exactly the "form write, no LLM in the
+	// loop" case docs/phase-9-asset-platform.md §5 carves out from
+	// write-gating (that rule is about *LLM-produced* writes, unrelated to
+	// this auth gate, which every write route carries regardless).
+	s.mux.HandleFunc("GET /api/wealth/assets", s.handleWealthAssetsList)
+	s.mux.HandleFunc("GET /api/wealth/networth", s.handleWealthHome)
+	s.mux.HandleFunc("POST /api/wealth/assets", s.requireWritable(s.requireAuth(s.handleWealthAssetCreate)))
+	s.mux.HandleFunc("POST /api/wealth/assets/snapshot", s.requireWritable(s.requireAuth(s.handleWealthAssetSnapshot)))
+	s.mux.HandleFunc("POST /api/wealth/assets/archive", s.requireWritable(s.requireAuth(s.handleWealthAssetArchive)))
 	// /api/settings (Phase 17 PR2) sits behind the same gate as every write
 	// route, GET included: the read side reports which credentials are
 	// configured, which is not something to hand out unauthenticated.
