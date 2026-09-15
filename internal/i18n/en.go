@@ -790,4 +790,10 @@ If nothing in the transcript is worth extracting, output nothing.
 	KeyPodcastDerivedMarker:    "Derived from:",
 	KeyPodcastDerivedLine:      "   └ derived from: %s (not directly named in the transcript)\n",
 	KeyPodcastDuplicateWarning: "⚠️ This link has already been analyzed before (%d record(s) on file) — those will be replaced with this run's results once it finishes.",
+
+	KeyNetworthTitle:        "📊 *Net Worth Summary*\n\n",
+	KeyNetworthNoData:       "Can't compute net worth right now (possibly an FX quote hiccup) — try again shortly, or check the Assets page on the web dashboard.",
+	KeyNetworthSummaryLine:  "Net worth: %s\nYTD: %s | MoM: %s\nTotal assets: %s | Total liabilities: %s\n",
+	KeyNetworthHealthHeader: "\nHealth metrics:\n",
+	KeyNetworthHealthLine:   "Debt ratio: %s | Liquidity: %s\nSavings rate: %s | Expense ratio: %s\n",
 }

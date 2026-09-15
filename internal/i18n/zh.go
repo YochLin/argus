@@ -775,4 +775,10 @@ var zhMessages = map[Key]string{
 	KeyPodcastDerivedMarker:    "推論自:",
 	KeyPodcastDerivedLine:      "　└ 推論自：%s（非逐字稿原文直接提及）\n",
 	KeyPodcastDuplicateWarning: "⚠️ 這個連結先前已經分析過，已有 %d 則記錄，這次分析完成後將會覆蓋成新的結果。",
+
+	KeyNetworthTitle:        "📊 *淨值摘要*\n\n",
+	KeyNetworthNoData:       "目前無法計算淨值（可能是匯率報價暫時抓不到），稍後再試，或到網頁儀表板的「資產」頁確認資料。",
+	KeyNetworthSummaryLine:  "淨值：%s\nYTD：%s ｜ MoM：%s\n總資產：%s ｜ 總負債：%s\n",
+	KeyNetworthHealthHeader: "\n健康指標：\n",
+	KeyNetworthHealthLine:   "負債比：%s ｜ 流動性：%s\n儲蓄率：%s ｜ 收支比：%s\n",
 }

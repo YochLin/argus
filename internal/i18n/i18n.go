@@ -903,4 +903,21 @@ const (
 	// of KeyPodcastFetching so it's seen before the slow fetch/LLM work
 	// starts, not buried after.
 	KeyPodcastDuplicateWarning Key = "podcast_duplicate_warning"
+
+	// /networth (Phase 9 波次1 PR2') — a Telegram-text summary of the same
+	// numbers /w/balance shows on the web dashboard (net worth, YTD/MoM,
+	// totals, health metrics), built off the shared service.WealthTotals/
+	// service.ComputeHealthMetrics so the two surfaces can't disagree.
+	// KeyNetworthNoData fires when service.WealthTotals itself degrades
+	// (an FX quote for a held currency couldn't be resolved) — a fresh
+	// install with zero assets still renders a real $0 summary, this is
+	// only for "couldn't price what's there." Every other line takes
+	// already-formatted
+	// %s args (pre-degraded to "—" by the caller) rather than raw numbers,
+	// so a missing value never gets silently rendered as 0.
+	KeyNetworthTitle        Key = "networth_title"
+	KeyNetworthNoData       Key = "networth_no_data"
+	KeyNetworthSummaryLine  Key = "networth_summary_line"
+	KeyNetworthHealthHeader Key = "networth_health_header"
+	KeyNetworthHealthLine   Key = "networth_health_line"
 )
