@@ -582,4 +582,64 @@ var migrations = []string{
 	);
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_research_notes_ticker_day ON research_notes(ticker, date(created_at));
 	`,
+
+	// 29: Phase 9 PR1 — the wealth platform's spine. assets/asset_snapshots is
+	// class-table inheritance (docs/phase-9-asset-platform.md §9.1): assets
+	// holds only what every asset/liability shares, so a net-worth aggregate
+	// scan never grows past two tables no matter how many detail tables
+	// (deposit_details, loan_details, ...) get added later. Value lives in
+	// asset_snapshots, never on assets itself — an in-place edit upserts
+	// today's snapshot row, it never UPDATEs assets, or a manual correction
+	// would silently rewrite the historical net-worth curve. Equities are a
+	// virtual row derived from the existing positions/net_worth_snapshots
+	// tables at read time and must never be inserted into assets, or net
+	// worth double-counts them.
+	`
+	CREATE TABLE IF NOT EXISTS assets (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		side TEXT NOT NULL,
+		type TEXT NOT NULL,
+		name TEXT NOT NULL,
+		asset_group TEXT NOT NULL,
+		venue TEXT,
+		currency TEXT NOT NULL DEFAULT 'TWD',
+		source TEXT NOT NULL DEFAULT 'manual',
+		created_at TEXT NOT NULL,
+		archived_at TEXT
+	);
+
+	CREATE TABLE IF NOT EXISTS asset_snapshots (
+		asset_id INTEGER NOT NULL,
+		date TEXT NOT NULL,
+		value REAL NOT NULL,
+		cost REAL,
+		source TEXT NOT NULL DEFAULT 'manual',
+		PRIMARY KEY (asset_id, date)
+	);
+
+	CREATE TABLE IF NOT EXISTS fx_rates (
+		date TEXT NOT NULL,
+		pair TEXT NOT NULL,
+		rate REAL NOT NULL,
+		PRIMARY KEY (date, pair)
+	);
+
+	CREATE TABLE IF NOT EXISTS deposit_details (
+		asset_id INTEGER PRIMARY KEY,
+		bank TEXT,
+		account_note TEXT
+	);
+
+	CREATE TABLE IF NOT EXISTS loan_details (
+		asset_id INTEGER PRIMARY KEY,
+		lender TEXT,
+		rate_pct REAL,
+		original_principal REAL,
+		remaining_months INTEGER,
+		secured_asset_id INTEGER
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_assets_side_archived ON assets(side, archived_at);
+	CREATE INDEX IF NOT EXISTS idx_asset_snapshots_date ON asset_snapshots(date);
+	`,
 }
