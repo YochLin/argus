@@ -73,6 +73,31 @@ func trustBuyWindow(trustNet []int64) int {
 	return 0
 }
 
+// shortMARising reports whether MA5 and MA10 are both rising bar-to-bar as
+// of closes' last bar. Needs at least 11 closes; false when there are fewer,
+// same "can't answer means no" convention as the rest of this file.
+func shortMARising(closes []float64) bool {
+	if len(closes) < 11 {
+		return false
+	}
+	prev := closes[:len(closes)-1]
+	return MA(closes, 5) > MA(prev, 5) && MA(closes, 10) > MA(prev, 10)
+}
+
+// trustEpisodeStart is the earliest bar from which trustBuyWindow has been
+// continuously non-zero up to trustNet's last bar — i.e. the first day of the
+// 投信 buying run currently in progress. It is what lets the short-MA leg in
+// CheckTrustFollowExact reject a buying EPISODE rather than a single bar; see
+// that function's "Short-term trend" block for why that distinction is the
+// whole point.
+func trustEpisodeStart(trustNet []int64) int {
+	start := len(trustNet) - 1
+	for start > 0 && trustBuyWindow(trustNet[:start]) != 0 {
+		start--
+	}
+	return start
+}
+
 // TrustNetVolPct is (net buy in [from,to] / total volume in [from,to]) x
 // 100 — the scale-free "投信買超強度" measure. from/to are inclusive
 // candles/trustNet indices.
@@ -214,6 +239,68 @@ func CheckTrustFollowExact(candles []data.Candle, trustNet, foreignNet []int64, 
 	window := trustBuyWindow(trustNet)
 	if window == 0 {
 		return false
+	}
+
+	// 4b. Short-term trend, evaluated over the WHOLE buying episode: MA5 and
+	// MA10 must have been rising on every bar from trustEpisodeStart to here.
+	// One falling bar kills the episode for good.
+	//
+	// 網5 is the only screen here whose trigger is a FLOW event (投信買超)
+	// rather than a price event — 網1/網3's breakout bar and 網4's rebound bar
+	// each imply short-term strength for free — so it is the one place a
+	// ticker can pass "站上季線 + MA60 上彎" while the 5/10 日均線 is still
+	// falling, i.e. mid-pullback.
+	//
+	// The loop, rather than a check on the evaluated bar alone, is the part
+	// that matters and was measured 2026-09-15 (TWSE T86 cache 2016-08..
+	// 2026-09, tw150, date-clustered bootstrap, 400 resamples, split
+	// 2021-11-01, against the same run's random-entry control):
+	//
+	//	variant                              early split     late split    n early/late
+	//	no short-MA leg (previous)           -0.85%  1.2o    +0.56% 0.8o    1544 / 2393
+	//	evaluated bar only                   -0.63%  0.8o    +0.73% 1.0o    1294 / 1917
+	//	episode's FIRST bar only             -1.49%  1.7o    +2.20% 2.9o     869 / 1272
+	//	every bar of the episode (shipped)   -0.15%  0.1o    +1.89% 1.7o     460 /  451
+	//
+	// Checking only the evaluated bar does not reject an episode, it
+	// POSTPONES it: 投信 buy for days in a row, so a rejected bar just lets a
+	// later bar in the same run become the entry (the 5-day dedup keeps one
+	// either way). 18-23% of triggers moved that way, and the postponed entry
+	// is measurably worse than the original — 1.3-2.7pp of raw forward return
+	// at 5/10/20 days, 1.9-4.8 sigma, with 84% of postponed entries filling at
+	// a higher price and the stop-out rate rising from 50-56% to 59-69%. That
+	// loss cancels what the rejections gain, which is why the "evaluated bar
+	// only" row barely moves off the baseline.
+	//
+	// Anchoring to the episode's FIRST bar alone over-corrects the other way:
+	// "started while falling" sweeps in episodes that turned up immediately,
+	// and its two splits come out opposite signs — the instability signature
+	// CheckMTFCrossExact's rejected 平轉向上 variants show.
+	//
+	// What the leg actually removes is measured-negative on its own, in both
+	// splits, and this is the number to read rather than the table above:
+	// among base triggers, those with a falling short MA on the trigger bar
+	// return -2.49pp (2.8 sigma) early and -1.69pp (2.0 sigma) late versus
+	// those with a rising one, on full-trade returns. Notably that gap is
+	// nearly absent on RAW forward returns (-0.46pp/1.6o early, -0.10pp/0.4o
+	// late): these names end up in a similar place 20 days out, and the
+	// damage is path — buying mid-pullback means the pullback continues into
+	// the 2-ATR stop before the recovery. So this leg helps a stop-using
+	// trader and would look like nothing to a buy-and-hold one.
+	//
+	// The screen itself still does NOT clear Phase 25 §4.4's bar (both splits
+	// positive past 1 SE): the early split lands at -0.15%, 0.1 sigma — flat,
+	// not positive. 網5 stays briefing-only, same as before. What changed is
+	// that a measured-negative subset stops firing, at the cost of 70-80% of
+	// the trigger volume. Do not relabel this screen validated on the strength
+	// of the late split alone, and note the hypothesis came from a user's
+	// observation of recent alerts, which land IN the late split — that split
+	// is not out-of-sample for it.
+	closes := data.Closes(candles)
+	for i := trustEpisodeStart(trustNet); i < n; i++ {
+		if !shortMARising(closes[:i+1]) {
+			return false
+		}
 	}
 
 	// 5. Intensity: net buy / volume over that same window >= TrustNetVolPctMin

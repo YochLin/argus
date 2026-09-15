@@ -122,6 +122,66 @@ func TestCheckTrustFollowExact(t *testing.T) {
 		}
 	})
 
+	// pullbackCandles is a run that accelerated (0.5/bar from bar 50) and has
+	// since been pulling back for the last few bars: MA60 still up, close
+	// still above MA20 and MA60, but MA5 falling. A plain linear trend cannot
+	// express this — there MA20 sits at the midpoint of its window, so "close
+	// below its own 5 bars ago" and "close above MA20" are near-exclusive and
+	// a fixture built that way fails on the MA20 leg instead of the one under
+	// test.
+	pullbackCandles := func(n, pullbackBars int) []data.Candle {
+		candles := genTrustCandlesTrending(n)
+		price := candles[49].Close
+		for i := 50; i < n; i++ {
+			if i < n-pullbackBars {
+				price += 0.5
+			} else {
+				price -= 0.4
+			}
+			candles[i].Close, candles[i].Open = price, price
+			candles[i].High, candles[i].Low = price+1, price-1
+		}
+		return candles
+	}
+
+	t.Run("above MA60 but short MA falling, no hit", func(t *testing.T) {
+		candles := pullbackCandles(70, 5)
+		trustNet := make([]int64, 70)
+		foreignNet := make([]int64, 70)
+		for i := 67; i < 70; i++ {
+			trustNet[i] = 50_000
+		}
+		if CheckTrustFollowExact(candles, trustNet, foreignNet, p) {
+			t.Fatal("expected no hit: MA5/MA10 falling means the entry is mid-pullback")
+		}
+	})
+
+	// The whole point of the episode loop: a rejected buying run must STAY
+	// rejected, not slip through on the next bar whose short MA ticks up.
+	// Without it the filter postpones the entry instead of dropping it, which
+	// measured worse than not filtering at all — see CheckTrustFollowExact.
+	t.Run("rejected episode does not re-enter once the short MA ticks up", func(t *testing.T) {
+		candles := pullbackCandles(72, 7)
+		// Last two bars turn back up, so the evaluated bar on its own looks
+		// fine — but the episode began during the pullback.
+		for i := 70; i < 72; i++ {
+			price := candles[69].Close + float64(i-69)*1.2
+			candles[i].Close, candles[i].Open = price, price
+			candles[i].High, candles[i].Low = price+1, price-1
+		}
+		trustNet := make([]int64, 72)
+		foreignNet := make([]int64, 72)
+		for i := 66; i < 72; i++ { // 投信 buying straight through the pullback
+			trustNet[i] = 50_000
+		}
+		if !shortMARising(data.Closes(candles)) {
+			t.Fatal("fixture is wrong: the evaluated bar itself must look rising, or this proves nothing")
+		}
+		if CheckTrustFollowExact(candles, trustNet, foreignNet, p) {
+			t.Fatal("expected no hit: the buying episode started mid-pullback, so it stays rejected")
+		}
+	})
+
 	t.Run("thin liquidity, no hit", func(t *testing.T) {
 		candles := genTrustCandlesTrending(70)
 		for i := 65; i < 70; i++ {
