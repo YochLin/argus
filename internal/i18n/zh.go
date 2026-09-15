@@ -590,7 +590,7 @@ var zhMessages = map[Key]string{
 	KeyValuationPELine:         "- 依目前股價換算 P/E：%.1f\n",
 	KeyValuationPercentileLine: "- 估值百分位（僅與自身歷史比較，不可跨市場比較）：%.0f%%\n",
 	KeyCashFlowQualityLine:     "- 現金流品質（同財報年度營運現金流 / 淨利）：%.2f\n",
-	KeyPositionLine:            "- 持倉: %g 股　平均成本 $%.2f　未實現損益 %+.2f%%\n",
+	KeyPositionLine:            "- 持倉: %g 股　平均成本 $%.2f　未實現損益 %+.2f%%　持有自 %s\n",
 	KeyPrevRecLine:             "- 上次建議: %s @ $%.2f（%d 天前）\n",
 	KeyEarningsLine:            "- ⚠️ 財報日: %s（%d 天內），留意波動\n",
 	KeyEarningsLineEstimated:   "- ⚠️ 法定財報截止日（估算）: %s（%d 天內），留意波動\n",

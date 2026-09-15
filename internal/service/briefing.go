@@ -93,7 +93,7 @@ func LoadQuoteHighlights(quotes QuoteNewsReader, names data.CompanyNameProvider,
 		fetched, _ := quotes.GetNews(t, briefingNewsFetch)
 		stock := llm.StockData{Quote: q, News: picker.Pick(fetched, briefingNewsSlots), CompanyName: companyNameFor(names, t)}
 		if p, ok := positions[t]; ok {
-			stock.Position = &llm.Position{Shares: p.Shares, AvgCost: p.AvgCost}
+			stock.Position = &llm.Position{Shares: p.Shares, AvgCost: p.AvgCost, OpenedDate: p.OpenedDate}
 		}
 		result = append(result, stock)
 	}

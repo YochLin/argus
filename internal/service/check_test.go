@@ -5,7 +5,21 @@ import (
 	"testing"
 
 	"argus/internal/data"
+	"argus/internal/db"
 )
+
+type mockPositionReader struct {
+	positions map[string]db.Position
+	err       error
+}
+
+func (m *mockPositionReader) GetPosition(ticker string) (db.Position, bool, error) {
+	if m.err != nil {
+		return db.Position{}, false, m.err
+	}
+	p, ok := m.positions[ticker]
+	return p, ok, nil
+}
 
 type mockFundamentalsProvider struct {
 	fundamentals map[string]*data.Fundamentals
@@ -42,7 +56,7 @@ func (m *mockAnalystRatingProvider) GetAnalystRating(ticker string) (*data.Analy
 func TestCheckStockDataReturnsErrorOnQuoteFailure(t *testing.T) {
 	quotes := &mockBriefingQuotes{quoteErrTickers: map[string]bool{"AAPL": true}}
 
-	_, err := CheckStockData(quotes, nil, nil, nil, "AAPL")
+	_, err := CheckStockData(quotes, nil, nil, nil, nil, "AAPL")
 	if err == nil {
 		t.Fatal("CheckStockData() error = nil, want the quote error")
 	}
@@ -61,7 +75,7 @@ func TestCheckStockDataAttachesFundamentalsAndAnalystRating(t *testing.T) {
 		ratings: map[string]*data.AnalystRating{"AAPL": {StrongBuy: 10}},
 	}
 
-	stock, err := CheckStockData(quotes, nil, fundamentals, analystRating, "AAPL")
+	stock, err := CheckStockData(quotes, nil, fundamentals, analystRating, nil, "AAPL")
 	if err != nil {
 		t.Fatalf("CheckStockData() error = %v", err)
 	}
@@ -85,12 +99,12 @@ func TestCheckStockDataAttachesFundamentalsAndAnalystRating(t *testing.T) {
 func TestCheckStockDataDegradesWithNilProviders(t *testing.T) {
 	quotes := &mockBriefingQuotes{quotes: map[string]*data.Quote{"AAPL": {Ticker: "AAPL", Price: 200}}}
 
-	stock, err := CheckStockData(quotes, nil, nil, nil, "AAPL")
+	stock, err := CheckStockData(quotes, nil, nil, nil, nil, "AAPL")
 	if err != nil {
 		t.Fatalf("CheckStockData() error = %v", err)
 	}
-	if stock.Fundamentals != nil || stock.Statement != nil || stock.AnalystRating != nil {
-		t.Errorf("stock = %+v, want no fundamentals/statement/analyst rating with nil providers", stock)
+	if stock.Fundamentals != nil || stock.Statement != nil || stock.AnalystRating != nil || stock.Position != nil {
+		t.Errorf("stock = %+v, want no fundamentals/statement/analyst rating/position with nil providers", stock)
 	}
 }
 
@@ -99,11 +113,52 @@ func TestCheckStockDataLogsAndSkipsOnFundamentalsError(t *testing.T) {
 	fundamentals := &mockFundamentalsProvider{err: errors.New("finnhub down")}
 	analystRating := &mockAnalystRatingProvider{err: errors.New("finnhub down")}
 
-	stock, err := CheckStockData(quotes, nil, fundamentals, analystRating, "AAPL")
+	stock, err := CheckStockData(quotes, nil, fundamentals, analystRating, nil, "AAPL")
 	if err != nil {
 		t.Fatalf("CheckStockData() error = %v, want nil (a fundamentals failure degrades, doesn't fail the call)", err)
 	}
 	if stock.Fundamentals != nil || stock.Statement != nil || stock.AnalystRating != nil {
 		t.Errorf("stock = %+v, want no fundamentals/statement/analyst rating on provider error", stock)
+	}
+}
+
+func TestCheckStockDataAttachesPosition(t *testing.T) {
+	quotes := &mockBriefingQuotes{quotes: map[string]*data.Quote{"AAPL": {Ticker: "AAPL", Price: 200}}}
+	positions := &mockPositionReader{
+		positions: map[string]db.Position{"AAPL": {Shares: 10, AvgCost: 150, OpenedDate: "2026-01-01"}},
+	}
+
+	stock, err := CheckStockData(quotes, nil, nil, nil, positions, "AAPL")
+	if err != nil {
+		t.Fatalf("CheckStockData() error = %v", err)
+	}
+	if stock.Position == nil || stock.Position.Shares != 10 || stock.Position.AvgCost != 150 {
+		t.Errorf("Position = %+v, want Shares=10 AvgCost=150", stock.Position)
+	}
+}
+
+func TestCheckStockDataNoPositionWhenNotHeld(t *testing.T) {
+	quotes := &mockBriefingQuotes{quotes: map[string]*data.Quote{"AAPL": {Ticker: "AAPL", Price: 200}}}
+	positions := &mockPositionReader{positions: map[string]db.Position{}}
+
+	stock, err := CheckStockData(quotes, nil, nil, nil, positions, "AAPL")
+	if err != nil {
+		t.Fatalf("CheckStockData() error = %v", err)
+	}
+	if stock.Position != nil {
+		t.Errorf("Position = %+v, want nil when not held", stock.Position)
+	}
+}
+
+func TestCheckStockDataLogsAndSkipsOnPositionError(t *testing.T) {
+	quotes := &mockBriefingQuotes{quotes: map[string]*data.Quote{"AAPL": {Ticker: "AAPL", Price: 200}}}
+	positions := &mockPositionReader{err: errors.New("db down")}
+
+	stock, err := CheckStockData(quotes, nil, nil, nil, positions, "AAPL")
+	if err != nil {
+		t.Fatalf("CheckStockData() error = %v, want nil (a position lookup failure degrades, doesn't fail the call)", err)
+	}
+	if stock.Position != nil {
+		t.Errorf("Position = %+v, want nil on lookup error", stock.Position)
 	}
 }
