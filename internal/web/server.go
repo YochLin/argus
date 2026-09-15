@@ -157,6 +157,7 @@ type Server struct {
 	thesisDB   thesisWriter
 	notesDB    researchNotesWriter
 	wealthDB   wealthWriter
+	fxDB       fxRateStore
 	// paperDB stays *db.DB (not dbReader) so nil-checking it in
 	// handlePaper can't fall into the classic "non-nil interface wrapping
 	// a nil pointer" trap — it's passed into buildPaper's dbReader
@@ -205,6 +206,7 @@ func New(cfg Config) *Server {
 		thesisDB:            cfg.DB,
 		notesDB:             cfg.DB,
 		wealthDB:            cfg.DB,
+		fxDB:                cfg.DB,
 		paperDB:             cfg.PaperDB,
 		paperInitialCashUSD: cfg.PaperInitialCashUSD,
 		paperInitialCashTWD: cfg.PaperInitialCashTWD,
@@ -290,6 +292,7 @@ func New(cfg Config) *Server {
 	// write-gating (that rule is about *LLM-produced* writes, unrelated to
 	// this auth gate, which every write route carries regardless).
 	s.mux.HandleFunc("GET /api/wealth/assets", s.handleWealthAssetsList)
+	s.mux.HandleFunc("GET /api/wealth/networth", s.handleWealthHome)
 	s.mux.HandleFunc("POST /api/wealth/assets", s.requireWritable(s.requireAuth(s.handleWealthAssetCreate)))
 	s.mux.HandleFunc("POST /api/wealth/assets/snapshot", s.requireWritable(s.requireAuth(s.handleWealthAssetSnapshot)))
 	s.mux.HandleFunc("POST /api/wealth/assets/archive", s.requireWritable(s.requireAuth(s.handleWealthAssetArchive)))

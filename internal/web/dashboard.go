@@ -106,6 +106,8 @@ type dbReader interface {
 	// ListAssetsWithValue backs assets.go's GET /api/wealth/assets (Phase 9
 	// PR1) — writes go through the separate wealthWriter interface.
 	ListAssetsWithValue(includeArchived bool) ([]db.AssetWithValue, error)
+	// ListAssetsValueAsOf backs wealth_home.go's YTD/MoM historical totals.
+	ListAssetsValueAsOf(asOfDate string, includeArchived bool) ([]db.AssetWithValue, error)
 }
 
 // netWorthBaseline resolves the capital base for a period starting at

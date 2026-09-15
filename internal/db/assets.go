@@ -275,7 +275,30 @@ func (d *DB) ListAssetsWithValue(includeArchived bool) ([]AssetWithValue, error)
 		query += ` WHERE a.archived_at IS NULL`
 	}
 	query += ` ORDER BY a.id DESC`
-	rows, err := d.conn.Query(query)
+	return queryAssetsWithValue(d, query)
+}
+
+// ListAssetsValueAsOf is ListAssetsWithValue's historical counterpart — each
+// asset's latest snapshot on or before asOfDate, not the global latest. It
+// backs the net-worth home page's YTD/MoM figures: an asset created after
+// asOfDate simply has no matching snapshot and contributes nothing, which is
+// correct (it didn't exist yet), not a data gap.
+func (d *DB) ListAssetsValueAsOf(asOfDate string, includeArchived bool) ([]AssetWithValue, error) {
+	query := `
+		SELECT a.id, a.side, a.type, a.name, a.asset_group, a.venue, a.currency, a.source, a.created_at, a.archived_at,
+			s.value, s.cost, s.date
+		FROM assets a
+		LEFT JOIN asset_snapshots s ON s.asset_id = a.id
+			AND s.date = (SELECT MAX(date) FROM asset_snapshots WHERE asset_id = a.id AND date <= ?)`
+	if !includeArchived {
+		query += ` WHERE a.archived_at IS NULL`
+	}
+	query += ` ORDER BY a.id DESC`
+	return queryAssetsWithValue(d, query, asOfDate)
+}
+
+func queryAssetsWithValue(d *DB, query string, args ...any) ([]AssetWithValue, error) {
+	rows, err := d.conn.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}

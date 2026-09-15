@@ -67,6 +67,10 @@ type fakeDB struct {
 	researchNotes map[string][]db.ResearchNote
 	// wealthAssets backs ListAssetsWithValue for assets_test.go (Phase 9 PR1).
 	wealthAssets []db.AssetWithValue
+	// wealthAssetsAsOf backs ListAssetsValueAsOf for wealth_home_test.go —
+	// keyed by the exact asOfDate a test passes in, nil (the zero value)
+	// behaves as "no historical data for that date."
+	wealthAssetsAsOf map[string][]db.AssetWithValue
 }
 
 func (f *fakeDB) GetPositions() ([]db.Position, error)          { return f.positions, nil }
@@ -168,6 +172,19 @@ func (f *fakeDB) ListAssetsWithValue(includeArchived bool) ([]db.AssetWithValue,
 	}
 	out := make([]db.AssetWithValue, 0, len(f.wealthAssets))
 	for _, a := range f.wealthAssets {
+		if a.ArchivedAt == "" {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+func (f *fakeDB) ListAssetsValueAsOf(asOfDate string, includeArchived bool) ([]db.AssetWithValue, error) {
+	list := f.wealthAssetsAsOf[asOfDate]
+	if includeArchived {
+		return list, nil
+	}
+	out := make([]db.AssetWithValue, 0, len(list))
+	for _, a := range list {
 		if a.ArchivedAt == "" {
 			out = append(out, a)
 		}

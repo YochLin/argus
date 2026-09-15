@@ -101,6 +101,41 @@ func TestArchiveAssetSoftDeletesAndIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestListAssetsValueAsOfUsesLatestSnapshotOnOrBeforeDate pins the
+// historical-lookup semantics wealth_home.go's YTD/MoM depend on: a date
+// before the asset's first snapshot gets no value (it didn't exist yet, not
+// a data gap), and a date between two snapshots gets the earlier one, not
+// the globally-latest one ListAssetsWithValue would return.
+func TestListAssetsValueAsOfUsesLatestSnapshotOnOrBeforeDate(t *testing.T) {
+	d := newTestDB(t)
+
+	id, err := d.CreateAsset(NewAsset{Side: "asset", Type: "deposit", Name: "活存", AssetGroup: "liquid"})
+	if err != nil {
+		t.Fatalf("CreateAsset() error = %v", err)
+	}
+	if err := d.UpsertAssetSnapshot(AssetSnapshot{AssetID: id, Date: "2026-06-01", Value: 100000}); err != nil {
+		t.Fatalf("UpsertAssetSnapshot() error = %v", err)
+	}
+	if err := d.UpsertAssetSnapshot(AssetSnapshot{AssetID: id, Date: "2026-09-01", Value: 150000}); err != nil {
+		t.Fatalf("UpsertAssetSnapshot() error = %v", err)
+	}
+
+	before, err := d.ListAssetsValueAsOf("2026-01-01", false)
+	if err != nil || len(before) != 1 || before[0].Value != nil {
+		t.Fatalf("ListAssetsValueAsOf(before first snapshot) = %+v, %v; want Value nil", before, err)
+	}
+
+	mid, err := d.ListAssetsValueAsOf("2026-07-15", false)
+	if err != nil || len(mid) != 1 || mid[0].Value == nil || *mid[0].Value != 100000 {
+		t.Fatalf("ListAssetsValueAsOf(between snapshots) = %+v, %v; want value 100000", mid, err)
+	}
+
+	after, err := d.ListAssetsValueAsOf("2026-12-31", false)
+	if err != nil || len(after) != 1 || after[0].Value == nil || *after[0].Value != 150000 {
+		t.Fatalf("ListAssetsValueAsOf(after latest snapshot) = %+v, %v; want value 150000", after, err)
+	}
+}
+
 func TestGetAssetMissingReturnsNil(t *testing.T) {
 	d := newTestDB(t)
 
