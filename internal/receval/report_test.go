@@ -87,3 +87,24 @@ func TestCountOutcomes(t *testing.T) {
 		t.Errorf("ImmatureByHorizon[20] = %d, want 1", c.ImmatureByHorizon[20])
 	}
 }
+
+// DirectionAdjust must not touch the caller's slice: `argus eval` prints its
+// raw per-action tables from the same scored slice it hands here for the
+// extremes ranking, so flipping in place would silently invert those tables.
+func TestDirectionAdjustCopiesAndFlipsOnlySells(t *testing.T) {
+	scored := []ScoredRec{
+		{Rec: Recommendation{Ticker: "NVDA", Action: "SELL"}, Windows: []WindowScore{{Horizon: 5, Matured: true, TickerReturnPct: -4, ExcessReturnPct: -5}}},
+		{Rec: Recommendation{Ticker: "AAPL", Action: "BUY"}, Windows: []WindowScore{{Horizon: 5, Matured: true, TickerReturnPct: 4, ExcessReturnPct: 5}}},
+	}
+
+	got := DirectionAdjust(scored)
+	if got[0].Windows[0].ExcessReturnPct != 5 || got[0].Windows[0].TickerReturnPct != 4 {
+		t.Errorf("SELL window = %+v, want both returns flipped positive", got[0].Windows[0])
+	}
+	if got[1].Windows[0].ExcessReturnPct != 5 {
+		t.Errorf("BUY window = %+v, want untouched", got[1].Windows[0])
+	}
+	if scored[0].Windows[0].ExcessReturnPct != -5 {
+		t.Errorf("input mutated: SELL excess = %v, want the original -5", scored[0].Windows[0].ExcessReturnPct)
+	}
+}

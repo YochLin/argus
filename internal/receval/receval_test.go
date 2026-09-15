@@ -24,16 +24,16 @@ func dailyCandles(startDate string, closes []float64) []data.Candle {
 	return out
 }
 
-func TestScoreBasicReturnAndFallbackEntryPrice(t *testing.T) {
+func TestScoreBasicReturnAndEntryPrice(t *testing.T) {
 	candles := dailyCandles("2026-01-01", []float64{100, 101, 102, 103, 104, 110, 120})
-	rec := Recommendation{Date: "2026-01-01", Ticker: "AAPL", Action: "BUY", Price: 0}
+	rec := Recommendation{Date: "2026-01-01", Ticker: "AAPL", Action: "BUY"}
 
 	sr := Score(rec, candles, nil, []int{5})
 	if sr.Unscorable {
 		t.Fatalf("unexpected unscorable: %s", sr.Reason)
 	}
 	if sr.EntryPrice != 100 {
-		t.Fatalf("EntryPrice = %v, want 100 (fallback to entry candle close)", sr.EntryPrice)
+		t.Fatalf("EntryPrice = %v, want the entry candle close 100", sr.EntryPrice)
 	}
 	if len(sr.Windows) != 1 || !sr.Windows[0].Matured {
 		t.Fatalf("Windows = %+v, want one matured window", sr.Windows)
@@ -50,19 +50,49 @@ func TestScoreBasicReturnAndFallbackEntryPrice(t *testing.T) {
 	}
 }
 
-func TestScoreUsesStoredPriceOverCandleClose(t *testing.T) {
-	candles := dailyCandles("2026-01-01", []float64{100, 101, 102, 103, 104, 105})
-	rec := Recommendation{Date: "2026-01-01", Ticker: "AAPL", Action: "BUY", Price: 90}
+// Both legs must span the same window. A ticker and a benchmark that move
+// identically from the entry close onward have to net to exactly zero excess
+// — the invariant that broke when the ticker leg was anchored on the
+// recommendation's stored intraday quote while the benchmark leg was anchored
+// on the entry day's close, which silently credited every call with a
+// half-session of unbenchmarked drift.
+func TestScoreExcessIsZeroWhenTickerTracksBenchmark(t *testing.T) {
+	candles := dailyCandles("2026-01-01", []float64{100, 102, 104, 106, 108, 110, 110})
+	bench := dailyCandles("2026-01-01", []float64{200, 204, 208, 212, 216, 220, 220})
+	rec := Recommendation{Date: "2026-01-01", Ticker: "AAPL", Action: "BUY"}
 
-	sr := Score(rec, candles, nil, []int{5})
-	if sr.EntryPrice != 90 {
-		t.Fatalf("EntryPrice = %v, want stored Price 90", sr.EntryPrice)
+	sr := Score(rec, candles, bench, []int{5})
+	if sr.EntryPrice != 100 {
+		t.Fatalf("EntryPrice = %v, want the entry candle's close 100", sr.EntryPrice)
+	}
+	w := sr.Windows[0]
+	if !w.Matured || !w.HaveBench {
+		t.Fatalf("window = %+v, want matured with benchmark", w)
+	}
+	if w.ExcessReturnPct != 0 {
+		t.Errorf("ExcessReturnPct = %v, want exactly 0 for a ticker tracking the benchmark", w.ExcessReturnPct)
+	}
+}
+
+// A window is not matured by the last bar in the series: that bar may be a
+// session still in progress, whose price moves on every refresh.
+func TestScoreDoesNotMatureAgainstFinalBar(t *testing.T) {
+	// 6 bars: entry at index 0, so a 5-day exit lands exactly on the last one.
+	candles := dailyCandles("2026-01-01", []float64{100, 101, 102, 103, 104, 105})
+	rec := Recommendation{Date: "2026-01-01", Ticker: "AAPL", Action: "BUY"}
+
+	if sr := Score(rec, candles, nil, []int{5}); sr.Windows[0].Matured {
+		t.Errorf("Matured = true with the exit landing on the final (possibly in-progress) bar")
+	}
+	// One more confirmed bar behind it and the same window matures.
+	if sr := Score(rec, append(candles, dailyCandles("2026-01-07", []float64{106})...), nil, []int{5}); !sr.Windows[0].Matured {
+		t.Errorf("Matured = false once a later bar proves the exit bar closed")
 	}
 }
 
 func TestScoreImmatureWindow(t *testing.T) {
 	candles := dailyCandles("2026-01-01", []float64{100, 101, 102})
-	rec := Recommendation{Date: "2026-01-01", Ticker: "AAPL", Action: "BUY", Price: 100}
+	rec := Recommendation{Date: "2026-01-01", Ticker: "AAPL", Action: "BUY"}
 
 	sr := Score(rec, candles, nil, []int{5, 20})
 	if sr.Unscorable {
@@ -76,9 +106,9 @@ func TestScoreImmatureWindow(t *testing.T) {
 }
 
 func TestScoreBenchmarkExcessAndFallback(t *testing.T) {
-	candles := dailyCandles("2026-01-01", []float64{100, 100, 100, 100, 100, 110})
-	bench := dailyCandles("2026-01-01", []float64{200, 200, 200, 200, 200, 202})
-	rec := Recommendation{Date: "2026-01-01", Ticker: "AAPL", Action: "BUY", Price: 100}
+	candles := dailyCandles("2026-01-01", []float64{100, 100, 100, 100, 100, 110, 110})
+	bench := dailyCandles("2026-01-01", []float64{200, 200, 200, 200, 200, 202, 202})
+	rec := Recommendation{Date: "2026-01-01", Ticker: "AAPL", Action: "BUY"}
 
 	sr := Score(rec, candles, bench, []int{5})
 	w := sr.Windows[0]
@@ -102,7 +132,7 @@ func TestScoreBenchmarkExcessAndFallback(t *testing.T) {
 	}
 
 	// No overlapping benchmark data at all -> fall back to absolute return.
-	sr = Score(Recommendation{Date: "2026-01-01", Ticker: "AAPL", Action: "BUY", Price: 100}, candles, nil, []int{5})
+	sr = Score(Recommendation{Date: "2026-01-01", Ticker: "AAPL", Action: "BUY"}, candles, nil, []int{5})
 	if sr.Windows[0].HaveBench {
 		t.Fatalf("HaveBench = true with nil bench")
 	}
@@ -137,7 +167,7 @@ func TestMFEMAE(t *testing.T) {
 	// entry at 100, then a spike to 130 (high 132.6) and a dip to 90 (low
 	// 88.2) within the 5-day window.
 	candles := dailyCandles("2026-01-01", []float64{100, 130, 95, 90, 105, 110})
-	sr := Score(Recommendation{Date: "2026-01-01", Ticker: "AAPL", Action: "BUY", Price: 100}, candles, nil, []int{5})
+	sr := Score(Recommendation{Date: "2026-01-01", Ticker: "AAPL", Action: "BUY"}, candles, nil, []int{5})
 	if sr.MFEPct <= 30 || sr.MFEPct >= 33 {
 		t.Errorf("MFEPct = %v, want ~32.6 (high of day 2 vs entry 100)", sr.MFEPct)
 	}
@@ -180,13 +210,13 @@ func TestCollapseRepeats(t *testing.T) {
 }
 
 func TestScoreHoldHitIsBeatBenchmark(t *testing.T) {
-	candles := dailyCandles("2026-01-01", []float64{100, 100, 100, 100, 100, 110})
-	bench := dailyCandles("2026-01-01", []float64{100, 100, 100, 100, 100, 105})
-	up := Score(Recommendation{Date: "2026-01-01", Ticker: "AAPL", Action: "HOLD", Price: 100}, candles, bench, []int{5})
+	candles := dailyCandles("2026-01-01", []float64{100, 100, 100, 100, 100, 110, 110})
+	bench := dailyCandles("2026-01-01", []float64{100, 100, 100, 100, 100, 105, 105})
+	up := Score(Recommendation{Date: "2026-01-01", Ticker: "AAPL", Action: "HOLD"}, candles, bench, []int{5})
 	if !up.Windows[0].Hit {
 		t.Errorf("HOLD that beat the benchmark (+10%% vs +5%%) should count as a hit")
 	}
-	down := Score(Recommendation{Date: "2026-01-01", Ticker: "AAPL", Action: "HOLD", Price: 100}, bench, candles, []int{5})
+	down := Score(Recommendation{Date: "2026-01-01", Ticker: "AAPL", Action: "HOLD"}, bench, candles, []int{5})
 	if down.Windows[0].Hit {
 		t.Errorf("HOLD that lagged the benchmark (+5%% vs +10%%) should not count as a hit")
 	}

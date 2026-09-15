@@ -119,9 +119,17 @@ type recPerfExtreme struct {
 // never silently dropped from the page.
 // Collapsed is how many rows receval.CollapseRepeats merged away before
 // scoring — disclosed for the same reason, since it is most of the table.
+//
+// The four post-collapse buckets partition Total exactly:
+// Collapsed + Scorable + Unscorable + HoldKept == Total (plus any row whose
+// action never parsed, which Hold also absorbs — see buildRecPerformance).
+// HoldKept exists because without it they don't: the page showed
+// "840 total · 67 scorable · 733 merged" and left 40 surviving HOLDs
+// invisible, so the numbers on the card could not be reconciled by a reader.
 type recPerfCounts struct {
 	Total      int `json:"total"`
 	Hold       int `json:"hold"`
+	HoldKept   int `json:"holdKept"`
 	Scorable   int `json:"scorable"`
 	Unscorable int `json:"unscorable"`
 	Collapsed  int `json:"collapsed"`
@@ -172,7 +180,7 @@ type recPerformanceResponse struct {
 // report run against the same database (docs/phase-8-trader-analytics.md
 // §5.2), consecutive repeats collapsed the same way. Where the two differ is
 // groups that mix BUY with SELL: eval splits them by action, this page keeps
-// its single-number cards and direction-adjusts instead (see directional). One
+// its single-number cards and direction-adjusts instead (see receval.DirectionAdjust). One
 // ticker's history fetch failing degrades that ticker's recommendations to
 // "no history data" (receval.Score's own unscorable path), not a whole-
 // response failure — same attach-what's-available convention as
@@ -198,7 +206,7 @@ func buildRecPerformance(database dbReader, history data.HistoryProvider, m mark
 		}
 		rec := receval.Recommendation{
 			Date: r.Date, Ticker: r.Ticker, Action: r.Action,
-			Price: r.Price, Source: r.Source, Market: r.Market,
+			Source: r.Source, Market: r.Market,
 		}
 		recs = append(recs, rec)
 		if r.Action != "HOLD" {
@@ -223,7 +231,7 @@ func buildRecPerformance(database dbReader, history data.HistoryProvider, m mark
 	resp := recPerformanceResponse{
 		Horizons:       recPerfHorizons,
 		EvalHorizon:    recPerfEvalHorizon,
-		Counts:         recPerfCounts{Total: total, Hold: holdCount, Scorable: len(scorable), Collapsed: collapsed},
+		Counts:         recPerfCounts{Total: total, Hold: holdCount, HoldKept: len(holds), Scorable: len(scorable), Collapsed: collapsed},
 		BySource:       []recPerfGroup{},
 		ByAction:       []recPerfGroup{},
 		Best:           []recPerfExtreme{},
@@ -256,19 +264,23 @@ func buildRecPerformance(database dbReader, history data.HistoryProvider, m mark
 		scored = append(scored, receval.Score(r, candles[r.Ticker], candles[benchTicker], recPerfHorizons))
 	}
 
+	// Scorable was seeded with the whole kept BUY/SELL set before scoring told
+	// us which of those had no usable history; narrow it now so Scorable and
+	// Unscorable partition that set instead of double-counting the same rows.
 	counts := receval.CountOutcomes(scored)
 	resp.Counts.Unscorable = counts.Unscorable
+	resp.Counts.Scorable = len(scorable) - counts.Unscorable
 
-	dir := directional(scored)
+	dir := receval.DirectionAdjust(scored)
 	resp.BySource = recPerfGroups(receval.Aggregate(dir, func(r receval.Recommendation) string {
 		return receval.DisplaySource(r.Source)
 	}))
-	resp.ByAction = recPerfGroups(receval.Aggregate(scored, func(r receval.Recommendation) string {
+	resp.ByAction = recPerfGroups(receval.Aggregate(dir, func(r receval.Recommendation) string {
 		return r.Action
 	}))
 
 	maxHorizon := recPerfHorizons[len(recPerfHorizons)-1]
-	best, worst := receval.Extremes(scored, maxHorizon, recPerfExtremeCount)
+	best, worst := receval.Extremes(dir, maxHorizon, recPerfExtremeCount)
 	resp.Best = recPerfExtremes(best, maxHorizon)
 	resp.Worst = recPerfExtremes(worst, maxHorizon)
 
@@ -296,30 +308,6 @@ func buildRecPerformance(database dbReader, history data.HistoryProvider, m mark
 	return resp, nil
 }
 
-// directional returns scored with every SELL's returns sign-flipped, for the
-// groups that average BUY and SELL together (overall, by source, acted). A
-// SELL is right when the stock lags, so its raw excess is negative exactly
-// when it worked — averaged raw alongside BUYs, a correct SELL counts as a
-// loss. Flipped, every rec reads as "what following this call earned over
-// the benchmark alternative", the same unit as a HOLD's excess (the value of
-// keeping the stock). Hit needs no flip: receval already scores it by
-// direction. Windows are copied, never flipped in place, since scored also
-// feeds the raw per-action table and extremes.
-func directional(scored []receval.ScoredRec) []receval.ScoredRec {
-	out := make([]receval.ScoredRec, len(scored))
-	for i, sr := range scored {
-		if sr.Rec.Action == "SELL" {
-			ws := make([]receval.WindowScore, len(sr.Windows))
-			for j, w := range sr.Windows {
-				w.TickerReturnPct, w.ExcessReturnPct = -w.TickerReturnPct, -w.ExcessReturnPct
-				ws[j] = w
-			}
-			sr.Windows = ws
-		}
-		out[i] = sr
-	}
-	return out
-}
 
 // recPerfActiveSignals lists still-open BUY/SELL recs — those whose
 // shortest-horizon window (recPerfHorizons[0]) hasn't matured yet — with an
@@ -344,6 +332,12 @@ func recPerfActiveSignals(scored []receval.ScoredRec, candles map[string][]data.
 			if benchEntry := bench[benchEntryIdx].Close; benchEntry > 0 {
 				excess = tickerReturn - pctChangeLocal(benchEntry, bench[len(bench)-1].Close)
 			}
+		}
+		// Same direction convention as receval.DirectionAdjust — this list can't reuse
+		// it, since the excess here is recomputed entry-to-today rather than
+		// read off a Window.
+		if sr.Rec.Action == "SELL" {
+			excess = -excess
 		}
 		out = append(out, recPerfActiveSignal{
 			Ticker: sr.Rec.Ticker, Action: sr.Rec.Action, Source: receval.DisplaySource(sr.Rec.Source),
