@@ -6,53 +6,14 @@ import (
 	"time"
 
 	"argus/internal/assets"
-	"argus/internal/db"
 	"argus/internal/logger"
 	"argus/internal/market"
+	"argus/internal/service"
 )
 
-// annualSalarySettingKey is profile.annual_salary (§9.3) — the health
-// metrics' one denominator (收支比/儲蓄率), stored in the existing
-// settings key/value table rather than a new one, same convention as
-// cash_balance.
-const annualSalarySettingKey = "profile.annual_salary"
-
-// depositTotalTWD sums every deposit-type asset's latest value on or before
-// date, converted to TWD — the "存款餘額" §2 point 4's expense derivation
-// needs. ok=false on any FX-conversion failure (same whole-metric-degrades
-// rule as wealthTotals).
-func (s *Server) depositTotalTWD(date string, live bool) (float64, bool) {
-	var list []db.AssetWithValue
-	var err error
-	if live {
-		list, err = s.db.ListAssetsWithValue(false)
-	} else {
-		list, err = s.db.ListAssetsValueAsOf(date, false)
-	}
-	if err != nil {
-		logger.Errorf("web: deposit total as of %s: %v", date, err)
-		return 0, false
-	}
-	deposits := make([]db.AssetWithValue, 0, len(list))
-	for _, a := range list {
-		if a.Type != "deposit" {
-			continue
-		}
-		if a.Value == nil {
-			// This deposit asset has no snapshot on or before date — it
-			// either didn't exist yet or its history doesn't reach back
-			// this far. Treating that absence as "balance was 0" would
-			// silently manufacture a huge fake expense/income swing the
-			// moment a new account is added; §8.17.1 requires "at least
-			// two snapshot periods," not a such-a-row-exists guess, so the
-			// whole comparison degrades instead.
-			return 0, false
-		}
-		deposits = append(deposits, a)
-	}
-	total, _, ok := sumEntriesTWD(assetEntries(deposits), date, live, s.quotes, s.fxDB)
-	return total, ok
-}
+// annualSalarySettingKey is profile.annual_salary (§9.3) — re-exported from
+// service.AnnualSalarySettingKey for local brevity.
+const annualSalarySettingKey = service.AnnualSalarySettingKey
 
 type balanceSheetItem struct {
 	AssetID  int64   `json:"assetId,omitempty"` // 0 for the equity virtual row
@@ -195,7 +156,7 @@ func (s *Server) handleWealthBalance(w http.ResponseWriter, r *http.Request) {
 		if a.Value == nil {
 			continue
 		}
-		rate, rok := rateToTWD(a.Currency, today, true, s.quotes, s.fxDB)
+		rate, rok := service.RateToTWD(a.Currency, today, true, s.quotes, s.fxDB)
 		if !rok {
 			fxOK = false
 			continue
@@ -204,7 +165,7 @@ func (s *Server) handleWealthBalance(w http.ResponseWriter, r *http.Request) {
 		if a.Side == "liability" {
 			totalLiabilities += valueTWD
 			ld := liabilityDetail{AssetID: a.ID, Name: a.Name, Venue: a.Venue, Currency: a.Currency, ValueTWD: valueTWD, Source: a.Source}
-			if loanAssetTypes[a.Type] {
+			if assets.LoanTypes[a.Type] {
 				if det, err := s.db.GetLoanDetails(a.ID); err == nil && det != nil {
 					ld.RatePct = det.RatePct
 					ld.RemainingMonths = det.RemainingMonths
@@ -228,8 +189,8 @@ func (s *Server) handleWealthBalance(w http.ResponseWriter, r *http.Request) {
 		g.MarketValue += valueTWD
 		g.Assets = append(g.Assets, balanceSheetItem{AssetID: a.ID, Name: a.Name, Venue: a.Venue, Currency: a.Currency, ValueTWD: valueTWD, Type: a.Type, Source: a.Source})
 	}
-	for _, e := range equityEntries(usTotal, usOK, twTotal, twOK) {
-		rate, rok := rateToTWD(e.Currency, today, true, s.quotes, s.fxDB)
+	for _, e := range service.EquityEntries(usTotal, usOK, twTotal, twOK) {
+		rate, rok := service.RateToTWD(e.Currency, today, true, s.quotes, s.fxDB)
 		if !rok {
 			fxOK = false
 			continue
@@ -266,33 +227,16 @@ func (s *Server) handleWealthBalance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if fxOK {
-		if raw, ok, err := s.db.GetSetting(annualSalarySettingKey); err == nil && ok {
-			if annual, perr := strconv.ParseFloat(raw, 64); perr == nil && annual > 0 {
-				monthlySalary := annual / 12
-				resp.MonthlySalary = &monthlySalary
-
-				depositNow, nowOK := s.depositTotalTWD(today, true)
-				monthAgo := now.AddDate(0, -1, 0).Format("2006-01-02")
-				depositPrev, prevOK := s.depositTotalTWD(monthAgo, false)
-				if nowOK && prevOK {
-					expense := assets.MonthlyExpense(monthlySalary, depositNow, depositPrev)
-					if sr, ok := assets.SavingsRate(monthlySalary, expense); ok {
-						resp.SavingsRatePct = &sr
-					}
-					if er, ok := assets.ExpenseRatio(monthlySalary, expense); ok {
-						resp.ExpenseRatioPct = &er
-					}
-					if lm, ok := assets.LiquidityMonths(groups["liquid"].MarketValue, expense); ok {
-						resp.LiquidityMonths = &lm
-					}
-				}
-			}
-		}
+		hm := service.ComputeHealthMetrics(s.db, s.fxDB, s.quotes, now)
+		resp.MonthlySalary = hm.MonthlySalary
+		resp.SavingsRatePct = hm.SavingsRatePct
+		resp.ExpenseRatioPct = hm.ExpenseRatioPct
+		resp.LiquidityMonths = hm.LiquidityMonths
 	}
 
 	for _, qd := range quarterlyDates(now, quarterlyTrendQuarters) {
 		point := quarterPoint{Quarter: qd.Label}
-		if total, _, ok := s.wealthTotals(qd.Date, false); ok {
+		if total, _, ok := service.WealthTotals(s.db, s.fxDB, s.quotes, qd.Date, false); ok {
 			nw := total
 			point.NetWorth = &nw
 		}
@@ -384,7 +328,7 @@ func (s *Server) handleWealthDebtPayoff(w http.ResponseWriter, r *http.Request) 
 	var loans []assets.Loan
 	var names []string
 	for _, a := range list {
-		if a.Side != "liability" || !loanAssetTypes[a.Type] || a.Value == nil {
+		if a.Side != "liability" || !assets.LoanTypes[a.Type] || a.Value == nil {
 			continue
 		}
 		det, err := s.db.GetLoanDetails(a.ID)
