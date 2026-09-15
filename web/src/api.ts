@@ -670,6 +670,22 @@ function getMockData(url: string): any {
   if (path === "/api/wealth/profile") {
     return { annualSalary: null };
   }
+  if (path === "/api/wealth/alloc") {
+    return {
+      asOf: "2026-07-15",
+      model: "balanced",
+      totalAssets: null,
+      allocation: [],
+      orders: [],
+      rebalTotal: 0,
+      locked: [],
+      riskPct: null,
+      riskTargetLow: null,
+      riskTargetHigh: null,
+      currencyExposure: [],
+      concentration: [],
+    };
+  }
   if (path === "/api/status") {
     return {
       watchingCount: market === "tw" ? 11 : 14,
@@ -1835,6 +1851,66 @@ export interface BalanceSheet {
 
 export function fetchWealthBalance(): Promise<BalanceSheet> {
   return getJSON("/api/wealth/balance");
+}
+
+// --- Phase 9 PR4: allocation & rebalance (/w/alloc) ---
+// Mirrors internal/web/wealth_alloc.go.
+
+export interface WealthAllocRow {
+  group: AssetGroup;
+  marketValue: number;
+  currentPct: number;
+  targetPct: number;
+  deviationPt: number;
+  venue?: string;
+}
+
+export interface WealthAllocOrder {
+  group: AssetGroup;
+  side: "buy" | "sell";
+  amount: number;
+  deviationPt: number;
+  assetName?: string;
+  venue?: string;
+}
+
+export interface WealthAllocLockedRow {
+  group: AssetGroup;
+  marketValue: number;
+  deviationPt: number;
+}
+
+export interface CurrencyExposureRow {
+  currency: string;
+  pct: number;
+}
+
+export interface ConcentrationWarning {
+  ticker: string;
+  market: string;
+  pctOfEquity: number;
+  pctOfAssets: number;
+}
+
+// WealthAlloc mirrors wealth_alloc.go's allocResponse — every total/list is
+// nil/empty until there's at least one priced asset (§8.17.1).
+export interface WealthAlloc {
+  asOf: string;
+  model: AllocationModel;
+  totalAssets: number | null;
+  allocation: WealthAllocRow[];
+  orders: WealthAllocOrder[];
+  rebalTotal: number;
+  locked: WealthAllocLockedRow[];
+  riskPct: number | null;
+  riskTargetLow: number | null;
+  riskTargetHigh: number | null;
+  currencyExposure: CurrencyExposureRow[];
+  concentration: ConcentrationWarning[];
+}
+
+export function fetchWealthAlloc(model: AllocationModel): Promise<WealthAlloc> {
+  return getJSON(`/api/wealth/alloc?model=${model}`);
 }
 
 export interface DebtPayoffPlan {

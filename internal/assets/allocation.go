@@ -6,6 +6,8 @@
 // service, moving it is a directory move, not a rewrite.
 package assets
 
+import "math"
+
 // AllocationModel names one of the three preset target-allocation splits
 // the wealth home page lets the user switch between (§8.17.3 — three
 // presets to compare, not one saved choice).
@@ -73,4 +75,60 @@ func ComputeDrift(byGroup map[string]float64, total float64, model AllocationMod
 		rows = append(rows, DriftRow{Group: g, MarketValue: mv, CurrentPct: cur, TargetPct: tgt, DeviationPt: cur - tgt})
 	}
 	return rows
+}
+
+// LockedGroups are asset_group buckets /w/alloc's rebalance-order generator
+// excludes (§9.4 PR4, §8.3-2 "不可調資產鎖定") — "hard" (real estate/
+// collectibles/pension, §8.5) has no brokerage a buy/sell instruction could
+// route through, so its drift is still reported but never turned into an
+// order.
+var LockedGroups = map[string]bool{"hard": true}
+
+// RebalanceThresholdPt is the minimum |deviation| (percentage points) that
+// turns into a rebalance order — without a materiality floor, a
+// fractional-point drift would generate a fractional-dollar "order," which
+// is noise, not a decision. Also doubles as /w/alloc's risk-share band
+// (target ± this) since both are "is this close enough to on-target"
+// questions over the same units.
+const RebalanceThresholdPt = 5.0
+
+// ConcentrationThresholdPct flags a single equity position once it exceeds
+// this share of the equity book — a plain, undocumented-elsewhere industry
+// rule of thumb (no single holding above ~1/5 of the stock portfolio), not
+// something derived from the user's own data. §10.2③: warn only, never
+// suggest which position to trim.
+const ConcentrationThresholdPct = 20.0
+
+// RebalanceOrder is one line of /w/alloc's rebalance-instruction list — a
+// non-locked group whose drift exceeds RebalanceThresholdPt, expressed as
+// the amount (in the same currency/unit as total) that would bring it back
+// to its target%.
+type RebalanceOrder struct {
+	Group       string
+	Side        string // "buy" or "sell"
+	Amount      float64
+	DeviationPt float64
+}
+
+// ComputeRebalanceOrders turns ComputeDrift's rows into orders, skipping
+// locked groups and drift inside RebalanceThresholdPt. total must be the
+// same total ComputeDrift was called with.
+func ComputeRebalanceOrders(rows []DriftRow, total float64) []RebalanceOrder {
+	if total <= 0 {
+		return nil
+	}
+	var out []RebalanceOrder
+	for _, row := range rows {
+		if LockedGroups[row.Group] || math.Abs(row.DeviationPt) < RebalanceThresholdPt {
+			continue
+		}
+		amount := row.TargetPct/100*total - row.MarketValue
+		side := "buy"
+		if amount < 0 {
+			side = "sell"
+			amount = -amount
+		}
+		out = append(out, RebalanceOrder{Group: row.Group, Side: side, Amount: amount, DeviationPt: row.DeviationPt})
+	}
+	return out
 }

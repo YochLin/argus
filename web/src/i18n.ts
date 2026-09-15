@@ -556,6 +556,23 @@ export interface Dictionary {
   wealthImportColName: string;
   wealthImportColGroup: string;
   wealthImportColValue: string;
+  // Phase 9 §9.4 PR4: allocation & rebalance page (/w/alloc). Mirrors
+  // internal/web/wealth_alloc.go.
+  navWealthAlloc: string;
+  wealthOrdersTitle: string;
+  wealthOrdersHint: string;
+  wealthOrderBuy: string;
+  wealthOrderSell: string;
+  wealthNoOrders: string;
+  wealthLockedTitle: string;
+  wealthVenueLabel: string;
+  wealthRiskTitle: string;
+  wealthRiskBand: string;
+  wealthFxExposure: string;
+  wealthConcentrationTitle: string;
+  wealthConcentrationHint: string;
+  wealthNoConcentration: string;
+  wealthRebalTotal: string;
 }
 
 const en: Dictionary = {
@@ -1062,6 +1079,21 @@ const en: Dictionary = {
   wealthImportColName: "Name",
   wealthImportColGroup: "Group",
   wealthImportColValue: "Value",
+  navWealthAlloc: "Allocation",
+  wealthOrdersTitle: "REBALANCE ORDERS",
+  wealthOrdersHint: "Suggested only — amounts and accounts to close each group's drift back to target. Nothing is executed automatically.",
+  wealthOrderBuy: "BUY",
+  wealthOrderSell: "SELL",
+  wealthNoOrders: "Everything is within the rebalance band — no orders suggested.",
+  wealthLockedTitle: "LOCKED (NOT REBALANCEABLE)",
+  wealthVenueLabel: "via",
+  wealthRiskTitle: "RISK-ASSET SHARE",
+  wealthRiskBand: "target band",
+  wealthFxExposure: "CURRENCY EXPOSURE",
+  wealthConcentrationTitle: "CONCENTRATION WARNINGS",
+  wealthConcentrationHint: "A single position over a large share of your open equity book — informational only, no sell suggestion.",
+  wealthNoConcentration: "No single position dominates your equity book.",
+  wealthRebalTotal: "rebalance total",
 };
 
 const zh: Dictionary = {
@@ -1562,6 +1594,21 @@ const zh: Dictionary = {
   wealthImportColName: "名稱",
   wealthImportColGroup: "分組",
   wealthImportColValue: "金額",
+  navWealthAlloc: "配置與再平衡",
+  wealthOrdersTitle: "再平衡指令",
+  wealthOrdersHint: "僅供參考——把每個分組的偏離調回目標所需的金額與建議帳戶，不會自動執行。",
+  wealthOrderBuy: "買進",
+  wealthOrderSell: "賣出",
+  wealthNoOrders: "所有分組都在再平衡區間內，沒有建議指令。",
+  wealthLockedTitle: "不可調整（已鎖定）",
+  wealthVenueLabel: "經由",
+  wealthRiskTitle: "風險性資產比重",
+  wealthRiskBand: "目標區間",
+  wealthFxExposure: "幣別曝險",
+  wealthConcentrationTitle: "個股集中度警示",
+  wealthConcentrationHint: "單一持股占你交易帳戶部位過高比重——僅供參考，不建議賣出哪一檔。",
+  wealthNoConcentration: "沒有單一持股占比過高。",
+  wealthRebalTotal: "再平衡總額",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

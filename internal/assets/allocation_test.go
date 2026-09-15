@@ -43,6 +43,30 @@ func TestComputeDriftZeroTotalReturnsNil(t *testing.T) {
 	}
 }
 
+// TestComputeRebalanceOrdersSkipsLockedAndSmallDrift exercises the three
+// rules that matter: locked ("hard") never orders no matter how far off,
+// drift under RebalanceThresholdPt never orders, and everything else nets
+// out to a buy/sell amount that would close the gap to target.
+func TestComputeRebalanceOrdersSkipsLockedAndSmallDrift(t *testing.T) {
+	byGroup := map[string]float64{"liquid": 200, "growth": 500, "income": 200, "hard": 100}
+	rows := ComputeDrift(byGroup, 1000, ModelBalanced)
+	orders := ComputeRebalanceOrders(rows, 1000)
+	if len(orders) != 1 {
+		t.Fatalf("len(orders) = %d, want 1 (only growth clears the threshold and isn't locked): %+v", len(orders), orders)
+	}
+	o := orders[0]
+	if o.Group != "growth" || o.Side != "sell" || !approxEqual(o.Amount, 150) {
+		t.Errorf("orders[0] = %+v, want {growth sell 150 ...}", o)
+	}
+}
+
+func TestComputeRebalanceOrdersZeroTotalReturnsNil(t *testing.T) {
+	rows := ComputeDrift(map[string]float64{"liquid": 100}, 100, ModelBalanced)
+	if orders := ComputeRebalanceOrders(rows, 0); orders != nil {
+		t.Errorf("ComputeRebalanceOrders(total=0) = %v, want nil", orders)
+	}
+}
+
 // TestModelPresetsSumToRoughly100 pins the honesty disclaimer in
 // ModelPresets' doc comment: each preset's four buckets should still add up
 // to (approximately) the whole portfolio, or the allocation table's
