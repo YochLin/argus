@@ -628,6 +628,12 @@ function getMockData(url: string): any {
   if (path === "/api/config") {
     return { lang: "zh", paperEnabled: true };
   }
+  if (path === "/api/wealth/assets") {
+    return { assets: [] };
+  }
+  if (path === "/api/wealth/networth") {
+    return { asOf: "2026-07-15", netWorth: null, ytdPct: null, momPct: null, model: "balanced", allocation: [] };
+  }
   if (path === "/api/status") {
     return {
       watchingCount: market === "tw" ? 11 : 14,
@@ -1611,4 +1617,91 @@ export function fetchSettings(): Promise<{ settings: Setting[] }> {
 // there is no fresh state to re-fetch afterwards.
 export function saveSettings(updates: Record<string, string>): Promise<{ message: string }> {
   return postJSON("/api/settings", updates);
+}
+
+// --- Phase 9: wealth platform (docs/phase-9-asset-platform.md) ---
+// Mirrors internal/web/assets.go and wealth_home.go.
+
+export type AssetSide = "asset" | "liability";
+export type AssetGroup = "liquid" | "growth" | "income" | "hard";
+export type AllocationModel = "conserv" | "balanced" | "growth";
+
+export interface WealthAsset {
+  id: number;
+  side: AssetSide;
+  type: string;
+  name: string;
+  assetGroup: AssetGroup;
+  venue: string;
+  currency: string;
+  source: "manual" | "import" | "sync";
+  createdAt: string;
+  archivedAt?: string;
+  // value/cost are null when the asset has no snapshot yet — render "—",
+  // never 0 (mirrors db.AssetWithValue's doc comment on the Go side).
+  value: number | null;
+  cost?: number | null;
+  asOf?: string;
+}
+
+export function fetchWealthAssets(includeArchived = false): Promise<{ assets: WealthAsset[] }> {
+  return getJSON(`/api/wealth/assets${includeArchived ? "?archived=1" : ""}`);
+}
+
+export interface WealthAllocationRow {
+  group: AssetGroup;
+  marketValue: number;
+  currentPct: number;
+  targetPct: number;
+  deviationPt: number;
+}
+
+// WealthHome mirrors wealth_home.go's wealthHomeResponse — netWorth/ytdPct/
+// momPct are null when there isn't enough snapshot history yet (a fresh
+// account, or a currency with no recorded FX rate for the baseline date);
+// render "—", never 0/0%.
+export interface WealthHome {
+  asOf: string;
+  netWorth: number | null;
+  ytdPct: number | null;
+  momPct: number | null;
+  model: AllocationModel;
+  allocation: WealthAllocationRow[];
+}
+
+export function fetchWealthHome(model: AllocationModel): Promise<WealthHome> {
+  return getJSON(`/api/wealth/networth?model=${model}`);
+}
+
+export interface CreateWealthAssetRequest {
+  side: AssetSide;
+  type: string;
+  name: string;
+  assetGroup: AssetGroup;
+  venue?: string;
+  currency?: string;
+  initialValue: number;
+  date?: string;
+  deposit?: { bank?: string; accountNote?: string };
+  loan?: {
+    lender?: string;
+    ratePct?: number;
+    originalPrincipal?: number;
+    remainingMonths?: number;
+    securedAssetId?: number;
+  };
+}
+
+export function createWealthAsset(req: CreateWealthAssetRequest): Promise<{ id: number }> {
+  return postJSON("/api/wealth/assets", req);
+}
+
+// saveWealthAssetSnapshot backs the balance-sheet's in-place edit — always
+// writes today's (or date's) value, never renames/edits the asset itself.
+export function saveWealthAssetSnapshot(assetId: number, value: number, date?: string): Promise<TradeResponse> {
+  return postJSON("/api/wealth/assets/snapshot", { assetId, value, date });
+}
+
+export function archiveWealthAsset(assetId: number): Promise<TradeResponse> {
+  return postJSON("/api/wealth/assets/archive", { assetId });
 }

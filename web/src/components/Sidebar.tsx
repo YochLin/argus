@@ -52,6 +52,18 @@ const importLink = { path: "/import", label: (d: Dictionary) => d.navImport, ico
 const paperLink = { path: "/paper", label: (d: Dictionary) => d.navPaper, icon: <PaperIcon /> };
 const llmLink = { path: "/llm", label: (d: Dictionary) => d.navLlm, icon: <LlmIcon /> };
 
+// Phase 9's wealth account is a parallel nav, not an extension of the
+// trading one (docs/phase-9-asset-platform.md §8.1) — its routes live under
+// /w/*, distinct from the trading side's paths. Only /w exists so far
+// (the net-worth home page); later PRs add siblings here as they land.
+const wealthLinks: Array<{ path: string; label: (dict: Dictionary) => string; icon: ReactNode }> = [
+  { path: "/w", label: (d) => d.navWealth, icon: <WealthIcon /> },
+];
+
+function isWealthPath(path: string): boolean {
+  return path === "/w" || path.startsWith("/w/");
+}
+
 function isActive(linkPath: string, path: string): boolean {
   return linkPath === path;
 }
@@ -68,16 +80,30 @@ export function Sidebar({
   devMode,
   onToggleDevMode,
 }: Props) {
-  const navLinks = [
-    ...links,
-    ...(paperEnabled ? [paperLink] : []),
-    ...(llmAuditEnabled && devMode ? [llmLink] : []),
-    ...(writable ? [importLink] : []),
-  ];
+  const isWealth = isWealthPath(path);
+  const navLinks = isWealth
+    ? wealthLinks
+    : [
+        ...links,
+        ...(paperEnabled ? [paperLink] : []),
+        ...(llmAuditEnabled && devMode ? [llmLink] : []),
+        ...(writable ? [importLink] : []),
+      ];
   return (
     <div className="sidebar">
       <div className="sidebar-wordmark">
         ARGUS <span className="cursor">▮</span>
+      </div>
+      <div className="topbar-tabs" role="group" aria-label="account">
+        <button
+          className={`topbar-tab${!isWealth ? " active" : ""}`}
+          onClick={() => !isWealth || onNavigate("/")}
+        >
+          {dict.acctTrading}
+        </button>
+        <button className={`topbar-tab${isWealth ? " active" : ""}`} onClick={() => isWealth || onNavigate("/w")}>
+          {dict.acctWealth}
+        </button>
       </div>
       <nav className="sidebar-nav">
         {navLinks.map((link) => (
@@ -335,6 +361,17 @@ function DevModeIcon() {
     <svg {...iconProps} aria-hidden="true">
       <path d="M5.5 5 L2.5 8 L5.5 11" />
       <path d="M10.5 5 L13.5 8 L10.5 11" />
+    </svg>
+  );
+}
+
+function WealthIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <circle cx="8" cy="8" r="6.5" />
+      <path d="M6 10.5 C6 11.3 6.9 12 8 12 S10 11.3 10 10.5 C10 8.8 6 9.2 6 7.5 C6 6.7 6.9 6 8 6 S10 6.7 10 7.5" />
+      <line x1="8" y1="4.3" x2="8" y2="6" />
+      <line x1="8" y1="12" x2="8" y2="13.7" />
     </svg>
   );
 }

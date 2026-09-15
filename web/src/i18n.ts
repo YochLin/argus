@@ -458,6 +458,55 @@ export interface Dictionary {
   notesTagFlow: string;
   notesTagNews: string;
   notesTagOther: string;
+  // Phase 9 wealth platform (docs/phase-9-asset-platform.md) — the /w net
+  // worth home page (variant B: hero number + YTD/MoM) and its quick-add
+  // form. Keyed off asset_group (liquid/growth/income/hard), the schema's
+  // own four-bucket taxonomy, not the design mock's finer 9-category split.
+  navWealth: string;
+  acctTrading: string;
+  acctWealth: string;
+  wealthNetWorth: string;
+  wealthYTD: string;
+  wealthMoM: string;
+  wealthAllocation: string;
+  wealthModelConserv: string;
+  wealthModelBalanced: string;
+  wealthModelGrowth: string;
+  wealthGroupLiquid: string;
+  wealthGroupGrowth: string;
+  wealthGroupIncome: string;
+  wealthGroupHard: string;
+  wealthCurrentPct: string;
+  wealthTargetPct: string;
+  wealthDeviation: string;
+  wealthMarketValue: string;
+  wealthAssetsLabel: string;
+  wealthAddAsset: string;
+  wealthEmpty: string;
+  wealthSide: string;
+  wealthSideAsset: string;
+  wealthSideLiability: string;
+  wealthType: string;
+  wealthName: string;
+  wealthGroupLabel: string;
+  wealthVenue: string;
+  wealthVenueUnset: string;
+  wealthCurrency: string;
+  wealthValue: string;
+  wealthArchive: string;
+  wealthArchiveConfirm: string;
+  wealthKindDeposit: string;
+  wealthKindLoan: string;
+  wealthKindOther: string;
+  wealthBank: string;
+  wealthAccountNote: string;
+  wealthLender: string;
+  wealthRatePct: string;
+  wealthOriginalPrincipal: string;
+  wealthRemainingMonths: string;
+  wealthAddTitle: string;
+  wealthInitialValue: string;
+  wealthEditValueTitle: string;
 }
 
 const en: Dictionary = {
@@ -872,6 +921,51 @@ const en: Dictionary = {
   notesTagFlow: "Flow",
   notesTagNews: "News",
   notesTagOther: "Other",
+  navWealth: "Wealth",
+  acctTrading: "Trading",
+  acctWealth: "Wealth",
+  wealthNetWorth: "NET WORTH",
+  wealthYTD: "YTD",
+  wealthMoM: "MOM",
+  wealthAllocation: "ALLOCATION",
+  wealthModelConserv: "Conservative",
+  wealthModelBalanced: "Balanced",
+  wealthModelGrowth: "Growth",
+  wealthGroupLiquid: "Liquid",
+  wealthGroupGrowth: "Growth",
+  wealthGroupIncome: "Income",
+  wealthGroupHard: "Hard Assets",
+  wealthCurrentPct: "Current %",
+  wealthTargetPct: "Target %",
+  wealthDeviation: "Deviation",
+  wealthMarketValue: "Market Value",
+  wealthAssetsLabel: "ASSETS",
+  wealthAddAsset: "+ Add",
+  wealthEmpty: "No assets yet — add your first one.",
+  wealthSide: "Side",
+  wealthSideAsset: "Asset",
+  wealthSideLiability: "Liability",
+  wealthType: "Type",
+  wealthName: "Name",
+  wealthGroupLabel: "Group",
+  wealthVenue: "Venue",
+  wealthVenueUnset: "Manual entry",
+  wealthCurrency: "Currency",
+  wealthValue: "Value",
+  wealthArchive: "Archive",
+  wealthArchiveConfirm: "Archive this asset? Its history stays on record, it just leaves the active list.",
+  wealthKindDeposit: "Deposit",
+  wealthKindLoan: "Loan",
+  wealthKindOther: "Other",
+  wealthBank: "Bank",
+  wealthAccountNote: "Account note",
+  wealthLender: "Lender",
+  wealthRatePct: "Rate %",
+  wealthOriginalPrincipal: "Original principal",
+  wealthRemainingMonths: "Remaining months",
+  wealthAddTitle: "Add Asset",
+  wealthInitialValue: "Starting value",
+  wealthEditValueTitle: "Update value",
 };
 
 const zh: Dictionary = {
@@ -1280,6 +1374,51 @@ const zh: Dictionary = {
   notesTagFlow: "籌碼面",
   notesTagNews: "消息面",
   notesTagOther: "其他",
+  navWealth: "資產",
+  acctTrading: "交易帳戶",
+  acctWealth: "資產帳戶",
+  wealthNetWorth: "淨資產",
+  wealthYTD: "今年以來",
+  wealthMoM: "月變動",
+  wealthAllocation: "資產配置",
+  wealthModelConserv: "保守型",
+  wealthModelBalanced: "平衡型",
+  wealthModelGrowth: "積極型",
+  wealthGroupLiquid: "流動",
+  wealthGroupGrowth: "成長",
+  wealthGroupIncome: "收益",
+  wealthGroupHard: "實體",
+  wealthCurrentPct: "現值佔比",
+  wealthTargetPct: "目標佔比",
+  wealthDeviation: "偏離",
+  wealthMarketValue: "市值",
+  wealthAssetsLabel: "資產列表",
+  wealthAddAsset: "＋ 新增",
+  wealthEmpty: "尚未新增任何資產，點擊上方按鈕新增第一筆。",
+  wealthSide: "類別",
+  wealthSideAsset: "資產",
+  wealthSideLiability: "負債",
+  wealthType: "型別",
+  wealthName: "名稱",
+  wealthGroupLabel: "分組",
+  wealthVenue: "機構",
+  wealthVenueUnset: "手動登錄",
+  wealthCurrency: "幣別",
+  wealthValue: "現值",
+  wealthArchive: "封存",
+  wealthArchiveConfirm: "封存這筆資產？歷史紀錄會保留，只是從清單中隱藏。",
+  wealthKindDeposit: "存款",
+  wealthKindLoan: "貸款",
+  wealthKindOther: "其他",
+  wealthBank: "銀行",
+  wealthAccountNote: "帳戶備註",
+  wealthLender: "貸款機構",
+  wealthRatePct: "利率 %",
+  wealthOriginalPrincipal: "原始本金",
+  wealthRemainingMonths: "剩餘月數",
+  wealthAddTitle: "新增資產",
+  wealthInitialValue: "起始金額",
+  wealthEditValueTitle: "更新現值",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

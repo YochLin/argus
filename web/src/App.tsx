@@ -21,6 +21,7 @@ import { ImportView } from "./components/ImportView";
 import { SettingsView } from "./components/SettingsView";
 import { SectorFlowView } from "./components/SectorFlowView";
 import { LlmRunsView } from "./components/LlmRunsView";
+import { WealthHomeView } from "./components/WealthHomeView";
 
 // Four client-side routes (dashboard, calendar, round list, round detail)
 // don't justify pulling in a routing library — a hand-rolled route
@@ -202,8 +203,23 @@ export default function App() {
     setMarket(next);
   };
 
+  // Phase 9's wealth account is a parallel nav under /w/* (docs/phase-9-
+  // asset-platform.md §8.1) — its pages don't take the US/TW market toggle
+  // (assets aren't market-scoped) or the trading status bar, so the shell
+  // hides both below when here, same "don't render, don't just disable"
+  // convention as every other feature-gated chrome element.
+  const isWealth = path === "/w" || path.startsWith("/w/");
+
   let body;
-  if (path === "/calendar") {
+  if (path === "/w") {
+    body = (
+      <WealthHomeView
+        dict={dict}
+        writable={status?.writable ?? false}
+        onUnauthorized={(retry) => setAuthRetry(() => retry)}
+      />
+    );
+  } else if (path === "/calendar") {
     body = (
       <CalendarView
         dict={dict}
@@ -346,19 +362,17 @@ export default function App() {
         <TopBar
           market={market}
           onMarketChange={handleMarketChange}
+          hideMarketToggle={isWealth}
           isDark={isDark}
           onToggleTheme={toggleTheme}
           lang={lang}
           onLangChange={changeLang}
           dict={dict}
-          writable={status?.writable ?? false}
+          writable={!isWealth && (status?.writable ?? false)}
           onAddTrade={() => setTradeModal({ mode: "buy", ticker: "", editableTicker: true })}
         />
-        {status ? (
-          <StatusBar status={status} dict={dict} market={market} />
-        ) : (
-          <div className="status-bar" />
-        )}
+        {!isWealth &&
+          (status ? <StatusBar status={status} dict={dict} market={market} /> : <div className="status-bar" />)}
         <div className="content">
           <ErrorBoundary key={`${path}:${market}`} message={dict.error}>
             {body}
