@@ -19,6 +19,10 @@ type wealthWriter interface {
 	CreateLoanAsset(a db.NewAsset, det db.LoanDetails) (int64, error)
 	UpsertAssetSnapshot(s db.AssetSnapshot) error
 	ArchiveAsset(id int64) error
+	// SetSetting backs wealth_balance.go's profile.annual_salary write (the
+	// health-metric ratios' one denominator, §9.3) — the same settings
+	// table/method service.PortfolioService's cash_balance uses.
+	SetSetting(key, value string) error
 }
 
 // assetResponse mirrors db.AssetWithValue for JSON — Value/Cost stay nil

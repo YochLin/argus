@@ -296,6 +296,15 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("POST /api/wealth/assets", s.requireWritable(s.requireAuth(s.handleWealthAssetCreate)))
 	s.mux.HandleFunc("POST /api/wealth/assets/snapshot", s.requireWritable(s.requireAuth(s.handleWealthAssetSnapshot)))
 	s.mux.HandleFunc("POST /api/wealth/assets/archive", s.requireWritable(s.requireAuth(s.handleWealthAssetArchive)))
+	// /api/wealth/balance (`/w/balance`, §8.3-3) — asset/liability grouping,
+	// health-metric ratios, quarterly net-worth trend. Read-only: editing
+	// values stays on `/w`'s asset list. /api/wealth/profile's GET is
+	// likewise ungated; its POST writes profile.annual_salary, the ratios'
+	// one denominator (§9.3), behind the usual write gate.
+	s.mux.HandleFunc("GET /api/wealth/balance", s.handleWealthBalance)
+	s.mux.HandleFunc("GET /api/wealth/debt-payoff", s.handleWealthDebtPayoff)
+	s.mux.HandleFunc("GET /api/wealth/profile", s.handleWealthProfileGet)
+	s.mux.HandleFunc("POST /api/wealth/profile", s.requireWritable(s.requireAuth(s.handleWealthProfileUpdate)))
 	// /api/settings (Phase 17 PR2) sits behind the same gate as every write
 	// route, GET included: the read side reports which credentials are
 	// configured, which is not something to hand out unauthenticated.

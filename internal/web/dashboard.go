@@ -108,6 +108,9 @@ type dbReader interface {
 	ListAssetsWithValue(includeArchived bool) ([]db.AssetWithValue, error)
 	// ListAssetsValueAsOf backs wealth_home.go's YTD/MoM historical totals.
 	ListAssetsValueAsOf(asOfDate string, includeArchived bool) ([]db.AssetWithValue, error)
+	// GetLoanDetails backs wealth_balance.go's liabilities list (rate/term
+	// for the debt-payoff calculator and display).
+	GetLoanDetails(assetID int64) (*db.LoanDetails, error)
 }
 
 // netWorthBaseline resolves the capital base for a period starting at

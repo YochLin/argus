@@ -37,7 +37,7 @@ function modelLabel(dict: Dictionary, m: AllocationModel): string {
   return m === "conserv" ? dict.wealthModelConserv : m === "growth" ? dict.wealthModelGrowth : dict.wealthModelBalanced;
 }
 
-function groupLabel(dict: Dictionary, g: AssetGroup): string {
+export function groupLabel(dict: Dictionary, g: AssetGroup): string {
   switch (g) {
     case "liquid":
       return dict.wealthGroupLiquid;
@@ -50,7 +50,7 @@ function groupLabel(dict: Dictionary, g: AssetGroup): string {
   }
 }
 
-function fmtMoney(v: number, currency: string): string {
+export function fmtMoney(v: number, currency: string): string {
   return `${currency}${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 

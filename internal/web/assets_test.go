@@ -15,15 +15,17 @@ import (
 type fakeWealthDB struct {
 	nextID int64
 
-	lastNewAsset  db.NewAsset
-	lastDeposit   db.DepositDetails
-	lastLoan      db.LoanDetails
-	lastSnapshot  db.AssetSnapshot
-	lastArchiveID int64
+	lastNewAsset                     db.NewAsset
+	lastDeposit                      db.DepositDetails
+	lastLoan                         db.LoanDetails
+	lastSnapshot                     db.AssetSnapshot
+	lastArchiveID                    int64
+	lastSettingKey, lastSettingValue string
 
 	createErr   error
 	snapshotErr error
 	archiveErr  error
+	settingErr  error
 }
 
 func (f *fakeWealthDB) CreateAsset(a db.NewAsset) (int64, error) {
@@ -48,6 +50,10 @@ func (f *fakeWealthDB) UpsertAssetSnapshot(s db.AssetSnapshot) error {
 func (f *fakeWealthDB) ArchiveAsset(id int64) error {
 	f.lastArchiveID = id
 	return f.archiveErr
+}
+func (f *fakeWealthDB) SetSetting(key, value string) error {
+	f.lastSettingKey, f.lastSettingValue = key, value
+	return f.settingErr
 }
 
 func newWealthTestServer(password string, wealthDB wealthWriter, dbr dbReader) *Server {

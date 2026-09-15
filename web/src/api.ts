@@ -634,6 +634,33 @@ function getMockData(url: string): any {
   if (path === "/api/wealth/networth") {
     return { asOf: "2026-07-15", netWorth: null, ytdPct: null, momPct: null, model: "balanced", allocation: [] };
   }
+  if (path === "/api/wealth/balance") {
+    return {
+      asOf: "2026-07-15",
+      totalAssets: null,
+      totalLiabilities: null,
+      netWorth: null,
+      debtRatioPct: null,
+      liquidityMonths: null,
+      savingsRatePct: null,
+      expenseRatioPct: null,
+      monthlySalary: null,
+      assetGroups: [],
+      liabilities: [],
+      quarterlyTrend: [],
+    };
+  }
+  if (path === "/api/wealth/debt-payoff") {
+    return {
+      loans: [],
+      snowball: { order: [], months: 0, totalInterest: 0, monthsSaved: 0 },
+      avalanche: { order: [], months: 0, totalInterest: 0, monthsSaved: 0 },
+      interestDifference: 0,
+    };
+  }
+  if (path === "/api/wealth/profile") {
+    return { annualSalary: null };
+  }
   if (path === "/api/status") {
     return {
       watchingCount: market === "tw" ? 11 : 14,
@@ -1704,4 +1731,91 @@ export function saveWealthAssetSnapshot(assetId: number, value: number, date?: s
 
 export function archiveWealthAsset(assetId: number): Promise<TradeResponse> {
   return postJSON("/api/wealth/assets/archive", { assetId });
+}
+
+// --- Phase 9 PR2: balance sheet / health metrics / debt payoff ---
+// Mirrors internal/web/wealth_balance.go.
+
+export interface BalanceSheetItem {
+  assetId?: number;
+  name: string;
+  venue?: string;
+  currency: string;
+  valueTwd: number;
+  type: string; // the asset's own type, or "equity_us"/"equity_tw" for the virtual row
+}
+
+export interface AssetGroupRow {
+  group: AssetGroup;
+  marketValue: number;
+  pctOfAssets: number | null;
+  assets: BalanceSheetItem[];
+}
+
+export interface LiabilityDetail {
+  assetId: number;
+  name: string;
+  venue?: string;
+  currency: string;
+  valueTwd: number;
+  ratePct: number | null;
+  remainingMonths: number | null;
+  minPayment: number | null;
+}
+
+export interface QuarterPoint {
+  quarter: string;
+  netWorth: number | null;
+}
+
+// BalanceSheet mirrors wealth_balance.go's balanceSheetResponse — every
+// ratio/total is null until there's enough data (fresh install, salary not
+// set, or an FX rate missing for today); render "—", never 0.
+export interface BalanceSheet {
+  asOf: string;
+  totalAssets: number | null;
+  totalLiabilities: number | null;
+  netWorth: number | null;
+  debtRatioPct: number | null;
+  liquidityMonths: number | null;
+  savingsRatePct: number | null;
+  expenseRatioPct: number | null;
+  monthlySalary: number | null;
+  assetGroups: AssetGroupRow[];
+  liabilities: LiabilityDetail[];
+  quarterlyTrend: QuarterPoint[];
+}
+
+export function fetchWealthBalance(): Promise<BalanceSheet> {
+  return getJSON("/api/wealth/balance");
+}
+
+export interface DebtPayoffPlan {
+  order: string[];
+  months: number;
+  totalInterest: number;
+  monthsSaved: number;
+}
+
+export interface DebtPayoffResult {
+  loans: string[];
+  snowball: DebtPayoffPlan;
+  avalanche: DebtPayoffPlan;
+  interestDifference: number;
+}
+
+export function fetchWealthDebtPayoff(extraMonthly: number): Promise<DebtPayoffResult> {
+  return getJSON(`/api/wealth/debt-payoff?extra=${extraMonthly}`);
+}
+
+export interface WealthProfile {
+  annualSalary: number | null;
+}
+
+export function fetchWealthProfile(): Promise<WealthProfile> {
+  return getJSON("/api/wealth/profile");
+}
+
+export function saveWealthProfile(annualSalary: number): Promise<TradeResponse> {
+  return postJSON("/api/wealth/profile", { annualSalary });
 }

@@ -71,6 +71,9 @@ type fakeDB struct {
 	// keyed by the exact asOfDate a test passes in, nil (the zero value)
 	// behaves as "no historical data for that date."
 	wealthAssetsAsOf map[string][]db.AssetWithValue
+	// loanDetails backs GetLoanDetails for wealth_balance_test.go — keyed by
+	// asset id, nil (the zero value) behaves as "no loan_details row."
+	loanDetails map[int64]*db.LoanDetails
 }
 
 func (f *fakeDB) GetPositions() ([]db.Position, error)          { return f.positions, nil }
@@ -190,6 +193,9 @@ func (f *fakeDB) ListAssetsValueAsOf(asOfDate string, includeArchived bool) ([]d
 		}
 	}
 	return out, nil
+}
+func (f *fakeDB) GetLoanDetails(assetID int64) (*db.LoanDetails, error) {
+	return f.loanDetails[assetID], nil
 }
 
 // BlockNewsSource/UnblockNewsSource let fakeDB double as a newsSourceWriter

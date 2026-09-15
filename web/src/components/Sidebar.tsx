@@ -58,6 +58,7 @@ const llmLink = { path: "/llm", label: (d: Dictionary) => d.navLlm, icon: <LlmIc
 // (the net-worth home page); later PRs add siblings here as they land.
 const wealthLinks: Array<{ path: string; label: (dict: Dictionary) => string; icon: ReactNode }> = [
   { path: "/w", label: (d) => d.navWealth, icon: <WealthIcon /> },
+  { path: "/w/balance", label: (d) => d.navWealthBalance, icon: <BalanceSheetIcon /> },
 ];
 
 function isWealthPath(path: string): boolean {
@@ -372,6 +373,18 @@ function WealthIcon() {
       <path d="M6 10.5 C6 11.3 6.9 12 8 12 S10 11.3 10 10.5 C10 8.8 6 9.2 6 7.5 C6 6.7 6.9 6 8 6 S10 6.7 10 7.5" />
       <line x1="8" y1="4.3" x2="8" y2="6" />
       <line x1="8" y1="12" x2="8" y2="13.7" />
+    </svg>
+  );
+}
+
+function BalanceSheetIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <line x1="3" y1="2.5" x2="3" y2="13.5" />
+      <line x1="2" y1="13.5" x2="14" y2="13.5" />
+      <rect x="4.5" y="9" width="2.2" height="4.5" />
+      <rect x="8" y="6" width="2.2" height="7.5" />
+      <rect x="11.3" y="3.5" width="2.2" height="10" />
     </svg>
   );
 }

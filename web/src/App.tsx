@@ -22,6 +22,7 @@ import { SettingsView } from "./components/SettingsView";
 import { SectorFlowView } from "./components/SectorFlowView";
 import { LlmRunsView } from "./components/LlmRunsView";
 import { WealthHomeView } from "./components/WealthHomeView";
+import { WealthBalanceView } from "./components/WealthBalanceView";
 
 // Four client-side routes (dashboard, calendar, round list, round detail)
 // don't justify pulling in a routing library — a hand-rolled route
@@ -214,6 +215,14 @@ export default function App() {
   if (path === "/w") {
     body = (
       <WealthHomeView
+        dict={dict}
+        writable={status?.writable ?? false}
+        onUnauthorized={(retry) => setAuthRetry(() => retry)}
+      />
+    );
+  } else if (path === "/w/balance") {
+    body = (
+      <WealthBalanceView
         dict={dict}
         writable={status?.writable ?? false}
         onUnauthorized={(retry) => setAuthRetry(() => retry)}
