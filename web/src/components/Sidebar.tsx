@@ -59,6 +59,7 @@ const llmLink = { path: "/llm", label: (d: Dictionary) => d.navLlm, icon: <LlmIc
 const wealthLinks: Array<{ path: string; label: (dict: Dictionary) => string; icon: ReactNode }> = [
   { path: "/w", label: (d) => d.navWealth, icon: <WealthIcon /> },
   { path: "/w/balance", label: (d) => d.navWealthBalance, icon: <BalanceSheetIcon /> },
+  { path: "/w/import", label: (d) => d.navWealthImport, icon: <ImportIcon /> },
 ];
 
 function isWealthPath(path: string): boolean {

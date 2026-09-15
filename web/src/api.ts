@@ -1235,7 +1235,8 @@ async function postJSON<T>(url: string, body: unknown): Promise<T> {
     if (e instanceof ApiError) throw e;
     console.warn(`[API] POST ${url} failed, mock success`, e);
     if (url === "/api/login") return { ok: true } as unknown as T;
-    if (url === "/api/import") return { rows: [], applied: 0, dryRun: (body as { dryRun?: boolean }).dryRun ?? true } as unknown as T;
+    if (url === "/api/import" || url === "/api/wealth/import")
+      return { rows: [], applied: 0, dryRun: (body as { dryRun?: boolean }).dryRun ?? true } as unknown as T;
     return { message: "Mock operation completed successfully." } as unknown as T;
   }
 }
@@ -1493,6 +1494,39 @@ export interface ImportResult {
 
 export function importCSV(csv: string, dryRun: boolean): Promise<ImportResult> {
   return postJSON("/api/import", { csv, dryRun });
+}
+
+// --- Phase 9 波次1 PR3' wealth CSV import (§8.15.1) ---
+// Mirrors internal/web/wealth_import.go's wealthImportRow/wealthImportResponse.
+
+export interface WealthImportRow {
+  line: number;
+  side: string;
+  type: string;
+  name: string;
+  group: string;
+  venue?: string;
+  currency?: string;
+  value: number;
+  date: string;
+  bank?: string;
+  accountNote?: string;
+  lender?: string;
+  ratePct?: number;
+  originalPrincipal?: number;
+  remainingMonths?: number;
+  status: "ok" | "warning" | "duplicate" | "error" | "applied";
+  message: string;
+}
+
+export interface WealthImportResult {
+  rows: WealthImportRow[];
+  applied: number;
+  dryRun: boolean;
+}
+
+export function importWealthCSV(csv: string, dryRun: boolean): Promise<WealthImportResult> {
+  return postJSON("/api/wealth/import", { csv, dryRun });
 }
 
 // --- Phase 19: LLM input transparency + news-source blacklist ---

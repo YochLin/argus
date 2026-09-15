@@ -305,6 +305,10 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /api/wealth/debt-payoff", s.handleWealthDebtPayoff)
 	s.mux.HandleFunc("GET /api/wealth/profile", s.handleWealthProfileGet)
 	s.mux.HandleFunc("POST /api/wealth/profile", s.requireWritable(s.requireAuth(s.handleWealthProfileUpdate)))
+	// /api/wealth/import (Phase 9 波次1 PR3', §8.15.1) — CSV paste import for
+	// initial data entry, same dryRun-preview/apply shape and write gate as
+	// /api/import's trade CSV.
+	s.mux.HandleFunc("POST /api/wealth/import", s.requireWritable(s.requireAuth(s.handleWealthImport)))
 	// /api/settings (Phase 17 PR2) sits behind the same gate as every write
 	// route, GET included: the read side reports which credentials are
 	// configured, which is not something to hand out unauthenticated.
