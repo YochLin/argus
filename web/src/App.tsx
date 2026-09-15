@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchCompanyNames, fetchConfig, fetchStatus, marketOf, type Market, type Status } from "./api";
+import { fetchCompanyNames, fetchConfig, fetchStatus, fetchWealthHome, marketOf, type Market, type Status, type WealthHome } from "./api";
 import { getDictionary, normalizeLang, type Lang } from "./i18n";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
@@ -89,6 +89,7 @@ export default function App() {
     return stored === null ? null : normalizeLang(stored);
   });
   const [status, setStatus] = useState<Status | null>(null);
+  const [wealthHome, setWealthHome] = useState<WealthHome | null>(null);
   // names is /api/company-names' TW ticker -> Chinese short name map — see
   // internal/web/companynames.go. Fetched once at the shell level (not
   // per-market, since the endpoint itself isn't market-scoped: it covers
@@ -211,6 +212,22 @@ export default function App() {
   // hides both below when here, same "don't render, don't just disable"
   // convention as every other feature-gated chrome element.
   const isWealth = path === "/w" || path.startsWith("/w/");
+
+  useEffect(() => {
+    // The sidebar's bottom account card (Sidebar.tsx's AccountMenu) needs
+    // net worth/YTD/totals while on any /w/* page, same numbers
+    // WealthHomeView's own hero shows — a light duplicate fetch (cheap GET,
+    // no extra backend work) beats lifting WealthHomeView's fetch up into
+    // shared state for one card. Cleared on leaving wealth so the card
+    // doesn't show stale numbers if the user comes back after a while.
+    if (!isWealth) {
+      setWealthHome(null);
+      return;
+    }
+    fetchWealthHome("balanced")
+      .then(setWealthHome)
+      .catch(() => {});
+  }, [isWealth]);
 
   let body;
   if (path === "/w") {
@@ -370,6 +387,7 @@ export default function App() {
         dict={dict}
         market={market}
         status={status}
+        wealthHome={wealthHome}
         writable={status?.writable ?? false}
         paperEnabled={paperEnabled}
         llmAuditEnabled={llmAuditEnabled}

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import type { Dictionary } from "../i18n";
-import { currencySymbol, type Market, type Status } from "../api";
+import { currencySymbol, type Market, type Status, type WealthHome } from "../api";
 import { formatValue } from "./KpiCard";
 
 interface Props {
@@ -12,6 +12,10 @@ interface Props {
   // — null while /api/status hasn't resolved yet, same "render nothing"
   // degrade App.tsx's own StatusBar placeholder already uses.
   status: Status | null;
+  // wealthHome backs the same card's wealth-mode content (net worth/YTD/
+  // totals) — null while /api/wealth/networth hasn't resolved yet, or while
+  // on the trading side where it isn't fetched at all.
+  wealthHome: WealthHome | null;
   // writable (Phase 5 §B) gates the /import nav link — same "hidden
   // entirely, not just disabled" convention as every other write-only
   // entry point (TopBar's "+ Trade", ChartListView's remove button).
@@ -76,6 +80,7 @@ export function Sidebar({
   dict,
   market,
   status,
+  wealthHome,
   writable,
   paperEnabled,
   llmAuditEnabled,
@@ -117,6 +122,7 @@ export function Sidebar({
           dict={dict}
           market={market}
           status={status}
+          wealthHome={wealthHome}
           writable={writable}
           onNavigate={onNavigate}
           devMode={devMode}
@@ -137,6 +143,7 @@ function AccountMenu({
   dict,
   market,
   status,
+  wealthHome,
   writable,
   onNavigate,
   devMode,
@@ -146,6 +153,7 @@ function AccountMenu({
   dict: Dictionary;
   market: Market;
   status: Status;
+  wealthHome: WealthHome | null;
   writable: boolean;
   onNavigate: (path: string) => void;
   devMode: boolean;
@@ -232,14 +240,36 @@ function AccountMenu({
         </div>
       )}
       <button className="card sidebar-account" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        <div className="eyebrow">{isWealth ? dict.acctWealth : dict.accountValue}</div>
+        <div className="eyebrow">{isWealth ? dict.wealthNetWorth : dict.accountValue}</div>
         {isWealth ? (
-          // The trading account-value/P&L/win-rate stats below don't apply
-          // to the wealth side (net worth already has its own hero number
-          // on /w and /w/balance) — showing them here would just be wrong
-          // data with a misleading label, so this card stays label-only in
-          // wealth mode rather than fabricate a wealth-side equivalent.
-          <div className="sidebar-account-value mono">{dict.acctTrading} ⇄ {dict.acctWealth}</div>
+          // Same shape as the trading branch below (value/change/stats),
+          // fed by wealthHome (App.tsx fetches /api/wealth/networth while
+          // isWealth) instead of status — net worth in place of account
+          // value, YTD% in place of P&L, total assets/liabilities in place
+          // of trade count/win rate. Every field renders "—" until it
+          // resolves or degrades (§8.17.1: never a fabricated 0), same
+          // convention as WealthHomeView's own hero.
+          <>
+            <div className="sidebar-account-value mono">
+              {wealthHome?.netWorth != null
+                ? `NT$${wealthHome.netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                : "—"}
+            </div>
+            <div
+              className={`sidebar-account-pnl mono ${
+                wealthHome?.ytdPct != null ? (wealthHome.ytdPct >= 0 ? "profit" : "loss") : ""
+              }`}
+            >
+              {wealthHome?.ytdPct != null
+                ? `${wealthHome.ytdPct >= 0 ? "+" : ""}${wealthHome.ytdPct.toFixed(1)}% YTD`
+                : "—"}
+            </div>
+            <div className="sidebar-account-stats">
+              {dict.wealthTotalAssets} {wealthHome?.totalAssets != null ? `NT$${wealthHome.totalAssets.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+              {" · "}
+              {dict.wealthTotalLiabilities} {wealthHome?.totalLiabilities != null ? `NT$${wealthHome.totalLiabilities.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+            </div>
+          </>
         ) : (
           <>
             <div className="sidebar-account-value mono">
