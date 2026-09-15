@@ -309,6 +309,11 @@ func New(cfg Config) *Server {
 	// initial data entry, same dryRun-preview/apply shape and write gate as
 	// /api/import's trade CSV.
 	s.mux.HandleFunc("POST /api/wealth/import", s.requireWritable(s.requireAuth(s.handleWealthImport)))
+	// /api/wealth/alloc (`/w/alloc`, §9.4 PR4) — target model, rebalance
+	// orders, locked (illiquid) groups, risk share, currency exposure, and
+	// single-position concentration warnings. Read-only (no write path —
+	// orders are suggestions, not executed trades), ungated like the rest.
+	s.mux.HandleFunc("GET /api/wealth/alloc", s.handleWealthAlloc)
 	// /api/settings (Phase 17 PR2) sits behind the same gate as every write
 	// route, GET included: the read side reports which credentials are
 	// configured, which is not something to hand out unauthenticated.

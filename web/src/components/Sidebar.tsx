@@ -62,6 +62,7 @@ const llmLink = { path: "/llm", label: (d: Dictionary) => d.navLlm, icon: <LlmIc
 // (the net-worth home page); later PRs add siblings here as they land.
 const wealthLinks: Array<{ path: string; label: (dict: Dictionary) => string; icon: ReactNode }> = [
   { path: "/w", label: (d) => d.navWealth, icon: <WealthIcon /> },
+  { path: "/w/alloc", label: (d) => d.navWealthAlloc, icon: <AllocIcon /> },
   { path: "/w/balance", label: (d) => d.navWealthBalance, icon: <BalanceSheetIcon /> },
   { path: "/w/import", label: (d) => d.navWealthImport, icon: <ImportIcon /> },
 ];
@@ -449,6 +450,15 @@ function BalanceSheetIcon() {
       <rect x="4.5" y="9" width="2.2" height="4.5" />
       <rect x="8" y="6" width="2.2" height="7.5" />
       <rect x="11.3" y="3.5" width="2.2" height="10" />
+    </svg>
+  );
+}
+
+function AllocIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 2 V8 L12.2 11.2" />
     </svg>
   );
 }
