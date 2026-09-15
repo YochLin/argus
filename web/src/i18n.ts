@@ -559,6 +559,8 @@ export interface Dictionary {
   // Phase 9 §9.4 PR4: allocation & rebalance page (/w/alloc). Mirrors
   // internal/web/wealth_alloc.go.
   navWealthAlloc: string;
+  wealthTargetModelLabel: string;
+  wealthMixTitle: string;
   wealthOrdersTitle: string;
   wealthOrdersHint: string;
   wealthOrderBuy: string;
@@ -1080,6 +1082,8 @@ const en: Dictionary = {
   wealthImportColGroup: "Group",
   wealthImportColValue: "Value",
   navWealthAlloc: "Allocation",
+  wealthTargetModelLabel: "Target model",
+  wealthMixTitle: "MIX",
   wealthOrdersTitle: "REBALANCE ORDERS",
   wealthOrdersHint: "Suggested only — amounts and accounts to close each group's drift back to target. Nothing is executed automatically.",
   wealthOrderBuy: "BUY",
@@ -1595,6 +1599,8 @@ const zh: Dictionary = {
   wealthImportColGroup: "分組",
   wealthImportColValue: "金額",
   navWealthAlloc: "配置與再平衡",
+  wealthTargetModelLabel: "目標模型",
+  wealthMixTitle: "配置組成",
   wealthOrdersTitle: "再平衡指令",
   wealthOrdersHint: "僅供參考——把每個分組的偏離調回目標所需的金額與建議帳戶，不會自動執行。",
   wealthOrderBuy: "買進",

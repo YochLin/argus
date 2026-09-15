@@ -36,7 +36,10 @@ export function WealthAllocView({ dict }: Props) {
     <>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
         <div className="eyebrow">{dict.navWealthAlloc}</div>
-        <div className="topbar-tabs" role="group" aria-label="allocation model" style={{ marginLeft: "auto" }}>
+        <span className="mono" style={{ marginLeft: "auto", fontSize: 10, letterSpacing: "0.06em", color: "var(--ink-3)" }}>
+          {dict.wealthTargetModelLabel}
+        </span>
+        <div className="topbar-tabs" role="group" aria-label="allocation model">
           {MODELS.map((m) => (
             <button key={m} className={`topbar-tab${model === m ? " active" : ""}`} onClick={() => setModel(m)}>
               {modelLabel(dict, m)}
@@ -45,78 +48,74 @@ export function WealthAllocView({ dict }: Props) {
         </div>
       </div>
 
-      <div className="card">
-        <div className="eyebrow">{dict.wealthAllocation}</div>
-        {hasData && alloc!.allocation.length > 0 ? (
-          <table className="mono">
-            <thead>
-              <tr>
-                <th>{dict.wealthGroupLabel}</th>
-                <th>{dict.wealthCurrentPct}</th>
-                <th>{dict.wealthTargetPct}</th>
-                <th>{dict.wealthDeviation}</th>
-                <th>{dict.wealthVenueLabel}</th>
-                <th>{dict.wealthMarketValue}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {alloc!.allocation.map((row) => (
-                <tr key={row.group}>
-                  <td>
-                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span className={`wealth-dot ${groupColorClass(row.group)}`} />
-                      {groupLabel(dict, row.group)}
-                    </span>
-                  </td>
-                  <td>{row.currentPct.toFixed(1)}%</td>
-                  <td>{row.targetPct.toFixed(1)}%</td>
-                  <td className={row.deviationPt > 0 ? "profit" : row.deviationPt < 0 ? "loss" : ""}>
-                    {row.deviationPt > 0 ? "+" : ""}
-                    {row.deviationPt.toFixed(1)}pt
-                  </td>
-                  <td style={{ fontFamily: "var(--sans)", fontSize: 12, color: "var(--ink-3)" }}>{row.venue || "—"}</td>
-                  <td>{fmtMoney(row.marketValue, currency)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <div className="empty-message">{dict.noData}</div>
-        )}
-      </div>
-
-      <div className="card">
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
-          <div className="eyebrow" style={{ marginBottom: 0 }}>
-            {dict.wealthOrdersTitle}
-          </div>
-          {hasData && alloc!.orders.length > 0 && (
-            <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>
-              {alloc!.orders.length} · {fmtMoney(alloc!.rebalTotal, currency)} {dict.wealthRebalTotal}
-            </span>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--gap)", marginBottom: "var(--gap)" }}>
+        <div className="card" style={{ flex: "1 1 240px" }}>
+          <div className="eyebrow">{dict.wealthMixTitle}</div>
+          {hasData && alloc!.allocation.length > 0 ? (
+            <>
+              <div className="wealth-alloc-bar">
+                {alloc!.allocation.map((row) => (
+                  <div
+                    key={row.group}
+                    className={`wealth-bar-seg ${groupColorClass(row.group)}`}
+                    style={{ width: `${Math.max(0, row.currentPct)}%` }}
+                  />
+                ))}
+              </div>
+              <div className="wealth-alloc-legend">
+                {alloc!.allocation.map((row) => (
+                  <span key={row.group} className="wealth-alloc-legend-item">
+                    <span className={`wealth-dot ${groupColorClass(row.group)}`} />
+                    {groupLabel(dict, row.group)} <span className="mono">{row.currentPct.toFixed(1)}%</span>
+                  </span>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="empty-message">{dict.noData}</div>
           )}
         </div>
-        {hasData && alloc!.orders.length > 0 ? (
-          <div className="wealth-col-stack">
-            {alloc!.orders.map((o) => (
-              <div key={o.group} className="wealth-item-row">
-                <span className={`wealth-dot ${groupColorClass(o.group)}`} />
-                <span style={{ fontWeight: 600, color: o.side === "buy" ? "var(--profit)" : "var(--loss)" }}>
-                  {o.side === "buy" ? dict.wealthOrderBuy : dict.wealthOrderSell}
-                </span>
-                <span style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                  {o.assetName || groupLabel(dict, o.group)}
-                  <span className="mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>
-                    {dict.wealthVenueLabel} {o.venue || "—"}
-                  </span>
-                </span>
-                <span className="wealth-item-row-value mono">{fmtMoney(o.amount, currency)}</span>
-              </div>
-            ))}
+
+        <div className="card" style={{ flex: "1 1 240px", display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
+            <div className="eyebrow" style={{ marginBottom: 0 }}>
+              {dict.wealthOrdersTitle}
+            </div>
+            {hasData && alloc!.orders.length > 0 && (
+              <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>
+                {alloc!.orders.length} · {fmtMoney(alloc!.rebalTotal, currency)} {dict.wealthRebalTotal}
+              </span>
+            )}
           </div>
-        ) : (
-          <div className="empty-message">{dict.wealthNoOrders}</div>
-        )}
+          {hasData && alloc!.orders.length > 0 ? (
+            <div className="wealth-col-stack">
+              {alloc!.orders.map((o) => (
+                <div key={o.group} className="wealth-item-row">
+                  <span className={`wealth-dot ${groupColorClass(o.group)}`} />
+                  <span style={{ fontWeight: 600, color: o.side === "buy" ? "var(--profit)" : "var(--loss)" }}>
+                    {o.side === "buy" ? dict.wealthOrderBuy : dict.wealthOrderSell}
+                  </span>
+                  <span style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                    {o.assetName || groupLabel(dict, o.group)}
+                    <span className="mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>
+                      {dict.wealthVenueLabel} {o.venue || "—"}
+                    </span>
+                  </span>
+                  <span style={{ marginLeft: "auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                    <span className="mono" style={{ fontSize: 13 }}>
+                      {fmtMoney(o.amount, currency)}
+                    </span>
+                    <span className={`mono ${o.deviationPt > 0 ? "profit" : "loss"}`} style={{ fontSize: 10 }}>
+                      {o.deviationPt > 0 ? "+" : ""}
+                      {o.deviationPt.toFixed(1)}pt
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-message">{dict.wealthNoOrders}</div>
+          )}
         {hasData && alloc!.locked.length > 0 && (
           <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
             <div className="mono" style={{ fontSize: 10, letterSpacing: "0.06em", color: "var(--ink-3)", marginBottom: 7 }}>
@@ -136,7 +135,67 @@ export function WealthAllocView({ dict }: Props) {
             ))}
           </div>
         )}
-        <div style={{ marginTop: 12, fontSize: 11, color: "var(--ink-3)", lineHeight: 1.6 }}>{dict.wealthOrdersHint}</div>
+          <div style={{ marginTop: 12, fontSize: 11, color: "var(--ink-3)", lineHeight: 1.6 }}>{dict.wealthOrdersHint}</div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="eyebrow">{dict.wealthAllocation}</div>
+        {hasData && alloc!.allocation.length > 0 ? (
+          <table className="mono">
+            <thead>
+              <tr>
+                <th>{dict.wealthGroupLabel}</th>
+                <th style={{ width: "28%" }} />
+                <th>{dict.wealthCurrentPct}</th>
+                <th>{dict.wealthTargetPct}</th>
+                <th>{dict.wealthDeviation}</th>
+                <th>{dict.wealthVenueLabel}</th>
+                <th>{dict.wealthMarketValue}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {alloc!.allocation.map((row) => (
+                <tr key={row.group}>
+                  <td>
+                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span className={`wealth-dot ${groupColorClass(row.group)}`} />
+                      {groupLabel(dict, row.group)}
+                    </span>
+                  </td>
+                  <td>
+                    <span style={{ position: "relative", display: "block", background: "var(--bg)", borderRadius: 3, height: 6 }}>
+                      <span
+                        className={`wealth-bar-seg ${groupColorClass(row.group)}`}
+                        style={{ display: "block", width: `${Math.max(0, Math.min(100, row.currentPct))}%`, borderRadius: 3 }}
+                      />
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: -2,
+                          left: `${Math.max(0, Math.min(100, row.targetPct))}%`,
+                          width: 2,
+                          height: 10,
+                          background: "var(--ink)",
+                        }}
+                      />
+                    </span>
+                  </td>
+                  <td>{row.currentPct.toFixed(1)}%</td>
+                  <td style={{ color: "var(--ink-3)" }}>{row.targetPct.toFixed(1)}%</td>
+                  <td className={row.deviationPt > 0 ? "profit" : row.deviationPt < 0 ? "loss" : ""}>
+                    {row.deviationPt > 0 ? "+" : ""}
+                    {row.deviationPt.toFixed(1)}pt
+                  </td>
+                  <td style={{ fontFamily: "var(--sans)", fontSize: 12, color: "var(--ink-3)" }}>{row.venue || "—"}</td>
+                  <td>{fmtMoney(row.marketValue, currency)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="empty-message">{dict.noData}</div>
+        )}
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--gap)" }}>
@@ -150,6 +209,19 @@ export function WealthAllocView({ dict }: Props) {
               ? `${dict.wealthRiskBand} ${alloc!.riskTargetLow.toFixed(0)}–${alloc!.riskTargetHigh.toFixed(0)}%`
               : "—"}
           </div>
+          {hasData && alloc!.riskPct != null && (
+            <div style={{ marginTop: 14, background: "var(--bg)", borderRadius: 3, height: 6 }}>
+              <div
+                style={{
+                  display: "block",
+                  width: `${Math.max(0, Math.min(100, alloc!.riskPct))}%`,
+                  height: 6,
+                  borderRadius: 3,
+                  background: "var(--accent)",
+                }}
+              />
+            </div>
+          )}
         </div>
 
         <div className="card" style={{ flex: "1 1 200px" }}>
