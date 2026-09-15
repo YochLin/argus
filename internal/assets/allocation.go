@@ -22,6 +22,12 @@ const (
 // order the allocation table renders them.
 var AssetGroups = []string{"liquid", "growth", "income", "hard"}
 
+// LoanTypes is which asset.Type values carry a loan_details row (rate,
+// remaining term, min payment) — credit-card revolving debt uses the same
+// shape as an installment loan (§8.1/§8.5/§8.9), so it shares the table
+// rather than getting its own.
+var LoanTypes = map[string]bool{"loan": true, "credit_card": true}
+
 // ModelPresets is the target percentage per asset_group for each preset.
 // ⚠️ These are illustrative round numbers, not derived from research or
 // from the user's own situation — same honesty disclaimer the design spec

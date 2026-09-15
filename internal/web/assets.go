@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"argus/internal/assets"
 	"argus/internal/db"
 	"argus/internal/logger"
 )
@@ -19,6 +20,10 @@ type wealthWriter interface {
 	CreateLoanAsset(a db.NewAsset, det db.LoanDetails) (int64, error)
 	UpsertAssetSnapshot(s db.AssetSnapshot) error
 	ArchiveAsset(id int64) error
+	// SetSetting backs wealth_balance.go's profile.annual_salary write (the
+	// health-metric ratios' one denominator, §9.3) — the same settings
+	// table/method service.PortfolioService's cash_balance uses.
+	SetSetting(key, value string) error
 }
 
 // assetResponse mirrors db.AssetWithValue for JSON — Value/Cost stay nil
@@ -107,14 +112,10 @@ type wealthAssetCreateRequest struct {
 	Loan         *wealthAssetLoanRequest    `json:"loan"`
 }
 
-// depositAssetTypes/loanAssetTypes pick which detail table a create request
-// writes to. Credit-card revolving debt reuses loan_details rather than
-// getting its own table (§8.5), hence "credit_card" routing to the same
-// path as "loan".
-var (
-	depositAssetTypes = map[string]bool{"deposit": true}
-	loanAssetTypes    = map[string]bool{"loan": true, "credit_card": true}
-)
+// depositAssetTypes picks which detail table a create request writes to;
+// the loan-side equivalent is assets.LoanTypes (shared with
+// internal/service's balance-sheet/debt-payoff assembly).
+var depositAssetTypes = map[string]bool{"deposit": true}
 
 // handleWealthAssetCreate backs POST /api/wealth/assets — the quick-add
 // drawer's single write path, gated like every other write route. It always
@@ -166,7 +167,7 @@ func (s *Server) handleWealthAssetCreate(w http.ResponseWriter, r *http.Request)
 			det = db.DepositDetails{Bank: req.Deposit.Bank, AccountNote: req.Deposit.AccountNote}
 		}
 		id, err = s.wealthDB.CreateDepositAsset(na, det)
-	case loanAssetTypes[req.Type]:
+	case assets.LoanTypes[req.Type]:
 		det := db.LoanDetails{}
 		if req.Loan != nil {
 			det = db.LoanDetails{

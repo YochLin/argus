@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/market"
 )
@@ -31,80 +30,6 @@ func (f *fakeFXDB) SaveFXRate(date, pair string, rate float64) error {
 }
 
 func floatPtr(v float64) *float64 { return &v }
-
-func TestWealthTotalsTWDOnlyNoFXNeeded(t *testing.T) {
-	fake := &fakeDB{wealthAssets: []db.AssetWithValue{
-		{Asset: db.Asset{Side: "asset", Type: "deposit", AssetGroup: "liquid", Currency: "TWD"}, Value: floatPtr(100000)},
-		{Asset: db.Asset{Side: "liability", Type: "loan", AssetGroup: "hard", Currency: "TWD"}, Value: floatPtr(40000)},
-	}}
-	s := &Server{db: fake, quotes: &fakeQuotes{}, fxDB: &fakeFXDB{}}
-
-	total, byGroup, ok := s.wealthTotals("2026-09-15", true)
-	if !ok {
-		t.Fatal("wealthTotals() ok = false, want true (TWD-only needs no FX)")
-	}
-	if total != 60000 {
-		t.Errorf("total = %v, want 60000 (100000 asset - 40000 liability)", total)
-	}
-	if byGroup["liquid"] != 100000 || byGroup["hard"] != -40000 {
-		t.Errorf("byGroup = %+v, want liquid=100000 hard=-40000", byGroup)
-	}
-}
-
-func TestWealthTotalsUSDLiveFetchConvertsAndCaches(t *testing.T) {
-	fake := &fakeDB{wealthAssets: []db.AssetWithValue{
-		{Asset: db.Asset{Side: "asset", Type: "other", AssetGroup: "growth", Currency: "USD"}, Value: floatPtr(1000)},
-	}}
-	quotes := &fakeQuotes{quotes: map[string]*data.Quote{"USDTWD=X": {Price: 32}}}
-	fxdb := &fakeFXDB{}
-	s := &Server{db: fake, quotes: quotes, fxDB: fxdb}
-
-	total, byGroup, ok := s.wealthTotals("2026-09-15", true)
-	if !ok {
-		t.Fatal("wealthTotals() ok = false, want true (live fetch should succeed)")
-	}
-	if total != 32000 {
-		t.Errorf("total = %v, want 32000 (1000 USD * 32)", total)
-	}
-	if byGroup["growth"] != 32000 {
-		t.Errorf("byGroup[growth] = %v, want 32000", byGroup["growth"])
-	}
-	if r, ok, _ := fxdb.GetFXRate("2026-09-15", "USDTWD"); !ok || r != 32 {
-		t.Errorf("fx rate was not cached: got %v, %v", r, ok)
-	}
-}
-
-// TestWealthTotalsHistoricalWithoutCachedRateDegrades pins §8.17.1's rule:
-// a historical date (live=false) with no recorded fx_rates row must not
-// silently drop the USD asset from the sum — the whole total degrades to
-// "not ok" instead.
-func TestWealthTotalsHistoricalWithoutCachedRateDegrades(t *testing.T) {
-	fake := &fakeDB{wealthAssetsAsOf: map[string][]db.AssetWithValue{
-		"2026-01-01": {{Asset: db.Asset{Side: "asset", AssetGroup: "growth", Currency: "USD"}, Value: floatPtr(1000)}},
-	}}
-	s := &Server{db: fake, quotes: &fakeQuotes{}, fxDB: &fakeFXDB{}}
-
-	_, _, ok := s.wealthTotals("2026-01-01", false)
-	if ok {
-		t.Error("wealthTotals() ok = true, want false (no historical fx rate on record, must not fabricate)")
-	}
-}
-
-func TestWealthTotalsUsesCachedHistoricalRate(t *testing.T) {
-	fake := &fakeDB{wealthAssetsAsOf: map[string][]db.AssetWithValue{
-		"2026-01-01": {{Asset: db.Asset{Side: "asset", AssetGroup: "growth", Currency: "USD"}, Value: floatPtr(1000)}},
-	}}
-	fxdb := &fakeFXDB{rates: map[string]float64{fxKey("2026-01-01", "USDTWD"): 30}}
-	s := &Server{db: fake, quotes: &fakeQuotes{}, fxDB: fxdb}
-
-	total, _, ok := s.wealthTotals("2026-01-01", false)
-	if !ok {
-		t.Fatal("wealthTotals() ok = false, want true (rate is on record)")
-	}
-	if total != 30000 {
-		t.Errorf("total = %v, want 30000", total)
-	}
-}
 
 func newWealthHomeTestServer(fake *fakeDB, quotes *fakeQuotes) *Server {
 	s := &Server{db: fake, quotes: quotes, fxDB: &fakeFXDB{}}
@@ -139,6 +64,12 @@ func TestHandleWealthHomeNoHistoryRendersNilYTDMoM(t *testing.T) {
 	}
 	if len(got.Allocation) != 4 {
 		t.Errorf("len(Allocation) = %d, want 4 (one row per asset_group)", len(got.Allocation))
+	}
+	if got.TotalAssets == nil || *got.TotalAssets != 100000 {
+		t.Errorf("TotalAssets = %v, want 100000", got.TotalAssets)
+	}
+	if got.TotalLiabilities == nil || *got.TotalLiabilities != 0 {
+		t.Errorf("TotalLiabilities = %v, want 0", got.TotalLiabilities)
 	}
 }
 

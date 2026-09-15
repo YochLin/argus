@@ -507,6 +507,42 @@ export interface Dictionary {
   wealthAddTitle: string;
   wealthInitialValue: string;
   wealthEditValueTitle: string;
+  // Phase 9 PR2 (partial): balance sheet page (/w/balance), health-metric
+  // ratios, and the debt-payoff (snowball/avalanche) calculator. Mirrors
+  // internal/web/wealth_balance.go.
+  navWealthBalance: string;
+  wealthTotalAssets: string;
+  wealthTotalLiabilities: string;
+  wealthDebtRatio: string;
+  wealthLiquidityMonths: string;
+  wealthSavingsRate: string;
+  wealthExpenseRatio: string;
+  wealthMonthlySalary: string;
+  wealthAnnualSalary: string;
+  wealthSetSalary: string;
+  wealthSalarySave: string;
+  wealthNoSalarySet: string;
+  wealthPctOfAssets: string;
+  wealthLiabilitiesLabel: string;
+  wealthQuarterlyTrend: string;
+  wealthEquityUS: string;
+  wealthEquityTW: string;
+  wealthMinPayment: string;
+  wealthDebtPayoffTitle: string;
+  wealthExtraPayment: string;
+  wealthCalculate: string;
+  wealthSnowball: string;
+  wealthAvalanche: string;
+  wealthPayoffOrder: string;
+  wealthPayoffMonths: string;
+  wealthPayoffMonthsSaved: string;
+  wealthPayoffTotalInterest: string;
+  wealthPayoffInterestDiff: string;
+  wealthPayoffNoLoans: string;
+  wealthOffTargetTitle: string;
+  wealthSrcManual: string;
+  wealthSrcImport: string;
+  wealthSrcSync: string;
 }
 
 const en: Dictionary = {
@@ -966,6 +1002,39 @@ const en: Dictionary = {
   wealthAddTitle: "Add Asset",
   wealthInitialValue: "Starting value",
   wealthEditValueTitle: "Update value",
+  navWealthBalance: "Balance Sheet",
+  wealthTotalAssets: "Total Assets",
+  wealthTotalLiabilities: "Total Liabilities",
+  wealthDebtRatio: "Debt Ratio",
+  wealthLiquidityMonths: "Liquidity (months)",
+  wealthSavingsRate: "Savings Rate",
+  wealthExpenseRatio: "Expense Ratio",
+  wealthMonthlySalary: "Monthly Salary",
+  wealthAnnualSalary: "Annual Salary",
+  wealthSetSalary: "Set annual salary",
+  wealthSalarySave: "Save",
+  wealthNoSalarySet: "Set your annual salary to see savings rate, expense ratio, and liquidity months.",
+  wealthPctOfAssets: "of assets",
+  wealthLiabilitiesLabel: "LIABILITIES",
+  wealthQuarterlyTrend: "QUARTERLY NET WORTH",
+  wealthEquityUS: "US Trading Account",
+  wealthEquityTW: "TW Trading Account",
+  wealthMinPayment: "Min. Payment",
+  wealthDebtPayoffTitle: "DEBT PAYOFF STRATEGY",
+  wealthExtraPayment: "Extra monthly payment",
+  wealthCalculate: "Calculate",
+  wealthSnowball: "Snowball (smallest balance first)",
+  wealthAvalanche: "Avalanche (highest rate first)",
+  wealthPayoffOrder: "Payoff order",
+  wealthPayoffMonths: "Months to payoff",
+  wealthPayoffMonthsSaved: "Months saved",
+  wealthPayoffTotalInterest: "Total interest",
+  wealthPayoffInterestDiff: "Avalanche saves vs. snowball",
+  wealthPayoffNoLoans: "No loans with both a rate and a remaining term yet.",
+  wealthOffTargetTitle: "MOST OFF-TARGET",
+  wealthSrcManual: "manual",
+  wealthSrcImport: "import",
+  wealthSrcSync: "sync",
 };
 
 const zh: Dictionary = {
@@ -1419,6 +1488,39 @@ const zh: Dictionary = {
   wealthAddTitle: "新增資產",
   wealthInitialValue: "起始金額",
   wealthEditValueTitle: "更新現值",
+  navWealthBalance: "資產負債表",
+  wealthTotalAssets: "總資產",
+  wealthTotalLiabilities: "總負債",
+  wealthDebtRatio: "負債比",
+  wealthLiquidityMonths: "流動性月數",
+  wealthSavingsRate: "儲蓄率",
+  wealthExpenseRatio: "收支比",
+  wealthMonthlySalary: "月薪",
+  wealthAnnualSalary: "年薪",
+  wealthSetSalary: "設定年薪",
+  wealthSalarySave: "儲存",
+  wealthNoSalarySet: "設定年薪後即可看到儲蓄率、收支比與流動性月數。",
+  wealthPctOfAssets: "佔總資產",
+  wealthLiabilitiesLabel: "負債列表",
+  wealthQuarterlyTrend: "季度淨值趨勢",
+  wealthEquityUS: "美股交易帳戶",
+  wealthEquityTW: "台股交易帳戶",
+  wealthMinPayment: "最低月付",
+  wealthDebtPayoffTitle: "債務償還策略",
+  wealthExtraPayment: "每月可額外還款",
+  wealthCalculate: "計算",
+  wealthSnowball: "雪球法（先清最小筆）",
+  wealthAvalanche: "雪崩法（先清最高利率）",
+  wealthPayoffOrder: "清償順序",
+  wealthPayoffMonths: "所需月數",
+  wealthPayoffMonthsSaved: "縮短月數",
+  wealthPayoffTotalInterest: "總利息",
+  wealthPayoffInterestDiff: "雪崩比雪球省下利息",
+  wealthPayoffNoLoans: "尚無同時填有利率與剩餘期數的貸款可計算。",
+  wealthOffTargetTitle: "偏離最大項",
+  wealthSrcManual: "手動",
+  wealthSrcImport: "匯入",
+  wealthSrcSync: "同步",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

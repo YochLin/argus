@@ -422,6 +422,14 @@ input {
   color: var(--ink-3);
 }
 
+.sidebar-account-menu-item-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
 .sidebar-switch {
   flex-shrink: 0;
   display: block;
@@ -2869,6 +2877,221 @@ th {
 
 .seg-toggle button.active {
   border-color: var(--accent);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+/* Phase 9 wealth platform (docs/phase-9-asset-platform.md) — the net-worth
+   home page and balance-sheet page's hero cards, allocation bar/legend, and
+   category dots, matching the design mockup's card treatment (single glow
+   hero with inline stats, not a row of small stat-grid boxes). */
+.wealth-hero-value {
+  font-family: var(--font-mono);
+  font-size: clamp(28px, 5vw, 56px);
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  margin-top: 8px;
+}
+
+.wealth-hero-stats {
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.wealth-hero-stats > span {
+  white-space: nowrap;
+}
+
+/* Balance sheet's hero is an inline row of stat blocks rather than one big
+   number + stats line (design mock: net worth/total assets/total
+   liabilities/net-to-assets% side by side, last one pushed right). */
+.wealth-hero-row {
+  display: flex;
+  align-items: baseline;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+
+.wealth-hero-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wealth-hero-block:last-child {
+  margin-left: auto;
+}
+
+.wealth-hero-block-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 22px;
+}
+
+.wealth-hero-block-value.big {
+  font-size: clamp(24px, 4vw, 40px);
+}
+
+.wealth-alloc-bar {
+  display: flex;
+  height: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-top: 20px;
+  background: var(--bg);
+}
+
+.wealth-alloc-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.wealth-alloc-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wealth-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Bar segment: same series-color classes as .wealth-dot, but sized by its
+   flex-basis (set inline per row's %) and filling the bar's own height —
+   a separate class so overriding shape here doesn't fight .wealth-dot's
+   fixed 8x8 circle. */
+.wealth-bar-seg {
+  height: 100%;
+  flex-shrink: 0;
+}
+
+.wealth-dot.s1,
+.wealth-bar-seg.s1 {
+  background: var(--s1);
+}
+.wealth-dot.s2,
+.wealth-bar-seg.s2 {
+  background: var(--s2);
+}
+.wealth-dot.s3,
+.wealth-bar-seg.s3 {
+  background: var(--s3);
+}
+.wealth-dot.s4,
+.wealth-bar-seg.s4 {
+  background: var(--s4);
+}
+
+/* Off-target/liabilities/ratios sub-cards nested inside the two-column
+   balance-sheet grid (design mock: right column stacks Liabilities above
+   Ratios rather than laying them out side by side with Assets). */
+.wealth-col-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.wealth-group-block {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.wealth-group-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+}
+
+.wealth-group-header-value {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wealth-item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.wealth-item-row-value {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wealth-ratios-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 14px;
+}
+
+.wealth-ratio-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wealth-ratio-block-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+.wealth-ratio-block-value {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Three-value source tag (manual/import/sync, §9.1) — a small pill next to
+   an asset/liability row's name. */
+.wealth-src-tag {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+
+.wealth-src-tag.import {
+  border-color: color-mix(in srgb, var(--s1) 40%, transparent);
+  background: color-mix(in srgb, var(--s1) 14%, transparent);
+  color: var(--s1);
+}
+
+.wealth-src-tag.sync {
+  border-color: var(--accent-tint-border);
   background: var(--accent-tint-bg);
   color: var(--accent);
 }

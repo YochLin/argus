@@ -58,6 +58,7 @@ const llmLink = { path: "/llm", label: (d: Dictionary) => d.navLlm, icon: <LlmIc
 // (the net-worth home page); later PRs add siblings here as they land.
 const wealthLinks: Array<{ path: string; label: (dict: Dictionary) => string; icon: ReactNode }> = [
   { path: "/w", label: (d) => d.navWealth, icon: <WealthIcon /> },
+  { path: "/w/balance", label: (d) => d.navWealthBalance, icon: <BalanceSheetIcon /> },
 ];
 
 function isWealthPath(path: string): boolean {
@@ -94,17 +95,6 @@ export function Sidebar({
       <div className="sidebar-wordmark">
         ARGUS <span className="cursor">▮</span>
       </div>
-      <div className="topbar-tabs" role="group" aria-label="account">
-        <button
-          className={`topbar-tab${!isWealth ? " active" : ""}`}
-          onClick={() => !isWealth || onNavigate("/")}
-        >
-          {dict.acctTrading}
-        </button>
-        <button className={`topbar-tab${isWealth ? " active" : ""}`} onClick={() => isWealth || onNavigate("/w")}>
-          {dict.acctWealth}
-        </button>
-      </div>
       <nav className="sidebar-nav">
         {navLinks.map((link) => (
           <a
@@ -130,6 +120,7 @@ export function Sidebar({
           onNavigate={onNavigate}
           devMode={devMode}
           onToggleDevMode={onToggleDevMode}
+          isWealth={isWealth}
         />
       )}
     </div>
@@ -137,10 +128,10 @@ export function Sidebar({
 }
 
 // The design-canvas reference's account-switcher: a click-to-open menu
-// anchored above the account card, holding a Settings entry and a dev-mode
-// toggle. Real multi-account switching (the reference's account list) isn't
-// built yet, so this menu only ever has these two static rows — Settings
-// moved here from the main nav list to match the reference's placement.
+// anchored above the account card, holding the trading⇄wealth switch
+// (docs/phase-9-asset-platform.md §9.1 PR1: "sidebar 底部總覽卡升級成
+// trading ⇄ wealth 切換器" — this card itself is the switcher, not a
+// separate control elsewhere), a Settings entry, and a dev-mode toggle.
 function AccountMenu({
   dict,
   market,
@@ -149,6 +140,7 @@ function AccountMenu({
   onNavigate,
   devMode,
   onToggleDevMode,
+  isWealth,
 }: {
   dict: Dictionary;
   market: Market;
@@ -157,6 +149,7 @@ function AccountMenu({
   onNavigate: (path: string) => void;
   devMode: boolean;
   onToggleDevMode: () => void;
+  isWealth: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -174,6 +167,36 @@ function AccountMenu({
     <div className="sidebar-account-wrap" ref={ref}>
       {open && (
         <div className="sidebar-account-menu">
+          <button
+            className="sidebar-account-menu-item"
+            onClick={() => {
+              setOpen(false);
+              if (isWealth) onNavigate("/");
+            }}
+          >
+            <span className="sidebar-account-menu-icon">
+              <DashboardIcon />
+            </span>
+            <span className="sidebar-account-menu-text">
+              <span>{dict.acctTrading}</span>
+            </span>
+            {!isWealth && <span className="sidebar-account-menu-item-dot" />}
+          </button>
+          <button
+            className="sidebar-account-menu-item"
+            onClick={() => {
+              setOpen(false);
+              if (!isWealth) onNavigate("/w");
+            }}
+          >
+            <span className="sidebar-account-menu-icon">
+              <WealthIcon />
+            </span>
+            <span className="sidebar-account-menu-text">
+              <span>{dict.acctWealth}</span>
+            </span>
+            {isWealth && <span className="sidebar-account-menu-item-dot" />}
+          </button>
           {writable && (
             <a
               href="/settings"
@@ -208,17 +231,28 @@ function AccountMenu({
         </div>
       )}
       <button className="card sidebar-account" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        <div className="eyebrow">{dict.accountValue}</div>
-        <div className="sidebar-account-value mono">
-          {currencySymbol(market)}
-          {status.accountValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-        </div>
-        <div className={`sidebar-account-pnl mono ${status.netPnL >= 0 ? "profit" : "loss"}`}>
-          {formatValue(status.netPnL, "currency", currencySymbol(market))} {dict.netPnL}
-        </div>
-        <div className="sidebar-account-stats">
-          {status.tradeCount} {dict.trades} · {dict.winRate} {(status.winRate * 100).toFixed(1)}%
-        </div>
+        <div className="eyebrow">{isWealth ? dict.acctWealth : dict.accountValue}</div>
+        {isWealth ? (
+          // The trading account-value/P&L/win-rate stats below don't apply
+          // to the wealth side (net worth already has its own hero number
+          // on /w and /w/balance) — showing them here would just be wrong
+          // data with a misleading label, so this card stays label-only in
+          // wealth mode rather than fabricate a wealth-side equivalent.
+          <div className="sidebar-account-value mono">{dict.acctTrading} ⇄ {dict.acctWealth}</div>
+        ) : (
+          <>
+            <div className="sidebar-account-value mono">
+              {currencySymbol(market)}
+              {status.accountValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </div>
+            <div className={`sidebar-account-pnl mono ${status.netPnL >= 0 ? "profit" : "loss"}`}>
+              {formatValue(status.netPnL, "currency", currencySymbol(market))} {dict.netPnL}
+            </div>
+            <div className="sidebar-account-stats">
+              {status.tradeCount} {dict.trades} · {dict.winRate} {(status.winRate * 100).toFixed(1)}%
+            </div>
+          </>
+        )}
       </button>
     </div>
   );
@@ -372,6 +406,18 @@ function WealthIcon() {
       <path d="M6 10.5 C6 11.3 6.9 12 8 12 S10 11.3 10 10.5 C10 8.8 6 9.2 6 7.5 C6 6.7 6.9 6 8 6 S10 6.7 10 7.5" />
       <line x1="8" y1="4.3" x2="8" y2="6" />
       <line x1="8" y1="12" x2="8" y2="13.7" />
+    </svg>
+  );
+}
+
+function BalanceSheetIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <line x1="3" y1="2.5" x2="3" y2="13.5" />
+      <line x1="2" y1="13.5" x2="14" y2="13.5" />
+      <rect x="4.5" y="9" width="2.2" height="4.5" />
+      <rect x="8" y="6" width="2.2" height="7.5" />
+      <rect x="11.3" y="3.5" width="2.2" height="10" />
     </svg>
   );
 }
