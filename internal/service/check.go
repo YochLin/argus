@@ -2,25 +2,36 @@ package service
 
 import (
 	"argus/internal/data"
+	"argus/internal/db"
 	"argus/internal/llm"
 	"argus/internal/logger"
 )
 
+// PositionReader is the narrow slice of db.DB CheckStockData needs to attach
+// the caller's current holding in ticker (if any) to the /check prompt —
+// same GetPosition signature RiskStore/TradeStore already narrow db.DB down
+// to for their own purposes.
+type PositionReader interface {
+	GetPosition(ticker string) (db.Position, bool, error)
+}
+
 // CheckStockData assembles the data llm.CheckStock needs for /check TICKER:
 // quote, up to 5 recent news items, company name, and (when a provider is
-// configured) fundamentals/financial statements/analyst rating — the
-// single-ticker counterpart of LoadQuoteHighlights (which serves a whole
-// watchlist/movers list for the lighter morning-briefing narrative) with the
-// extra attach-and-render fields /check's deeper single-ticker analysis
-// calls for. Only the quote fetch can fail the call outright; fundamentals/
-// statements/analyst-rating are nil-checked and log-only on failure, same
-// degrade-per-field convention as llm.StockData's other optional fields, so
-// a Finnhub outage narrows the prompt's context instead of failing /check.
-// Technicals/candles/strategy hits are deliberately not attached here —
-// ComputeTechnicals needs a benchmark ticker resolved from the caller's own
-// market-of(ticker) policy (see bot.benchmarkFor), so that attach stays the
-// caller's job, same split fetchStockData already has from computeTechnicals.
-func CheckStockData(quotes QuoteNewsReader, names data.CompanyNameProvider, fundamentals data.FundamentalsProvider, analystRating data.AnalystRatingProvider, ticker string) (llm.StockData, error) {
+// configured) fundamentals/financial statements/analyst rating/current
+// position — the single-ticker counterpart of LoadQuoteHighlights (which
+// serves a whole watchlist/movers list for the lighter morning-briefing
+// narrative) with the extra attach-and-render fields /check's deeper
+// single-ticker analysis calls for. Only the quote fetch can fail the call
+// outright; fundamentals/statements/analyst-rating/position are nil-checked
+// and log-only on failure, same degrade-per-field convention as
+// llm.StockData's other optional fields, so a Finnhub outage (or, for
+// position, simply not holding the ticker) narrows the prompt's context
+// instead of failing /check. Technicals/candles/strategy hits are
+// deliberately not attached here — ComputeTechnicals needs a benchmark
+// ticker resolved from the caller's own market-of(ticker) policy (see
+// bot.benchmarkFor), so that attach stays the caller's job, same split
+// fetchStockData already has from computeTechnicals.
+func CheckStockData(quotes QuoteNewsReader, names data.CompanyNameProvider, fundamentals data.FundamentalsProvider, analystRating data.AnalystRatingProvider, positions PositionReader, ticker string) (llm.StockData, error) {
 	q, err := quotes.GetQuote(ticker)
 	if err != nil {
 		return llm.StockData{}, err
@@ -45,6 +56,13 @@ func CheckStockData(quotes QuoteNewsReader, names data.CompanyNameProvider, fund
 			logger.Errorf("check: analyst rating %s: %v", ticker, err)
 		} else {
 			stock.AnalystRating = ar
+		}
+	}
+	if positions != nil {
+		if p, ok, err := positions.GetPosition(ticker); err != nil {
+			logger.Errorf("check: position %s: %v", ticker, err)
+		} else if ok {
+			stock.Position = &llm.Position{Shares: p.Shares, AvgCost: p.AvgCost, OpenedDate: p.OpenedDate}
 		}
 	}
 	return stock, nil

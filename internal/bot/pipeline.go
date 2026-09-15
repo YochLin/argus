@@ -568,7 +568,7 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 		}
 		stock.Technicals, stock.Candles, stock.StrategyHits = b.computeTechnicals(t, loadBenchCloses(market.Of(t)))
 		if p, ok := positions[t]; ok {
-			stock.Position = &llm.Position{Shares: p.Shares, AvgCost: p.AvgCost}
+			stock.Position = &llm.Position{Shares: p.Shares, AvgCost: p.AvgCost, OpenedDate: p.OpenedDate}
 		}
 		if e, ok := earnings[t]; ok {
 			stock.Earnings = &llm.Earnings{Date: e.Date, DaysUntil: daysUntil(e.Date), Estimated: e.Estimated}

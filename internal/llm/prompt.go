@@ -198,12 +198,16 @@ type Technicals struct {
 	RS63                         *float64
 }
 
-// Position is the subset of a db.Position an LLM prompt needs: shares held
-// and the average cost basis. Kept separate from db.Position so this
-// package doesn't need to import internal/db just for a prompt field.
+// Position is the subset of a db.Position an LLM prompt needs: shares held,
+// the average cost basis, and the opened date (oldest open BUY lot, i.e.
+// "held since") — without it the model has no way to tell a fresh
+// yesterday's buy from a stale months-old holding when it calls SELL/HOLD.
+// Kept separate from db.Position so this package doesn't need to import
+// internal/db just for a prompt field.
 type Position struct {
-	Shares  float64
-	AvgCost float64
+	Shares     float64
+	AvgCost    float64
+	OpenedDate string
 }
 
 // Earnings is the subset of a data.EarningsEvent an LLM prompt needs, with
@@ -770,7 +774,7 @@ func writeStockSection(sb *strings.Builder, lang i18n.Lang, s StockData) {
 
 	if p := s.Position; p != nil {
 		unrealizedPct := (q.Price - p.AvgCost) / p.AvgCost * 100
-		fmt.Fprint(sb, i18n.T(lang, i18n.KeyPositionLine, p.Shares, p.AvgCost, unrealizedPct))
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyPositionLine, p.Shares, p.AvgCost, unrealizedPct, p.OpenedDate))
 	}
 
 	if e := s.Earnings; e != nil {

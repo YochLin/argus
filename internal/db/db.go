@@ -83,12 +83,13 @@ type Recommendation struct {
 // an existing position deliberately leaves it untouched (whether to adjust
 // a stop after adding shares is the user's call, not automatic).
 type Position struct {
-	Ticker    string
-	Shares    float64
-	AvgCost   float64
-	StopPrice float64
-	Market    string // "us" / "tw" — derived from Ticker via market.Of at write time, never caller-supplied (Phase 6, see migration 12)
-	UpdatedAt time.Time
+	Ticker     string
+	Shares     float64
+	AvgCost    float64
+	StopPrice  float64
+	Market     string // "us" / "tw" — derived from Ticker via market.Of at write time, never caller-supplied (Phase 6, see migration 12)
+	UpdatedAt  time.Time
+	OpenedDate string // date of the oldest still-open BUY lot (FIFO), i.e. "held since" — not UpdatedAt, which moves on every top-up/partial sell
 }
 
 // Transaction is one recorded buy or sell. RealizedPnL is only meaningful
@@ -835,11 +836,16 @@ func (d *DB) TransactionExtIDExists(extID string) (bool, error) {
 
 // GetPosition returns the current position for ticker, or ok=false if
 // there's no open position.
+// openedDateSubquery is the oldest still-open BUY lot's date for a ticker
+// (FIFO, same lots RecordSell consumes) — "held since", distinct from
+// positions.updated_at which moves on every top-up/partial sell.
+const openedDateSubquery = `COALESCE((SELECT MIN(date) FROM transactions WHERE ticker = positions.ticker AND side = 'BUY' AND remaining_shares > 1e-9), '')`
+
 func (d *DB) GetPosition(ticker string) (Position, bool, error) {
 	p := Position{Ticker: ticker}
 	err := d.conn.QueryRow(
-		`SELECT shares, avg_cost, stop_price, market, updated_at FROM positions WHERE ticker = ?`, ticker,
-	).Scan(&p.Shares, &p.AvgCost, &p.StopPrice, &p.Market, &p.UpdatedAt)
+		`SELECT shares, avg_cost, stop_price, market, updated_at, `+openedDateSubquery+` FROM positions WHERE ticker = ?`, ticker,
+	).Scan(&p.Shares, &p.AvgCost, &p.StopPrice, &p.Market, &p.UpdatedAt, &p.OpenedDate)
 	if err == sql.ErrNoRows {
 		return Position{}, false, nil
 	}
@@ -851,7 +857,7 @@ func (d *DB) GetPosition(ticker string) (Position, bool, error) {
 
 // GetPositions returns every open position, ordered by ticker.
 func (d *DB) GetPositions() ([]Position, error) {
-	rows, err := d.conn.Query(`SELECT ticker, shares, avg_cost, stop_price, market, updated_at FROM positions ORDER BY ticker`)
+	rows, err := d.conn.Query(`SELECT ticker, shares, avg_cost, stop_price, market, updated_at, ` + openedDateSubquery + ` FROM positions ORDER BY ticker`)
 	if err != nil {
 		return nil, err
 	}
@@ -860,7 +866,7 @@ func (d *DB) GetPositions() ([]Position, error) {
 	var positions []Position
 	for rows.Next() {
 		var p Position
-		if err := rows.Scan(&p.Ticker, &p.Shares, &p.AvgCost, &p.StopPrice, &p.Market, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.Ticker, &p.Shares, &p.AvgCost, &p.StopPrice, &p.Market, &p.UpdatedAt, &p.OpenedDate); err != nil {
 			return nil, err
 		}
 		positions = append(positions, p)

@@ -212,7 +212,7 @@ func (b *Bot) handleCheck(ctx context.Context, ticker string) {
 	b.Send(i18n.T(b.lang, i18n.KeyAnalyzingTicker, ticker))
 	label := b.tickerLabel(ticker)
 
-	stock, err := service.CheckStockData(b.provider, b.companyNames, b.fundamentals, b.analystRating, ticker)
+	stock, err := service.CheckStockData(b.provider, b.companyNames, b.fundamentals, b.analystRating, b.db, ticker)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyQuoteFailed, label, err))
 		return

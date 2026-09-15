@@ -608,7 +608,7 @@ Write only from the data actually provided above — omit any section you have n
 	KeyValuationPELine:         "- P/E at current price: %.1f\n",
 	KeyValuationPercentileLine: "- Valuation percentile (vs. its own history only, not cross-market comparable): %.0f%%\n",
 	KeyCashFlowQualityLine:     "- Cash-flow quality (operating cash flow / net income, same fiscal year): %.2f\n",
-	KeyPositionLine:            "- Position: %g shares, avg cost $%.2f (unrealized %+.2f%%)\n",
+	KeyPositionLine:            "- Position: %g shares, avg cost $%.2f (unrealized %+.2f%%), held since %s\n",
 	KeyPrevRecLine:             "- Previous call: %s @ $%.2f (%d days ago)\n",
 	KeyEarningsLine:            "- ⚠️ Earnings date: %s (in %d days) — expect volatility\n",
 	KeyEarningsLineEstimated:   "- ⚠️ Est. statutory filing deadline: %s (in %d days) — expect volatility\n",
