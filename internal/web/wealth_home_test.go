@@ -140,6 +140,12 @@ func TestHandleWealthHomeNoHistoryRendersNilYTDMoM(t *testing.T) {
 	if len(got.Allocation) != 4 {
 		t.Errorf("len(Allocation) = %d, want 4 (one row per asset_group)", len(got.Allocation))
 	}
+	if got.TotalAssets == nil || *got.TotalAssets != 100000 {
+		t.Errorf("TotalAssets = %v, want 100000", got.TotalAssets)
+	}
+	if got.TotalLiabilities == nil || *got.TotalLiabilities != 0 {
+		t.Errorf("TotalLiabilities = %v, want 0", got.TotalLiabilities)
+	}
 }
 
 func TestHandleWealthHomeUnknownModelDefaultsToBalanced(t *testing.T) {

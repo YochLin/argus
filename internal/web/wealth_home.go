@@ -166,16 +166,72 @@ type driftRowResponse struct {
 }
 
 // wealthHomeResponse is /w's variant-B hero (§8.17.1: net worth big number
-// + YTD% + MoM%) plus the five-column allocation table (§8.17.2). Any
-// pointer field left nil means "not enough history yet" — the frontend
-// renders "—", it must never treat nil as 0.
+// + YTD% + MoM%) plus the five-column allocation table (§8.17.2).
+// TotalAssets/TotalLiabilities back the hero's inline stat row (design-mock
+// parity — the hero shows net worth alongside the two totals it nets out
+// of, not just the net figure alone). Any pointer field left nil means "not
+// enough history yet" — the frontend renders "—", it must never treat nil
+// as 0.
 type wealthHomeResponse struct {
-	AsOf       string             `json:"asOf"`
-	NetWorth   *float64           `json:"netWorth"`
-	YTDPct     *float64           `json:"ytdPct"`
-	MoMPct     *float64           `json:"momPct"`
-	Model      string             `json:"model"`
-	Allocation []driftRowResponse `json:"allocation"`
+	AsOf             string             `json:"asOf"`
+	NetWorth         *float64           `json:"netWorth"`
+	YTDPct           *float64           `json:"ytdPct"`
+	MoMPct           *float64           `json:"momPct"`
+	TotalAssets      *float64           `json:"totalAssets"`
+	TotalLiabilities *float64           `json:"totalLiabilities"`
+	Model            string             `json:"model"`
+	Allocation       []driftRowResponse `json:"allocation"`
+}
+
+// assetLiabilityTotalsTWD splits wealthTotals' net figure into its two
+// sides (design-mock hero shows both, not just the net) — same whole-
+// metric-degrades-on-any-FX-miss rule as wealthTotals/sumEntriesTWD.
+func (s *Server) assetLiabilityTotalsTWD(date string, live bool) (totalAssets, totalLiabilities float64, ok bool) {
+	var list []db.AssetWithValue
+	var err error
+	if live {
+		list, err = s.db.ListAssetsWithValue(false)
+	} else {
+		list, err = s.db.ListAssetsValueAsOf(date, false)
+	}
+	if err != nil {
+		logger.Errorf("web: asset/liability totals as of %s: %v", date, err)
+		return 0, 0, false
+	}
+	for _, a := range list {
+		if a.Value == nil {
+			continue
+		}
+		rate, rok := rateToTWD(a.Currency, date, live, s.quotes, s.fxDB)
+		if !rok {
+			return 0, 0, false
+		}
+		v := *a.Value * rate
+		if a.Side == "liability" {
+			totalLiabilities += v
+		} else {
+			totalAssets += v
+		}
+	}
+
+	usTotal, usOK, err := s.db.GetNetWorthOnOrBefore(date, market.US)
+	if err != nil {
+		logger.Errorf("web: asset/liability totals: US net worth as of %s: %v", date, err)
+		return 0, 0, false
+	}
+	twTotal, twOK, err := s.db.GetNetWorthOnOrBefore(date, market.TW)
+	if err != nil {
+		logger.Errorf("web: asset/liability totals: TW net worth as of %s: %v", date, err)
+		return 0, 0, false
+	}
+	for _, e := range equityEntries(usTotal, usOK, twTotal, twOK) {
+		rate, rok := rateToTWD(e.Currency, date, live, s.quotes, s.fxDB)
+		if !rok {
+			return 0, 0, false
+		}
+		totalAssets += e.Value * rate
+	}
+	return totalAssets, totalLiabilities, true
 }
 
 // handleWealthHome backs GET /api/wealth/networth?model=conserv|balanced|
@@ -212,6 +268,10 @@ func (s *Server) handleWealthHome(w http.ResponseWriter, r *http.Request) {
 				Group: row.Group, MarketValue: row.MarketValue, CurrentPct: row.CurrentPct,
 				TargetPct: row.TargetPct, DeviationPt: row.DeviationPt,
 			})
+		}
+		if ta, tl, ok := s.assetLiabilityTotalsTWD(today, true); ok {
+			resp.TotalAssets = &ta
+			resp.TotalLiabilities = &tl
 		}
 	}
 

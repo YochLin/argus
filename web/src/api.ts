@@ -632,7 +632,16 @@ function getMockData(url: string): any {
     return { assets: [] };
   }
   if (path === "/api/wealth/networth") {
-    return { asOf: "2026-07-15", netWorth: null, ytdPct: null, momPct: null, model: "balanced", allocation: [] };
+    return {
+      asOf: "2026-07-15",
+      netWorth: null,
+      ytdPct: null,
+      momPct: null,
+      totalAssets: null,
+      totalLiabilities: null,
+      model: "balanced",
+      allocation: [],
+    };
   }
   if (path === "/api/wealth/balance") {
     return {
@@ -1692,6 +1701,8 @@ export interface WealthHome {
   netWorth: number | null;
   ytdPct: number | null;
   momPct: number | null;
+  totalAssets: number | null;
+  totalLiabilities: number | null;
   model: AllocationModel;
   allocation: WealthAllocationRow[];
 }
@@ -1743,6 +1754,7 @@ export interface BalanceSheetItem {
   currency: string;
   valueTwd: number;
   type: string; // the asset's own type, or "equity_us"/"equity_tw" for the virtual row
+  source: "manual" | "import" | "sync";
 }
 
 export interface AssetGroupRow {
@@ -1761,6 +1773,7 @@ export interface LiabilityDetail {
   ratePct: number | null;
   remainingMonths: number | null;
   minPayment: number | null;
+  source: "manual" | "import" | "sync";
 }
 
 export interface QuarterPoint {

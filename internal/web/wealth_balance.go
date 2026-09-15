@@ -60,7 +60,8 @@ type balanceSheetItem struct {
 	Venue    string  `json:"venue,omitempty"`
 	Currency string  `json:"currency"`
 	ValueTWD float64 `json:"valueTwd"`
-	Type     string  `json:"type"` // the asset's own Type, or "equity_us"/"equity_tw" for the virtual row
+	Type     string  `json:"type"`   // the asset's own Type, or "equity_us"/"equity_tw" for the virtual row
+	Source   string  `json:"source"` // "manual"/"import"/"sync" (§9.1); "sync" for the equity virtual row
 }
 
 type assetGroupRow struct {
@@ -79,6 +80,7 @@ type liabilityDetail struct {
 	RatePct         *float64 `json:"ratePct,omitempty"`
 	RemainingMonths *int64   `json:"remainingMonths,omitempty"`
 	MinPayment      *float64 `json:"minPayment,omitempty"`
+	Source          string   `json:"source"` // "manual"/"import"/"sync" (§9.1)
 }
 
 type quarterPoint struct {
@@ -201,7 +203,7 @@ func (s *Server) handleWealthBalance(w http.ResponseWriter, r *http.Request) {
 		valueTWD := *a.Value * rate
 		if a.Side == "liability" {
 			totalLiabilities += valueTWD
-			ld := liabilityDetail{AssetID: a.ID, Name: a.Name, Venue: a.Venue, Currency: a.Currency, ValueTWD: valueTWD}
+			ld := liabilityDetail{AssetID: a.ID, Name: a.Name, Venue: a.Venue, Currency: a.Currency, ValueTWD: valueTWD, Source: a.Source}
 			if loanAssetTypes[a.Type] {
 				if det, err := s.db.GetLoanDetails(a.ID); err == nil && det != nil {
 					ld.RatePct = det.RatePct
@@ -224,7 +226,7 @@ func (s *Server) handleWealthBalance(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		g.MarketValue += valueTWD
-		g.Assets = append(g.Assets, balanceSheetItem{AssetID: a.ID, Name: a.Name, Venue: a.Venue, Currency: a.Currency, ValueTWD: valueTWD, Type: a.Type})
+		g.Assets = append(g.Assets, balanceSheetItem{AssetID: a.ID, Name: a.Name, Venue: a.Venue, Currency: a.Currency, ValueTWD: valueTWD, Type: a.Type, Source: a.Source})
 	}
 	for _, e := range equityEntries(usTotal, usOK, twTotal, twOK) {
 		rate, rok := rateToTWD(e.Currency, today, true, s.quotes, s.fxDB)
@@ -240,7 +242,7 @@ func (s *Server) handleWealthBalance(w http.ResponseWriter, r *http.Request) {
 			typ = "equity_us"
 		}
 		g.MarketValue += valueTWD
-		g.Assets = append(g.Assets, balanceSheetItem{Name: typ, Currency: e.Currency, ValueTWD: valueTWD, Type: typ})
+		g.Assets = append(g.Assets, balanceSheetItem{Name: typ, Currency: e.Currency, ValueTWD: valueTWD, Type: typ, Source: "sync"})
 	}
 
 	resp := balanceSheetResponse{AsOf: today, Liabilities: liabilities}

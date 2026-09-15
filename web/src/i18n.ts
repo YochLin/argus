@@ -539,6 +539,10 @@ export interface Dictionary {
   wealthPayoffTotalInterest: string;
   wealthPayoffInterestDiff: string;
   wealthPayoffNoLoans: string;
+  wealthOffTargetTitle: string;
+  wealthSrcManual: string;
+  wealthSrcImport: string;
+  wealthSrcSync: string;
 }
 
 const en: Dictionary = {
@@ -1010,7 +1014,7 @@ const en: Dictionary = {
   wealthSetSalary: "Set annual salary",
   wealthSalarySave: "Save",
   wealthNoSalarySet: "Set your annual salary to see savings rate, expense ratio, and liquidity months.",
-  wealthPctOfAssets: "% of Assets",
+  wealthPctOfAssets: "of assets",
   wealthLiabilitiesLabel: "LIABILITIES",
   wealthQuarterlyTrend: "QUARTERLY NET WORTH",
   wealthEquityUS: "US Trading Account",
@@ -1027,6 +1031,10 @@ const en: Dictionary = {
   wealthPayoffTotalInterest: "Total interest",
   wealthPayoffInterestDiff: "Avalanche saves vs. snowball",
   wealthPayoffNoLoans: "No loans with both a rate and a remaining term yet.",
+  wealthOffTargetTitle: "MOST OFF-TARGET",
+  wealthSrcManual: "manual",
+  wealthSrcImport: "import",
+  wealthSrcSync: "sync",
 };
 
 const zh: Dictionary = {
@@ -1492,7 +1500,7 @@ const zh: Dictionary = {
   wealthSetSalary: "設定年薪",
   wealthSalarySave: "儲存",
   wealthNoSalarySet: "設定年薪後即可看到儲蓄率、收支比與流動性月數。",
-  wealthPctOfAssets: "佔總資產%",
+  wealthPctOfAssets: "佔總資產",
   wealthLiabilitiesLabel: "負債列表",
   wealthQuarterlyTrend: "季度淨值趨勢",
   wealthEquityUS: "美股交易帳戶",
@@ -1509,6 +1517,10 @@ const zh: Dictionary = {
   wealthPayoffTotalInterest: "總利息",
   wealthPayoffInterestDiff: "雪崩比雪球省下利息",
   wealthPayoffNoLoans: "尚無同時填有利率與剩餘期數的貸款可計算。",
+  wealthOffTargetTitle: "偏離最大項",
+  wealthSrcManual: "手動",
+  wealthSrcImport: "匯入",
+  wealthSrcSync: "同步",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

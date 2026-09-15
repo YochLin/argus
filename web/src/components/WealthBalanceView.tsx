@@ -5,12 +5,14 @@ import {
   fetchWealthDebtPayoff,
   saveWealthProfile,
   type BalanceSheet,
+  type BalanceSheetItem,
   type DebtPayoffPlan,
   type DebtPayoffResult,
+  type LiabilityDetail,
   type QuarterPoint,
 } from "../api";
 import type { Dictionary } from "../i18n";
-import { fmtMoney, groupLabel } from "./WealthHomeView";
+import { fmtMoney, groupColorClass, groupLabel } from "./WealthHomeView";
 
 interface Props {
   dict: Dictionary;
@@ -28,6 +30,12 @@ function equityLabel(dict: Dictionary, type: string): string {
   if (type === "equity_us") return dict.wealthEquityUS;
   if (type === "equity_tw") return dict.wealthEquityTW;
   return "";
+}
+
+function srcLabel(dict: Dictionary, source: string): string {
+  if (source === "import") return dict.wealthSrcImport;
+  if (source === "sync") return dict.wealthSrcSync;
+  return dict.wealthSrcManual;
 }
 
 export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
@@ -81,22 +89,35 @@ export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
     return <div className="error-message">{dict.error}</div>;
   }
 
+  const netPct = sheet?.netWorth != null && sheet.totalAssets ? (sheet.netWorth / sheet.totalAssets) * 100 : null;
+
   return (
     <>
-      <div className="stat-grid">
-        <StatCard label={dict.wealthNetWorth} text={sheet?.netWorth != null ? fmtMoney(sheet.netWorth, CURRENCY) : "—"} />
-        <StatCard label={dict.wealthTotalAssets} text={sheet?.totalAssets != null ? fmtMoney(sheet.totalAssets, CURRENCY) : "—"} />
-        <StatCard
-          label={dict.wealthTotalLiabilities}
-          text={sheet?.totalLiabilities != null ? fmtMoney(sheet.totalLiabilities, CURRENCY) : "—"}
-        />
-      </div>
-
-      <div className="stat-grid">
-        <StatCard label={dict.wealthDebtRatio} text={pct(sheet?.debtRatioPct ?? null)} />
-        <StatCard label={dict.wealthLiquidityMonths} text={sheet?.liquidityMonths != null ? sheet.liquidityMonths.toFixed(1) : "—"} />
-        <StatCard label={dict.wealthSavingsRate} text={pct(sheet?.savingsRatePct ?? null)} />
-        <StatCard label={dict.wealthExpenseRatio} text={pct(sheet?.expenseRatioPct ?? null)} />
+      <div className="card card--glow">
+        <div className="eyebrow">{dict.wealthNetWorth}</div>
+        <div className="wealth-hero-row" style={{ marginTop: 8 }}>
+          <div className="wealth-hero-block">
+            <div className="wealth-hero-block-value big">
+              {sheet?.netWorth != null ? fmtMoney(sheet.netWorth, CURRENCY) : "—"}
+            </div>
+          </div>
+          <div className="wealth-hero-block">
+            <span className="eyebrow">{dict.wealthTotalAssets}</span>
+            <span className="wealth-hero-block-value">
+              {sheet?.totalAssets != null ? fmtMoney(sheet.totalAssets, CURRENCY) : "—"}
+            </span>
+          </div>
+          <div className="wealth-hero-block">
+            <span className="eyebrow">{dict.wealthTotalLiabilities}</span>
+            <span className="wealth-hero-block-value loss">
+              {sheet?.totalLiabilities != null ? fmtMoney(sheet.totalLiabilities, CURRENCY) : "—"}
+            </span>
+          </div>
+          <div className="wealth-hero-block">
+            <span className="eyebrow">{dict.wealthNetWorth} / {dict.wealthTotalAssets}</span>
+            <span className="wealth-hero-block-value">{pct(netPct)}</span>
+          </div>
+        </div>
       </div>
 
       {sheet && sheet.monthlySalary == null && writable && (
@@ -115,68 +136,75 @@ export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
         </div>
       )}
 
-      <div className="card">
-        <div className="eyebrow">{dict.wealthAssetsLabel}</div>
-        {!sheet ? (
-          <div className="loading">{dict.loading}</div>
-        ) : (
-          sheet.assetGroups.map((g) => (
-            <div key={g.group} style={{ marginBottom: 16 }}>
-              <div className="row-actions" style={{ justifyContent: "space-between" }}>
-                <strong>{groupLabel(dict, g.group)}</strong>
-                <span className="mono">
-                  {fmtMoney(g.marketValue, CURRENCY)}
-                  {g.pctOfAssets != null ? ` (${g.pctOfAssets.toFixed(1)}%)` : ""}
-                </span>
-              </div>
-              {g.assets.length > 0 && (
-                <table className="mono">
-                  <tbody>
+      <div className="detail-grid-2col">
+        <div className="card">
+          <div className="wealth-group-header" style={{ border: "none", padding: 0, marginBottom: 14 }}>
+            <span>{dict.wealthAssetsLabel}</span>
+            <span className="wealth-group-header-value">
+              {sheet?.totalAssets != null ? fmtMoney(sheet.totalAssets, CURRENCY) : "—"}
+            </span>
+          </div>
+          {!sheet ? (
+            <div className="loading">{dict.loading}</div>
+          ) : (
+            <div className="wealth-col-stack">
+              {sheet.assetGroups
+                .filter((g) => g.assets.length > 0)
+                .map((g) => (
+                  <div key={g.group} className="wealth-group-block">
+                    <div className="wealth-group-header">
+                      <span className={`wealth-dot ${groupColorClass(g.group)}`} />
+                      {groupLabel(dict, g.group)}
+                      <span style={{ fontSize: 10, color: "var(--ink-3)" }}>
+                        {g.pctOfAssets != null ? `${g.pctOfAssets.toFixed(1)}% ${dict.wealthPctOfAssets}` : ""}
+                      </span>
+                      <span className="wealth-group-header-value">{fmtMoney(g.marketValue, CURRENCY)}</span>
+                    </div>
                     {g.assets.map((item, i) => (
-                      <tr key={item.assetId ?? `${g.group}-${i}`}>
-                        <td>{item.assetId ? item.name : equityLabel(dict, item.type)}</td>
-                        <td>{item.venue || ""}</td>
-                        <td>{fmtMoney(item.valueTwd, CURRENCY)}</td>
-                      </tr>
+                      <AssetItemRow key={item.assetId ?? `${g.group}-${i}`} dict={dict} item={item} />
                     ))}
-                  </tbody>
-                </table>
-              )}
+                  </div>
+                ))}
             </div>
-          ))
-        )}
-      </div>
+          )}
+        </div>
 
-      <div className="card">
-        <div className="eyebrow">{dict.wealthLiabilitiesLabel}</div>
-        {!sheet ? (
-          <div className="loading">{dict.loading}</div>
-        ) : sheet.liabilities.length === 0 ? (
-          <div className="empty-message">{dict.wealthEmpty}</div>
-        ) : (
-          <table className="mono">
-            <thead>
-              <tr>
-                <th>{dict.wealthName}</th>
-                <th>{dict.wealthRatePct}</th>
-                <th>{dict.wealthRemainingMonths}</th>
-                <th>{dict.wealthMinPayment}</th>
-                <th>{dict.wealthValue}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sheet.liabilities.map((l) => (
-                <tr key={l.assetId}>
-                  <td>{l.name}</td>
-                  <td>{l.ratePct != null ? `${l.ratePct}%` : "—"}</td>
-                  <td>{l.remainingMonths ?? "—"}</td>
-                  <td>{l.minPayment != null ? fmtMoney(l.minPayment, CURRENCY) : "—"}</td>
-                  <td>{fmtMoney(l.valueTwd, CURRENCY)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <div className="wealth-col-stack">
+          <div className="card">
+            <div className="wealth-group-header" style={{ border: "none", padding: 0, marginBottom: 14 }}>
+              <span>{dict.wealthLiabilitiesLabel}</span>
+              <span className="wealth-group-header-value loss">
+                {sheet?.totalLiabilities != null ? fmtMoney(sheet.totalLiabilities, CURRENCY) : "—"}
+              </span>
+            </div>
+            {!sheet ? (
+              <div className="loading">{dict.loading}</div>
+            ) : sheet.liabilities.length === 0 ? (
+              <div className="empty-message">{dict.wealthEmpty}</div>
+            ) : (
+              <div className="wealth-col-stack" style={{ gap: 8 }}>
+                {sheet.liabilities.map((l) => (
+                  <LiabilityItemRow key={l.assetId} dict={dict} item={l} />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="card">
+            <div className="eyebrow" style={{ marginBottom: 14 }}>
+              {dict.wealthDebtRatio} / {dict.wealthLiquidityMonths} / {dict.wealthSavingsRate} / {dict.wealthExpenseRatio}
+            </div>
+            <div className="wealth-ratios-grid">
+              <RatioBlock label={dict.wealthDebtRatio} value={pct(sheet?.debtRatioPct ?? null)} />
+              <RatioBlock
+                label={dict.wealthLiquidityMonths}
+                value={sheet?.liquidityMonths != null ? sheet.liquidityMonths.toFixed(1) : "—"}
+              />
+              <RatioBlock label={dict.wealthSavingsRate} value={pct(sheet?.savingsRatePct ?? null)} />
+              <RatioBlock label={dict.wealthExpenseRatio} value={pct(sheet?.expenseRatioPct ?? null)} />
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="card">
@@ -230,11 +258,35 @@ export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
   );
 }
 
-function StatCard({ label, text }: { label: string; text: string }) {
+function AssetItemRow({ dict, item }: { dict: Dictionary; item: BalanceSheetItem }) {
   return (
-    <div className="card kpi-card">
-      <div className="eyebrow">{label}</div>
-      <div className="kpi-value">{text}</div>
+    <div className="wealth-item-row">
+      <span>{item.assetId ? item.name : equityLabel(dict, item.type)}</span>
+      <span className={`wealth-src-tag ${item.source}`}>{srcLabel(dict, item.source)}</span>
+      <span className="wealth-item-row-value">{fmtMoney(item.valueTwd, CURRENCY)}</span>
+    </div>
+  );
+}
+
+function LiabilityItemRow({ dict, item }: { dict: Dictionary; item: LiabilityDetail }) {
+  return (
+    <div className="wealth-item-row">
+      <span>{item.name}</span>
+      <span className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)" }}>
+        {item.ratePct != null ? `${item.ratePct}%` : ""}
+        {item.remainingMonths != null ? ` · ${item.remainingMonths} ${dict.wealthRemainingMonths}` : ""}
+      </span>
+      <span className={`wealth-src-tag ${item.source}`}>{srcLabel(dict, item.source)}</span>
+      <span className="wealth-item-row-value loss">{fmtMoney(item.valueTwd, CURRENCY)}</span>
+    </div>
+  );
+}
+
+function RatioBlock({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="wealth-ratio-block">
+      <span className="wealth-ratio-block-label">{label}</span>
+      <span className="wealth-ratio-block-value">{value}</span>
     </div>
   );
 }
@@ -259,12 +311,26 @@ function PayoffRow({ label, plan }: { label: string; plan: DebtPayoffPlan }) {
 function QuarterlyBars({ points }: { points: QuarterPoint[] }) {
   const maxAbs = Math.max(1, ...points.map((p) => Math.abs(p.netWorth ?? 0)));
   return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 140, marginTop: 8 }}>
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 150, marginTop: 12 }}>
       {points.map((p) => {
-        const height = p.netWorth != null ? Math.max(2, (Math.abs(p.netWorth) / maxAbs) * 120) : 2;
+        const height = p.netWorth != null ? Math.max(2, (Math.abs(p.netWorth) / maxAbs) * 100) : 2;
         const negative = (p.netWorth ?? 0) < 0;
         return (
-          <div key={p.quarter} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+          <div
+            key={p.quarter}
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              height: "100%",
+              gap: 8,
+            }}
+          >
+            <span className="mono" style={{ fontSize: 11, color: "var(--ink-2)" }}>
+              {p.netWorth != null ? fmtMoney(p.netWorth, CURRENCY) : "—"}
+            </span>
             <div
               style={{
                 width: "100%",
@@ -272,9 +338,8 @@ function QuarterlyBars({ points }: { points: QuarterPoint[] }) {
                 background: p.netWorth == null ? "var(--border)" : negative ? "var(--loss)" : "var(--accent)",
                 borderRadius: 2,
               }}
-              title={p.netWorth != null ? fmtMoney(p.netWorth, CURRENCY) : "—"}
             />
-            <span className="mono" style={{ fontSize: 11 }}>
+            <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>
               {p.quarter}
             </span>
           </div>

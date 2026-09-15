@@ -14,7 +14,6 @@ import {
   type WealthHome,
 } from "../api";
 import type { Dictionary } from "../i18n";
-import { KpiCard } from "./KpiCard";
 
 interface Props {
   dict: Dictionary;
@@ -52,6 +51,21 @@ export function groupLabel(dict: Dictionary, g: AssetGroup): string {
 
 export function fmtMoney(v: number, currency: string): string {
   return `${currency}${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+// groupColorClass maps the four asset_group buckets onto the app's generic
+// four-way series palette (--s1..--s4, theme-invariant) for the allocation
+// bar/legend/dots — matches the design mock's per-group dot/segment color,
+// which isn't itself specified beyond "give each category its own color."
+const GROUP_COLOR_CLASS: Record<AssetGroup, string> = {
+  liquid: "s1",
+  growth: "s2",
+  income: "s3",
+  hard: "s4",
+};
+
+export function groupColorClass(g: AssetGroup): string {
+  return GROUP_COLOR_CLASS[g];
 }
 
 export function WealthHomeView({ dict, writable, onUnauthorized }: Props) {
@@ -100,25 +114,93 @@ export function WealthHomeView({ dict, writable, onUnauthorized }: Props) {
 
   const currency = "NT$"; // display currency fixed to TWD for now (settings.wealth.display_currency is a later refinement)
 
+  // Top 4 rows by |deviation|, worst-first — the design mock's "off-target"
+  // card. Pure frontend derivation off the allocation rows the backend
+  // already sends; no separate endpoint needed.
+  const offTarget = home
+    ? [...home.allocation].sort((a, b) => Math.abs(b.deviationPt) - Math.abs(a.deviationPt)).slice(0, 4)
+    : [];
+
   return (
     <>
-      <div className="stat-grid">
-        <KpiCard label={dict.wealthNetWorth} value={home?.netWorth ?? null} format="currency" currency={currency} />
-        <KpiCard label={dict.wealthYTD} value={home?.ytdPct ?? null} format="percentValue" colorMode="pnl" />
-        <KpiCard label={dict.wealthMoM} value={home?.momPct ?? null} format="percentValue" colorMode="pnl" />
-      </div>
-
-      <div className="card">
-        <div className="topbar-tabs" role="group" aria-label="allocation model">
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+        <div className="eyebrow">{dict.navWealth}</div>
+        <div className="topbar-tabs" role="group" aria-label="allocation model" style={{ marginLeft: "auto" }}>
           {MODELS.map((m) => (
             <button key={m} className={`topbar-tab${model === m ? " active" : ""}`} onClick={() => setModel(m)}>
               {modelLabel(dict, m)}
             </button>
           ))}
         </div>
-        <div className="eyebrow" style={{ marginTop: 12 }}>
-          {dict.wealthAllocation}
+      </div>
+
+      <div className="card card--glow">
+        <div className="eyebrow">{dict.wealthNetWorth}</div>
+        <div className="wealth-hero-value">{home?.netWorth != null ? fmtMoney(home.netWorth, currency) : "—"}</div>
+        <div className="wealth-hero-stats">
+          <span>
+            {dict.wealthYTD}{" "}
+            <span className={home?.ytdPct != null ? (home.ytdPct >= 0 ? "profit" : "loss") : ""}>
+              {home?.ytdPct != null ? `${home.ytdPct >= 0 ? "+" : ""}${home.ytdPct.toFixed(1)}%` : "—"}
+            </span>
+          </span>
+          <span>
+            {dict.wealthMoM}{" "}
+            <span className={home?.momPct != null ? (home.momPct >= 0 ? "profit" : "loss") : ""}>
+              {home?.momPct != null ? `${home.momPct >= 0 ? "+" : ""}${home.momPct.toFixed(1)}%` : "—"}
+            </span>
+          </span>
+          <span>{dict.wealthTotalAssets} {home?.totalAssets != null ? fmtMoney(home.totalAssets, currency) : "—"}</span>
+          <span className="loss">
+            {dict.wealthTotalLiabilities}{" "}
+            {home?.totalLiabilities != null ? fmtMoney(home.totalLiabilities, currency) : "—"}
+          </span>
         </div>
+        {home && home.allocation.length > 0 && (
+          <>
+            <div className="wealth-alloc-bar">
+              {home.allocation.map((row) => (
+                <div
+                  key={row.group}
+                  className={`wealth-bar-seg ${groupColorClass(row.group)}`}
+                  style={{ width: `${Math.max(0, row.currentPct)}%` }}
+                />
+              ))}
+            </div>
+            <div className="wealth-alloc-legend">
+              {home.allocation.map((row) => (
+                <span key={row.group} className="wealth-alloc-legend-item">
+                  <span className={`wealth-dot ${groupColorClass(row.group)}`} />
+                  {groupLabel(dict, row.group)} <span className="mono">{fmtMoney(row.marketValue, currency)}</span>
+                </span>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {offTarget.length > 0 && (
+        <div className="card">
+          <div className="eyebrow">{dict.wealthOffTargetTitle}</div>
+          <div className="wealth-col-stack" style={{ marginTop: 12 }}>
+            {offTarget.map((row) => (
+              <div key={row.group} className="wealth-item-row">
+                <span className={`wealth-dot ${groupColorClass(row.group)}`} />
+                {groupLabel(dict, row.group)}
+                <span
+                  className={`wealth-item-row-value ${row.deviationPt > 0 ? "profit" : row.deviationPt < 0 ? "loss" : ""}`}
+                >
+                  {row.deviationPt > 0 ? "+" : ""}
+                  {row.deviationPt.toFixed(1)}pt
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        <div className="eyebrow">{dict.wealthAllocation}</div>
         {home && home.allocation.length > 0 ? (
           <table className="mono">
             <thead>
@@ -133,7 +215,12 @@ export function WealthHomeView({ dict, writable, onUnauthorized }: Props) {
             <tbody>
               {home.allocation.map((row) => (
                 <tr key={row.group}>
-                  <td>{groupLabel(dict, row.group)}</td>
+                  <td>
+                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span className={`wealth-dot ${groupColorClass(row.group)}`} />
+                      {groupLabel(dict, row.group)}
+                    </span>
+                  </td>
                   <td>{row.currentPct.toFixed(1)}%</td>
                   <td>{row.targetPct.toFixed(1)}%</td>
                   <td className={row.deviationPt > 0 ? "profit" : row.deviationPt < 0 ? "loss" : ""}>
