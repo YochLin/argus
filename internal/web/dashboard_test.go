@@ -65,6 +65,8 @@ type fakeDB struct {
 	priceEvents []db.PriceEvent
 	// researchNotes backs GetResearchNotesByTicker for research_notes_test.go.
 	researchNotes map[string][]db.ResearchNote
+	// wealthAssets backs ListAssetsWithValue for assets_test.go (Phase 9 PR1).
+	wealthAssets []db.AssetWithValue
 }
 
 func (f *fakeDB) GetPositions() ([]db.Position, error)          { return f.positions, nil }
@@ -159,6 +161,18 @@ func (f *fakeDB) GetPriceEventsForTicker(ticker string, limit int) ([]db.PriceEv
 }
 func (f *fakeDB) GetResearchNotesByTicker(ticker string) ([]db.ResearchNote, error) {
 	return f.researchNotes[ticker], nil
+}
+func (f *fakeDB) ListAssetsWithValue(includeArchived bool) ([]db.AssetWithValue, error) {
+	if includeArchived {
+		return f.wealthAssets, nil
+	}
+	out := make([]db.AssetWithValue, 0, len(f.wealthAssets))
+	for _, a := range f.wealthAssets {
+		if a.ArchivedAt == "" {
+			out = append(out, a)
+		}
+	}
+	return out, nil
 }
 
 // BlockNewsSource/UnblockNewsSource let fakeDB double as a newsSourceWriter

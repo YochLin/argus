@@ -103,6 +103,9 @@ type dbReader interface {
 	// /api/research-notes — the chart page's notebook card history for one
 	// ticker; writes go through the separate researchNotesWriter interface.
 	GetResearchNotesByTicker(ticker string) ([]db.ResearchNote, error)
+	// ListAssetsWithValue backs assets.go's GET /api/wealth/assets (Phase 9
+	// PR1) — writes go through the separate wealthWriter interface.
+	ListAssetsWithValue(includeArchived bool) ([]db.AssetWithValue, error)
 }
 
 // netWorthBaseline resolves the capital base for a period starting at
