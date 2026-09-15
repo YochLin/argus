@@ -543,6 +543,19 @@ export interface Dictionary {
   wealthSrcManual: string;
   wealthSrcImport: string;
   wealthSrcSync: string;
+  // Phase 9 波次1 PR3' (§8.15.1): CSV paste import for initial data entry
+  // (/w/import), replacing the dropped PDF-statement-parsing plan. Mirrors
+  // internal/web/wealth_import.go.
+  navWealthImport: string;
+  wealthImportTitle: string;
+  wealthImportInstructions: string;
+  wealthImportTemplateHint: string;
+  wealthImportTextareaPlaceholder: string;
+  wealthImportColSide: string;
+  wealthImportColType: string;
+  wealthImportColName: string;
+  wealthImportColGroup: string;
+  wealthImportColValue: string;
 }
 
 const en: Dictionary = {
@@ -1035,6 +1048,20 @@ const en: Dictionary = {
   wealthSrcManual: "manual",
   wealthSrcImport: "import",
   wealthSrcSync: "sync",
+  navWealthImport: "Import",
+  wealthImportTitle: "Import Wealth Assets",
+  wealthImportInstructions:
+    "Paste or upload a CSV to bulk-create deposits, loans, and other assets/liabilities — the fastest way to enter your first batch of accounts.",
+  wealthImportTemplateHint:
+    "Columns: side,type,name,group,venue,currency,value,date,bank,accountNote,lender,ratePct,originalPrincipal,remainingMonths " +
+    "(side: asset/liability; group: liquid/growth/income/hard; bank/accountNote apply to type=deposit; lender/ratePct/originalPrincipal/remainingMonths apply to type=loan/credit_card; header row required)",
+  wealthImportTextareaPlaceholder:
+    "side,type,name,group,venue,currency,value,date\nasset,deposit,Checking,liquid,Bank,TWD,100000,2026-09-01",
+  wealthImportColSide: "Side",
+  wealthImportColType: "Type",
+  wealthImportColName: "Name",
+  wealthImportColGroup: "Group",
+  wealthImportColValue: "Value",
 };
 
 const zh: Dictionary = {
@@ -1521,6 +1548,20 @@ const zh: Dictionary = {
   wealthSrcManual: "手動",
   wealthSrcImport: "匯入",
   wealthSrcSync: "同步",
+  navWealthImport: "匯入",
+  wealthImportTitle: "匯入資產資料",
+  wealthImportInstructions: "貼上或上傳 CSV 批次建立存款/貸款/其他資產負債——第一批帳戶最快的建檔方式。",
+  wealthImportTemplateHint:
+    "欄位：side,type,name,group,venue,currency,value,date,bank,accountNote,lender,ratePct,originalPrincipal,remainingMonths" +
+    "（side：asset/liability；group：liquid/growth/income/hard；bank/accountNote 僅 type=deposit 時填寫；" +
+    "lender/ratePct/originalPrincipal/remainingMonths 僅 type=loan/credit_card 時填寫；需保留標題列）",
+  wealthImportTextareaPlaceholder:
+    "side,type,name,group,venue,currency,value,date\nasset,deposit,活存,liquid,銀行,TWD,100000,2026-09-01",
+  wealthImportColSide: "類別",
+  wealthImportColType: "類型",
+  wealthImportColName: "名稱",
+  wealthImportColGroup: "分組",
+  wealthImportColValue: "金額",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };
