@@ -422,6 +422,14 @@ input {
   color: var(--ink-3);
 }
 
+.sidebar-account-menu-item-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
 .sidebar-switch {
   flex-shrink: 0;
   display: block;
