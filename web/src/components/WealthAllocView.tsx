@@ -67,12 +67,12 @@ export function WealthAllocView({ dict }: Props) {
       </div>
 
       <div className="detail-grid-2col" style={{ alignItems: "stretch" }}>
-        <div className="card">
+        <div className="card" style={{ display: "flex", flexDirection: "column" }}>
           <div className="eyebrow" style={{ marginBottom: 14 }}>
             {dict.wealthMixTitle}
           </div>
           {hasData && alloc!.allocation.length > 0 ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap", flex: 1 }}>
               <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <div style={{ width: 140, height: 140, borderRadius: "50%", background: donutGradient(alloc!.allocation) }} />
                 <div
@@ -97,7 +97,17 @@ export function WealthAllocView({ dict }: Props) {
                   </span>
                 </div>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 7, flex: 1, minWidth: 180 }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  gap: 7,
+                  flex: 1,
+                  minWidth: 180,
+                  alignSelf: "stretch",
+                }}
+              >
                 {alloc!.allocation.map((row) => (
                   <div key={row.group} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span className={`wealth-dot ${groupColorClass(row.group)}`} />
