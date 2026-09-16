@@ -48,8 +48,8 @@ export function WealthAllocView({ dict }: Props) {
         </div>
       </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--gap)", marginBottom: "var(--gap)" }}>
-        <div className="card" style={{ flex: "1 1 240px" }}>
+      <div className="detail-grid-2col">
+        <div className="card">
           <div className="eyebrow">{dict.wealthMixTitle}</div>
           {hasData && alloc!.allocation.length > 0 ? (
             <>
@@ -76,7 +76,7 @@ export function WealthAllocView({ dict }: Props) {
           )}
         </div>
 
-        <div className="card" style={{ flex: "1 1 240px", display: "flex", flexDirection: "column" }}>
+        <div className="card" style={{ display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
             <div className="eyebrow" style={{ marginBottom: 0 }}>
               {dict.wealthOrdersTitle}
@@ -139,7 +139,7 @@ export function WealthAllocView({ dict }: Props) {
         </div>
       </div>
 
-      <div className="card">
+      <div className="card" style={{ marginBottom: 16 }}>
         <div className="eyebrow">{dict.wealthAllocation}</div>
         {hasData && alloc!.allocation.length > 0 ? (
           <table className="mono">
@@ -198,8 +198,8 @@ export function WealthAllocView({ dict }: Props) {
         )}
       </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--gap)" }}>
-        <div className="card" style={{ flex: "1 1 200px" }}>
+      <div className="detail-grid-2col">
+        <div className="card">
           <div className="eyebrow">{dict.wealthRiskTitle}</div>
           <div className="mono" style={{ fontSize: 32, lineHeight: 1.1 }}>
             {hasData && alloc!.riskPct != null ? `${alloc!.riskPct.toFixed(1)}%` : "—"}
@@ -224,7 +224,7 @@ export function WealthAllocView({ dict }: Props) {
           )}
         </div>
 
-        <div className="card" style={{ flex: "1 1 200px" }}>
+        <div className="card">
           <div className="eyebrow">{dict.wealthFxExposure}</div>
           {hasData && alloc!.currencyExposure.length > 0 ? (
             <div className="wealth-col-stack">

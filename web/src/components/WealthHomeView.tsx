@@ -241,7 +241,7 @@ export function WealthHomeView({ dict, writable, onUnauthorized }: Props) {
         <div className="modal-header" style={{ border: "none", padding: 0, marginBottom: 12 }}>
           <div className="eyebrow">{dict.wealthAssetsLabel}</div>
           {writable && (
-            <button className="btn-primary" onClick={() => setShowAdd(true)}>
+            <button className="btn-tint" onClick={() => setShowAdd(true)}>
               {dict.wealthAddAsset}
             </button>
           )}
