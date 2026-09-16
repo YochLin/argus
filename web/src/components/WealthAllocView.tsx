@@ -66,7 +66,7 @@ export function WealthAllocView({ dict }: Props) {
         </div>
       </div>
 
-      <div className="detail-grid-2col">
+      <div className="detail-grid-2col" style={{ alignItems: "stretch" }}>
         <div className="card">
           <div className="eyebrow" style={{ marginBottom: 14 }}>
             {dict.wealthMixTitle}
@@ -131,15 +131,20 @@ export function WealthAllocView({ dict }: Props) {
             )}
           </div>
           {hasData && alloc!.orders.length > 0 ? (
-            <div className="wealth-col-stack">
+            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
               {alloc!.orders.map((o) => (
-                <div key={o.group} className="wealth-item-row">
+                <div
+                  key={o.group}
+                  style={{ display: "flex", alignItems: "center", gap: 9, paddingBottom: 9, borderBottom: "1px solid var(--border)" }}
+                >
                   <span className={`wealth-dot ${groupColorClass(o.group)}`} />
                   <span style={{ fontWeight: 600, color: o.side === "buy" ? "var(--profit)" : "var(--loss)" }}>
                     {o.side === "buy" ? dict.wealthOrderBuy : dict.wealthOrderSell}
                   </span>
-                  <span style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                    {o.assetName || groupLabel(dict, o.group)}
+                  <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+                    <span style={{ fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {o.assetName || groupLabel(dict, o.group)}
+                    </span>
                     <span className="mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>
                       {dict.wealthVenueLabel} {o.venue || "—"}
                     </span>
@@ -164,18 +169,21 @@ export function WealthAllocView({ dict }: Props) {
             <div className="mono" style={{ fontSize: 10, letterSpacing: "0.06em", color: "var(--ink-3)", marginBottom: 7 }}>
               {dict.wealthLockedTitle}
             </div>
-            {alloc!.locked.map((l) => (
-              <div key={l.group} className="wealth-item-row">
-                <span className={`wealth-dot ${groupColorClass(l.group)}`} />
-                {groupLabel(dict, l.group)}
-                <span
-                  className={`wealth-item-row-value mono ${l.deviationPt > 0 ? "profit" : l.deviationPt < 0 ? "loss" : ""}`}
-                >
-                  {l.deviationPt > 0 ? "+" : ""}
-                  {l.deviationPt.toFixed(1)}pt
-                </span>
-              </div>
-            ))}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {alloc!.locked.map((l) => (
+                <div key={l.group} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--ink-2)" }}>
+                  <span className={`wealth-dot ${groupColorClass(l.group)}`} />
+                  {groupLabel(dict, l.group)}
+                  <span
+                    className={`mono ${l.deviationPt > 0 ? "profit" : l.deviationPt < 0 ? "loss" : ""}`}
+                    style={{ marginLeft: "auto" }}
+                  >
+                    {l.deviationPt > 0 ? "+" : ""}
+                    {l.deviationPt.toFixed(1)}pt
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
           <div style={{ marginTop: 12, fontSize: 11, color: "var(--ink-3)", lineHeight: 1.6 }}>{dict.wealthOrdersHint}</div>
@@ -241,7 +249,7 @@ export function WealthAllocView({ dict }: Props) {
         )}
       </div>
 
-      <div className="detail-grid-2col">
+      <div className="detail-grid-2col" style={{ alignItems: "stretch" }}>
         <div className="card">
           <div className="eyebrow">{dict.wealthRiskTitle}</div>
           <div className="mono" style={{ fontSize: 32, lineHeight: 1.1 }}>
@@ -270,10 +278,10 @@ export function WealthAllocView({ dict }: Props) {
         <div className="card">
           <div className="eyebrow">{dict.wealthFxExposure}</div>
           {hasData && alloc!.currencyExposure.length > 0 ? (
-            <div className="wealth-col-stack">
+            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
               {alloc!.currencyExposure.map((e) => (
                 <div key={e.currency} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span className="mono" style={{ fontSize: 11, color: "var(--ink-2)", width: 40, flexShrink: 0 }}>
+                  <span className="mono" style={{ fontSize: 11, color: "var(--ink-2)", width: 36, flexShrink: 0 }}>
                     {e.currency}
                   </span>
                   <span style={{ flex: 1, background: "var(--bg)", borderRadius: 3, height: 6 }}>
@@ -287,7 +295,7 @@ export function WealthAllocView({ dict }: Props) {
                       }}
                     />
                   </span>
-                  <span className="mono" style={{ fontSize: 11.5, width: 40, textAlign: "right" }}>
+                  <span className="mono" style={{ fontSize: 11.5, width: 34, textAlign: "right" }}>
                     {e.pct.toFixed(1)}%
                   </span>
                 </div>
