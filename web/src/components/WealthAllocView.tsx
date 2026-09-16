@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchWealthAlloc, type AllocationModel, type WealthAlloc } from "../api";
+import { fetchWealthAlloc, type AllocationModel, type WealthAlloc, type WealthAllocRow } from "../api";
 import type { Dictionary } from "../i18n";
 import { fmtMoney, groupColorClass, groupLabel } from "./WealthHomeView";
 
@@ -12,6 +12,24 @@ const currency = "NT$"; // display currency fixed to TWD for now, same as Wealth
 
 function modelLabel(dict: Dictionary, m: AllocationModel): string {
   return m === "conserv" ? dict.wealthModelConserv : m === "growth" ? dict.wealthModelGrowth : dict.wealthModelBalanced;
+}
+
+// donutGradient builds the design template's `wam.donut` ring — a CSS-only
+// pie chart via conic-gradient (no chart library needed), one slice per
+// non-zero currentPct in the series-color CSS vars .wealth-bar-seg already
+// uses. A center "hole" the same size as the card background is overlaid on
+// top (see the JSX below) to turn the pie into a donut.
+function donutGradient(rows: WealthAllocRow[]): string {
+  let acc = 0;
+  const stops: string[] = [];
+  for (const row of rows) {
+    if (row.currentPct <= 0) continue;
+    const from = acc;
+    acc = Math.min(100, acc + row.currentPct);
+    stops.push(`var(--${groupColorClass(row.group)}) ${from}% ${acc}%`);
+  }
+  if (stops.length === 0) return "var(--border)";
+  return `conic-gradient(${stops.join(", ")})`;
 }
 
 export function WealthAllocView({ dict }: Props) {
@@ -50,27 +68,52 @@ export function WealthAllocView({ dict }: Props) {
 
       <div className="detail-grid-2col">
         <div className="card">
-          <div className="eyebrow">{dict.wealthMixTitle}</div>
+          <div className="eyebrow" style={{ marginBottom: 14 }}>
+            {dict.wealthMixTitle}
+          </div>
           {hasData && alloc!.allocation.length > 0 ? (
-            <>
-              <div className="wealth-alloc-bar">
-                {alloc!.allocation.map((row) => (
-                  <div
-                    key={row.group}
-                    className={`wealth-bar-seg ${groupColorClass(row.group)}`}
-                    style={{ width: `${Math.max(0, row.currentPct)}%` }}
-                  />
-                ))}
-              </div>
-              <div className="wealth-alloc-legend">
-                {alloc!.allocation.map((row) => (
-                  <span key={row.group} className="wealth-alloc-legend-item">
-                    <span className={`wealth-dot ${groupColorClass(row.group)}`} />
-                    {groupLabel(dict, row.group)} <span className="mono">{row.currentPct.toFixed(1)}%</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+              <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ width: 140, height: 140, borderRadius: "50%", background: donutGradient(alloc!.allocation) }} />
+                <div
+                  style={{
+                    position: "absolute",
+                    width: 104,
+                    height: 104,
+                    borderRadius: "50%",
+                    background: "var(--surface)",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 2,
+                  }}
+                >
+                  <span className="mono" style={{ fontSize: 9.5, letterSpacing: "0.06em", color: "var(--ink-3)" }}>
+                    {dict.wealthTotalAssets}
                   </span>
+                  <span className="mono" style={{ fontSize: 14 }}>
+                    {fmtMoney(alloc!.totalAssets ?? 0, currency)}
+                  </span>
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 7, flex: 1, minWidth: 180 }}>
+                {alloc!.allocation.map((row) => (
+                  <div key={row.group} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className={`wealth-dot ${groupColorClass(row.group)}`} />
+                    <span style={{ fontSize: 12, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {groupLabel(dict, row.group)}
+                    </span>
+                    <span className="mono" style={{ marginLeft: "auto", fontSize: 12 }}>
+                      {row.currentPct.toFixed(1)}%
+                    </span>
+                    <span className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)", width: 34, textAlign: "right" }}>
+                      {row.targetPct.toFixed(1)}%
+                    </span>
+                  </div>
                 ))}
               </div>
-            </>
+            </div>
           ) : (
             <div className="empty-message">{dict.noData}</div>
           )}
