@@ -171,7 +171,7 @@ function GlobeIcon() {
   );
 }
 
-function ChevronDownIcon({ className }: { className?: string }) {
+export function ChevronDownIcon({ className }: { className?: string }) {
   return (
     <svg {...iconProps} width={10} height={10} className={className} aria-hidden="true">
       <polyline points="3,6 8,11 13,6" />

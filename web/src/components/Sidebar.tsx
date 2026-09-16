@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "re
 import type { Dictionary } from "../i18n";
 import { currencySymbol, type Market, type Status, type WealthHome } from "../api";
 import { formatValue } from "./KpiCard";
+import { ChevronDownIcon } from "./TopBar";
 
 interface Props {
   path: string;
@@ -241,7 +242,12 @@ function AccountMenu({
         </div>
       )}
       <button className="card sidebar-account" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        <div className="eyebrow">{isWealth ? dict.wealthNetWorth : dict.accountValue}</div>
+        <div className="sidebar-account-head">
+          <span className="sidebar-account-name">{isWealth ? dict.acctWealth : dict.acctTrading}</span>
+          {!isWealth && <span className="tag">{market.toUpperCase()}</span>}
+          <ChevronDownIcon className={`sidebar-account-chevron${open ? " open" : ""}`} />
+        </div>
+        <div className="sidebar-account-label">{isWealth ? dict.wealthNetWorth : dict.accountValue}</div>
         {isWealth ? (
           // Same shape as the trading branch below (value/change/stats),
           // fed by wealthHome (App.tsx fetches /api/wealth/networth while
