@@ -6,18 +6,21 @@ import (
 	"time"
 
 	"argus/internal/assets"
+	"argus/internal/db"
 	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/service"
 )
 
-// allocRow is /w/alloc's allocation-table line — ComputeDrift's DriftRow
-// plus the venue of the group's largest single holding (§8.3-2's table has
-// a venue column; a group can hold several assets across different venues,
-// so this is a "where most of it lives" hint, not a claim every asset in
-// the group shares one venue).
+// allocRow is /w/alloc's allocation-table line — ComputeCategoryDrift's
+// DriftRow plus the venue of the category's largest single holding
+// (§8.3-2's table has a venue column; a category can hold several assets
+// across different venues, so this is a "where most of it lives" hint, not
+// a claim every asset in the category shares one venue). Keyed by
+// assets.AllocCategories (§8.5's nine-type split), not the four-bucket
+// asset_group the rest of the wealth pages use.
 type allocRow struct {
-	Group       string  `json:"group"`
+	Category    string  `json:"category"`
 	MarketValue float64 `json:"marketValue"`
 	CurrentPct  float64 `json:"currentPct"`
 	TargetPct   float64 `json:"targetPct"`
@@ -26,16 +29,16 @@ type allocRow struct {
 }
 
 type allocOrder struct {
-	Group       string  `json:"group"`
+	Category    string  `json:"category"`
 	Side        string  `json:"side"` // "buy" or "sell"
 	Amount      float64 `json:"amount"`
 	DeviationPt float64 `json:"deviationPt"`
-	AssetName   string  `json:"assetName,omitempty"` // the group's largest holding, if any yet
+	AssetName   string  `json:"assetName,omitempty"` // the category's largest holding, if any yet
 	Venue       string  `json:"venue,omitempty"`
 }
 
 type allocLockedRow struct {
-	Group       string  `json:"group"`
+	Category    string  `json:"category"`
 	MarketValue float64 `json:"marketValue"`
 	DeviationPt float64 `json:"deviationPt"`
 }
@@ -75,6 +78,68 @@ type allocResponse struct {
 	Concentration    []concentrationWarning `json:"concentration"`
 }
 
+// assetCategoryRow is buildAssetCategories' per-category accumulator —
+// assetGroupRow's shape (see wealth_balance.go), keyed by
+// assets.AllocCategories instead of assets.AssetGroups.
+type assetCategoryRow struct {
+	Category    string
+	MarketValue float64
+	Assets      []balanceSheetItem
+}
+
+// buildAssetCategories is buildAssetGroups' /w/alloc-only counterpart —
+// same FX-conversion/assets-only-no-liabilities shape, keyed by
+// assets.CategoryOf(a.Type) instead of a.AssetGroup. Not shared with
+// /w/balance: that page's "資產分組" section is asset_group-based by
+// design (docs/phase-9-asset-platform.md §8.5), so it keeps calling
+// buildAssetGroups untouched.
+func (s *Server) buildAssetCategories(list []db.AssetWithValue, today string, usTotal float64, usOK bool, twTotal float64, twOK bool) (categories map[string]*assetCategoryRow, byCurrency map[string]float64, totalAssets float64, fxOK bool) {
+	categories = make(map[string]*assetCategoryRow, len(assets.AllocCategories))
+	for _, c := range assets.AllocCategories {
+		categories[c] = &assetCategoryRow{Category: c, Assets: []balanceSheetItem{}}
+	}
+	byCurrency = make(map[string]float64)
+	fxOK = true
+
+	for _, a := range list {
+		if a.Value == nil || a.Side == "liability" {
+			continue
+		}
+		rate, rok := service.RateToTWD(a.Currency, today, true, s.quotes, s.fxDB)
+		if !rok {
+			fxOK = false
+			continue
+		}
+		valueTWD := *a.Value * rate
+		totalAssets += valueTWD
+		byCurrency[a.Currency] += valueTWD
+		c := categories[assets.CategoryOf(a.Type)]
+		if c == nil {
+			continue
+		}
+		c.MarketValue += valueTWD
+		c.Assets = append(c.Assets, balanceSheetItem{AssetID: a.ID, Name: a.Name, Venue: a.Venue, Currency: a.Currency, ValueTWD: valueTWD, Type: a.Type, Source: a.Source})
+	}
+	for _, e := range service.EquityEntries(usTotal, usOK, twTotal, twOK) {
+		rate, rok := service.RateToTWD(e.Currency, today, true, s.quotes, s.fxDB)
+		if !rok {
+			fxOK = false
+			continue
+		}
+		valueTWD := e.Value * rate
+		totalAssets += valueTWD
+		byCurrency[e.Currency] += valueTWD
+		c := categories["equity"]
+		typ := "equity_tw"
+		if e.Currency != "TWD" {
+			typ = "equity_us"
+		}
+		c.MarketValue += valueTWD
+		c.Assets = append(c.Assets, balanceSheetItem{Name: typ, Currency: e.Currency, ValueTWD: valueTWD, Type: typ, Source: "sync"})
+	}
+	return categories, byCurrency, totalAssets, fxOK
+}
+
 // largestAsset returns the name/venue of items' highest-ValueTWD entry, or
 // ("", "") for an empty group (a target group with no asset in it yet — the
 // order still makes sense, "buy into <group>", just with no specific
@@ -101,7 +166,7 @@ func (s *Server) handleWealthAlloc(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	model := assets.AllocationModel(r.URL.Query().Get("model"))
-	if _, ok := assets.ModelPresets[model]; !ok {
+	if _, ok := assets.CategoryModelPresets[model]; !ok {
 		model = assets.ModelBalanced
 	}
 
@@ -132,7 +197,7 @@ func (s *Server) handleWealthAlloc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	groups, byCurrency, totalAssets, fxOK := s.buildAssetGroups(list, today, usTotal, usOK, twTotal, twOK)
+	categories, byCurrency, totalAssets, fxOK := s.buildAssetCategories(list, today, usTotal, usOK, twTotal, twOK)
 	if !fxOK || totalAssets <= 0 {
 		writeJSON(w, http.StatusOK, resp)
 		return
@@ -140,42 +205,52 @@ func (s *Server) handleWealthAlloc(w http.ResponseWriter, r *http.Request) {
 	ta := totalAssets
 	resp.TotalAssets = &ta
 
-	byGroup := make(map[string]float64, len(assets.AssetGroups))
-	for _, g := range assets.AssetGroups {
-		byGroup[g] = groups[g].MarketValue
+	byCategory := make(map[string]float64, len(assets.AllocCategories))
+	for _, c := range assets.AllocCategories {
+		byCategory[c] = categories[c].MarketValue
 	}
-	driftRows := assets.ComputeDrift(byGroup, totalAssets, model)
-	orders := assets.ComputeRebalanceOrders(driftRows, totalAssets)
+	driftRows := assets.ComputeCategoryDrift(byCategory, totalAssets, model)
+	orders := assets.ComputeCategoryRebalanceOrders(driftRows, totalAssets)
 
-	orderByGroup := make(map[string]assets.RebalanceOrder, len(orders))
+	orderByCategory := make(map[string]assets.RebalanceOrder, len(orders))
 	for _, o := range orders {
-		orderByGroup[o.Group] = o
+		orderByCategory[o.Group] = o
 		resp.RebalTotal += o.Amount
 	}
 
+	// riskCategories are the market-risk/volatile slice of the nine
+	// categories (the old four-group system's single "growth" bucket split
+	// three ways) — riskPct/riskTarget sum their current/target% rather
+	// than picking one row, same reasoning as summing MarketValue instead
+	// of averaging percentages.
+	riskCategories := map[string]bool{"equity": true, "fund": true, "crypto": true}
+	var riskCur, riskTarget float64
+
 	for _, row := range driftRows {
-		name, venue := largestAsset(groups[row.Group].Assets)
+		name, venue := largestAsset(categories[row.Group].Assets)
 		resp.Allocation = append(resp.Allocation, allocRow{
-			Group: row.Group, MarketValue: row.MarketValue, CurrentPct: row.CurrentPct,
+			Category: row.Group, MarketValue: row.MarketValue, CurrentPct: row.CurrentPct,
 			TargetPct: row.TargetPct, DeviationPt: row.DeviationPt, Venue: venue,
 		})
-		if assets.LockedGroups[row.Group] {
-			resp.Locked = append(resp.Locked, allocLockedRow{Group: row.Group, MarketValue: row.MarketValue, DeviationPt: row.DeviationPt})
+		if riskCategories[row.Group] {
+			riskCur += row.CurrentPct
+			riskTarget += row.TargetPct
+		}
+		if assets.LockedCategories[row.Group] {
+			resp.Locked = append(resp.Locked, allocLockedRow{Category: row.Group, MarketValue: row.MarketValue, DeviationPt: row.DeviationPt})
 			continue
 		}
-		if o, ok := orderByGroup[row.Group]; ok {
+		if o, ok := orderByCategory[row.Group]; ok {
 			resp.Orders = append(resp.Orders, allocOrder{
-				Group: o.Group, Side: o.Side, Amount: o.Amount, DeviationPt: o.DeviationPt,
+				Category: o.Group, Side: o.Side, Amount: o.Amount, DeviationPt: o.DeviationPt,
 				AssetName: name, Venue: venue,
 			})
 		}
-		if row.Group == "growth" {
-			cur := row.CurrentPct
-			resp.RiskPct = &cur
-			lo, hi := row.TargetPct-assets.RebalanceThresholdPt, row.TargetPct+assets.RebalanceThresholdPt
-			resp.RiskTargetLow, resp.RiskTargetHigh = &lo, &hi
-		}
 	}
+	cur := riskCur
+	resp.RiskPct = &cur
+	lo, hi := riskTarget-assets.RebalanceThresholdPt, riskTarget+assets.RebalanceThresholdPt
+	resp.RiskTargetLow, resp.RiskTargetHigh = &lo, &hi
 
 	for cur, v := range byCurrency {
 		resp.CurrencyExposure = append(resp.CurrencyExposure, currencyExposureRow{Currency: cur, Pct: v / totalAssets * 100})

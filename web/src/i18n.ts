@@ -476,6 +476,18 @@ export interface Dictionary {
   wealthGroupGrowth: string;
   wealthGroupIncome: string;
   wealthGroupHard: string;
+  // wealthCategory* back /w/alloc's own nine-category taxonomy
+  // (assets.AllocCategories, §8.5) — distinct from the four wealthGroup*
+  // keys above, which the home page and balance sheet still use.
+  wealthCategoryCash: string;
+  wealthCategoryEquity: string;
+  wealthCategoryFund: string;
+  wealthCategoryBond: string;
+  wealthCategoryInsurance: string;
+  wealthCategoryEstate: string;
+  wealthCategoryGold: string;
+  wealthCategoryCrypto: string;
+  wealthCategoryPension: string;
   wealthCurrentPct: string;
   wealthTargetPct: string;
   wealthDeviation: string;
@@ -497,6 +509,13 @@ export interface Dictionary {
   wealthArchiveConfirm: string;
   wealthKindDeposit: string;
   wealthKindLoan: string;
+  wealthKindInsurance: string;
+  wealthKindFund: string;
+  wealthKindBond: string;
+  wealthKindEstate: string;
+  wealthKindGold: string;
+  wealthKindCrypto: string;
+  wealthKindPension: string;
   wealthKindOther: string;
   wealthBank: string;
   wealthAccountNote: string;
@@ -1003,6 +1022,15 @@ const en: Dictionary = {
   wealthGroupGrowth: "Growth",
   wealthGroupIncome: "Income",
   wealthGroupHard: "Hard Assets",
+  wealthCategoryCash: "Cash & FX",
+  wealthCategoryEquity: "Stocks",
+  wealthCategoryFund: "ETFs & Funds",
+  wealthCategoryBond: "Bonds",
+  wealthCategoryInsurance: "Insurance",
+  wealthCategoryEstate: "Real Estate",
+  wealthCategoryGold: "Gold & Physical",
+  wealthCategoryCrypto: "Crypto",
+  wealthCategoryPension: "Pension",
   wealthCurrentPct: "Current %",
   wealthTargetPct: "Target %",
   wealthDeviation: "Deviation",
@@ -1024,6 +1052,13 @@ const en: Dictionary = {
   wealthArchiveConfirm: "Archive this asset? Its history stays on record, it just leaves the active list.",
   wealthKindDeposit: "Deposit",
   wealthKindLoan: "Loan",
+  wealthKindInsurance: "Insurance",
+  wealthKindFund: "Fund/ETF",
+  wealthKindBond: "Bond",
+  wealthKindEstate: "Real Estate",
+  wealthKindGold: "Gold/Physical",
+  wealthKindCrypto: "Crypto",
+  wealthKindPension: "Pension",
   wealthKindOther: "Other",
   wealthBank: "Bank",
   wealthAccountNote: "Account note",
@@ -1520,6 +1555,15 @@ const zh: Dictionary = {
   wealthGroupGrowth: "成長",
   wealthGroupIncome: "收益",
   wealthGroupHard: "實體",
+  wealthCategoryCash: "現金/外幣",
+  wealthCategoryEquity: "股票",
+  wealthCategoryFund: "ETF與基金",
+  wealthCategoryBond: "債券",
+  wealthCategoryInsurance: "保單",
+  wealthCategoryEstate: "不動產",
+  wealthCategoryGold: "黃金與實體",
+  wealthCategoryCrypto: "加密貨幣",
+  wealthCategoryPension: "勞保勞退",
   wealthCurrentPct: "現值佔比",
   wealthTargetPct: "目標佔比",
   wealthDeviation: "偏離",
@@ -1541,6 +1585,13 @@ const zh: Dictionary = {
   wealthArchiveConfirm: "封存這筆資產？歷史紀錄會保留，只是從清單中隱藏。",
   wealthKindDeposit: "存款",
   wealthKindLoan: "貸款",
+  wealthKindInsurance: "保單",
+  wealthKindFund: "基金/ETF",
+  wealthKindBond: "債券",
+  wealthKindEstate: "不動產",
+  wealthKindGold: "黃金/實體",
+  wealthKindCrypto: "加密貨幣",
+  wealthKindPension: "勞保勞退",
   wealthKindOther: "其他",
   wealthBank: "銀行",
   wealthAccountNote: "帳戶備註",

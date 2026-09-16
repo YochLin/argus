@@ -9,6 +9,7 @@ import (
 
 	"argus/internal/data"
 	"argus/internal/db"
+	"argus/internal/market"
 )
 
 func newWealthAllocTestServer(fake *fakeDB, quotes *fakeQuotes) *Server {
@@ -50,16 +51,32 @@ func TestHandleWealthAllocNoDataRendersEmpty(t *testing.T) {
 	}
 }
 
-// TestHandleWealthAllocOrdersAndLocked exercises the group-level math:
-// growth is over target and should sell, hard is over target too but
-// locked so it only shows up as a locked row, never an order.
+// TestHandleWealthAllocOrdersAndLocked exercises the category-level math
+// (nine-category taxonomy, §8.5): fund is over target and should sell,
+// estate is over target too but locked so it only shows up as a locked
+// row, never an order. Every other category sits exactly on target so it
+// contributes neither an order nor drift noise to the assertions below.
+// The equity category comes from the equity virtual row (net worth
+// snapshot), same as production — never a real assets row (§9.1 rule 3).
 func TestHandleWealthAllocOrdersAndLocked(t *testing.T) {
-	fake := &fakeDB{wealthAssets: []db.AssetWithValue{
-		{Asset: db.Asset{Side: "asset", AssetGroup: "liquid", Currency: "TWD"}, Value: floatPtr(200000)},
-		{Asset: db.Asset{Side: "asset", AssetGroup: "growth", Currency: "TWD"}, Value: floatPtr(500000)},
-		{Asset: db.Asset{Side: "asset", AssetGroup: "income", Currency: "TWD"}, Value: floatPtr(200000)},
-		{Asset: db.Asset{Side: "asset", AssetGroup: "hard", Name: "公寓", Currency: "TWD"}, Value: floatPtr(100000)},
-	}}
+	fake := &fakeDB{
+		wealthAssets: []db.AssetWithValue{
+			{Asset: db.Asset{Side: "asset", Type: "deposit", Currency: "TWD"}, Value: floatPtr(150000)},           // cash 15%, on target
+			{Asset: db.Asset{Side: "asset", Type: "fund", Currency: "TWD"}, Value: floatPtr(280000)},              // fund 28% vs target 15% -> sell
+			{Asset: db.Asset{Side: "asset", Type: "bond", Currency: "TWD"}, Value: floatPtr(150000)},              // bond 15%, on target
+			{Asset: db.Asset{Side: "asset", Type: "insurance", Currency: "TWD"}, Value: floatPtr(50000)},          // insurance 5%, on target
+			{Asset: db.Asset{Side: "asset", Type: "estate", Name: "公寓", Currency: "TWD"}, Value: floatPtr(20000)}, // estate 2% vs target 15% -> locked, no order
+			{Asset: db.Asset{Side: "asset", Type: "gold", Currency: "TWD"}, Value: floatPtr(50000)},               // gold 5%, on target
+			{Asset: db.Asset{Side: "asset", Type: "crypto", Currency: "TWD"}, Value: floatPtr(30000)},             // crypto 3%, on target
+			{Asset: db.Asset{Side: "asset", Type: "pension", Currency: "TWD"}, Value: floatPtr(20000)},            // pension 2%, on target
+		},
+		netWorthOnOrBeforeFn: func(date string, m market.MarketID) (float64, bool, error) {
+			if m == market.TW {
+				return 250000, true, nil // equity virtual row, 25% of the 1,000,000 total, on target
+			}
+			return 0, false, nil
+		},
+	}
 	s := newWealthAllocTestServer(fake, &fakeQuotes{})
 
 	rec := httptest.NewRecorder()
@@ -68,17 +85,26 @@ func TestHandleWealthAllocOrdersAndLocked(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if len(got.Allocation) != 4 {
-		t.Fatalf("len(Allocation) = %d, want 4", len(got.Allocation))
+	if len(got.Allocation) != 9 {
+		t.Fatalf("len(Allocation) = %d, want 9", len(got.Allocation))
 	}
-	if len(got.Orders) != 1 || got.Orders[0].Group != "growth" || got.Orders[0].Side != "sell" {
-		t.Errorf("Orders = %+v, want one sell order for growth", got.Orders)
+	if len(got.Orders) != 1 || got.Orders[0].Category != "fund" || got.Orders[0].Side != "sell" {
+		t.Errorf("Orders = %+v, want one sell order for fund", got.Orders)
 	}
-	if len(got.Locked) != 1 || got.Locked[0].Group != "hard" {
-		t.Errorf("Locked = %+v, want one row for hard", got.Locked)
+	// estate/gold/pension are all locked categories (assets.LockedCategories)
+	// — they appear here regardless of deviation size, unlike orders.
+	lockedCats := map[string]bool{}
+	for _, l := range got.Locked {
+		lockedCats[l.Category] = true
 	}
-	if got.RiskPct == nil || *got.RiskPct != 50 {
-		t.Errorf("RiskPct = %v, want 50 (growth's current%%)", got.RiskPct)
+	if len(got.Locked) != 3 || !lockedCats["estate"] || !lockedCats["gold"] || !lockedCats["pension"] {
+		t.Errorf("Locked = %+v, want rows for estate/gold/pension", got.Locked)
+	}
+	if got.RiskPct == nil || !approxEqualFloat(*got.RiskPct, 56) {
+		t.Errorf("RiskPct = %v, want 56 (equity 25 + fund 28 + crypto 3)", got.RiskPct)
+	}
+	if got.RiskTargetLow == nil || !approxEqualFloat(*got.RiskTargetLow, 38) || got.RiskTargetHigh == nil || !approxEqualFloat(*got.RiskTargetHigh, 48) {
+		t.Errorf("RiskTargetLow/High = %v/%v, want 38/48", got.RiskTargetLow, got.RiskTargetHigh)
 	}
 	if len(got.CurrencyExposure) != 1 || got.CurrencyExposure[0].Currency != "TWD" || got.CurrencyExposure[0].Pct != 100 {
 		t.Errorf("CurrencyExposure = %+v, want single TWD 100%%", got.CurrencyExposure)
@@ -89,6 +115,14 @@ func TestHandleWealthAllocOrdersAndLocked(t *testing.T) {
 	if strings.Contains(rec.Body.String(), `"concentration":null`) {
 		t.Errorf("concentration serialized as null, want []: %s", rec.Body.String())
 	}
+}
+
+func approxEqualFloat(a, b float64) bool {
+	d := a - b
+	if d < 0 {
+		d = -d
+	}
+	return d < 1e-6
 }
 
 // TestHandleWealthAllocConcentrationWarning pins §10.2③: a single position

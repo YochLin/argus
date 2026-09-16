@@ -1854,10 +1854,24 @@ export function fetchWealthBalance(): Promise<BalanceSheet> {
 }
 
 // --- Phase 9 PR4: allocation & rebalance (/w/alloc) ---
-// Mirrors internal/web/wealth_alloc.go.
+// Mirrors internal/web/wealth_alloc.go. /w/alloc uses its own finer
+// nine-category taxonomy (assets.AllocCategories, docs/phase-9-asset-
+// platform.md §8.5) rather than the four-bucket AssetGroup the rest of the
+// wealth pages (home/balance-sheet) key off — the two coexist on purpose,
+// see allocation.go's doc comments.
+export type AllocCategory =
+  | "cash"
+  | "equity"
+  | "fund"
+  | "bond"
+  | "insurance"
+  | "estate"
+  | "gold"
+  | "crypto"
+  | "pension";
 
 export interface WealthAllocRow {
-  group: AssetGroup;
+  category: AllocCategory;
   marketValue: number;
   currentPct: number;
   targetPct: number;
@@ -1866,7 +1880,7 @@ export interface WealthAllocRow {
 }
 
 export interface WealthAllocOrder {
-  group: AssetGroup;
+  category: AllocCategory;
   side: "buy" | "sell";
   amount: number;
   deviationPt: number;
@@ -1875,7 +1889,7 @@ export interface WealthAllocOrder {
 }
 
 export interface WealthAllocLockedRow {
-  group: AssetGroup;
+  category: AllocCategory;
   marketValue: number;
   deviationPt: number;
 }

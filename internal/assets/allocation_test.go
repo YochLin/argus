@@ -82,3 +82,78 @@ func TestModelPresetsSumToRoughly100(t *testing.T) {
 		}
 	}
 }
+
+// TestCategoryModelPresetsSumToRoughly100 is TestModelPresetsSumToRoughly100
+// for /w/alloc's nine-category taxonomy.
+func TestCategoryModelPresetsSumToRoughly100(t *testing.T) {
+	for model, preset := range CategoryModelPresets {
+		var sum float64
+		for _, c := range AllocCategories {
+			sum += preset[c]
+		}
+		if sum < 99 || sum > 101 {
+			t.Errorf("CategoryModelPresets[%q] sums to %v, want ~100", model, sum)
+		}
+	}
+}
+
+func TestCategoryOf(t *testing.T) {
+	cases := map[string]string{
+		"deposit":   "cash",
+		"fund":      "fund",
+		"bond":      "bond",
+		"insurance": "insurance",
+		"estate":    "estate",
+		"gold":      "gold",
+		"crypto":    "crypto",
+		"pension":   "pension",
+		"other":     "estate", // legacy catch-all falls back to estate
+		"":          "estate",
+	}
+	for typ, want := range cases {
+		if got := CategoryOf(typ); got != want {
+			t.Errorf("CategoryOf(%q) = %q, want %q", typ, got, want)
+		}
+	}
+}
+
+func TestComputeCategoryDriftAndRebalanceOrders(t *testing.T) {
+	byCategory := map[string]float64{
+		"cash": 150, "equity": 250, "fund": 150, "bond": 150, "insurance": 50,
+		"estate": 150, "gold": 50, "crypto": 30, "pension": 20,
+	}
+	total := 1000.0
+	rows := ComputeCategoryDrift(byCategory, total, ModelBalanced)
+	if len(rows) != len(AllocCategories) {
+		t.Fatalf("len(rows) = %d, want %d", len(rows), len(AllocCategories))
+	}
+
+	byC := map[string]DriftRow{}
+	for _, r := range rows {
+		byC[r.Group] = r
+	}
+	equity := byC["equity"]
+	if !approxEqual(equity.CurrentPct, 25) || equity.TargetPct != CategoryModelPresets[ModelBalanced]["equity"] {
+		t.Errorf("equity = %+v, want CurrentPct 25, TargetPct %v", equity, CategoryModelPresets[ModelBalanced]["equity"])
+	}
+
+	orders := ComputeCategoryRebalanceOrders(rows, total)
+	for _, o := range orders {
+		if LockedCategories[o.Group] {
+			t.Errorf("order generated for locked category %q: %+v", o.Group, o)
+		}
+	}
+	// estate is locked and 15pt over target (15% actual vs... let's just
+	// assert it never appears as an order regardless of its own drift.
+	for _, o := range orders {
+		if o.Group == "estate" || o.Group == "gold" || o.Group == "pension" {
+			t.Errorf("locked category %q produced an order: %+v", o.Group, o)
+		}
+	}
+}
+
+func TestComputeCategoryDriftZeroTotalReturnsNil(t *testing.T) {
+	if rows := ComputeCategoryDrift(map[string]float64{"cash": 100}, 0, ModelBalanced); rows != nil {
+		t.Errorf("ComputeCategoryDrift(total=0) = %v, want nil", rows)
+	}
+}

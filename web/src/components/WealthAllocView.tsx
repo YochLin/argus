@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { fetchWealthAlloc, type AllocationModel, type WealthAlloc, type WealthAllocRow } from "../api";
+import { fetchWealthAlloc, type AllocationModel, type AllocCategory, type WealthAlloc, type WealthAllocRow } from "../api";
 import type { Dictionary } from "../i18n";
-import { fmtMoney, groupColorClass, groupLabel } from "./WealthHomeView";
+import { fmtMoney } from "./WealthHomeView";
 
 interface Props {
   dict: Dictionary;
@@ -12,6 +12,49 @@ const currency = "NT$"; // display currency fixed to TWD for now, same as Wealth
 
 function modelLabel(dict: Dictionary, m: AllocationModel): string {
   return m === "conserv" ? dict.wealthModelConserv : m === "growth" ? dict.wealthModelGrowth : dict.wealthModelBalanced;
+}
+
+// categoryLabel/categoryColorClass are /w/alloc's own nine-category
+// taxonomy (assets.AllocCategories, docs/phase-9-asset-platform.md §8.5) —
+// separate from WealthHomeView's four-bucket groupLabel/groupColorClass,
+// which the home page and balance sheet still use.
+function categoryLabel(dict: Dictionary, c: AllocCategory): string {
+  switch (c) {
+    case "cash":
+      return dict.wealthCategoryCash;
+    case "equity":
+      return dict.wealthCategoryEquity;
+    case "fund":
+      return dict.wealthCategoryFund;
+    case "bond":
+      return dict.wealthCategoryBond;
+    case "insurance":
+      return dict.wealthCategoryInsurance;
+    case "estate":
+      return dict.wealthCategoryEstate;
+    case "gold":
+      return dict.wealthCategoryGold;
+    case "crypto":
+      return dict.wealthCategoryCrypto;
+    case "pension":
+      return dict.wealthCategoryPension;
+  }
+}
+
+const CATEGORY_COLOR_CLASS: Record<AllocCategory, string> = {
+  cash: "s1",
+  equity: "s2",
+  fund: "s7",
+  bond: "s3",
+  insurance: "s5",
+  estate: "s4",
+  gold: "s8",
+  crypto: "s9",
+  pension: "s6",
+};
+
+function categoryColorClass(c: AllocCategory): string {
+  return CATEGORY_COLOR_CLASS[c];
 }
 
 // donutGradient builds the design template's `wam.donut` ring — a CSS-only
@@ -26,7 +69,7 @@ function donutGradient(rows: WealthAllocRow[]): string {
     if (row.currentPct <= 0) continue;
     const from = acc;
     acc = Math.min(100, acc + row.currentPct);
-    stops.push(`var(--${groupColorClass(row.group)}) ${from}% ${acc}%`);
+    stops.push(`var(--${categoryColorClass(row.category)}) ${from}% ${acc}%`);
   }
   if (stops.length === 0) return "var(--border)";
   return `conic-gradient(${stops.join(", ")})`;
@@ -109,10 +152,10 @@ export function WealthAllocView({ dict }: Props) {
                 }}
               >
                 {alloc!.allocation.map((row) => (
-                  <div key={row.group} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span className={`wealth-dot ${groupColorClass(row.group)}`} />
+                  <div key={row.category} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className={`wealth-dot ${categoryColorClass(row.category)}`} />
                     <span style={{ fontSize: 12, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {groupLabel(dict, row.group)}
+                      {categoryLabel(dict, row.category)}
                     </span>
                     <span className="mono" style={{ marginLeft: "auto", fontSize: 12 }}>
                       {row.currentPct.toFixed(1)}%
@@ -144,16 +187,16 @@ export function WealthAllocView({ dict }: Props) {
             <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
               {alloc!.orders.map((o) => (
                 <div
-                  key={o.group}
+                  key={o.category}
                   style={{ display: "flex", alignItems: "center", gap: 9, paddingBottom: 9, borderBottom: "1px solid var(--border)" }}
                 >
-                  <span className={`wealth-dot ${groupColorClass(o.group)}`} />
+                  <span className={`wealth-dot ${categoryColorClass(o.category)}`} />
                   <span style={{ fontWeight: 600, color: o.side === "buy" ? "var(--profit)" : "var(--loss)" }}>
                     {o.side === "buy" ? dict.wealthOrderBuy : dict.wealthOrderSell}
                   </span>
                   <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
                     <span style={{ fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {o.assetName || groupLabel(dict, o.group)}
+                      {o.assetName || categoryLabel(dict, o.category)}
                     </span>
                     <span className="mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>
                       {dict.wealthVenueLabel} {o.venue || "—"}
@@ -181,9 +224,9 @@ export function WealthAllocView({ dict }: Props) {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {alloc!.locked.map((l) => (
-                <div key={l.group} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--ink-2)" }}>
-                  <span className={`wealth-dot ${groupColorClass(l.group)}`} />
-                  {groupLabel(dict, l.group)}
+                <div key={l.category} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--ink-2)" }}>
+                  <span className={`wealth-dot ${categoryColorClass(l.category)}`} />
+                  {categoryLabel(dict, l.category)}
                   <span
                     className={`mono ${l.deviationPt > 0 ? "profit" : l.deviationPt < 0 ? "loss" : ""}`}
                     style={{ marginLeft: "auto" }}
@@ -217,17 +260,17 @@ export function WealthAllocView({ dict }: Props) {
             </thead>
             <tbody>
               {alloc!.allocation.map((row) => (
-                <tr key={row.group}>
+                <tr key={row.category}>
                   <td>
                     <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span className={`wealth-dot ${groupColorClass(row.group)}`} />
-                      {groupLabel(dict, row.group)}
+                      <span className={`wealth-dot ${categoryColorClass(row.category)}`} />
+                      {categoryLabel(dict, row.category)}
                     </span>
                   </td>
                   <td>
                     <span style={{ position: "relative", display: "block", background: "var(--bg)", borderRadius: 3, height: 6 }}>
                       <span
-                        className={`wealth-bar-seg ${groupColorClass(row.group)}`}
+                        className={`wealth-bar-seg ${categoryColorClass(row.category)}`}
                         style={{ display: "block", width: `${Math.max(0, Math.min(100, row.currentPct))}%`, borderRadius: 3 }}
                       />
                       <span

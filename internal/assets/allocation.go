@@ -21,7 +21,9 @@ const (
 
 // AssetGroups is the fixed four-bucket taxonomy every asset carries
 // (assets.asset_group, migration 29) — liquidity/growth/income/hard, in the
-// order the allocation table renders them.
+// order the allocation table renders them. Still the taxonomy for the
+// wealth home page's KPI/balance-sheet grouping/liquidity-months math; the
+// finer AllocCategories below is /w/alloc-only (see its doc comment).
 var AssetGroups = []string{"liquid", "growth", "income", "hard"}
 
 // LoanTypes is which asset.Type values carry a loan_details row (rate,
@@ -35,26 +37,100 @@ var LoanTypes = map[string]bool{"loan": true, "credit_card": true}
 // from the user's own situation — same honesty disclaimer the design spec
 // itself makes about its demo data (§8.17.3): run the allocation page with
 // real numbers first, adjust these later if they're actually off, don't
-// tune blind. They key off asset_group (the 4 buckets the schema actually
-// has) rather than the design mock's finer 9-category split, since §8.5
-// deliberately collapsed real-estate/gold/crypto/pension into one generic
-// "other" type with no per-category detail table to key a finer split off.
+// tune blind. Backs the wealth home page's own allocation table only —
+// /w/alloc uses CategoryModelPresets (§8.5's 9-type split) instead.
 var ModelPresets = map[AllocationModel]map[string]float64{
 	ModelConservative: {"liquid": 30, "growth": 20, "income": 30, "hard": 20},
 	ModelBalanced:     {"liquid": 20, "growth": 35, "income": 20, "hard": 25},
 	ModelGrowth:       {"liquid": 10, "growth": 55, "income": 10, "hard": 25},
 }
 
+// AllocCategories is /w/alloc's finer allocation taxonomy (docs/phase-9-
+// asset-platform.md §8.5 — the design mock's nine asset types), in the
+// order the allocation table/donut render them. It exists *alongside*
+// AssetGroups, not instead of it: asset_group still drives the home page's
+// KPI, the balance-sheet grouping, and liquidity-months (all keyed on the
+// four-bucket asset_group column directly, untouched by this taxonomy).
+// This finer split only ever appears on /w/alloc's allocation table/donut/
+// rebalance-order generator.
+var AllocCategories = []string{
+	"cash", "equity", "fund", "bond", "insurance", "estate", "gold", "crypto", "pension",
+}
+
+// CategoryOf maps an assets.type value onto one of AllocCategories.
+// "estate"/"gold"/"crypto"/"pension" are real, distinct type strings (§8.5
+// only ruled out separate *detail tables* for these four — "one generic
+// type with no per-category detail table" — it never said the type string
+// itself has to be the literal "other"). Legacy/unrecognized values
+// (including the older single "other" catch-all some assets still carry)
+// fall back to "estate" as the most common real-world case for a
+// hard-to-classify asset. "loan"/"credit_card" (liabilities) never reach
+// this function — the alloc page's category breakdown is assets-only, same
+// as buildAssetGroups.
+func CategoryOf(assetType string) string {
+	switch assetType {
+	case "deposit":
+		return "cash"
+	case "fund":
+		return "fund"
+	case "bond":
+		return "bond"
+	case "insurance":
+		return "insurance"
+	case "estate":
+		return "estate"
+	case "gold":
+		return "gold"
+	case "crypto":
+		return "crypto"
+	case "pension":
+		return "pension"
+	default:
+		return "estate"
+	}
+}
+
+// CategoryModelPresets is AllocCategories' target percentage per preset —
+// same honesty disclaimer as ModelPresets (illustrative textbook numbers,
+// not derived from the user's own situation or from research).
+var CategoryModelPresets = map[AllocationModel]map[string]float64{
+	ModelConservative: {
+		"cash": 25, "equity": 15, "fund": 10, "bond": 25, "insurance": 5,
+		"estate": 15, "gold": 3, "crypto": 0, "pension": 2,
+	},
+	ModelBalanced: {
+		"cash": 15, "equity": 25, "fund": 15, "bond": 15, "insurance": 5,
+		"estate": 15, "gold": 5, "crypto": 3, "pension": 2,
+	},
+	ModelGrowth: {
+		"cash": 8, "equity": 40, "fund": 15, "bond": 5, "insurance": 3,
+		"estate": 15, "gold": 5, "crypto": 7, "pension": 2,
+	},
+}
+
 // DriftRow is one line of the wealth home page's allocation table (variant
 // B, §8.17.2: group / current% / target% / deviation / market value — no
 // "suggested action" column, that belongs to /w/alloc's rebalance-order
-// generator, a later PR).
+// generator, a later PR). ComputeCategoryDrift reuses the same shape with a
+// category key in Group instead of an asset_group key — the field name
+// stays generic on purpose since both producers share every other field.
 type DriftRow struct {
 	Group       string
 	MarketValue float64
 	CurrentPct  float64
 	TargetPct   float64
 	DeviationPt float64
+}
+
+func computeDrift(byKey map[string]float64, total float64, keys []string, target map[string]float64) []DriftRow {
+	rows := make([]DriftRow, 0, len(keys))
+	for _, k := range keys {
+		mv := byKey[k]
+		cur := mv / total * 100
+		tgt := target[k]
+		rows = append(rows, DriftRow{Group: k, MarketValue: mv, CurrentPct: cur, TargetPct: tgt, DeviationPt: cur - tgt})
+	}
+	return rows
 }
 
 // ComputeDrift turns each group's market value (already converted to one
@@ -66,23 +142,32 @@ func ComputeDrift(byGroup map[string]float64, total float64, model AllocationMod
 	if total <= 0 {
 		return nil
 	}
-	target := ModelPresets[model]
-	rows := make([]DriftRow, 0, len(AssetGroups))
-	for _, g := range AssetGroups {
-		mv := byGroup[g]
-		cur := mv / total * 100
-		tgt := target[g]
-		rows = append(rows, DriftRow{Group: g, MarketValue: mv, CurrentPct: cur, TargetPct: tgt, DeviationPt: cur - tgt})
+	return computeDrift(byGroup, total, AssetGroups, ModelPresets[model])
+}
+
+// ComputeCategoryDrift is ComputeDrift's /w/alloc-only counterpart, keyed by
+// AllocCategories/CategoryModelPresets instead of AssetGroups/ModelPresets.
+func ComputeCategoryDrift(byCategory map[string]float64, total float64, model AllocationModel) []DriftRow {
+	if total <= 0 {
+		return nil
 	}
-	return rows
+	return computeDrift(byCategory, total, AllocCategories, CategoryModelPresets[model])
 }
 
 // LockedGroups are asset_group buckets /w/alloc's rebalance-order generator
 // excludes (§9.4 PR4, §8.3-2 "不可調資產鎖定") — "hard" (real estate/
 // collectibles/pension, §8.5) has no brokerage a buy/sell instruction could
 // route through, so its drift is still reported but never turned into an
-// order.
+// order. Superseded by LockedCategories wherever the category taxonomy
+// applies; kept as-is since ModelPresets/AssetGroups still use it.
 var LockedGroups = map[string]bool{"hard": true}
+
+// LockedCategories is LockedGroups' AllocCategories equivalent — estate and
+// pension have no brokerage route (same reasoning as the old "hard"
+// bucket), and physical gold is the same "no direct sell/buy route on this
+// platform" case. Crypto, despite also being a former "hard" member, has
+// real exchanges and stays tradable/unlocked here.
+var LockedCategories = map[string]bool{"estate": true, "gold": true, "pension": true}
 
 // RebalanceThresholdPt is the minimum |deviation| (percentage points) that
 // turns into a rebalance order — without a materiality floor, a
@@ -110,16 +195,10 @@ type RebalanceOrder struct {
 	DeviationPt float64
 }
 
-// ComputeRebalanceOrders turns ComputeDrift's rows into orders, skipping
-// locked groups and drift inside RebalanceThresholdPt. total must be the
-// same total ComputeDrift was called with.
-func ComputeRebalanceOrders(rows []DriftRow, total float64) []RebalanceOrder {
-	if total <= 0 {
-		return nil
-	}
+func computeRebalanceOrders(rows []DriftRow, total float64, locked map[string]bool) []RebalanceOrder {
 	var out []RebalanceOrder
 	for _, row := range rows {
-		if LockedGroups[row.Group] || math.Abs(row.DeviationPt) < RebalanceThresholdPt {
+		if locked[row.Group] || math.Abs(row.DeviationPt) < RebalanceThresholdPt {
 			continue
 		}
 		amount := row.TargetPct/100*total - row.MarketValue
@@ -131,4 +210,23 @@ func ComputeRebalanceOrders(rows []DriftRow, total float64) []RebalanceOrder {
 		out = append(out, RebalanceOrder{Group: row.Group, Side: side, Amount: amount, DeviationPt: row.DeviationPt})
 	}
 	return out
+}
+
+// ComputeRebalanceOrders turns ComputeDrift's rows into orders, skipping
+// locked groups and drift inside RebalanceThresholdPt. total must be the
+// same total ComputeDrift was called with.
+func ComputeRebalanceOrders(rows []DriftRow, total float64) []RebalanceOrder {
+	if total <= 0 {
+		return nil
+	}
+	return computeRebalanceOrders(rows, total, LockedGroups)
+}
+
+// ComputeCategoryRebalanceOrders is ComputeRebalanceOrders' /w/alloc-only
+// counterpart, over ComputeCategoryDrift's rows and LockedCategories.
+func ComputeCategoryRebalanceOrders(rows []DriftRow, total float64) []RebalanceOrder {
+	if total <= 0 {
+		return nil
+	}
+	return computeRebalanceOrders(rows, total, LockedCategories)
 }
