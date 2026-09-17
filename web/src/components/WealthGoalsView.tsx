@@ -1,21 +1,10 @@
 import { useEffect, useState } from "react";
-import {
-  ApiError,
-  createWealthGoal,
-  deleteWealthGoal,
-  fetchWealthAssets,
-  fetchWealthGoals,
-  setWealthGoalEarmark,
-  type Goal,
-  type WealthAsset,
-} from "../api";
+import { fetchWealthGoals, type Goal } from "../api";
 import type { Dictionary } from "../i18n";
 import { fmtMoney } from "./WealthHomeView";
 
 interface Props {
   dict: Dictionary;
-  writable: boolean;
-  onUnauthorized: (retry: () => void) => void;
 }
 
 const CURRENCY = "NT$"; // display currency fixed to TWD, same known gap as WealthHomeView/WealthCashView
@@ -71,206 +60,19 @@ function GoalProgressBar({
   );
 }
 
-function AddGoalForm({
-  dict,
-  onUnauthorized,
-  onSaved,
-}: {
-  dict: Dictionary;
-  onUnauthorized: (retry: () => void) => void;
-  onSaved: () => void;
-}) {
-  const [name, setName] = useState("");
-  const [targetAmount, setTargetAmount] = useState("");
-  const [targetDate, setTargetDate] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function submit() {
-    const amt = Number(targetAmount);
-    if (!name.trim() || !(amt > 0)) {
-      setError(dict.error);
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    try {
-      await createWealthGoal({ name: name.trim(), targetAmount: amt, targetDate: targetDate.trim() || undefined });
-      setName("");
-      setTargetAmount("");
-      setTargetDate("");
-      onSaved();
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
-        onUnauthorized(submit);
-      } else {
-        setError(e instanceof ApiError ? e.message : dict.error);
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="card" style={{ marginBottom: 16 }}>
-      <div className="eyebrow">{dict.wealthGoalsAddTitle}</div>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
-        <label className="form-field" style={{ flex: "1 1 200px" }}>
-          <span>{dict.wealthGoalsNameLabel}</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-        <label className="form-field" style={{ width: 160 }}>
-          <span>{dict.wealthGoalsTargetAmountLabel}</span>
-          <input className="mono" type="number" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} />
-        </label>
-        <label className="form-field" style={{ width: 160 }}>
-          <span>{dict.wealthGoalsTargetDateLabel}</span>
-          <input className="mono" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
-        </label>
-      </div>
-      {error && <div className="error-message">{error}</div>}
-      <div className="modal-actions">
-        <button className="btn-primary" disabled={submitting} onClick={submit}>
-          {dict.wealthGoalsAdd}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function EarmarkEditor({
-  dict,
-  goal,
-  assets,
-  onUnauthorized,
-  onSaved,
-}: {
-  dict: Dictionary;
-  goal: Goal;
-  assets: WealthAsset[];
-  onUnauthorized: (retry: () => void) => void;
-  onSaved: () => void;
-}) {
-  const linkedIDs = new Set(goal.assets.map((a) => a.assetId));
-  const linkable = assets.filter((a) => a.side === "asset" && !a.archivedAt && !linkedIDs.has(a.id));
-  const [assetId, setAssetId] = useState<string>("");
-  const [ratio, setRatio] = useState("1");
-  const [error, setError] = useState<string | null>(null);
-
-  async function link() {
-    const id = Number(assetId);
-    const r = Number(ratio);
-    if (!(id > 0) || !(r > 0) || r > 1) {
-      setError(dict.error);
-      return;
-    }
-    try {
-      await setWealthGoalEarmark(goal.id, id, r);
-      setAssetId("");
-      setRatio("1");
-      setError(null);
-      onSaved();
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
-        onUnauthorized(link);
-      } else {
-        setError(e instanceof ApiError ? e.message : dict.error);
-      }
-    }
-  }
-
-  async function unlink(targetAssetId: number) {
-    try {
-      await setWealthGoalEarmark(goal.id, targetAssetId, 0);
-      onSaved();
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
-        onUnauthorized(() => unlink(targetAssetId));
-      } else {
-        window.alert(e instanceof ApiError ? e.message : dict.error);
-      }
-    }
-  }
-
-  return (
-    <div style={{ marginTop: 4, paddingTop: 9, borderTop: "1px solid var(--border)" }}>
-      <div style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 10.5, color: "var(--ink-3)" }}>
-        {dict.wealthGoalsEarmarkTitle}
-      </div>
-      {goal.assets.length > 0 ? (
-        <ul style={{ margin: "6px 0", paddingLeft: 0, listStyle: "none" }}>
-          {goal.assets.map((a) => (
-            <li key={a.assetId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", fontSize: 12.5 }}>
-              <span style={{ fontFamily: "var(--sans)" }}>
-                {a.name} {a.venue ? `· ${a.venue}` : ""} ({Math.round(a.ratio * 100)}%)
-              </span>
-              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span className="mono">{a.value != null ? fmtMoney(a.value, CURRENCY) : "—"}</span>
-                <button onClick={() => unlink(a.assetId)}>{dict.wealthGoalsEarmarkRemove}</button>
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <div className="empty-message">{dict.wealthGoalsNoEarmarks}</div>
-      )}
-      {linkable.length > 0 && (
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-          <select value={assetId} onChange={(e) => setAssetId(e.target.value)} style={{ flex: "1 1 160px" }}>
-            <option value="">{dict.wealthGoalsEarmarkAssetLabel}</option>
-            {linkable.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
-          <input
-            className="mono"
-            type="number"
-            min={0.01}
-            max={1}
-            step={0.01}
-            value={ratio}
-            onChange={(e) => setRatio(e.target.value)}
-            style={{ width: 80 }}
-            aria-label={dict.wealthGoalsEarmarkRatioLabel}
-          />
-          <button onClick={link}>{dict.wealthGoalsEarmarkAdd}</button>
-        </div>
-      )}
-      {error && <div className="error-message">{error}</div>}
-    </div>
-  );
-}
-
-// GoalCard mirrors the template's goal row (lines 1166-1201): name + state
-// chip + pct on top, note below, progress bar with the expected-progress
-// mark, then a Saved/Target/Monthly/ETA stat line. `big` renders it as the
-// enlarged "glow" card the template reserves for the retirement row (lines
-// 1166-1182) instead of the plain grid card (lines 1186-1200) — Monthly is
-// always "—": the goals schema (§8.8/§9.2) has no monthly-contribution
-// column, so there's nothing to compute it from yet; ETA falls back to the
-// user's own targetDate rather than a projected completion date, since that
-// projection also needs the monthly figure we don't have.
-function GoalCard({
-  dict,
-  goal,
-  big,
-  writable,
-  assets,
-  onUnauthorized,
-  onSaved,
-  onDelete,
-}: {
-  dict: Dictionary;
-  goal: Goal;
-  big: boolean;
-  writable: boolean;
-  assets: WealthAsset[];
-  onUnauthorized: (retry: () => void) => void;
-  onSaved: () => void;
-  onDelete: (goal: Goal) => void;
-}) {
+// GoalCard mirrors the template's goal row exactly (lines 1166-1201): name +
+// state chip + pct on top, note below, progress bar with the
+// expected-progress mark, then a Saved/Target/Monthly/ETA stat line — no
+// write affordances anywhere, since the template's own /w/goals section has
+// none (unlike /w/cash's "+" drawer trigger, this page's header is just a
+// "see retirement" link). `big` renders it as the enlarged "glow" card the
+// template reserves for the retirement row (lines 1166-1182) instead of the
+// plain grid card (lines 1186-1200) — Monthly is always "—": the goals
+// schema (§8.8/§9.2) has no monthly-contribution column, so there's nothing
+// to compute it from yet; ETA falls back to the user's own targetDate rather
+// than a projected completion date, since that projection also needs the
+// monthly figure we don't have.
+function GoalCard({ dict, goal, big }: { dict: Dictionary; goal: Goal; big: boolean }) {
   const pct = goal.progressPct != null ? Math.max(0, Math.min(100, goal.progressPct)) : 0;
   return (
     <div className={`card${big ? " card--glow" : ""}`} style={{ display: "flex", flexDirection: "column", gap: 9 }}>
@@ -298,56 +100,25 @@ function GoalCard({
           {dict.wealthGoalsEtaLabel} <span style={{ color: "var(--ink)" }}>{goal.targetDate || "—"}</span>
         </span>
       </div>
-      {writable && (
-        <details>
-          <summary style={{ cursor: "pointer", fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-3)" }}>
-            {dict.wealthGoalsManageLabel}
-          </summary>
-          <EarmarkEditor dict={dict} goal={goal} assets={assets} onUnauthorized={onUnauthorized} onSaved={onSaved} />
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
-            <button onClick={() => onDelete(goal)}>{dict.wealthGoalsDelete}</button>
-          </div>
-        </details>
-      )}
     </div>
   );
 }
 
-export function WealthGoalsView({ dict, writable, onUnauthorized }: Props) {
+export function WealthGoalsView({ dict }: Props) {
   const [goals, setGoals] = useState<Goal[] | null>(null);
-  const [assets, setAssets] = useState<WealthAsset[]>([]);
   const [error, setError] = useState(false);
-  const [refreshSignal, setRefreshSignal] = useState(0);
 
   useEffect(() => {
     setError(false);
-    Promise.all([fetchWealthGoals(), fetchWealthAssets()])
-      .then(([g, a]) => {
-        setGoals(g.goals);
-        setAssets(a.assets);
-      })
+    fetchWealthGoals()
+      .then((g) => setGoals(g.goals))
       .catch(() => setError(true));
-  }, [refreshSignal]);
-
-  async function remove(goal: Goal) {
-    if (!window.confirm(goal.name)) return;
-    try {
-      await deleteWealthGoal(goal.id);
-      setRefreshSignal((n) => n + 1);
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
-        onUnauthorized(() => remove(goal));
-      } else {
-        window.alert(e instanceof ApiError ? e.message : dict.error);
-      }
-    }
-  }
+  }, []);
 
   if (error) {
     return <div className="error-message">{dict.error}</div>;
   }
 
-  const onSaved = () => setRefreshSignal((n) => n + 1);
   const bigGoal = goals?.find((g) => g.kind === "retirement");
   const otherGoals = goals?.filter((g) => g.id !== bigGoal?.id) ?? [];
   const totalSaved = goals?.reduce((sum, g) => (g.saved != null ? sum + g.saved : sum), 0) ?? 0;
@@ -395,29 +166,17 @@ export function WealthGoalsView({ dict, writable, onUnauthorized }: Props) {
 
       {bigGoal && (
         <div style={{ marginBottom: 16 }}>
-          <GoalCard dict={dict} goal={bigGoal} big writable={writable} assets={assets} onUnauthorized={onUnauthorized} onSaved={onSaved} onDelete={remove} />
+          <GoalCard dict={dict} goal={bigGoal} big />
         </div>
       )}
 
       {otherGoals.length > 0 && (
         <div className="goal-grid">
           {otherGoals.map((goal) => (
-            <GoalCard
-              key={goal.id}
-              dict={dict}
-              goal={goal}
-              big={false}
-              writable={writable}
-              assets={assets}
-              onUnauthorized={onUnauthorized}
-              onSaved={onSaved}
-              onDelete={remove}
-            />
+            <GoalCard key={goal.id} dict={dict} goal={goal} big={false} />
           ))}
         </div>
       )}
-
-      {writable && <div style={{ marginTop: 16 }}><AddGoalForm dict={dict} onUnauthorized={onUnauthorized} onSaved={onSaved} /></div>}
     </>
   );
 }

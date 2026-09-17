@@ -253,11 +253,7 @@ export default function App() {
     );
   } else if (path === "/w/goals") {
     body = (
-      <WealthGoalsView
-        dict={dict}
-        writable={status?.writable ?? false}
-        onUnauthorized={(retry) => setAuthRetry(() => retry)}
-      />
+      <WealthGoalsView dict={dict} />
     );
   } else if (path === "/w/balance") {
     body = (
