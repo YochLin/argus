@@ -64,6 +64,7 @@ const llmLink = { path: "/llm", label: (d: Dictionary) => d.navLlm, icon: <LlmIc
 const wealthLinks: Array<{ path: string; label: (dict: Dictionary) => string; icon: ReactNode }> = [
   { path: "/w", label: (d) => d.navWealth, icon: <WealthIcon /> },
   { path: "/w/alloc", label: (d) => d.navWealthAlloc, icon: <AllocIcon /> },
+  { path: "/w/cash", label: (d) => d.navWealthCash, icon: <CashIcon /> },
   { path: "/w/balance", label: (d) => d.navWealthBalance, icon: <BalanceSheetIcon /> },
   { path: "/w/import", label: (d) => d.navWealthImport, icon: <ImportIcon /> },
 ];
@@ -465,6 +466,17 @@ function AllocIcon() {
     <svg {...iconProps} aria-hidden="true">
       <circle cx="8" cy="8" r="6" />
       <path d="M8 2 V8 L12.2 11.2" />
+    </svg>
+  );
+}
+
+function CashIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <rect x="1.5" y="4" width="13" height="8" rx="1.3" />
+      <circle cx="8" cy="8" r="1.8" />
+      <line x1="3.5" y1="8" x2="3.5" y2="8" />
+      <line x1="12.5" y1="8" x2="12.5" y2="8" />
     </svg>
   );
 }

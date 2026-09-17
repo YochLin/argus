@@ -21,11 +21,17 @@ type fakeWealthDB struct {
 	lastSnapshot                     db.AssetSnapshot
 	lastArchiveID                    int64
 	lastSettingKey, lastSettingValue string
+	lastNewCashflow                  db.NewRecurringCashflow
+	lastDeactivateID                 int64
 
-	createErr   error
-	snapshotErr error
-	archiveErr  error
-	settingErr  error
+	createErr     error
+	snapshotErr   error
+	archiveErr    error
+	settingErr    error
+	cashflowErr   error
+	deactivateErr error
+
+	nextCashflowID int64
 }
 
 func (f *fakeWealthDB) CreateAsset(a db.NewAsset) (int64, error) {
@@ -55,6 +61,15 @@ func (f *fakeWealthDB) SetSetting(key, value string) error {
 	f.lastSettingKey, f.lastSettingValue = key, value
 	return f.settingErr
 }
+func (f *fakeWealthDB) CreateRecurringCashflow(c db.NewRecurringCashflow) (int64, error) {
+	f.lastNewCashflow = c
+	f.nextCashflowID++
+	return f.nextCashflowID, f.cashflowErr
+}
+func (f *fakeWealthDB) DeactivateRecurringCashflow(id int64) error {
+	f.lastDeactivateID = id
+	return f.deactivateErr
+}
 
 func newWealthTestServer(password string, wealthDB wealthWriter, dbr dbReader) *Server {
 	s := &Server{db: dbr, wealthDB: wealthDB, password: password}
@@ -64,6 +79,9 @@ func newWealthTestServer(password string, wealthDB wealthWriter, dbr dbReader) *
 	s.mux.HandleFunc("POST /api/wealth/assets", s.requireWritable(s.requireAuth(s.handleWealthAssetCreate)))
 	s.mux.HandleFunc("POST /api/wealth/assets/snapshot", s.requireWritable(s.requireAuth(s.handleWealthAssetSnapshot)))
 	s.mux.HandleFunc("POST /api/wealth/assets/archive", s.requireWritable(s.requireAuth(s.handleWealthAssetArchive)))
+	s.mux.HandleFunc("GET /api/wealth/cash", s.handleWealthCashList)
+	s.mux.HandleFunc("POST /api/wealth/cash", s.requireWritable(s.requireAuth(s.handleWealthCashCreate)))
+	s.mux.HandleFunc("POST /api/wealth/cash/deactivate", s.requireWritable(s.requireAuth(s.handleWealthCashDeactivate)))
 	return s
 }
 

@@ -25,6 +25,7 @@ import { WealthHomeView } from "./components/WealthHomeView";
 import { WealthBalanceView } from "./components/WealthBalanceView";
 import { WealthImportView } from "./components/WealthImportView";
 import { WealthAllocView } from "./components/WealthAllocView";
+import { WealthCashView } from "./components/WealthCashView";
 
 // Four client-side routes (dashboard, calendar, round list, round detail)
 // don't justify pulling in a routing library — a hand-rolled route
@@ -241,6 +242,14 @@ export default function App() {
     );
   } else if (path === "/w/alloc") {
     body = <WealthAllocView dict={dict} />;
+  } else if (path === "/w/cash") {
+    body = (
+      <WealthCashView
+        dict={dict}
+        writable={status?.writable ?? false}
+        onUnauthorized={(retry) => setAuthRetry(() => retry)}
+      />
+    );
   } else if (path === "/w/balance") {
     body = (
       <WealthBalanceView

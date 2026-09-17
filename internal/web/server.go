@@ -314,6 +314,13 @@ func New(cfg Config) *Server {
 	// single-position concentration warnings. Read-only (no write path —
 	// orders are suggestions, not executed trades), ungated like the rest.
 	s.mux.HandleFunc("GET /api/wealth/alloc", s.handleWealthAlloc)
+	// /api/wealth/cash (`/w/cash`, §9.4 PR5) — recurring income/expense
+	// lines and the 90-day cash event table derived from them (plus open
+	// option expiries). GET ungated; the two writes (add flow, pause flow)
+	// share the usual requireWritable/requireAuth gate.
+	s.mux.HandleFunc("GET /api/wealth/cash", s.handleWealthCashList)
+	s.mux.HandleFunc("POST /api/wealth/cash", s.requireWritable(s.requireAuth(s.handleWealthCashCreate)))
+	s.mux.HandleFunc("POST /api/wealth/cash/deactivate", s.requireWritable(s.requireAuth(s.handleWealthCashDeactivate)))
 	// /api/settings (Phase 17 PR2) sits behind the same gate as every write
 	// route, GET included: the read side reports which credentials are
 	// configured, which is not something to hand out unauthenticated.

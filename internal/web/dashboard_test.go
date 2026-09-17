@@ -74,6 +74,9 @@ type fakeDB struct {
 	// loanDetails backs GetLoanDetails for wealth_balance_test.go — keyed by
 	// asset id, nil (the zero value) behaves as "no loan_details row."
 	loanDetails map[int64]*db.LoanDetails
+	// recurringCashflows backs ListRecurringCashflows for wealth_cash_test.go
+	// (Phase 9 波次2 PR5).
+	recurringCashflows []db.RecurringCashflow
 }
 
 func (f *fakeDB) GetPositions() ([]db.Position, error)          { return f.positions, nil }
@@ -196,6 +199,18 @@ func (f *fakeDB) ListAssetsValueAsOf(asOfDate string, includeArchived bool) ([]d
 }
 func (f *fakeDB) GetLoanDetails(assetID int64) (*db.LoanDetails, error) {
 	return f.loanDetails[assetID], nil
+}
+func (f *fakeDB) ListRecurringCashflows(activeOnly bool) ([]db.RecurringCashflow, error) {
+	if !activeOnly {
+		return f.recurringCashflows, nil
+	}
+	out := make([]db.RecurringCashflow, 0, len(f.recurringCashflows))
+	for _, c := range f.recurringCashflows {
+		if c.Active {
+			out = append(out, c)
+		}
+	}
+	return out, nil
 }
 
 // BlockNewsSource/UnblockNewsSource let fakeDB double as a newsSourceWriter

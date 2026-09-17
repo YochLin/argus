@@ -686,6 +686,9 @@ function getMockData(url: string): any {
       concentration: [],
     };
   }
+  if (path === "/api/wealth/cash") {
+    return { asOf: "2026-07-15", items: [], monthlyIn: null, monthlyOut: null, monthlyNet: null, events: [] };
+  }
   if (path === "/api/status") {
     return {
       watchingCount: market === "tw" ? 11 : 14,
@@ -1955,4 +1958,65 @@ export function fetchWealthProfile(): Promise<WealthProfile> {
 
 export function saveWealthProfile(annualSalary: number): Promise<TradeResponse> {
   return postJSON("/api/wealth/profile", { annualSalary });
+}
+
+// CashflowDirection/CashflowItem/CashEvent mirror wealth_cash.go's
+// recurring_cashflows response shapes (Phase 9 波次2 PR5, §8.4/§9.4) — a
+// hand-maintained monthly amount, not a transaction ledger.
+export type CashflowDirection = "in" | "out";
+
+export interface CashflowItem {
+  id: number;
+  direction: CashflowDirection;
+  name: string;
+  amount: number;
+  currency: string;
+  dayOfMonth?: number;
+  category?: string;
+  assetId?: number;
+  venue?: string;
+  active: boolean;
+}
+
+export interface CashEvent {
+  date: string;
+  item: string;
+  venue?: string;
+  amount: number | null;
+  currency?: string;
+  direction: CashflowDirection | "event";
+}
+
+// WealthCash mirrors wealth_cash.go's cashResponse — monthlyIn/Out/Net are
+// null when an active flow's currency couldn't be priced to TWD today
+// (§8.17.1's "don't fabricate a number" rule, same as /w/alloc's totals).
+export interface WealthCash {
+  asOf: string;
+  items: CashflowItem[];
+  monthlyIn: number | null;
+  monthlyOut: number | null;
+  monthlyNet: number | null;
+  events: CashEvent[];
+}
+
+export function fetchWealthCash(): Promise<WealthCash> {
+  return getJSON("/api/wealth/cash");
+}
+
+export interface NewCashflow {
+  direction: CashflowDirection;
+  name: string;
+  amount: number;
+  currency?: string;
+  dayOfMonth?: number;
+  category?: string;
+  assetId?: number;
+}
+
+export function createWealthCashflow(c: NewCashflow): Promise<{ id: number }> {
+  return postJSON("/api/wealth/cash", c);
+}
+
+export function deactivateWealthCashflow(id: number): Promise<TradeResponse> {
+  return postJSON("/api/wealth/cash/deactivate", { id });
 }

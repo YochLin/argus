@@ -594,6 +594,40 @@ export interface Dictionary {
   wealthConcentrationHint: string;
   wealthNoConcentration: string;
   wealthRebalTotal: string;
+  // Phase 9 波次2 PR5: cash flow page (/w/cash) — recurring income/expense
+  // lines (hand-maintained monthly amounts, not a transaction ledger) and
+  // the 90-day cash event table derived from them. Mirrors
+  // internal/web/wealth_cash.go.
+  navWealthCash: string;
+  wealthCashMonthlyIn: string;
+  wealthCashMonthlyOut: string;
+  wealthCashMonthlyNet: string;
+  wealthCashItemsTitle: string;
+  wealthCashEventsTitle: string;
+  wealthCashNoItems: string;
+  wealthCashNoEvents: string;
+  wealthCashAddTitle: string;
+  wealthCashDirectionIn: string;
+  wealthCashDirectionOut: string;
+  wealthCashNameLabel: string;
+  wealthCashAmountLabel: string;
+  wealthCashDayOfMonthLabel: string;
+  wealthCashCategoryLabel: string;
+  wealthCashAdd: string;
+  wealthCashPause: string;
+  wealthCashPaused: string;
+  wealthCashDateLabel: string;
+  wealthCashCatSalary: string;
+  wealthCashCatRent: string;
+  wealthCashCatDividend: string;
+  wealthCashCatBondInterest: string;
+  wealthCashCatFundDividend: string;
+  wealthCashCatLiving: string;
+  wealthCashCatMortgage: string;
+  wealthCashCatSip: string;
+  wealthCashCatLoan: string;
+  wealthCashCatInsurance: string;
+  wealthCashCatTax: string;
 }
 
 const en: Dictionary = {
@@ -1133,6 +1167,36 @@ const en: Dictionary = {
   wealthConcentrationHint: "A single position over a large share of your open equity book — informational only, no sell suggestion.",
   wealthNoConcentration: "No single position dominates your equity book.",
   wealthRebalTotal: "rebalance total",
+  navWealthCash: "Cash Flow",
+  wealthCashMonthlyIn: "Monthly income",
+  wealthCashMonthlyOut: "Monthly expense",
+  wealthCashMonthlyNet: "Monthly net",
+  wealthCashItemsTitle: "Recurring cash flows",
+  wealthCashEventsTitle: "Next 90 days",
+  wealthCashNoItems: "No recurring cash flows yet.",
+  wealthCashNoEvents: "No cash events in the next 90 days.",
+  wealthCashAddTitle: "Add recurring flow",
+  wealthCashDirectionIn: "Income",
+  wealthCashDirectionOut: "Expense",
+  wealthCashNameLabel: "Name",
+  wealthCashAmountLabel: "Monthly amount",
+  wealthCashDayOfMonthLabel: "Day of month",
+  wealthCashCategoryLabel: "Category",
+  wealthCashAdd: "Add",
+  wealthCashPause: "Pause",
+  wealthCashPaused: "Paused",
+  wealthCashDateLabel: "Date",
+  wealthCashCatSalary: "Salary",
+  wealthCashCatRent: "Rental income",
+  wealthCashCatDividend: "Stock dividends",
+  wealthCashCatBondInterest: "Bond interest",
+  wealthCashCatFundDividend: "Fund dividends",
+  wealthCashCatLiving: "Living expenses",
+  wealthCashCatMortgage: "Mortgage",
+  wealthCashCatSip: "Recurring investment",
+  wealthCashCatLoan: "Loan / car payment",
+  wealthCashCatInsurance: "Insurance premium",
+  wealthCashCatTax: "Tax reserve",
 };
 
 const zh: Dictionary = {
@@ -1666,6 +1730,36 @@ const zh: Dictionary = {
   wealthConcentrationHint: "單一持股占你交易帳戶部位過高比重——僅供參考，不建議賣出哪一檔。",
   wealthNoConcentration: "沒有單一持股占比過高。",
   wealthRebalTotal: "再平衡總額",
+  navWealthCash: "現金流",
+  wealthCashMonthlyIn: "月收入",
+  wealthCashMonthlyOut: "月支出",
+  wealthCashMonthlyNet: "月結餘",
+  wealthCashItemsTitle: "經常性收支",
+  wealthCashEventsTitle: "未來 90 天",
+  wealthCashNoItems: "尚無經常性收支項目。",
+  wealthCashNoEvents: "未來 90 天沒有現金事件。",
+  wealthCashAddTitle: "新增經常性收支",
+  wealthCashDirectionIn: "收入",
+  wealthCashDirectionOut: "支出",
+  wealthCashNameLabel: "名稱",
+  wealthCashAmountLabel: "月額",
+  wealthCashDayOfMonthLabel: "每月幾號",
+  wealthCashCategoryLabel: "類別",
+  wealthCashAdd: "新增",
+  wealthCashPause: "暫停",
+  wealthCashPaused: "已暫停",
+  wealthCashDateLabel: "日期",
+  wealthCashCatSalary: "薪資",
+  wealthCashCatRent: "租金收入",
+  wealthCashCatDividend: "股息",
+  wealthCashCatBondInterest: "債息",
+  wealthCashCatFundDividend: "基金配息",
+  wealthCashCatLiving: "生活支出",
+  wealthCashCatMortgage: "房貸",
+  wealthCashCatSip: "定期定額",
+  wealthCashCatLoan: "信貸車貸",
+  wealthCashCatInsurance: "保費",
+  wealthCashCatTax: "稅務預留",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };
