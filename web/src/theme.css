@@ -1496,36 +1496,44 @@ th {
   background: var(--loss);
 }
 
+/* Template's third bucket: under the expected line but not flagged late —
+   accent (not gray), so "no signal yet" doesn't read the same as "behind". */
+.goal-progress-fill.accent {
+  background: var(--accent);
+}
+
 .goal-progress-mark {
   position: absolute;
   top: -3px;
   width: 2px;
   height: 14px;
-  background: var(--ink-3);
+  background: var(--ink-2);
   transform: translateX(-50%);
 }
 
+/* Template's stateStyle is an outlined chip (colored text + 1px border, no
+   fill), not a filled pill — matches wrm.goal.stateStyle /
+   Argus Trading WebUI.dc.html's goalRow(). */
 .goal-state-chip {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
   white-space: nowrap;
 }
 
 .goal-state-chip.ahead {
-  background: rgba(16, 185, 129, 0.14);
   color: var(--profit);
 }
 
 .goal-state-chip.behind {
-  background: rgba(239, 68, 68, 0.14);
   color: var(--loss);
 }
 
 .goal-state-chip.onTrack {
-  background: var(--bg);
-  color: var(--ink-3);
+  color: var(--accent);
 }
 
 .goal-grid {

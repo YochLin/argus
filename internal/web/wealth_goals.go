@@ -159,7 +159,13 @@ func (s *Server) handleWealthGoalsList(w http.ResponseWriter, r *http.Request) {
 		if fxOK {
 			item.Saved = &saved
 			if g.TargetAmount > 0 {
+				// Capped at 100 (matching the design template's goalRow, which
+				// does the same) — an overfunded goal reads as "done", not as a
+				// number that invites a second-guess about the math.
 				pct := saved / g.TargetAmount * 100
+				if pct > 100 {
+					pct = 100
+				}
 				item.ProgressPct = &pct
 				if g.TargetDate != "" {
 					if status, expectedPct, ok := goalStatus(g.CreatedAt, g.TargetDate, pct, now); ok {

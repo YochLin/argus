@@ -85,8 +85,11 @@ func TestHandleWealthGoalsList(t *testing.T) {
 	if g1.Saved == nil || *g1.Saved != 500000 {
 		t.Errorf("goal 1 Saved = %v, want 500000", g1.Saved)
 	}
-	if g1.ProgressPct == nil || *g1.ProgressPct < 166 || *g1.ProgressPct > 167 {
-		t.Errorf("goal 1 ProgressPct = %v, want ~166.67", g1.ProgressPct)
+	// 500000/300000 = 166.7% raw, capped at 100 (matches the design
+	// template's goalRow(), which caps the same way — an overfunded goal
+	// reads as "done", not as a number inviting a second-guess).
+	if g1.ProgressPct == nil || *g1.ProgressPct != 100 {
+		t.Errorf("goal 1 ProgressPct = %v, want 100 (capped)", g1.ProgressPct)
 	}
 	if len(g1.Assets) != 1 || g1.Assets[0].Name != "玉山活存" {
 		t.Errorf("goal 1 Assets = %+v, want one row 玉山活存", g1.Assets)

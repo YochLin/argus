@@ -656,6 +656,8 @@ export interface Dictionary {
   wealthGoalsMonthlyLabel: string;
   wealthGoalsBehindCountLabel: string;
   wealthGoalsEtaLabel: string;
+  wealthGoalsExpectedLabel: string;
+  wealthGoalsManageLabel: string;
 }
 
 const en: Dictionary = {
@@ -1245,10 +1247,12 @@ const en: Dictionary = {
   wealthGoalsEarmarkAdd: "Link",
   wealthGoalsEarmarkRemove: "Unlink",
   wealthGoalsNoEarmarks: "No assets earmarked for this goal yet.",
-  wealthGoalsTotalProgress: "Overall progress",
+  wealthGoalsTotalProgress: "ALL GOALS",
   wealthGoalsMonthlyLabel: "Monthly",
-  wealthGoalsBehindCountLabel: "Behind",
+  wealthGoalsBehindCountLabel: "BEHIND",
   wealthGoalsEtaLabel: "ETA",
+  wealthGoalsExpectedLabel: "expected",
+  wealthGoalsManageLabel: "Manage",
 };
 
 const zh: Dictionary = {
@@ -1812,17 +1816,17 @@ const zh: Dictionary = {
   wealthCashCatLoan: "信貸車貸",
   wealthCashCatInsurance: "保費",
   wealthCashCatTax: "稅務預留",
-  navWealthGoals: "目標",
+  navWealthGoals: "目標追蹤",
   wealthGoalsAddTitle: "新增目標",
   wealthGoalsNameLabel: "名稱",
   wealthGoalsTargetAmountLabel: "目標金額",
   wealthGoalsTargetDateLabel: "目標日期",
   wealthGoalsAdd: "新增",
   wealthGoalsNoGoals: "尚無目標。",
-  wealthGoalsSavedLabel: "已存",
+  wealthGoalsSavedLabel: "已累積",
   wealthGoalsTargetLabel: "目標",
   wealthGoalsStatusAhead: "超前",
-  wealthGoalsStatusOnTrack: "正常",
+  wealthGoalsStatusOnTrack: "進度正常",
   wealthGoalsStatusBehind: "落後",
   wealthGoalsDelete: "刪除",
   wealthGoalsKindRetirement: "退休",
@@ -1832,10 +1836,12 @@ const zh: Dictionary = {
   wealthGoalsEarmarkAdd: "認列",
   wealthGoalsEarmarkRemove: "取消認列",
   wealthGoalsNoEarmarks: "此目標尚未認列任何資產。",
-  wealthGoalsTotalProgress: "總進度",
-  wealthGoalsMonthlyLabel: "月投入",
-  wealthGoalsBehindCountLabel: "落後中",
+  wealthGoalsTotalProgress: "全部目標合計",
+  wealthGoalsMonthlyLabel: "每月投入",
+  wealthGoalsBehindCountLabel: "落後項目",
   wealthGoalsEtaLabel: "預計達成",
+  wealthGoalsExpectedLabel: "應有進度",
+  wealthGoalsManageLabel: "管理",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

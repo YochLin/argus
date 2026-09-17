@@ -41,13 +41,32 @@ function StatusChip({ dict, status }: { dict: Dictionary; status: Goal["status"]
 }
 
 // GoalProgressBar mirrors the template's bar+mark pair (lines 1132/1174/
-// 1193) — a track, a fill, and (when the goal has a targetDate) a tick at
-// markPct showing where progress "should" be today, not just a color.
-function GoalProgressBar({ pct, markPct, status }: { pct: number; markPct?: number; status: Goal["status"] }) {
+// 1193, goalRow()'s barStyle/markStyle) — a track, a fill colored by status
+// (ahead=profit, behind=loss, on-track-or-unknown=accent — the template
+// never colors this gray), and, when the goal has a targetDate, a tick at
+// markPct showing where progress "should" be today.
+function GoalProgressBar({
+  dict,
+  pct,
+  markPct,
+  status,
+}: {
+  dict: Dictionary;
+  pct: number;
+  markPct?: number;
+  status: Goal["status"];
+}) {
+  const fillClass = status === "ahead" ? "profit" : status === "behind" ? "loss" : "accent";
   return (
     <div className="goal-progress-track">
-      <span className={`goal-progress-fill ${status === "behind" ? "loss" : "profit"}`} style={{ width: `${pct}%` }} />
-      {markPct != null && <span className="goal-progress-mark" style={{ left: `${Math.max(0, Math.min(100, markPct))}%` }} />}
+      <span className={`goal-progress-fill ${fillClass}`} style={{ width: `${pct}%` }} />
+      {markPct != null && (
+        <span
+          className="goal-progress-mark"
+          title={dict.wealthGoalsExpectedLabel}
+          style={{ left: `${Math.max(0, Math.min(100, markPct))}%` }}
+        />
+      )}
     </div>
   );
 }
@@ -260,11 +279,11 @@ function GoalCard({
         {goal.kind === "retirement" && <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{dict.wealthGoalsKindRetirement}</span>}
         <StatusChip dict={dict} status={goal.status} />
         <span className="mono" style={{ marginLeft: "auto", fontSize: big ? 24 : 17 }}>
-          {goal.progressPct != null ? `${goal.progressPct.toFixed(0)}%` : "—"}
+          {goal.progressPct != null ? `${goal.progressPct.toFixed(1)}%` : "—"}
         </span>
       </div>
       {goal.note && <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{goal.note}</div>}
-      <GoalProgressBar pct={pct} markPct={goal.markPct} status={goal.status} />
+      <GoalProgressBar dict={dict} pct={pct} markPct={goal.markPct} status={goal.status} />
       <div style={{ display: "flex", gap: big ? 22 : 18, flexWrap: "wrap", fontFamily: "var(--font-mono)", fontSize: big ? 11 : 10.5, color: "var(--ink-3)" }}>
         <span>
           {dict.wealthGoalsSavedLabel} <span style={{ color: "var(--ink)" }}>{goal.saved != null ? fmtMoney(goal.saved, CURRENCY) : "—"}</span>
@@ -280,11 +299,16 @@ function GoalCard({
         </span>
       </div>
       {writable && (
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button onClick={() => onDelete(goal)}>{dict.wealthGoalsDelete}</button>
-        </div>
+        <details>
+          <summary style={{ cursor: "pointer", fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-3)" }}>
+            {dict.wealthGoalsManageLabel}
+          </summary>
+          <EarmarkEditor dict={dict} goal={goal} assets={assets} onUnauthorized={onUnauthorized} onSaved={onSaved} />
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+            <button onClick={() => onDelete(goal)}>{dict.wealthGoalsDelete}</button>
+          </div>
+        </details>
       )}
-      <EarmarkEditor dict={dict} goal={goal} assets={assets} onUnauthorized={onUnauthorized} onSaved={onSaved} />
     </div>
   );
 }
@@ -333,7 +357,15 @@ export function WealthGoalsView({ dict, writable, onUnauthorized }: Props) {
 
   return (
     <>
-      {writable && <AddGoalForm dict={dict} onUnauthorized={onUnauthorized} onSaved={onSaved} />}
+      {/* Unboxed section header, matching every other wealth page in the
+          template (isWAlloc/isWBalance/isWCash all open with the same
+          flex row before any card) rather than the eyebrow-in-first-card
+          shape this page used before its template pass. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "0 0 16px", flexWrap: "wrap" }}>
+        <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: "var(--ink)" }}>
+          {dict.navWealthGoals}
+        </span>
+      </div>
 
       {goals && goals.length === 0 && <div className="card empty-message">{dict.wealthGoalsNoGoals}</div>}
 
@@ -342,7 +374,7 @@ export function WealthGoalsView({ dict, writable, onUnauthorized }: Props) {
           <div className="card" style={{ flex: "1 1 200px" }}>
             <div className="eyebrow">{dict.wealthGoalsTotalProgress}</div>
             <div className="mono" style={{ fontSize: "clamp(17px,2.1vw,28px)", marginTop: 8 }}>
-              {totalPct != null ? `${totalPct.toFixed(0)}%` : "—"}
+              {totalPct != null ? `${totalPct.toFixed(1)}%` : "—"}
             </div>
             <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6 }}>
               {fmtMoney(totalSaved, CURRENCY)} / {fmtMoney(totalTarget, CURRENCY)}
@@ -354,7 +386,7 @@ export function WealthGoalsView({ dict, writable, onUnauthorized }: Props) {
           </div>
           <div className="card" style={{ flex: "1 1 200px" }}>
             <div className="eyebrow">{dict.wealthGoalsBehindCountLabel}</div>
-            <div className={`mono ${behindCount > 0 ? "loss" : ""}`} style={{ fontSize: "clamp(17px,2.1vw,28px)", marginTop: 8 }}>
+            <div className={`mono ${behindCount > 0 ? "loss" : "profit"}`} style={{ fontSize: "clamp(17px,2.1vw,28px)", marginTop: 8 }}>
               {behindCount}
             </div>
           </div>
@@ -384,6 +416,8 @@ export function WealthGoalsView({ dict, writable, onUnauthorized }: Props) {
           ))}
         </div>
       )}
+
+      {writable && <div style={{ marginTop: 16 }}><AddGoalForm dict={dict} onUnauthorized={onUnauthorized} onSaved={onSaved} /></div>}
     </>
   );
 }
