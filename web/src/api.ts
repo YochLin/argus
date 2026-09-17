@@ -2053,6 +2053,11 @@ export interface Goal {
   saved: number | null;
   progressPct: number | null;
   status?: GoalStatus;
+  // markPct is where the "expected progress" tick renders on the progress
+  // bar (§8.9 point 5's 應有進度標記) — the same straight-line expectation
+  // status was classified against, unset together with status when there's
+  // no targetDate.
+  markPct?: number;
   assets: GoalAssetItem[];
 }
 

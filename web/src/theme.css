@@ -1470,6 +1470,70 @@ th {
   text-align: right;
 }
 
+/* Goal progress bar (/w/goals, Phase 9 波次3 PR6) — same track/fill shape as
+   .edge-bar-track/.edge-bar-fill but with room for .goal-progress-mark, a
+   tick at the design template's "expected progress" position (wrm.goal.mark
+   in Argus Trading WebUI.dc.html) so a goal reads as ahead/behind at a
+   glance instead of only via the text status chip beside it. */
+.goal-progress-track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg);
+}
+
+.goal-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+}
+
+.goal-progress-fill.profit {
+  background: var(--profit);
+}
+
+.goal-progress-fill.loss {
+  background: var(--loss);
+}
+
+.goal-progress-mark {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 14px;
+  background: var(--ink-3);
+  transform: translateX(-50%);
+}
+
+.goal-state-chip {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.goal-state-chip.ahead {
+  background: rgba(16, 185, 129, 0.14);
+  color: var(--profit);
+}
+
+.goal-state-chip.behind {
+  background: rgba(239, 68, 68, 0.14);
+  color: var(--loss);
+}
+
+.goal-state-chip.onTrack {
+  background: var(--bg);
+  color: var(--ink-3);
+}
+
+.goal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
 .quality-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -108,17 +108,17 @@ func TestGoalStatus(t *testing.T) {
 	target := "2027-01-01" // one year out
 	today, _ := time.Parse("2006-01-02", "2026-07-02") // ~half the year elapsed, expected ~50%
 
-	if got := goalStatus(created, target, 80, today); got != "ahead" {
-		t.Errorf("progress 80%% at ~50%% elapsed = %q, want ahead", got)
+	if got, expectedPct, ok := goalStatus(created, target, 80, today); got != "ahead" || !ok || expectedPct < 49 || expectedPct > 51 {
+		t.Errorf("progress 80%% at ~50%% elapsed = (%q, %v, %v), want (ahead, ~50, true)", got, expectedPct, ok)
 	}
-	if got := goalStatus(created, target, 20, today); got != "behind" {
-		t.Errorf("progress 20%% at ~50%% elapsed = %q, want behind", got)
+	if got, _, ok := goalStatus(created, target, 20, today); got != "behind" || !ok {
+		t.Errorf("progress 20%% at ~50%% elapsed = (%q, ok=%v), want behind", got, ok)
 	}
-	if got := goalStatus(created, target, 50, today); got != "onTrack" {
-		t.Errorf("progress 50%% at ~50%% elapsed = %q, want onTrack", got)
+	if got, _, ok := goalStatus(created, target, 50, today); got != "onTrack" || !ok {
+		t.Errorf("progress 50%% at ~50%% elapsed = (%q, ok=%v), want onTrack", got, ok)
 	}
-	if got := goalStatus(created, "", 50, today); got != "" {
-		t.Errorf("no targetDate = %q, want empty", got)
+	if _, _, ok := goalStatus(created, "", 50, today); ok {
+		t.Errorf("no targetDate: ok = %v, want false", ok)
 	}
 }
 

@@ -652,6 +652,10 @@ export interface Dictionary {
   wealthGoalsEarmarkAdd: string;
   wealthGoalsEarmarkRemove: string;
   wealthGoalsNoEarmarks: string;
+  wealthGoalsTotalProgress: string;
+  wealthGoalsMonthlyLabel: string;
+  wealthGoalsBehindCountLabel: string;
+  wealthGoalsEtaLabel: string;
 }
 
 const en: Dictionary = {
@@ -1241,6 +1245,10 @@ const en: Dictionary = {
   wealthGoalsEarmarkAdd: "Link",
   wealthGoalsEarmarkRemove: "Unlink",
   wealthGoalsNoEarmarks: "No assets earmarked for this goal yet.",
+  wealthGoalsTotalProgress: "Overall progress",
+  wealthGoalsMonthlyLabel: "Monthly",
+  wealthGoalsBehindCountLabel: "Behind",
+  wealthGoalsEtaLabel: "ETA",
 };
 
 const zh: Dictionary = {
@@ -1824,6 +1832,10 @@ const zh: Dictionary = {
   wealthGoalsEarmarkAdd: "認列",
   wealthGoalsEarmarkRemove: "取消認列",
   wealthGoalsNoEarmarks: "此目標尚未認列任何資產。",
+  wealthGoalsTotalProgress: "總進度",
+  wealthGoalsMonthlyLabel: "月投入",
+  wealthGoalsBehindCountLabel: "落後中",
+  wealthGoalsEtaLabel: "預計達成",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

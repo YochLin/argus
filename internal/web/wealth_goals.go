@@ -22,8 +22,13 @@ type goalAssetItem struct {
 
 // goalItem backs one row of /w/goals — Saved/ProgressPct are nil together
 // when any earmarked asset's currency couldn't be priced to TWD (§8.17.1's
-// whole-metric-degrades rule, same as /w/alloc and /w/cash). Status is ""
-// when TargetDate is unset — there's nothing to be ahead of or behind.
+// whole-metric-degrades rule, same as /w/alloc and /w/cash). Status/MarkPct
+// are unset when TargetDate is unset — there's nothing to be ahead of or
+// behind. MarkPct is where the design template's progress bar draws its
+// "expected progress" tick (§8.9 point 5's 應有進度標記) — the straight-line
+// expected position goalStatus classified Status against, not just the
+// classification itself, so the bar can render the same reference point the
+// status label describes.
 type goalItem struct {
 	ID           int64           `json:"id"`
 	Name         string          `json:"name"`
@@ -35,6 +40,7 @@ type goalItem struct {
 	Saved        *float64        `json:"saved"`
 	ProgressPct  *float64        `json:"progressPct"`
 	Status       string          `json:"status,omitempty"` // "ahead" | "onTrack" | "behind"
+	MarkPct      *float64        `json:"markPct,omitempty"`
 	Assets       []goalAssetItem `json:"assets"`
 }
 
@@ -48,36 +54,38 @@ type goalsResponse struct {
 // LLM involvement, same "health metrics never go through the LLM" rule as
 // /w/alloc's drift math. A 5pp band around the expected line counts as
 // on-track rather than flagging every goal as barely ahead/behind on
-// floating-point noise.
-func goalStatus(createdAt, targetDate string, progressPct float64, today time.Time) string {
+// floating-point noise. ok=false (both other return values unset) when
+// there's no target date to compare against, or CreatedAt fails to parse.
+func goalStatus(createdAt, targetDate string, progressPct float64, today time.Time) (status string, expectedPct float64, ok bool) {
 	created, err := time.Parse(time.RFC3339, createdAt)
 	if err != nil {
 		created, err = time.Parse("2006-01-02 15:04:05", createdAt)
 		if err != nil {
-			return ""
+			return "", 0, false
 		}
 	}
 	target, err := time.Parse("2006-01-02", targetDate)
 	if err != nil {
-		return ""
+		return "", 0, false
 	}
 	total := target.Sub(created)
 	if total <= 0 {
-		return ""
+		return "", 0, false
 	}
 	elapsed := today.Sub(created)
 	if elapsed < 0 {
 		elapsed = 0
 	}
-	expectedPct := elapsed.Seconds() / total.Seconds() * 100
+	expectedPct = elapsed.Seconds() / total.Seconds() * 100
 	switch {
 	case progressPct >= expectedPct+5:
-		return "ahead"
+		status = "ahead"
 	case progressPct <= expectedPct-5:
-		return "behind"
+		status = "behind"
 	default:
-		return "onTrack"
+		status = "onTrack"
 	}
+	return status, expectedPct, true
 }
 
 // handleWealthGoalsList backs GET /api/wealth/goals — ungated read, same
@@ -154,7 +162,10 @@ func (s *Server) handleWealthGoalsList(w http.ResponseWriter, r *http.Request) {
 				pct := saved / g.TargetAmount * 100
 				item.ProgressPct = &pct
 				if g.TargetDate != "" {
-					item.Status = goalStatus(g.CreatedAt, g.TargetDate, pct, now)
+					if status, expectedPct, ok := goalStatus(g.CreatedAt, g.TargetDate, pct, now); ok {
+						item.Status = status
+						item.MarkPct = &expectedPct
+					}
 				}
 			}
 		}
