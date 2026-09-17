@@ -115,6 +115,11 @@ type dbReader interface {
 	// (Phase 9 波次2 PR5) — writes go through the separate wealthWriter
 	// interface below, same GET-vs-write split as ListAssetsWithValue.
 	ListRecurringCashflows(activeOnly bool) ([]db.RecurringCashflow, error)
+	// ListGoals/ListAllGoalAssets back wealth_goals.go's GET /api/wealth/goals
+	// (Phase 9 波次3 PR6) — writes go through the separate wealthWriter
+	// interface below, same GET-vs-write split as ListAssetsWithValue.
+	ListGoals() ([]db.Goal, error)
+	ListAllGoalAssets() ([]db.GoalAsset, error)
 }
 
 // netWorthBaseline resolves the capital base for a period starting at

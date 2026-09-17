@@ -23,6 +23,10 @@ type fakeWealthDB struct {
 	lastSettingKey, lastSettingValue string
 	lastNewCashflow                  db.NewRecurringCashflow
 	lastDeactivateID                 int64
+	lastNewGoal                      db.NewGoal
+	lastDeleteGoalID                 int64
+	lastEarmarkGoalID, lastEarmarkAssetID int64
+	lastEarmarkRatio                 float64
 
 	createErr     error
 	snapshotErr   error
@@ -30,8 +34,12 @@ type fakeWealthDB struct {
 	settingErr    error
 	cashflowErr   error
 	deactivateErr error
+	goalErr       error
+	deleteGoalErr error
+	earmarkErr    error
 
 	nextCashflowID int64
+	nextGoalID     int64
 }
 
 func (f *fakeWealthDB) CreateAsset(a db.NewAsset) (int64, error) {
@@ -70,6 +78,19 @@ func (f *fakeWealthDB) DeactivateRecurringCashflow(id int64) error {
 	f.lastDeactivateID = id
 	return f.deactivateErr
 }
+func (f *fakeWealthDB) CreateGoal(g db.NewGoal) (int64, error) {
+	f.lastNewGoal = g
+	f.nextGoalID++
+	return f.nextGoalID, f.goalErr
+}
+func (f *fakeWealthDB) DeleteGoal(id int64) error {
+	f.lastDeleteGoalID = id
+	return f.deleteGoalErr
+}
+func (f *fakeWealthDB) SetGoalAsset(goalID, assetID int64, ratio float64) error {
+	f.lastEarmarkGoalID, f.lastEarmarkAssetID, f.lastEarmarkRatio = goalID, assetID, ratio
+	return f.earmarkErr
+}
 
 func newWealthTestServer(password string, wealthDB wealthWriter, dbr dbReader) *Server {
 	s := &Server{db: dbr, wealthDB: wealthDB, password: password}
@@ -82,6 +103,10 @@ func newWealthTestServer(password string, wealthDB wealthWriter, dbr dbReader) *
 	s.mux.HandleFunc("GET /api/wealth/cash", s.handleWealthCashList)
 	s.mux.HandleFunc("POST /api/wealth/cash", s.requireWritable(s.requireAuth(s.handleWealthCashCreate)))
 	s.mux.HandleFunc("POST /api/wealth/cash/deactivate", s.requireWritable(s.requireAuth(s.handleWealthCashDeactivate)))
+	s.mux.HandleFunc("GET /api/wealth/goals", s.handleWealthGoalsList)
+	s.mux.HandleFunc("POST /api/wealth/goals", s.requireWritable(s.requireAuth(s.handleWealthGoalCreate)))
+	s.mux.HandleFunc("POST /api/wealth/goals/delete", s.requireWritable(s.requireAuth(s.handleWealthGoalDelete)))
+	s.mux.HandleFunc("POST /api/wealth/goals/earmark", s.requireWritable(s.requireAuth(s.handleWealthGoalEarmark)))
 	return s
 }
 

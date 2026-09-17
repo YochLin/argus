@@ -667,4 +667,34 @@ var migrations = []string{
 
 	CREATE INDEX IF NOT EXISTS idx_recurring_cashflows_active ON recurring_cashflows(active);
 	`,
+	// 31: Phase 9 波次3 PR6 — goals/goal_assets back /w/goals
+	// (docs/phase-9-asset-platform.md §8.8/§9.2). retirement_plans (§4.3) is
+	// deliberately not a separate table — the retirement row is just
+	// kind='retirement' in goals, per §8.8's "先做 retirement_plans 再重構
+	// 成本更高" reasoning; PR7 (退休頁) is what actually populates that row's
+	// target_amount from the retirement calc, PR6 only needs the shape to
+	// exist. goal_assets is the earmark: which assets count toward which
+	// goal's "saved" total, with a ratio for partial earmarking (e.g. a house
+	// only 30% counted toward a goal). created_at (not in the doc's literal
+	// SQL draft) is added so the goals page can show expected-vs-actual
+	// progress against target_date — same auto-stamped column assets.go's
+	// CreatedAt already uses, not new user input.
+	`
+	CREATE TABLE IF NOT EXISTS goals (
+		id            INTEGER PRIMARY KEY AUTOINCREMENT,
+		name          TEXT NOT NULL,
+		kind          TEXT NOT NULL DEFAULT 'general', -- 'retirement' | 'general'
+		target_amount REAL NOT NULL,
+		currency      TEXT NOT NULL DEFAULT 'TWD',
+		target_date   TEXT,
+		note          TEXT,
+		created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE IF NOT EXISTS goal_assets (
+		goal_id  INTEGER NOT NULL,
+		asset_id INTEGER NOT NULL,
+		ratio    REAL NOT NULL DEFAULT 1.0,
+		PRIMARY KEY (goal_id, asset_id)
+	);
+	`,
 }

@@ -628,6 +628,30 @@ export interface Dictionary {
   wealthCashCatLoan: string;
   wealthCashCatInsurance: string;
   wealthCashCatTax: string;
+  // Phase 9 波次3 PR6: goal management page (/w/goals) — goals table +
+  // goal_assets earmark. Retirement (kind "retirement") is the same table
+  // (§8.8); PR7 owns computing its targetAmount, this page just renders it
+  // like any other goal. Mirrors internal/web/wealth_goals.go.
+  navWealthGoals: string;
+  wealthGoalsAddTitle: string;
+  wealthGoalsNameLabel: string;
+  wealthGoalsTargetAmountLabel: string;
+  wealthGoalsTargetDateLabel: string;
+  wealthGoalsAdd: string;
+  wealthGoalsNoGoals: string;
+  wealthGoalsSavedLabel: string;
+  wealthGoalsTargetLabel: string;
+  wealthGoalsStatusAhead: string;
+  wealthGoalsStatusOnTrack: string;
+  wealthGoalsStatusBehind: string;
+  wealthGoalsDelete: string;
+  wealthGoalsKindRetirement: string;
+  wealthGoalsEarmarkTitle: string;
+  wealthGoalsEarmarkAssetLabel: string;
+  wealthGoalsEarmarkRatioLabel: string;
+  wealthGoalsEarmarkAdd: string;
+  wealthGoalsEarmarkRemove: string;
+  wealthGoalsNoEarmarks: string;
 }
 
 const en: Dictionary = {
@@ -1197,6 +1221,26 @@ const en: Dictionary = {
   wealthCashCatLoan: "Loan / car payment",
   wealthCashCatInsurance: "Insurance premium",
   wealthCashCatTax: "Tax reserve",
+  navWealthGoals: "Goals",
+  wealthGoalsAddTitle: "Add goal",
+  wealthGoalsNameLabel: "Name",
+  wealthGoalsTargetAmountLabel: "Target amount",
+  wealthGoalsTargetDateLabel: "Target date",
+  wealthGoalsAdd: "Add",
+  wealthGoalsNoGoals: "No goals yet.",
+  wealthGoalsSavedLabel: "Saved",
+  wealthGoalsTargetLabel: "Target",
+  wealthGoalsStatusAhead: "Ahead",
+  wealthGoalsStatusOnTrack: "On track",
+  wealthGoalsStatusBehind: "Behind",
+  wealthGoalsDelete: "Delete",
+  wealthGoalsKindRetirement: "Retirement",
+  wealthGoalsEarmarkTitle: "Earmarked assets",
+  wealthGoalsEarmarkAssetLabel: "Asset",
+  wealthGoalsEarmarkRatioLabel: "Ratio",
+  wealthGoalsEarmarkAdd: "Link",
+  wealthGoalsEarmarkRemove: "Unlink",
+  wealthGoalsNoEarmarks: "No assets earmarked for this goal yet.",
 };
 
 const zh: Dictionary = {
@@ -1760,6 +1804,26 @@ const zh: Dictionary = {
   wealthCashCatLoan: "信貸車貸",
   wealthCashCatInsurance: "保費",
   wealthCashCatTax: "稅務預留",
+  navWealthGoals: "目標",
+  wealthGoalsAddTitle: "新增目標",
+  wealthGoalsNameLabel: "名稱",
+  wealthGoalsTargetAmountLabel: "目標金額",
+  wealthGoalsTargetDateLabel: "目標日期",
+  wealthGoalsAdd: "新增",
+  wealthGoalsNoGoals: "尚無目標。",
+  wealthGoalsSavedLabel: "已存",
+  wealthGoalsTargetLabel: "目標",
+  wealthGoalsStatusAhead: "超前",
+  wealthGoalsStatusOnTrack: "正常",
+  wealthGoalsStatusBehind: "落後",
+  wealthGoalsDelete: "刪除",
+  wealthGoalsKindRetirement: "退休",
+  wealthGoalsEarmarkTitle: "已認列資產",
+  wealthGoalsEarmarkAssetLabel: "資產",
+  wealthGoalsEarmarkRatioLabel: "比例",
+  wealthGoalsEarmarkAdd: "認列",
+  wealthGoalsEarmarkRemove: "取消認列",
+  wealthGoalsNoEarmarks: "此目標尚未認列任何資產。",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

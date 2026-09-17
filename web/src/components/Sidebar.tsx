@@ -65,6 +65,7 @@ const wealthLinks: Array<{ path: string; label: (dict: Dictionary) => string; ic
   { path: "/w", label: (d) => d.navWealth, icon: <WealthIcon /> },
   { path: "/w/alloc", label: (d) => d.navWealthAlloc, icon: <AllocIcon /> },
   { path: "/w/cash", label: (d) => d.navWealthCash, icon: <CashIcon /> },
+  { path: "/w/goals", label: (d) => d.navWealthGoals, icon: <GoalsIcon /> },
   { path: "/w/balance", label: (d) => d.navWealthBalance, icon: <BalanceSheetIcon /> },
   { path: "/w/import", label: (d) => d.navWealthImport, icon: <ImportIcon /> },
 ];
@@ -477,6 +478,16 @@ function CashIcon() {
       <circle cx="8" cy="8" r="1.8" />
       <line x1="3.5" y1="8" x2="3.5" y2="8" />
       <line x1="12.5" y1="8" x2="12.5" y2="8" />
+    </svg>
+  );
+}
+
+function GoalsIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <circle cx="8" cy="8" r="6.2" />
+      <circle cx="8" cy="8" r="3.4" />
+      <circle cx="8" cy="8" r="0.8" fill="currentColor" />
     </svg>
   );
 }

@@ -28,6 +28,11 @@ type wealthWriter interface {
 	// wealth_cash.go's add-flow form and pause action (Phase 9 波次2 PR5).
 	CreateRecurringCashflow(c db.NewRecurringCashflow) (int64, error)
 	DeactivateRecurringCashflow(id int64) error
+	// CreateGoal/DeleteGoal/SetGoalAsset back wealth_goals.go's add-goal
+	// form, delete action, and earmark editor (Phase 9 波次3 PR6).
+	CreateGoal(g db.NewGoal) (int64, error)
+	DeleteGoal(id int64) error
+	SetGoalAsset(goalID, assetID int64, ratio float64) error
 }
 
 // assetResponse mirrors db.AssetWithValue for JSON — Value/Cost stay nil
