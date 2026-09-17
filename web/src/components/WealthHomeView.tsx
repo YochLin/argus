@@ -30,7 +30,55 @@ const GROUPS: AssetGroup[] = ["liquid", "growth", "income", "hard"];
 // wealth_home.go's "degrade the whole metric" rule).
 const CURRENCIES = ["TWD", "USD", "JPY", "EUR", "CNY"];
 
-type Kind = "deposit" | "loan" | "other";
+// Kind mirrors assets.CategoryOf's recognized type strings (§8.5) plus
+// "loan" (liability) and "other" (legacy catch-all) — every kind but
+// deposit/loan submits straight through as `type` with no extra fields,
+// same as "other" always did, since none of these have a detail table yet
+// (insurance_details/fund_details/bond_details are PR8/10/11, still ahead).
+type Kind = "deposit" | "loan" | "insurance" | "fund" | "bond" | "estate" | "gold" | "crypto" | "pension" | "other";
+
+const KINDS: Kind[] = ["deposit", "loan", "insurance", "fund", "bond", "estate", "gold", "crypto", "pension", "other"];
+
+// KIND_DEFAULT_GROUP is changeKind's asset_group suggestion per kind — the
+// group dropdown stays editable afterward, this just saves a click for the
+// common case (§8.1: asset_group is still required, independent of the
+// finer /w/alloc-only category split).
+const KIND_DEFAULT_GROUP: Partial<Record<Kind, AssetGroup>> = {
+  deposit: "liquid",
+  loan: "hard",
+  insurance: "income",
+  fund: "growth",
+  bond: "income",
+  estate: "hard",
+  gold: "hard",
+  crypto: "growth",
+  pension: "hard",
+};
+
+function kindLabel(dict: Dictionary, k: Kind): string {
+  switch (k) {
+    case "deposit":
+      return dict.wealthKindDeposit;
+    case "loan":
+      return dict.wealthKindLoan;
+    case "insurance":
+      return dict.wealthKindInsurance;
+    case "fund":
+      return dict.wealthKindFund;
+    case "bond":
+      return dict.wealthKindBond;
+    case "estate":
+      return dict.wealthKindEstate;
+    case "gold":
+      return dict.wealthKindGold;
+    case "crypto":
+      return dict.wealthKindCrypto;
+    case "pension":
+      return dict.wealthKindPension;
+    case "other":
+      return dict.wealthKindOther;
+  }
+}
 
 function modelLabel(dict: Dictionary, m: AllocationModel): string {
   return m === "conserv" ? dict.wealthModelConserv : m === "growth" ? dict.wealthModelGrowth : dict.wealthModelBalanced;
@@ -241,7 +289,7 @@ export function WealthHomeView({ dict, writable, onUnauthorized }: Props) {
         <div className="modal-header" style={{ border: "none", padding: 0, marginBottom: 12 }}>
           <div className="eyebrow">{dict.wealthAssetsLabel}</div>
           {writable && (
-            <button className="btn-primary" onClick={() => setShowAdd(true)}>
+            <button className="btn-tint" onClick={() => setShowAdd(true)}>
               {dict.wealthAddAsset}
             </button>
           )}
@@ -339,12 +387,10 @@ function AddAssetModal({
 
   function changeKind(next: Kind) {
     setKind(next);
-    if (next === "deposit") {
-      setSide("asset");
-      setGroup("liquid");
-    } else if (next === "loan") {
-      setSide("liability");
-      setGroup("hard");
+    setSide(next === "loan" ? "liability" : "asset");
+    const defaultGroup = KIND_DEFAULT_GROUP[next];
+    if (defaultGroup) {
+      setGroup(defaultGroup);
     }
   }
 
@@ -397,14 +443,14 @@ function AddAssetModal({
               </Dialog.Close>
             </div>
             <div className="modal-body">
-              <div className="topbar-tabs" role="group" aria-label="asset kind">
-                {(["deposit", "loan", "other"] as Kind[]).map((k) => (
+              <div className="topbar-tabs" role="group" aria-label="asset kind" style={{ flexWrap: "wrap" }}>
+                {KINDS.map((k) => (
                   <button
                     key={k}
                     className={`topbar-tab${kind === k ? " active" : ""}`}
                     onClick={() => changeKind(k)}
                   >
-                    {k === "deposit" ? dict.wealthKindDeposit : k === "loan" ? dict.wealthKindLoan : dict.wealthKindOther}
+                    {kindLabel(dict, k)}
                   </button>
                 ))}
               </div>

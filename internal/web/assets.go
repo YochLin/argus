@@ -24,6 +24,10 @@ type wealthWriter interface {
 	// health-metric ratios' one denominator, §9.3) — the same settings
 	// table/method service.PortfolioService's cash_balance uses.
 	SetSetting(key, value string) error
+	// CreateRecurringCashflow/DeactivateRecurringCashflow back
+	// wealth_cash.go's add-flow form and pause action (Phase 9 波次2 PR5).
+	CreateRecurringCashflow(c db.NewRecurringCashflow) (int64, error)
+	DeactivateRecurringCashflow(id int64) error
 }
 
 // assetResponse mirrors db.AssetWithValue for JSON — Value/Cost stay nil

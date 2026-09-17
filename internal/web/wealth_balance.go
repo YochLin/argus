@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"argus/internal/assets"
+	"argus/internal/db"
 	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/service"
@@ -66,6 +67,60 @@ type balanceSheetResponse struct {
 	AssetGroups      []assetGroupRow   `json:"assetGroups"`
 	Liabilities      []liabilityDetail `json:"liabilities"`
 	QuarterlyTrend   []quarterPoint    `json:"quarterlyTrend"`
+}
+
+// buildAssetGroups assembles the four asset_group buckets' market values
+// (in TWD) and per-asset breakdown, plus the running grand total and a
+// per-currency total — the shared FX-conversion/grouping core of both
+// /w/balance and /w/alloc (Phase 9 PR4), so it exists in exactly one place.
+// Liabilities are the caller's own loop (only /w/balance needs them).
+// fxOK=false means at least one asset's currency couldn't be priced for
+// today — same whole-metric-degrades rule as service.WealthTotals.
+func (s *Server) buildAssetGroups(list []db.AssetWithValue, today string, usTotal float64, usOK bool, twTotal float64, twOK bool) (groups map[string]*assetGroupRow, byCurrency map[string]float64, totalAssets float64, fxOK bool) {
+	groups = make(map[string]*assetGroupRow, len(assets.AssetGroups))
+	for _, g := range assets.AssetGroups {
+		groups[g] = &assetGroupRow{Group: g, Assets: []balanceSheetItem{}}
+	}
+	byCurrency = make(map[string]float64)
+	fxOK = true
+
+	for _, a := range list {
+		if a.Value == nil || a.Side == "liability" {
+			continue
+		}
+		rate, rok := service.RateToTWD(a.Currency, today, true, s.quotes, s.fxDB)
+		if !rok {
+			fxOK = false
+			continue
+		}
+		valueTWD := *a.Value * rate
+		totalAssets += valueTWD
+		byCurrency[a.Currency] += valueTWD
+		g := groups[a.AssetGroup]
+		if g == nil {
+			continue
+		}
+		g.MarketValue += valueTWD
+		g.Assets = append(g.Assets, balanceSheetItem{AssetID: a.ID, Name: a.Name, Venue: a.Venue, Currency: a.Currency, ValueTWD: valueTWD, Type: a.Type, Source: a.Source})
+	}
+	for _, e := range service.EquityEntries(usTotal, usOK, twTotal, twOK) {
+		rate, rok := service.RateToTWD(e.Currency, today, true, s.quotes, s.fxDB)
+		if !rok {
+			fxOK = false
+			continue
+		}
+		valueTWD := e.Value * rate
+		totalAssets += valueTWD
+		byCurrency[e.Currency] += valueTWD
+		g := groups["growth"]
+		typ := "equity_tw"
+		if e.Currency != "TWD" {
+			typ = "equity_us"
+		}
+		g.MarketValue += valueTWD
+		g.Assets = append(g.Assets, balanceSheetItem{Name: typ, Currency: e.Currency, ValueTWD: valueTWD, Type: typ, Source: "sync"})
+	}
+	return groups, byCurrency, totalAssets, fxOK
 }
 
 const quarterlyTrendQuarters = 8
@@ -144,67 +199,39 @@ func (s *Server) handleWealthBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	groups := make(map[string]*assetGroupRow, len(assets.AssetGroups))
-	for _, g := range assets.AssetGroups {
-		groups[g] = &assetGroupRow{Group: g, Assets: []balanceSheetItem{}}
-	}
-	var totalAssets, totalLiabilities float64
-	fxOK := true
+	var totalLiabilities float64
 	var liabilities []liabilityDetail
-
+	liabFxOK := true
 	for _, a := range list {
-		if a.Value == nil {
+		if a.Value == nil || a.Side != "liability" {
 			continue
 		}
 		rate, rok := service.RateToTWD(a.Currency, today, true, s.quotes, s.fxDB)
 		if !rok {
-			fxOK = false
+			liabFxOK = false
 			continue
 		}
 		valueTWD := *a.Value * rate
-		if a.Side == "liability" {
-			totalLiabilities += valueTWD
-			ld := liabilityDetail{AssetID: a.ID, Name: a.Name, Venue: a.Venue, Currency: a.Currency, ValueTWD: valueTWD, Source: a.Source}
-			if assets.LoanTypes[a.Type] {
-				if det, err := s.db.GetLoanDetails(a.ID); err == nil && det != nil {
-					ld.RatePct = det.RatePct
-					ld.RemainingMonths = det.RemainingMonths
-					if det.RatePct != nil && det.RemainingMonths != nil {
-						if mp, ok := assets.AmortizedMinPayment(*a.Value, *det.RatePct, int(*det.RemainingMonths)); ok {
-							ld.MinPayment = &mp
-						}
+		totalLiabilities += valueTWD
+		ld := liabilityDetail{AssetID: a.ID, Name: a.Name, Venue: a.Venue, Currency: a.Currency, ValueTWD: valueTWD, Source: a.Source}
+		if assets.LoanTypes[a.Type] {
+			if det, err := s.db.GetLoanDetails(a.ID); err == nil && det != nil {
+				ld.RatePct = det.RatePct
+				ld.RemainingMonths = det.RemainingMonths
+				if det.RatePct != nil && det.RemainingMonths != nil {
+					if mp, ok := assets.AmortizedMinPayment(*a.Value, *det.RatePct, int(*det.RemainingMonths)); ok {
+						ld.MinPayment = &mp
 					}
-				} else if err != nil {
-					logger.Errorf("web: wealth balance: loan details for asset %d: %v", a.ID, err)
 				}
+			} else if err != nil {
+				logger.Errorf("web: wealth balance: loan details for asset %d: %v", a.ID, err)
 			}
-			liabilities = append(liabilities, ld)
-			continue
 		}
-		totalAssets += valueTWD
-		g := groups[a.AssetGroup]
-		if g == nil {
-			continue
-		}
-		g.MarketValue += valueTWD
-		g.Assets = append(g.Assets, balanceSheetItem{AssetID: a.ID, Name: a.Name, Venue: a.Venue, Currency: a.Currency, ValueTWD: valueTWD, Type: a.Type, Source: a.Source})
+		liabilities = append(liabilities, ld)
 	}
-	for _, e := range service.EquityEntries(usTotal, usOK, twTotal, twOK) {
-		rate, rok := service.RateToTWD(e.Currency, today, true, s.quotes, s.fxDB)
-		if !rok {
-			fxOK = false
-			continue
-		}
-		valueTWD := e.Value * rate
-		totalAssets += valueTWD
-		g := groups["growth"]
-		typ := "equity_tw"
-		if e.Currency != "TWD" {
-			typ = "equity_us"
-		}
-		g.MarketValue += valueTWD
-		g.Assets = append(g.Assets, balanceSheetItem{Name: typ, Currency: e.Currency, ValueTWD: valueTWD, Type: typ, Source: "sync"})
-	}
+
+	groups, _, totalAssets, groupsFxOK := s.buildAssetGroups(list, today, usTotal, usOK, twTotal, twOK)
+	fxOK := liabFxOK && groupsFxOK
 
 	resp := balanceSheetResponse{AsOf: today, Liabilities: liabilities}
 	if fxOK {

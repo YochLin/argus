@@ -476,6 +476,18 @@ export interface Dictionary {
   wealthGroupGrowth: string;
   wealthGroupIncome: string;
   wealthGroupHard: string;
+  // wealthCategory* back /w/alloc's own nine-category taxonomy
+  // (assets.AllocCategories, §8.5) — distinct from the four wealthGroup*
+  // keys above, which the home page and balance sheet still use.
+  wealthCategoryCash: string;
+  wealthCategoryEquity: string;
+  wealthCategoryFund: string;
+  wealthCategoryBond: string;
+  wealthCategoryInsurance: string;
+  wealthCategoryEstate: string;
+  wealthCategoryGold: string;
+  wealthCategoryCrypto: string;
+  wealthCategoryPension: string;
   wealthCurrentPct: string;
   wealthTargetPct: string;
   wealthDeviation: string;
@@ -497,6 +509,13 @@ export interface Dictionary {
   wealthArchiveConfirm: string;
   wealthKindDeposit: string;
   wealthKindLoan: string;
+  wealthKindInsurance: string;
+  wealthKindFund: string;
+  wealthKindBond: string;
+  wealthKindEstate: string;
+  wealthKindGold: string;
+  wealthKindCrypto: string;
+  wealthKindPension: string;
   wealthKindOther: string;
   wealthBank: string;
   wealthAccountNote: string;
@@ -556,6 +575,59 @@ export interface Dictionary {
   wealthImportColName: string;
   wealthImportColGroup: string;
   wealthImportColValue: string;
+  // Phase 9 §9.4 PR4: allocation & rebalance page (/w/alloc). Mirrors
+  // internal/web/wealth_alloc.go.
+  navWealthAlloc: string;
+  wealthTargetModelLabel: string;
+  wealthMixTitle: string;
+  wealthOrdersTitle: string;
+  wealthOrdersHint: string;
+  wealthOrderBuy: string;
+  wealthOrderSell: string;
+  wealthNoOrders: string;
+  wealthLockedTitle: string;
+  wealthVenueLabel: string;
+  wealthRiskTitle: string;
+  wealthRiskBand: string;
+  wealthFxExposure: string;
+  wealthConcentrationTitle: string;
+  wealthConcentrationHint: string;
+  wealthNoConcentration: string;
+  wealthRebalTotal: string;
+  // Phase 9 波次2 PR5: cash flow page (/w/cash) — recurring income/expense
+  // lines (hand-maintained monthly amounts, not a transaction ledger) and
+  // the 90-day cash event table derived from them. Mirrors
+  // internal/web/wealth_cash.go.
+  navWealthCash: string;
+  wealthCashMonthlyIn: string;
+  wealthCashMonthlyOut: string;
+  wealthCashMonthlyNet: string;
+  wealthCashItemsTitle: string;
+  wealthCashEventsTitle: string;
+  wealthCashNoItems: string;
+  wealthCashNoEvents: string;
+  wealthCashAddTitle: string;
+  wealthCashDirectionIn: string;
+  wealthCashDirectionOut: string;
+  wealthCashNameLabel: string;
+  wealthCashAmountLabel: string;
+  wealthCashDayOfMonthLabel: string;
+  wealthCashCategoryLabel: string;
+  wealthCashAdd: string;
+  wealthCashPause: string;
+  wealthCashPaused: string;
+  wealthCashDateLabel: string;
+  wealthCashCatSalary: string;
+  wealthCashCatRent: string;
+  wealthCashCatDividend: string;
+  wealthCashCatBondInterest: string;
+  wealthCashCatFundDividend: string;
+  wealthCashCatLiving: string;
+  wealthCashCatMortgage: string;
+  wealthCashCatSip: string;
+  wealthCashCatLoan: string;
+  wealthCashCatInsurance: string;
+  wealthCashCatTax: string;
 }
 
 const en: Dictionary = {
@@ -970,7 +1042,7 @@ const en: Dictionary = {
   notesTagFlow: "Flow",
   notesTagNews: "News",
   notesTagOther: "Other",
-  navWealth: "Wealth",
+  navWealth: "Net Worth",
   acctTrading: "Trading",
   acctWealth: "Wealth",
   wealthNetWorth: "NET WORTH",
@@ -984,6 +1056,15 @@ const en: Dictionary = {
   wealthGroupGrowth: "Growth",
   wealthGroupIncome: "Income",
   wealthGroupHard: "Hard Assets",
+  wealthCategoryCash: "Cash & FX",
+  wealthCategoryEquity: "Stocks",
+  wealthCategoryFund: "ETFs & Funds",
+  wealthCategoryBond: "Bonds",
+  wealthCategoryInsurance: "Insurance",
+  wealthCategoryEstate: "Real Estate",
+  wealthCategoryGold: "Gold & Physical",
+  wealthCategoryCrypto: "Crypto",
+  wealthCategoryPension: "Pension",
   wealthCurrentPct: "Current %",
   wealthTargetPct: "Target %",
   wealthDeviation: "Deviation",
@@ -1005,6 +1086,13 @@ const en: Dictionary = {
   wealthArchiveConfirm: "Archive this asset? Its history stays on record, it just leaves the active list.",
   wealthKindDeposit: "Deposit",
   wealthKindLoan: "Loan",
+  wealthKindInsurance: "Insurance",
+  wealthKindFund: "Fund/ETF",
+  wealthKindBond: "Bond",
+  wealthKindEstate: "Real Estate",
+  wealthKindGold: "Gold/Physical",
+  wealthKindCrypto: "Crypto",
+  wealthKindPension: "Pension",
   wealthKindOther: "Other",
   wealthBank: "Bank",
   wealthAccountNote: "Account note",
@@ -1062,6 +1150,53 @@ const en: Dictionary = {
   wealthImportColName: "Name",
   wealthImportColGroup: "Group",
   wealthImportColValue: "Value",
+  navWealthAlloc: "Asset Allocation",
+  wealthTargetModelLabel: "Target model",
+  wealthMixTitle: "MIX",
+  wealthOrdersTitle: "REBALANCE ORDERS",
+  wealthOrdersHint: "Suggested only — amounts and accounts to close each group's drift back to target. Nothing is executed automatically.",
+  wealthOrderBuy: "BUY",
+  wealthOrderSell: "SELL",
+  wealthNoOrders: "Everything is within the rebalance band — no orders suggested.",
+  wealthLockedTitle: "LOCKED (NOT REBALANCEABLE)",
+  wealthVenueLabel: "via",
+  wealthRiskTitle: "RISK-ASSET SHARE",
+  wealthRiskBand: "target band",
+  wealthFxExposure: "CURRENCY EXPOSURE",
+  wealthConcentrationTitle: "CONCENTRATION WARNINGS",
+  wealthConcentrationHint: "A single position over a large share of your open equity book — informational only, no sell suggestion.",
+  wealthNoConcentration: "No single position dominates your equity book.",
+  wealthRebalTotal: "rebalance total",
+  navWealthCash: "Cash Flow",
+  wealthCashMonthlyIn: "Monthly income",
+  wealthCashMonthlyOut: "Monthly expense",
+  wealthCashMonthlyNet: "Monthly net",
+  wealthCashItemsTitle: "Recurring cash flows",
+  wealthCashEventsTitle: "Next 90 days",
+  wealthCashNoItems: "No recurring cash flows yet.",
+  wealthCashNoEvents: "No cash events in the next 90 days.",
+  wealthCashAddTitle: "Add recurring flow",
+  wealthCashDirectionIn: "Income",
+  wealthCashDirectionOut: "Expense",
+  wealthCashNameLabel: "Name",
+  wealthCashAmountLabel: "Monthly amount",
+  wealthCashDayOfMonthLabel: "Day of month",
+  wealthCashCategoryLabel: "Category",
+  wealthCashAdd: "Add",
+  wealthCashPause: "Pause",
+  wealthCashPaused: "Paused",
+  wealthCashDateLabel: "Date",
+  wealthCashCatSalary: "Salary",
+  wealthCashCatRent: "Rental income",
+  wealthCashCatDividend: "Stock dividends",
+  wealthCashCatBondInterest: "Bond interest",
+  wealthCashCatFundDividend: "Fund dividends",
+  wealthCashCatLiving: "Living expenses",
+  wealthCashCatMortgage: "Mortgage",
+  wealthCashCatSip: "Recurring investment",
+  wealthCashCatLoan: "Loan / car payment",
+  wealthCashCatInsurance: "Insurance premium",
+  wealthCashCatTax: "Tax reserve",
 };
 
 const zh: Dictionary = {
@@ -1470,7 +1605,7 @@ const zh: Dictionary = {
   notesTagFlow: "籌碼面",
   notesTagNews: "消息面",
   notesTagOther: "其他",
-  navWealth: "資產",
+  navWealth: "淨值總覽",
   acctTrading: "交易帳戶",
   acctWealth: "資產帳戶",
   wealthNetWorth: "淨資產",
@@ -1484,6 +1619,15 @@ const zh: Dictionary = {
   wealthGroupGrowth: "成長",
   wealthGroupIncome: "收益",
   wealthGroupHard: "實體",
+  wealthCategoryCash: "現金/外幣",
+  wealthCategoryEquity: "股票",
+  wealthCategoryFund: "ETF與基金",
+  wealthCategoryBond: "債券",
+  wealthCategoryInsurance: "保單",
+  wealthCategoryEstate: "不動產",
+  wealthCategoryGold: "黃金與實體",
+  wealthCategoryCrypto: "加密貨幣",
+  wealthCategoryPension: "勞保勞退",
   wealthCurrentPct: "現值佔比",
   wealthTargetPct: "目標佔比",
   wealthDeviation: "偏離",
@@ -1505,6 +1649,13 @@ const zh: Dictionary = {
   wealthArchiveConfirm: "封存這筆資產？歷史紀錄會保留，只是從清單中隱藏。",
   wealthKindDeposit: "存款",
   wealthKindLoan: "貸款",
+  wealthKindInsurance: "保單",
+  wealthKindFund: "基金/ETF",
+  wealthKindBond: "債券",
+  wealthKindEstate: "不動產",
+  wealthKindGold: "黃金/實體",
+  wealthKindCrypto: "加密貨幣",
+  wealthKindPension: "勞保勞退",
   wealthKindOther: "其他",
   wealthBank: "銀行",
   wealthAccountNote: "帳戶備註",
@@ -1562,6 +1713,53 @@ const zh: Dictionary = {
   wealthImportColName: "名稱",
   wealthImportColGroup: "分組",
   wealthImportColValue: "金額",
+  navWealthAlloc: "資產配置",
+  wealthTargetModelLabel: "目標模型",
+  wealthMixTitle: "配置組成",
+  wealthOrdersTitle: "再平衡指令",
+  wealthOrdersHint: "僅供參考——把每個分組的偏離調回目標所需的金額與建議帳戶，不會自動執行。",
+  wealthOrderBuy: "買進",
+  wealthOrderSell: "賣出",
+  wealthNoOrders: "所有分組都在再平衡區間內，沒有建議指令。",
+  wealthLockedTitle: "不可調整（已鎖定）",
+  wealthVenueLabel: "經由",
+  wealthRiskTitle: "風險性資產比重",
+  wealthRiskBand: "目標區間",
+  wealthFxExposure: "幣別曝險",
+  wealthConcentrationTitle: "個股集中度警示",
+  wealthConcentrationHint: "單一持股占你交易帳戶部位過高比重——僅供參考，不建議賣出哪一檔。",
+  wealthNoConcentration: "沒有單一持股占比過高。",
+  wealthRebalTotal: "再平衡總額",
+  navWealthCash: "現金流",
+  wealthCashMonthlyIn: "月收入",
+  wealthCashMonthlyOut: "月支出",
+  wealthCashMonthlyNet: "月結餘",
+  wealthCashItemsTitle: "經常性收支",
+  wealthCashEventsTitle: "未來 90 天",
+  wealthCashNoItems: "尚無經常性收支項目。",
+  wealthCashNoEvents: "未來 90 天沒有現金事件。",
+  wealthCashAddTitle: "新增經常性收支",
+  wealthCashDirectionIn: "收入",
+  wealthCashDirectionOut: "支出",
+  wealthCashNameLabel: "名稱",
+  wealthCashAmountLabel: "月額",
+  wealthCashDayOfMonthLabel: "每月幾號",
+  wealthCashCategoryLabel: "類別",
+  wealthCashAdd: "新增",
+  wealthCashPause: "暫停",
+  wealthCashPaused: "已暫停",
+  wealthCashDateLabel: "日期",
+  wealthCashCatSalary: "薪資",
+  wealthCashCatRent: "租金收入",
+  wealthCashCatDividend: "股息",
+  wealthCashCatBondInterest: "債息",
+  wealthCashCatFundDividend: "基金配息",
+  wealthCashCatLiving: "生活支出",
+  wealthCashCatMortgage: "房貸",
+  wealthCashCatSip: "定期定額",
+  wealthCashCatLoan: "信貸車貸",
+  wealthCashCatInsurance: "保費",
+  wealthCashCatTax: "稅務預留",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

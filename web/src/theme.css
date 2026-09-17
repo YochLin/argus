@@ -25,6 +25,11 @@
   --s2: #60a5fa;
   --s3: #31a08d;
   --s4: #a78bfa;
+  --s5: #f472b6;
+  --s6: #64748b;
+  --s7: #84cc16;
+  --s8: #fb923c;
+  --s9: #22d3ee;
 
   --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   --font-sans: "Plus Jakarta Sans", "PingFang TC", "Microsoft JhengHei", "Noto Sans TC",
@@ -458,11 +463,46 @@ input {
   background: #fff;
 }
 
+.sidebar-account-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sidebar-account-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-account-chevron {
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.sidebar-account-chevron.open {
+  transform: rotate(180deg);
+}
+
+.sidebar-account-label {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10px;
+  color: var(--ink-3);
+  margin-top: 8px;
+}
+
 .sidebar-account-value {
   font-family: var(--font-mono);
   font-size: 18px;
   font-weight: 600;
-  margin-top: 6px;
+  margin-top: 3px;
 }
 
 .sidebar-account-pnl {
@@ -2993,6 +3033,26 @@ th {
 .wealth-dot.s4,
 .wealth-bar-seg.s4 {
   background: var(--s4);
+}
+.wealth-dot.s5,
+.wealth-bar-seg.s5 {
+  background: var(--s5);
+}
+.wealth-dot.s6,
+.wealth-bar-seg.s6 {
+  background: var(--s6);
+}
+.wealth-dot.s7,
+.wealth-bar-seg.s7 {
+  background: var(--s7);
+}
+.wealth-dot.s8,
+.wealth-bar-seg.s8 {
+  background: var(--s8);
+}
+.wealth-dot.s9,
+.wealth-bar-seg.s9 {
+  background: var(--s9);
 }
 
 /* Off-target/liabilities/ratios sub-cards nested inside the two-column

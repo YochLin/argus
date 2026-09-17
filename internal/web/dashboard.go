@@ -111,6 +111,10 @@ type dbReader interface {
 	// GetLoanDetails backs wealth_balance.go's liabilities list (rate/term
 	// for the debt-payoff calculator and display).
 	GetLoanDetails(assetID int64) (*db.LoanDetails, error)
+	// ListRecurringCashflows backs wealth_cash.go's GET /api/wealth/cash
+	// (Phase 9 波次2 PR5) — writes go through the separate wealthWriter
+	// interface below, same GET-vs-write split as ListAssetsWithValue.
+	ListRecurringCashflows(activeOnly bool) ([]db.RecurringCashflow, error)
 }
 
 // netWorthBaseline resolves the capital base for a period starting at

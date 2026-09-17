@@ -670,6 +670,25 @@ function getMockData(url: string): any {
   if (path === "/api/wealth/profile") {
     return { annualSalary: null };
   }
+  if (path === "/api/wealth/alloc") {
+    return {
+      asOf: "2026-07-15",
+      model: "balanced",
+      totalAssets: null,
+      allocation: [],
+      orders: [],
+      rebalTotal: 0,
+      locked: [],
+      riskPct: null,
+      riskTargetLow: null,
+      riskTargetHigh: null,
+      currencyExposure: [],
+      concentration: [],
+    };
+  }
+  if (path === "/api/wealth/cash") {
+    return { asOf: "2026-07-15", items: [], monthlyIn: null, monthlyOut: null, monthlyNet: null, events: [] };
+  }
   if (path === "/api/status") {
     return {
       watchingCount: market === "tw" ? 11 : 14,
@@ -1837,6 +1856,80 @@ export function fetchWealthBalance(): Promise<BalanceSheet> {
   return getJSON("/api/wealth/balance");
 }
 
+// --- Phase 9 PR4: allocation & rebalance (/w/alloc) ---
+// Mirrors internal/web/wealth_alloc.go. /w/alloc uses its own finer
+// nine-category taxonomy (assets.AllocCategories, docs/phase-9-asset-
+// platform.md §8.5) rather than the four-bucket AssetGroup the rest of the
+// wealth pages (home/balance-sheet) key off — the two coexist on purpose,
+// see allocation.go's doc comments.
+export type AllocCategory =
+  | "cash"
+  | "equity"
+  | "fund"
+  | "bond"
+  | "insurance"
+  | "estate"
+  | "gold"
+  | "crypto"
+  | "pension";
+
+export interface WealthAllocRow {
+  category: AllocCategory;
+  marketValue: number;
+  currentPct: number;
+  targetPct: number;
+  deviationPt: number;
+  venue?: string;
+}
+
+export interface WealthAllocOrder {
+  category: AllocCategory;
+  side: "buy" | "sell";
+  amount: number;
+  deviationPt: number;
+  assetName?: string;
+  venue?: string;
+}
+
+export interface WealthAllocLockedRow {
+  category: AllocCategory;
+  marketValue: number;
+  deviationPt: number;
+}
+
+export interface CurrencyExposureRow {
+  currency: string;
+  pct: number;
+}
+
+export interface ConcentrationWarning {
+  ticker: string;
+  market: string;
+  pctOfEquity: number;
+  pctOfAssets: number;
+}
+
+// WealthAlloc mirrors wealth_alloc.go's allocResponse — every total/list is
+// nil/empty until there's at least one priced asset (§8.17.1).
+export interface WealthAlloc {
+  asOf: string;
+  model: AllocationModel;
+  totalAssets: number | null;
+  allocation: WealthAllocRow[];
+  orders: WealthAllocOrder[];
+  rebalTotal: number;
+  locked: WealthAllocLockedRow[];
+  riskPct: number | null;
+  riskTargetLow: number | null;
+  riskTargetHigh: number | null;
+  currencyExposure: CurrencyExposureRow[];
+  concentration: ConcentrationWarning[];
+}
+
+export function fetchWealthAlloc(model: AllocationModel): Promise<WealthAlloc> {
+  return getJSON(`/api/wealth/alloc?model=${model}`);
+}
+
 export interface DebtPayoffPlan {
   order: string[];
   months: number;
@@ -1865,4 +1958,65 @@ export function fetchWealthProfile(): Promise<WealthProfile> {
 
 export function saveWealthProfile(annualSalary: number): Promise<TradeResponse> {
   return postJSON("/api/wealth/profile", { annualSalary });
+}
+
+// CashflowDirection/CashflowItem/CashEvent mirror wealth_cash.go's
+// recurring_cashflows response shapes (Phase 9 波次2 PR5, §8.4/§9.4) — a
+// hand-maintained monthly amount, not a transaction ledger.
+export type CashflowDirection = "in" | "out";
+
+export interface CashflowItem {
+  id: number;
+  direction: CashflowDirection;
+  name: string;
+  amount: number;
+  currency: string;
+  dayOfMonth?: number;
+  category?: string;
+  assetId?: number;
+  venue?: string;
+  active: boolean;
+}
+
+export interface CashEvent {
+  date: string;
+  item: string;
+  venue?: string;
+  amount: number | null;
+  currency?: string;
+  direction: CashflowDirection | "event";
+}
+
+// WealthCash mirrors wealth_cash.go's cashResponse — monthlyIn/Out/Net are
+// null when an active flow's currency couldn't be priced to TWD today
+// (§8.17.1's "don't fabricate a number" rule, same as /w/alloc's totals).
+export interface WealthCash {
+  asOf: string;
+  items: CashflowItem[];
+  monthlyIn: number | null;
+  monthlyOut: number | null;
+  monthlyNet: number | null;
+  events: CashEvent[];
+}
+
+export function fetchWealthCash(): Promise<WealthCash> {
+  return getJSON("/api/wealth/cash");
+}
+
+export interface NewCashflow {
+  direction: CashflowDirection;
+  name: string;
+  amount: number;
+  currency?: string;
+  dayOfMonth?: number;
+  category?: string;
+  assetId?: number;
+}
+
+export function createWealthCashflow(c: NewCashflow): Promise<{ id: number }> {
+  return postJSON("/api/wealth/cash", c);
+}
+
+export function deactivateWealthCashflow(id: number): Promise<TradeResponse> {
+  return postJSON("/api/wealth/cash/deactivate", { id });
 }

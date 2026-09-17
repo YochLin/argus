@@ -642,4 +642,29 @@ var migrations = []string{
 	CREATE INDEX IF NOT EXISTS idx_assets_side_archived ON assets(side, archived_at);
 	CREATE INDEX IF NOT EXISTS idx_asset_snapshots_date ON asset_snapshots(date);
 	`,
+	// 30: Phase 9 波次2 PR5 — recurring_cashflows backs /w/cash
+	// (docs/phase-9-asset-platform.md §8.4/§9.2). This is deliberately not
+	// transaction-level bookkeeping: a hand-maintained monthly amount per
+	// recurring item (salary, mortgage, SIP, premiums, ...), since §2's
+	// "expense is derived, not recorded" rule already covers one-off
+	// spending via the balance-derived figure. asset_id links a flow to the
+	// asset/liability it moves (e.g. a SIP into a fund, a mortgage payment
+	// against a loan) so the quick-add drawer can write both in one
+	// transaction (§8.14.3-5); NULL means a pure income/expense line with no
+	// linked asset (salary, groceries).
+	`
+	CREATE TABLE IF NOT EXISTS recurring_cashflows (
+		id           INTEGER PRIMARY KEY AUTOINCREMENT,
+		direction    TEXT NOT NULL,              -- 'in' | 'out'
+		name         TEXT NOT NULL,
+		amount       REAL NOT NULL,
+		currency     TEXT NOT NULL DEFAULT 'TWD',
+		day_of_month INTEGER,
+		asset_id     INTEGER,
+		category     TEXT,
+		active       INTEGER NOT NULL DEFAULT 1
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_recurring_cashflows_active ON recurring_cashflows(active);
+	`,
 }

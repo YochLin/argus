@@ -93,7 +93,7 @@ export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
 
   return (
     <>
-      <div className="card card--glow">
+      <div className="card card--glow" style={{ marginBottom: 16 }}>
         <div className="eyebrow">{dict.wealthNetWorth}</div>
         <div className="wealth-hero-row" style={{ marginTop: 8 }}>
           <div className="wealth-hero-block">

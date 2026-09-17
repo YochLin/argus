@@ -137,6 +137,10 @@ func (f *fakeWealthImportDB) UpsertAssetSnapshot(s db.AssetSnapshot) error {
 }
 func (f *fakeWealthImportDB) ArchiveAsset(id int64) error        { return nil }
 func (f *fakeWealthImportDB) SetSetting(key, value string) error { return nil }
+func (f *fakeWealthImportDB) CreateRecurringCashflow(c db.NewRecurringCashflow) (int64, error) {
+	return 0, nil
+}
+func (f *fakeWealthImportDB) DeactivateRecurringCashflow(id int64) error { return nil }
 
 func TestApplyWealthImportRows(t *testing.T) {
 	fake := &fakeWealthImportDB{}
