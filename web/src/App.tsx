@@ -252,9 +252,7 @@ export default function App() {
       />
     );
   } else if (path === "/w/goals") {
-    body = (
-      <WealthGoalsView dict={dict} />
-    );
+    body = <WealthGoalsView dict={dict} />;
   } else if (path === "/w/balance") {
     body = (
       <WealthBalanceView

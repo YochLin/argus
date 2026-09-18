@@ -15,18 +15,18 @@ import (
 type fakeWealthDB struct {
 	nextID int64
 
-	lastNewAsset                     db.NewAsset
-	lastDeposit                      db.DepositDetails
-	lastLoan                         db.LoanDetails
-	lastSnapshot                     db.AssetSnapshot
-	lastArchiveID                    int64
-	lastSettingKey, lastSettingValue string
-	lastNewCashflow                  db.NewRecurringCashflow
-	lastDeactivateID                 int64
-	lastNewGoal                      db.NewGoal
-	lastDeleteGoalID                 int64
+	lastNewAsset                          db.NewAsset
+	lastDeposit                           db.DepositDetails
+	lastLoan                              db.LoanDetails
+	lastSnapshot                          db.AssetSnapshot
+	lastArchiveID                         int64
+	lastSettingKey, lastSettingValue      string
+	lastNewCashflow                       db.NewRecurringCashflow
+	lastDeactivateID                      int64
+	lastNewGoal                           db.NewGoal
+	lastDeleteGoalID                      int64
 	lastEarmarkGoalID, lastEarmarkAssetID int64
-	lastEarmarkRatio                 float64
+	lastEarmarkRatio                      float64
 
 	createErr     error
 	snapshotErr   error
