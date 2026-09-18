@@ -370,7 +370,7 @@ export function WealthHomeView({ dict, writable, onUnauthorized }: Props) {
   );
 }
 
-function AddAssetModal({
+export function AddAssetModal({
   dict,
   onClose,
   onSuccess,
@@ -561,7 +561,7 @@ function AddAssetModal({
   );
 }
 
-function EditValueModal({
+export function EditValueModal({
   dict,
   asset,
   onClose,

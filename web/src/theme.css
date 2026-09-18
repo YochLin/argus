@@ -3202,6 +3202,23 @@ th {
   transform: translateX(-50%);
 }
 
+/* /w/balance's click-to-edit value cells (design mock: isWBalance's
+   i.notEditing style — a transparent-bordered chip that reveals its border
+   on hover, cursor:text as the edit hint). */
+.wealth-value-editable {
+  cursor: text;
+  padding: 2px 6px;
+  margin-right: -6px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+}
+
+.wealth-value-editable:hover {
+  border-color: var(--border);
+  background: var(--bg);
+  color: var(--ink);
+}
+
 .wealth-ratios-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
