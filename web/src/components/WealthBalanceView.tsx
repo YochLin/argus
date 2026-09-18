@@ -118,11 +118,12 @@ export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
   return (
     <>
       {/* Header + "+" trigger, matching the design template's isWBalance row
-          (Argus Trading WebUI.dc.html lines 632-636) — dw.open there is a
-          shared add-asset drawer this app never built; opening the same
-          AddAssetModal /w already uses is the lazy substitute (same
-          reasoning as WealthCashView's "+"). */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "0 0 16px", flexWrap: "wrap" }}>
+          (Argus Trading WebUI.dc.html lines 632-636), including its
+          top+bottom margin:var(--gap) 0 — this row sits directly under the
+          app's fixed topbar with nothing else providing breathing room
+          above it, unlike a .card (which gets one from .content>.card+.card),
+          so it needs its own top margin too, not just bottom. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0", flexWrap: "wrap" }}>
         <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: "var(--ink)" }}>
           {dict.navWealthBalance}
         </span>

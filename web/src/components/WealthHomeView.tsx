@@ -370,6 +370,22 @@ export function WealthHomeView({ dict, writable, onUnauthorized }: Props) {
   );
 }
 
+// AddAssetModal matches the design template's shared "quick-add drawer"
+// (Argus Trading WebUI.dc.html lines 3304-3438, dw.*) as closely as this
+// app's data model allows: a right-side sliding panel, step 1 picks a kind,
+// step 2 is that kind's form. The template's drawer actually picks from
+// FOUR top-level kinds (asset/liability/cash-flow-item/insurance policy) —
+// "policy" has no backend yet (insurance_details is a future phase) and
+// "flow" already has its own dedicated add flow on /w/cash, so this drawer
+// only ever creates assets/liabilities, and its own step-1 list is this
+// app's finer asset `type` taxonomy (KINDS) instead of the template's
+// coarse kind split — "side" is then implied by which KIND was picked,
+// same as the template implies it by which top-level kind bucket you're in,
+// so there's no separate side selector. Skipped: the duplicate-name/
+// LTV-conflict warning banners and the recurring-contribution toggle — both
+// need data (existing asset names, cash-flow context) this modal doesn't
+// have wired in, and a live FX-conversion preview line, since the frontend
+// has no FX rate to show one with (conversion happens server-side only).
 export function AddAssetModal({
   dict,
   onClose,
@@ -381,8 +397,8 @@ export function AddAssetModal({
   onSuccess: () => void;
   onUnauthorized: (retry: () => void) => void;
 }) {
+  const [step, setStep] = useState<"pick" | "form">("pick");
   const [kind, setKind] = useState<Kind>("deposit");
-  const [side, setSide] = useState<AssetSide>("asset");
   const [name, setName] = useState("");
   const [group, setGroup] = useState<AssetGroup>("liquid");
   const [venue, setVenue] = useState("");
@@ -397,14 +413,16 @@ export function AddAssetModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function changeKind(next: Kind) {
+  function pickKind(next: Kind) {
     setKind(next);
-    setSide(next === "loan" ? "liability" : "asset");
     const defaultGroup = KIND_DEFAULT_GROUP[next];
     if (defaultGroup) {
       setGroup(defaultGroup);
     }
+    setStep("form");
   }
+
+  const side: AssetSide = kind === "loan" ? "liability" : "asset";
 
   async function submit() {
     setSubmitting(true);
@@ -446,114 +464,152 @@ export function AddAssetModal({
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="modal-backdrop">
-          <Dialog.Content className="modal" aria-describedby={undefined} onOpenAutoFocus={(e) => e.preventDefault()}>
-            <div className="modal-header">
-              <Dialog.Title className="eyebrow">{dict.wealthAddTitle}</Dialog.Title>
-              <Dialog.Close className="modal-close" aria-label="close">
+        <Dialog.Overlay className="wealth-drawer-overlay">
+          <Dialog.Content className="wealth-drawer-panel" aria-describedby={undefined} onOpenAutoFocus={(e) => e.preventDefault()}>
+            <div className="wealth-drawer-header">
+              <Dialog.Title style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11 }}>
+                {step === "pick" ? dict.wealthAddTitle : kindLabel(dict, kind)}
+              </Dialog.Title>
+              <span className="wealth-drawer-step">{step === "pick" ? "1/2" : "2/2"}</span>
+              <Dialog.Close className="modal-close" style={{ marginLeft: "auto" }} aria-label="close">
                 ×
               </Dialog.Close>
             </div>
-            <div className="modal-body">
-              <div className="topbar-tabs" role="group" aria-label="asset kind" style={{ flexWrap: "wrap" }}>
-                {KINDS.map((k) => (
-                  <button
-                    key={k}
-                    className={`topbar-tab${kind === k ? " active" : ""}`}
-                    onClick={() => changeKind(k)}
-                  >
-                    {kindLabel(dict, k)}
-                  </button>
-                ))}
-              </div>
-              <label className="form-field">
-                <span>{dict.wealthName}</span>
-                <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-              </label>
-              <label className="form-field">
-                <span>{dict.wealthSide}</span>
-                <select value={side} onChange={(e) => setSide(e.target.value as AssetSide)}>
-                  <option value="asset">{dict.wealthSideAsset}</option>
-                  <option value="liability">{dict.wealthSideLiability}</option>
-                </select>
-              </label>
-              <label className="form-field">
-                <span>{dict.wealthGroupLabel}</span>
-                <select value={group} onChange={(e) => setGroup(e.target.value as AssetGroup)}>
-                  {GROUPS.map((g) => (
-                    <option key={g} value={g}>
-                      {groupLabel(dict, g)}
-                    </option>
+            <div className="wealth-drawer-body">
+              {step === "pick" ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                  {KINDS.map((k) => (
+                    <button key={k} className="wealth-kind-btn" onClick={() => pickKind(k)}>
+                      <span className="wealth-kind-btn-label">{kindLabel(dict, k)}</span>
+                      <span className="wealth-kind-btn-chevron">›</span>
+                    </button>
                   ))}
-                </select>
-              </label>
-              <label className="form-field">
-                <span>{dict.wealthVenue}</span>
-                <input value={venue} onChange={(e) => setVenue(e.target.value)} />
-              </label>
-              <label className="form-field">
-                <span>{dict.wealthCurrency}</span>
-                <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
-                  {CURRENCIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="form-field">
-                <span>{dict.wealthInitialValue}</span>
-                <input className="mono" type="number" value={initialValue} onChange={(e) => setInitialValue(e.target.value)} />
-              </label>
-              {kind === "deposit" && (
+                </div>
+              ) : (
                 <>
-                  <label className="form-field">
-                    <span>{dict.wealthBank}</span>
-                    <input value={bank} onChange={(e) => setBank(e.target.value)} />
-                  </label>
-                  <label className="form-field">
-                    <span>{dict.wealthAccountNote}</span>
-                    <input value={accountNote} onChange={(e) => setAccountNote(e.target.value)} />
-                  </label>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className="wealth-drawer-kind-tag">{kindLabel(dict, kind)}</span>
+                    <button className="wealth-drawer-back" onClick={() => setStep("pick")}>
+                      {dict.wealthAddChange}
+                    </button>
+                  </div>
+
+                  <div className="wealth-drawer-field">
+                    <span className="wealth-drawer-field-label">
+                      {dict.wealthName}
+                      <span className="wealth-drawer-required">*</span>
+                    </span>
+                    <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+                  </div>
+
+                  <div className="wealth-drawer-field">
+                    <span className="wealth-drawer-field-label">
+                      {dict.wealthInitialValue}
+                      <span className="wealth-drawer-required">*</span>
+                    </span>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <input
+                        className="mono"
+                        type="number"
+                        value={initialValue}
+                        onChange={(e) => setInitialValue(e.target.value)}
+                        style={{ flex: 1, minWidth: 0 }}
+                      />
+                      <div className="wealth-chip-row" style={{ flexShrink: 0 }}>
+                        {CURRENCIES.map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            className={`wealth-chip${currency === c ? " active" : ""}`}
+                            onClick={() => setCurrency(c)}
+                          >
+                            {c}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="wealth-drawer-field">
+                    <span className="wealth-drawer-field-label">
+                      {dict.wealthGroupLabel}
+                      <span className="wealth-drawer-required">*</span>
+                    </span>
+                    <div className="wealth-chip-row">
+                      {GROUPS.map((g) => (
+                        <button
+                          key={g}
+                          type="button"
+                          className={`wealth-chip${group === g ? " active" : ""}`}
+                          onClick={() => setGroup(g)}
+                        >
+                          {groupLabel(dict, g)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="wealth-drawer-field">
+                    <span className="wealth-drawer-field-label">{dict.wealthVenue}</span>
+                    <input value={venue} onChange={(e) => setVenue(e.target.value)} />
+                  </div>
+
+                  {kind === "deposit" && (
+                    <>
+                      <div className="wealth-drawer-field">
+                        <span className="wealth-drawer-field-label">{dict.wealthBank}</span>
+                        <input value={bank} onChange={(e) => setBank(e.target.value)} />
+                      </div>
+                      <div className="wealth-drawer-field">
+                        <span className="wealth-drawer-field-label">{dict.wealthAccountNote}</span>
+                        <input value={accountNote} onChange={(e) => setAccountNote(e.target.value)} />
+                      </div>
+                    </>
+                  )}
+                  {kind === "loan" && (
+                    <>
+                      <div className="wealth-drawer-field">
+                        <span className="wealth-drawer-field-label">{dict.wealthLender}</span>
+                        <input value={lender} onChange={(e) => setLender(e.target.value)} />
+                      </div>
+                      <div className="wealth-drawer-field">
+                        <span className="wealth-drawer-field-label">{dict.wealthRatePct}</span>
+                        <input className="mono" type="number" value={ratePct} onChange={(e) => setRatePct(e.target.value)} />
+                      </div>
+                      <div className="wealth-drawer-field">
+                        <span className="wealth-drawer-field-label">{dict.wealthOriginalPrincipal}</span>
+                        <input
+                          className="mono"
+                          type="number"
+                          value={originalPrincipal}
+                          onChange={(e) => setOriginalPrincipal(e.target.value)}
+                        />
+                      </div>
+                      <div className="wealth-drawer-field">
+                        <span className="wealth-drawer-field-label">{dict.wealthRemainingMonths}</span>
+                        <input
+                          className="mono"
+                          type="number"
+                          value={remainingMonths}
+                          onChange={(e) => setRemainingMonths(e.target.value)}
+                        />
+                      </div>
+                    </>
+                  )}
+                  {error && <div className="error-message">{error}</div>}
                 </>
               )}
-              {kind === "loan" && (
-                <>
-                  <label className="form-field">
-                    <span>{dict.wealthLender}</span>
-                    <input value={lender} onChange={(e) => setLender(e.target.value)} />
-                  </label>
-                  <label className="form-field">
-                    <span>{dict.wealthRatePct}</span>
-                    <input className="mono" type="number" value={ratePct} onChange={(e) => setRatePct(e.target.value)} />
-                  </label>
-                  <label className="form-field">
-                    <span>{dict.wealthOriginalPrincipal}</span>
-                    <input
-                      className="mono"
-                      type="number"
-                      value={originalPrincipal}
-                      onChange={(e) => setOriginalPrincipal(e.target.value)}
-                    />
-                  </label>
-                  <label className="form-field">
-                    <span>{dict.wealthRemainingMonths}</span>
-                    <input
-                      className="mono"
-                      type="number"
-                      value={remainingMonths}
-                      onChange={(e) => setRemainingMonths(e.target.value)}
-                    />
-                  </label>
-                </>
-              )}
-              {error && <div className="error-message">{error}</div>}
-              <div className="modal-actions">
-                <button className="btn-primary" disabled={!canSubmit || submitting} onClick={submit}>
-                  {dict.wealthAddAsset}
+            </div>
+            {step === "form" && (
+              <div className="wealth-drawer-footer">
+                <button className="wealth-drawer-cancel" onClick={onClose}>
+                  {dict.cancel}
+                </button>
+                <button className="btn-primary" style={{ marginLeft: "auto" }} disabled={!canSubmit || submitting} onClick={submit}>
+                  + {dict.wealthAddAsset}
                 </button>
               </div>
-            </div>
+            )}
           </Dialog.Content>
         </Dialog.Overlay>
       </Dialog.Portal>

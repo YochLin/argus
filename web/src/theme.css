@@ -3219,6 +3219,175 @@ th {
   color: var(--ink);
 }
 
+/* AddAssetModal's quick-add drawer (design mock: the "＋ new" buttons'
+   dw.* target, Argus Trading WebUI.dc.html lines 3304-3438) — a right-side
+   sliding panel instead of this app's usual centered .modal, so it gets its
+   own class set rather than overriding .modal/.modal-backdrop (those stay
+   shared by every other modal in the app). */
+.wealth-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 130;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.wealth-drawer-panel {
+  width: min(420px, 100%);
+  height: 100%;
+  background: linear-gradient(160deg, var(--surface) 0%, var(--surface-2) 100%);
+  box-shadow: -24px 0 60px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+}
+
+.wealth-drawer-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wealth-drawer-step {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+.wealth-drawer-body {
+  flex: 1;
+  overflow: auto;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.wealth-drawer-footer {
+  display: flex;
+  gap: 9px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--border);
+}
+
+.wealth-drawer-cancel {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 15px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.wealth-kind-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 13px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  text-align: left;
+}
+
+.wealth-kind-btn:hover {
+  border-color: var(--accent);
+}
+
+.wealth-kind-btn-label {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.wealth-kind-btn-chevron {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.wealth-drawer-kind-tag {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+.wealth-drawer-back {
+  background: none;
+  border: none;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.wealth-drawer-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.wealth-drawer-field input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 9px 11px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.wealth-drawer-field-label {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.wealth-drawer-required {
+  color: var(--loss);
+  font-size: 11px;
+}
+
+.wealth-chip-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.wealth-chip {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 6px 11px;
+  border-radius: 7px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--ink-3);
+}
+
+.wealth-chip.active {
+  border-color: var(--accent);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
 .wealth-ratios-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
