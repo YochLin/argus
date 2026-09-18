@@ -146,6 +146,9 @@ func (f *fakeWealthImportDB) DeleteGoal(id int64) error                  { retur
 func (f *fakeWealthImportDB) SetGoalAsset(goalID, assetID int64, ratio float64) error {
 	return nil
 }
+func (f *fakeWealthImportDB) UpsertRetirementGoal(name string, targetAmount float64, targetDate string) (int64, error) {
+	return 0, nil
+}
 
 func TestApplyWealthImportRows(t *testing.T) {
 	fake := &fakeWealthImportDB{}

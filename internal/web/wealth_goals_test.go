@@ -57,8 +57,8 @@ func TestHandleWealthGoalsList(t *testing.T) {
 			{ID: 2, Name: "換屋頭期款", Kind: "general", TargetAmount: 2000000, Currency: "TWD", CreatedAt: "2026-01-01 00:00:00"},
 		},
 		goalAssets: []db.GoalAsset{
-			{GoalID: 1, AssetID: 1, Ratio: 1.0},   // 500000 * 1.0 = 500000 -> fully funded
-			{GoalID: 2, AssetID: 2, Ratio: 0.5},   // 300000 * 0.5 = 150000
+			{GoalID: 1, AssetID: 1, Ratio: 1.0}, // 500000 * 1.0 = 500000 -> fully funded
+			{GoalID: 2, AssetID: 2, Ratio: 0.5}, // 300000 * 0.5 = 150000
 		},
 	}
 	s := newWealthGoalsTestServer("", fake, &fakeWealthDB{})
@@ -108,7 +108,7 @@ func TestHandleWealthGoalsList(t *testing.T) {
 // target_date goal gets: ahead/behind/onTrack around a 5pp band.
 func TestGoalStatus(t *testing.T) {
 	created := "2026-01-01 00:00:00"
-	target := "2027-01-01" // one year out
+	target := "2027-01-01"                             // one year out
 	today, _ := time.Parse("2006-01-02", "2026-07-02") // ~half the year elapsed, expected ~50%
 
 	if got, expectedPct, ok := goalStatus(created, target, 80, today); got != "ahead" || !ok || expectedPct < 49 || expectedPct > 51 {

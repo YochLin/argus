@@ -70,6 +70,7 @@ const wealthLinks: Array<{ path: string; label: (dict: Dictionary) => string; ic
   { path: "/w/alloc", label: (d) => d.navWealthAlloc, icon: <AllocIcon /> },
   { path: "/w/balance", label: (d) => d.navWealthBalance, icon: <BalanceSheetIcon /> },
   { path: "/w/cash", label: (d) => d.navWealthCash, icon: <CashIcon /> },
+  { path: "/w/retire", label: (d) => d.navWealthRetire, icon: <RetireIcon /> },
   { path: "/w/goals", label: (d) => d.navWealthGoals, icon: <GoalsIcon /> },
   { path: "/w/import", label: (d) => d.navWealthImport, icon: <ImportIcon /> },
 ];
@@ -492,6 +493,16 @@ function GoalsIcon() {
       <circle cx="8" cy="8" r="6.2" />
       <circle cx="8" cy="8" r="3.4" />
       <circle cx="8" cy="8" r="0.8" fill="currentColor" />
+    </svg>
+  );
+}
+
+function RetireIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <path d="M2 13.5 L6 8 L9.5 10.5 L14 4.5" />
+      <path d="M14 4.5 L14 8" />
+      <path d="M14 4.5 L10.5 4.5" />
     </svg>
   );
 }
