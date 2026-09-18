@@ -28,6 +28,19 @@ const (
 	RetirementMonthlyContributionSettingKey = "profile.retirement_monthly_contribution"
 )
 
+// DependentsSettingKey/YoungestChildAgeSettingKey/SpouseHasIncomeSettingKey
+// back the insurance gap-analysis page (§8.16.1, Phase 9 波次3 PR8) — the
+// two inputs the life/accident/disability need formula can't derive on its
+// own (see internal/assets.LifeInsuranceNeed). Same minimal-write-path
+// convention as BirthYearSettingKey: a mini setup card on /w/insure itself,
+// not a shared settings page (§8.16.2's "one shared form" is deferred to
+// PR13, see PLAN.md's 2026-09-18 note).
+const (
+	DependentsSettingKey       = "profile.dependents"
+	YoungestChildAgeSettingKey = "profile.youngest_child_age"
+	SpouseHasIncomeSettingKey  = "profile.spouse_income"
+)
+
 // WealthStore is the read boundary the wealth-summary logic (net worth,
 // health metrics, debt payoff) needs — shared by internal/web's wealth
 // pages and internal/bot's /networth command so neither duplicates the
@@ -267,6 +280,28 @@ func DepositTotalTWD(store WealthStore, fx WealthFXStore, quotes QuoteReader, da
 	}
 	total, _, ok := sumEntriesTWD(assetEntries(deposits), date, live, quotes, fx)
 	return total, ok
+}
+
+// MonthlyOutflowTWD sums every active "out"-direction recurring_cashflows
+// row, converted to TWD — the insurance gap page's annual-expense input
+// (AnnualExpense = this * 12, §8.16.1's "平台算得出來" bucket). A deliberate
+// narrower sibling of wealth_cash.go's handleWealthCashList, which needs the
+// same per-item total plus a category breakdown that handler's own view
+// doesn't share here — this only needs the aggregate. ok=false on any
+// FX-conversion failure, same whole-metric-degrades rule as everywhere else.
+func MonthlyOutflowTWD(list []db.RecurringCashflow, date string, quotes QuoteReader, fx WealthFXStore) (float64, bool) {
+	var total float64
+	for _, c := range list {
+		if !c.Active || c.Direction != "out" {
+			continue
+		}
+		rate, ok := RateToTWD(c.Currency, date, true, quotes, fx)
+		if !ok {
+			return 0, false
+		}
+		total += c.Amount * rate
+	}
+	return total, true
 }
 
 // HealthMetrics bundles §2's four health-indicator ratios plus the salary

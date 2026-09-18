@@ -59,17 +59,20 @@ const llmLink = { path: "/llm", label: (d: Dictionary) => d.navLlm, icon: <LlmIc
 
 // Phase 9's wealth account is a parallel nav, not an extension of the
 // trading one (docs/phase-9-asset-platform.md §8.1) — its routes live under
-// /w/*, distinct from the trading side's paths. Only /w exists so far
-// (the net-worth home page); later PRs add siblings here as they land.
-// Order mirrors the design template's navDefs (Argus Trading WebUI.dc.html):
-// /w, /w/alloc, /w/balance, /w/cash, ..., /w/goals, ..., /w/tax, /w/docs —
-// /w/import has no template counterpart (it replaces the scrapped PDF-
-// upload flow, §8.15.1) so it stays appended at the end.
+// /w/*, distinct from the trading side's paths. Order mirrors the design
+// template's navDefs (Argus Trading WebUI.dc.html lines 7299-7304):
+// /w, /w/alloc, /w/balance, /w/cash, /w/bonds, /w/funds, /w/insure,
+// /w/retire, /w/goals, /w/tax, /w/docs — /w/bonds/funds/tax/docs don't exist
+// yet (later PRs), but /w/insure (PR8) already sits between /w/cash and
+// /w/retire per that order. /w/import has no template counterpart (it
+// replaces the scrapped PDF-upload flow, §8.15.1) so it stays appended at
+// the end.
 const wealthLinks: Array<{ path: string; label: (dict: Dictionary) => string; icon: ReactNode }> = [
   { path: "/w", label: (d) => d.navWealth, icon: <WealthIcon /> },
   { path: "/w/alloc", label: (d) => d.navWealthAlloc, icon: <AllocIcon /> },
   { path: "/w/balance", label: (d) => d.navWealthBalance, icon: <BalanceSheetIcon /> },
   { path: "/w/cash", label: (d) => d.navWealthCash, icon: <CashIcon /> },
+  { path: "/w/insure", label: (d) => d.navWealthInsure, icon: <RiskIcon /> },
   { path: "/w/retire", label: (d) => d.navWealthRetire, icon: <RetireIcon /> },
   { path: "/w/goals", label: (d) => d.navWealthGoals, icon: <GoalsIcon /> },
   { path: "/w/import", label: (d) => d.navWealthImport, icon: <ImportIcon /> },

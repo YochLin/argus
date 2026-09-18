@@ -1986,19 +1986,30 @@ export interface WealthProfile {
   // 9 波次3 PR7) — two more "個人參數" the platform can't derive on its own.
   birthYear: number | null;
   retirementMonthlyContribution: number | null;
+  // dependents/youngestChildAge/spouseHasIncome back the insurance page's
+  // need formula (Phase 9 波次3 PR8, §8.16.1). dependents === 0 is a real,
+  // explicitly-saved "no dependents" — check for null, not falsiness, to
+  // tell "not set yet" apart from that.
+  dependents: number | null;
+  youngestChildAge: number | null;
+  spouseHasIncome: boolean | null;
 }
 
 export function fetchWealthProfile(): Promise<WealthProfile> {
   return getJSON("/api/wealth/profile");
 }
 
-// saveWealthProfile takes a partial patch — the balance sheet's salary form
-// and the retirement page's birth-year/contribution form each save just
-// their own field without clobbering the others.
+// saveWealthProfile takes a partial patch — every mini setup card on
+// WealthProfile's fields (the balance sheet's salary form, the retirement
+// page's birth-year/contribution form, the insurance page's dependents/
+// spouse form) each save just their own field without clobbering the others.
 export function saveWealthProfile(patch: {
   annualSalary?: number;
   birthYear?: number;
   retirementMonthlyContribution?: number;
+  dependents?: number;
+  youngestChildAge?: number;
+  spouseHasIncome?: boolean;
 }): Promise<TradeResponse> {
   return postJSON("/api/wealth/profile", patch);
 }
@@ -2186,4 +2197,66 @@ export function fetchWealthRetire(): Promise<WealthRetire> {
 
 export function saveWealthRetire(name: string, retirementAge: number, monthlySpend: number): Promise<WealthRetire> {
   return postJSON("/api/wealth/retire", { name, retirementAge, monthlySpend });
+}
+
+// InsuranceKind/InsurancePerPeriod/InsuranceCoverageRow/InsurancePolicyItem/
+// WealthInsure mirror wealth_insure.go's response shapes (Phase 9 波次3 PR8,
+// §8.6/§8.16.1) — the six-coverage-kind have/need gap table plus the policy
+// list. perPeriod is server-derived from kind (never independently chosen),
+// so it's always one of the fixed pairs below.
+export type InsuranceKind = "life" | "accident" | "ci" | "cancer" | "disability" | "hospital";
+export type InsurancePerPeriod = "" | "month" | "day";
+
+export interface InsuranceCoverageRow {
+  kind: InsuranceKind;
+  perPeriod?: InsurancePerPeriod;
+  have: number;
+  need: number | null;
+  gap: number | null;
+  pctOfNeed: number | null;
+}
+
+export interface InsurancePolicyItem {
+  assetId: number;
+  name: string;
+  insurer: string;
+  kind: InsuranceKind;
+  perPeriod?: InsurancePerPeriod;
+  amount: number;
+  annualPremium: number | null;
+  premiumYears: number | null;
+  insured?: string;
+  source: string;
+}
+
+export interface WealthInsure {
+  asOf: string;
+  hasProfile: boolean;
+  rows: InsuranceCoverageRow[];
+  policies: InsurancePolicyItem[];
+  count: number;
+  premium: number;
+  premSharePct: number | null;
+  worstKind?: InsuranceKind;
+  worstGap: number;
+  worstPct: number;
+  totalGapLumpSum: number;
+}
+
+export function fetchWealthInsure(): Promise<WealthInsure> {
+  return getJSON("/api/wealth/insure");
+}
+
+export interface NewInsurancePolicy {
+  insurer: string;
+  name: string;
+  kind: InsuranceKind;
+  amount: number;
+  annualPremium?: number;
+  premiumYears?: number;
+  insured?: string;
+}
+
+export function createInsurancePolicy(p: NewInsurancePolicy): Promise<{ id: number }> {
+  return postJSON("/api/wealth/insure", p);
 }

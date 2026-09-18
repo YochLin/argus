@@ -337,6 +337,11 @@ func New(cfg Config) *Server {
 	// without it.
 	s.mux.HandleFunc("GET /api/wealth/retire", s.handleWealthRetireGet)
 	s.mux.HandleFunc("POST /api/wealth/retire", s.requireWritable(s.requireAuth(s.handleWealthRetireSave)))
+	// /api/wealth/insure (`/w/insure`, §9.4 PR8) — insurance gap analysis
+	// (have vs a pure-function need estimate, §8.16.1). GET ungated; the
+	// add-policy form behind the usual write gate.
+	s.mux.HandleFunc("GET /api/wealth/insure", s.handleWealthInsureGet)
+	s.mux.HandleFunc("POST /api/wealth/insure", s.requireWritable(s.requireAuth(s.handleWealthInsureCreate)))
 	// /api/settings (Phase 17 PR2) sits behind the same gate as every write
 	// route, GET included: the read side reports which credentials are
 	// configured, which is not something to hand out unauthenticated.

@@ -30,6 +30,9 @@ type fakeWealthDB struct {
 	lastRetirementGoalName                string
 	lastRetirementGoalTargetAmount        float64
 	lastRetirementGoalTargetDate          string
+	lastInsuranceAsset                    db.NewAsset
+	lastInsuranceDetails                  db.InsuranceDetails
+	lastInsuranceCoverage                 db.InsuranceCoverage
 
 	createErr         error
 	snapshotErr       error
@@ -41,6 +44,7 @@ type fakeWealthDB struct {
 	deleteGoalErr     error
 	earmarkErr        error
 	retirementGoalErr error
+	insuranceErr      error
 
 	nextCashflowID int64
 	nextGoalID     int64
@@ -99,6 +103,11 @@ func (f *fakeWealthDB) UpsertRetirementGoal(name string, targetAmount float64, t
 	f.lastRetirementGoalName, f.lastRetirementGoalTargetAmount, f.lastRetirementGoalTargetDate = name, targetAmount, targetDate
 	f.nextGoalID++
 	return f.nextGoalID, f.retirementGoalErr
+}
+func (f *fakeWealthDB) CreateInsuranceAsset(a db.NewAsset, det db.InsuranceDetails, cov db.InsuranceCoverage) (int64, error) {
+	f.lastInsuranceAsset, f.lastInsuranceDetails, f.lastInsuranceCoverage = a, det, cov
+	f.nextID++
+	return f.nextID, f.insuranceErr
 }
 
 func newWealthTestServer(password string, wealthDB wealthWriter, dbr dbReader) *Server {

@@ -697,4 +697,38 @@ var migrations = []string{
 		PRIMARY KEY (goal_id, asset_id)
 	);
 	`,
+	// 32: Phase 9 波次3 PR8 — insurance_details/insurance_coverages back
+	// /w/insure (docs/phase-9-asset-platform.md §8.6/§8.18.2/§9.2). A policy
+	// is an assets row with type='insurance'; insurance_details is its 1:1
+	// detail row (same pattern as deposit_details/loan_details).
+	// insurance_coverages is a *child* table, not folded into
+	// insurance_details, because one policy can carry multiple riders and
+	// the amounts must never be summed across per_period kinds (a monthly
+	// disability benefit and a lump-sum life benefit aren't the same unit —
+	// §8.6's real pitfall). per_period is NULL for a lump-sum benefit,
+	// 'month' or 'day' otherwise. The quick-add form (like the design
+	// template's own drawer, §8.18.2) only ever writes one coverage per
+	// submission — a policy that bundles multiple riders is entered as
+	// multiple asset rows, one per rider; this is the source drawer's own
+	// limitation, not one introduced here.
+	`
+	CREATE TABLE IF NOT EXISTS insurance_details (
+		asset_id        INTEGER PRIMARY KEY,
+		insurer         TEXT,
+		insured         TEXT,
+		policy_no       TEXT,
+		annual_premium  REAL,
+		premium_years   INTEGER,
+		maturity_date   TEXT,
+		surrender_value REAL
+	);
+	CREATE TABLE IF NOT EXISTS insurance_coverages (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		asset_id   INTEGER NOT NULL,
+		kind       TEXT NOT NULL, -- 'life'|'accident'|'ci'|'cancer'|'disability'|'hospital'
+		amount     REAL NOT NULL, -- always TWD; Taiwan policies are TWD-denominated, no currency column
+		per_period TEXT           -- NULL=lump sum | 'month' | 'day'
+	);
+	CREATE INDEX IF NOT EXISTS idx_insurance_coverages_asset ON insurance_coverages(asset_id);
+	`,
 }
