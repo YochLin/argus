@@ -3177,6 +3177,31 @@ th {
   font-variant-numeric: tabular-nums;
 }
 
+/* Home page's off-target row (design mock: wm.wOffRows' barCur/barTgt) —
+   same track/mark shape as .goal-progress-track/.goal-progress-mark, fill
+   colored by the row's own series color (.wealth-bar-seg.sN) rather than
+   profit/loss since the deviation sign is already shown as text beside it. */
+.wealth-drift-track {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg);
+}
+
+.wealth-drift-fill {
+  display: block;
+  border-radius: 3px;
+}
+
+.wealth-drift-mark {
+  position: absolute;
+  top: -2px;
+  width: 2px;
+  height: 10px;
+  background: var(--ink-2);
+  transform: translateX(-50%);
+}
+
 .wealth-ratios-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));

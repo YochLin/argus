@@ -230,17 +230,29 @@ export function WealthHomeView({ dict, writable, onUnauthorized }: Props) {
       {offTarget.length > 0 && (
         <div className="card">
           <div className="eyebrow">{dict.wealthOffTargetTitle}</div>
-          <div className="wealth-col-stack" style={{ marginTop: 12 }}>
+          <div className="wealth-col-stack" style={{ marginTop: 12, gap: 12 }}>
             {offTarget.map((row) => (
-              <div key={row.group} className="wealth-item-row">
-                <span className={`wealth-dot ${groupColorClass(row.group)}`} />
-                {groupLabel(dict, row.group)}
-                <span
-                  className={`wealth-item-row-value ${row.deviationPt > 0 ? "profit" : row.deviationPt < 0 ? "loss" : ""}`}
-                >
-                  {row.deviationPt > 0 ? "+" : ""}
-                  {row.deviationPt.toFixed(1)}pt
-                </span>
+              <div key={row.group} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                <div className="wealth-item-row">
+                  <span className={`wealth-dot ${groupColorClass(row.group)}`} />
+                  {groupLabel(dict, row.group)}
+                  <span
+                    className={`wealth-item-row-value ${row.deviationPt > 0 ? "profit" : row.deviationPt < 0 ? "loss" : ""}`}
+                  >
+                    {row.deviationPt > 0 ? "+" : ""}
+                    {row.deviationPt.toFixed(1)}pt
+                  </span>
+                </div>
+                <div className="wealth-drift-track">
+                  <span
+                    className={`wealth-drift-fill wealth-bar-seg ${groupColorClass(row.group)}`}
+                    style={{ width: `${Math.min(100, Math.max(0, row.currentPct))}%` }}
+                  />
+                  <span className="wealth-drift-mark" style={{ left: `${Math.min(100, Math.max(0, row.targetPct))}%` }} />
+                </div>
+                <div style={{ fontSize: 11, color: "var(--ink-3)" }}>
+                  {row.currentPct.toFixed(1)}% → {row.targetPct.toFixed(1)}%
+                </div>
               </div>
             ))}
           </div>
