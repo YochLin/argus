@@ -31,6 +31,13 @@ const callTimeout = 10 * time.Minute
 // considered and rejected.
 var ErrRecommendationParseFailed = errors.New("llm: no parseable recommendation blocks in reply")
 
+// maxAttemptsPerBackend is how many times a single backend is retried before
+// the chain moves on to the next one — a transient hiccup (a dropped ACP
+// stream, a momentary rate limit) shouldn't burn the whole fallback chain on
+// its first blip. ponytail: no backoff between attempts; add one if immediate
+// retries prove to just re-hit the same failure instead of a transient one.
+const maxAttemptsPerBackend = 3
+
 // Client drives an LLM through an ordered chain of Providers (today: Claude
 // via ACP first, optionally Google Antigravity as a fallback — see
 // AddFallback) — the same "try each in order, fall through to the next on
@@ -354,13 +361,22 @@ func (c *Client) Chat(ctx context.Context, text string) (string, error) {
 	defer c.chatMu.Unlock()
 
 	if c.chatSession != nil {
-		reply, err := c.chatSession.Send(ctx, text)
-		if err == nil {
-			return reply, nil
+		var err error
+		for attempt := 1; attempt <= maxAttemptsPerBackend; attempt++ {
+			var reply string
+			reply, err = c.chatSession.Send(ctx, text)
+			if err == nil {
+				return reply, nil
+			}
+			logger.Errorf("llm: open chat session attempt %d/%d failed: %v", attempt, maxAttemptsPerBackend, err)
+			if ctx.Err() != nil {
+				break
+			}
 		}
-		// The underlying session failed; drop it so we can try starting a
-		// fresh session across the backend chain below.
-		logger.Errorf("llm: open chat session failed, restarting from first backend: %v", err)
+		// The underlying session failed maxAttemptsPerBackend times in a
+		// row; drop it so we can try starting a fresh session across the
+		// backend chain below.
+		logger.Errorf("llm: open chat session exhausted retries, restarting from first backend: %v", err)
 		c.chatSession.Close()
 		c.chatSession = nil
 	}
@@ -368,21 +384,29 @@ func (c *Client) Chat(ctx context.Context, text string) (string, error) {
 	systemPrompt := i18n.T(c.lang, i18n.KeySystemPromptChat)
 	var lastErr error
 	for _, b := range c.backends {
-		session, err := b.provider.NewChatSession(ctx, systemPrompt, b.chatModel)
-		if err != nil {
-			logger.Errorf("llm: backend %T failed to start chat session: %v", b.provider, err)
-			lastErr = err
-			continue
+		for attempt := 1; attempt <= maxAttemptsPerBackend; attempt++ {
+			session, err := b.provider.NewChatSession(ctx, systemPrompt, b.chatModel)
+			if err != nil {
+				logger.Errorf("llm: backend %T attempt %d/%d failed to start chat session: %v", b.provider, attempt, maxAttemptsPerBackend, err)
+				lastErr = err
+				if ctx.Err() != nil {
+					return "", lastErr
+				}
+				continue
+			}
+			reply, err := session.Send(ctx, text)
+			if err != nil {
+				logger.Errorf("llm: backend %T attempt %d/%d failed to send chat message: %v", b.provider, attempt, maxAttemptsPerBackend, err)
+				session.Close()
+				lastErr = err
+				if ctx.Err() != nil {
+					return "", lastErr
+				}
+				continue
+			}
+			c.chatSession = session
+			return reply, nil
 		}
-		reply, err := session.Send(ctx, text)
-		if err != nil {
-			logger.Errorf("llm: backend %T failed to send chat message: %v", b.provider, err)
-			session.Close()
-			lastErr = err
-			continue
-		}
-		c.chatSession = session
-		return reply, nil
 	}
 	return "", lastErr
 }
@@ -405,13 +429,14 @@ func (c *Client) Close() {
 	c.ResetChat()
 }
 
-// prompt tries each backend in the chain in order, using modelFor to pick
-// that backend's own model string, and returns the first successful reply —
-// same fall-through-on-error shape as data.Multi. callTimeout bounds the
-// whole call (shared across every backend tried, not reset per-backend): a
-// hung claude-agent-acp subprocess would otherwise block the caller's
-// goroutine forever with no error ever surfacing — see callTimeout's doc
-// comment.
+// prompt tries each backend in the chain in order, retrying a given backend
+// up to maxAttemptsPerBackend times before moving to the next, using modelFor
+// to pick that backend's own model string, and returns the first successful
+// reply — same fall-through-on-error shape as data.Multi. callTimeout bounds
+// the whole call (shared across every backend and attempt, not reset per
+// attempt): a hung claude-agent-acp subprocess would otherwise block the
+// caller's goroutine forever with no error ever surfacing — see callTimeout's
+// doc comment.
 func (c *Client) prompt(ctx context.Context, prompt string, modelFor func(backend) string) (reply string, model string, latencyMs int64, err error) {
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
@@ -419,14 +444,22 @@ func (c *Client) prompt(ctx context.Context, prompt string, modelFor func(backen
 	systemPrompt := i18n.T(c.lang, i18n.KeySystemPromptAnalyst)
 	var lastErr error
 	for _, b := range c.backends {
-		start := time.Now()
-		reply, err := b.provider.Prompt(ctx, systemPrompt, modelFor(b), prompt)
-		elapsed := time.Since(start).Milliseconds()
-		if err == nil {
-			return reply, modelFor(b), elapsed, nil
+		for attempt := 1; attempt <= maxAttemptsPerBackend; attempt++ {
+			start := time.Now()
+			reply, err := b.provider.Prompt(ctx, systemPrompt, modelFor(b), prompt)
+			elapsed := time.Since(start).Milliseconds()
+			if err == nil {
+				return reply, modelFor(b), elapsed, nil
+			}
+			logger.Errorf("llm: backend %T attempt %d/%d failed: %v", b.provider, attempt, maxAttemptsPerBackend, err)
+			lastErr = err
+			if ctx.Err() != nil {
+				// callTimeout is shared across the whole chain, not reset
+				// per backend — once it's gone, neither more attempts here
+				// nor another backend will ever get a chance to run.
+				return "", "", 0, lastErr
+			}
 		}
-		logger.Errorf("llm: backend %T failed: %v", b.provider, err)
-		lastErr = err
 	}
 	return "", "", 0, lastErr
 }
