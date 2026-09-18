@@ -463,6 +463,18 @@ func (s *ScanService) RunUniverseScan(ctx context.Context, m market.MarketID) (U
 			continue
 		}
 		for _, sig := range DecorateStrategyHits(s.CheckStatefulSignals(t, candles), isBear, s.lang) {
+			// Plain RSI/MACD state flips fire far more often than the six
+			// strategy screens and are already folded into several of those
+			// screens' own conditions (e.g. Box Bottom's RSI<30 leg, Squeeze's
+			// MACD-flip leg) — recording them separately as "scan" hits just
+			// dilutes the /recs "選股條件" source bucket with noise the
+			// strategy screens already account for. Only strategy_-prefixed
+			// hits become scan_hits; RSI/MACD alerts still reach Telegram for
+			// watchlist/position tickers via bot.checkStatefulSignals, which
+			// calls CheckStatefulSignals directly and isn't filtered here.
+			if !strings.HasPrefix(sig.Type, "strategy_") {
+				continue
+			}
 			if err := s.store.SaveScanHit(t, date, sig.Message); err != nil {
 				logger.Errorf("universe scan: save hit %s: %v", t, err)
 				continue

@@ -218,8 +218,16 @@ func TestRunUniverseScanSelection(t *testing.T) {
 	if res.Scanned != 1 {
 		t.Errorf("Scanned = %d, want 1", res.Scanned)
 	}
-	if res.Hits == 0 {
-		t.Fatal("expected at least one scan hit from the rising AAPL fixture (RSI overbought)")
+	// The rising-close fixture used to register as a scan hit via RSI
+	// overbought, but RunUniverseScan now only writes strategy_-prefixed
+	// hits to scan_hits (plain RSI/MACD state flips are excluded — they
+	// fire far more often than the six strategy screens and duplicate
+	// conditions already folded into several of those screens, which just
+	// diluted the /recs "選股條件" source bucket with noise). This 15-bar,
+	// volume-less fixture doesn't satisfy any of the six strategy screens
+	// (they need 20-60 bars plus real volume), so zero hits is expected here.
+	if res.Hits != 0 {
+		t.Errorf("Hits = %d, want 0 (fixture triggers only RSI, which no longer becomes a scan hit)", res.Hits)
 	}
 	if res.Hits != len(store.hits) {
 		t.Errorf("Hits = %d but %d rows written", res.Hits, len(store.hits))
