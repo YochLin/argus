@@ -321,6 +321,14 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /api/wealth/cash", s.handleWealthCashList)
 	s.mux.HandleFunc("POST /api/wealth/cash", s.requireWritable(s.requireAuth(s.handleWealthCashCreate)))
 	s.mux.HandleFunc("POST /api/wealth/cash/deactivate", s.requireWritable(s.requireAuth(s.handleWealthCashDeactivate)))
+	// /api/wealth/goals (`/w/goals`, §9.4 PR6) — goal list with earmarked-
+	// asset progress. The page itself is read-only (matches the design
+	// template's isWGoals section, which has no write UI), but the writes
+	// stay behind the usual gate as an API surface for managing goals.
+	s.mux.HandleFunc("GET /api/wealth/goals", s.handleWealthGoalsList)
+	s.mux.HandleFunc("POST /api/wealth/goals", s.requireWritable(s.requireAuth(s.handleWealthGoalCreate)))
+	s.mux.HandleFunc("POST /api/wealth/goals/delete", s.requireWritable(s.requireAuth(s.handleWealthGoalDelete)))
+	s.mux.HandleFunc("POST /api/wealth/goals/earmark", s.requireWritable(s.requireAuth(s.handleWealthGoalEarmark)))
 	// /api/settings (Phase 17 PR2) sits behind the same gate as every write
 	// route, GET included: the read side reports which credentials are
 	// configured, which is not something to hand out unauthenticated.

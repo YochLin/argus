@@ -77,6 +77,10 @@ type fakeDB struct {
 	// recurringCashflows backs ListRecurringCashflows for wealth_cash_test.go
 	// (Phase 9 波次2 PR5).
 	recurringCashflows []db.RecurringCashflow
+	// goals/goalAssets back ListGoals/ListAllGoalAssets for
+	// wealth_goals_test.go (Phase 9 波次3 PR6).
+	goals      []db.Goal
+	goalAssets []db.GoalAsset
 }
 
 func (f *fakeDB) GetPositions() ([]db.Position, error)          { return f.positions, nil }
@@ -212,6 +216,8 @@ func (f *fakeDB) ListRecurringCashflows(activeOnly bool) ([]db.RecurringCashflow
 	}
 	return out, nil
 }
+func (f *fakeDB) ListGoals() ([]db.Goal, error)              { return f.goals, nil }
+func (f *fakeDB) ListAllGoalAssets() ([]db.GoalAsset, error) { return f.goalAssets, nil }
 
 // BlockNewsSource/UnblockNewsSource let fakeDB double as a newsSourceWriter
 // in newssources_test.go, mutating blockedSources the same way a real DB

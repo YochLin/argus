@@ -628,6 +628,25 @@ export interface Dictionary {
   wealthCashCatLoan: string;
   wealthCashCatInsurance: string;
   wealthCashCatTax: string;
+  // Phase 9 波次3 PR6: goal tracking page (/w/goals) — goals table +
+  // goal_assets earmark. Retirement (kind "retirement") is the same table
+  // (§8.8); PR7 owns computing its targetAmount, this page just renders it
+  // like any other goal. Read-only, matching the design template's
+  // isWGoals section — no add/earmark/delete keys here since the page has
+  // no write UI. Mirrors internal/web/wealth_goals.go.
+  navWealthGoals: string;
+  wealthGoalsNoGoals: string;
+  wealthGoalsSavedLabel: string;
+  wealthGoalsTargetLabel: string;
+  wealthGoalsStatusAhead: string;
+  wealthGoalsStatusOnTrack: string;
+  wealthGoalsStatusBehind: string;
+  wealthGoalsKindRetirement: string;
+  wealthGoalsTotalProgress: string;
+  wealthGoalsMonthlyLabel: string;
+  wealthGoalsBehindCountLabel: string;
+  wealthGoalsEtaLabel: string;
+  wealthGoalsExpectedLabel: string;
 }
 
 const en: Dictionary = {
@@ -1197,6 +1216,19 @@ const en: Dictionary = {
   wealthCashCatLoan: "Loan / car payment",
   wealthCashCatInsurance: "Insurance premium",
   wealthCashCatTax: "Tax reserve",
+  navWealthGoals: "Goals",
+  wealthGoalsNoGoals: "No goals yet.",
+  wealthGoalsSavedLabel: "Saved",
+  wealthGoalsTargetLabel: "Target",
+  wealthGoalsStatusAhead: "Ahead",
+  wealthGoalsStatusOnTrack: "On track",
+  wealthGoalsStatusBehind: "Behind",
+  wealthGoalsKindRetirement: "Retirement",
+  wealthGoalsTotalProgress: "ALL GOALS",
+  wealthGoalsMonthlyLabel: "Monthly",
+  wealthGoalsBehindCountLabel: "BEHIND",
+  wealthGoalsEtaLabel: "ETA",
+  wealthGoalsExpectedLabel: "expected",
 };
 
 const zh: Dictionary = {
@@ -1760,6 +1792,19 @@ const zh: Dictionary = {
   wealthCashCatLoan: "信貸車貸",
   wealthCashCatInsurance: "保費",
   wealthCashCatTax: "稅務預留",
+  navWealthGoals: "目標追蹤",
+  wealthGoalsNoGoals: "尚無目標。",
+  wealthGoalsSavedLabel: "已累積",
+  wealthGoalsTargetLabel: "目標",
+  wealthGoalsStatusAhead: "超前",
+  wealthGoalsStatusOnTrack: "進度正常",
+  wealthGoalsStatusBehind: "落後",
+  wealthGoalsKindRetirement: "退休",
+  wealthGoalsTotalProgress: "全部目標合計",
+  wealthGoalsMonthlyLabel: "每月投入",
+  wealthGoalsBehindCountLabel: "落後項目",
+  wealthGoalsEtaLabel: "預計達成",
+  wealthGoalsExpectedLabel: "應有進度",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

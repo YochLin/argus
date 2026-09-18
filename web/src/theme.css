@@ -1470,6 +1470,78 @@ th {
   text-align: right;
 }
 
+/* Goal progress bar (/w/goals, Phase 9 波次3 PR6) — same track/fill shape as
+   .edge-bar-track/.edge-bar-fill but with room for .goal-progress-mark, a
+   tick at the design template's "expected progress" position (wrm.goal.mark
+   in Argus Trading WebUI.dc.html) so a goal reads as ahead/behind at a
+   glance instead of only via the text status chip beside it. */
+.goal-progress-track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg);
+}
+
+.goal-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+}
+
+.goal-progress-fill.profit {
+  background: var(--profit);
+}
+
+.goal-progress-fill.loss {
+  background: var(--loss);
+}
+
+/* Template's third bucket: under the expected line but not flagged late —
+   accent (not gray), so "no signal yet" doesn't read the same as "behind". */
+.goal-progress-fill.accent {
+  background: var(--accent);
+}
+
+.goal-progress-mark {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 14px;
+  background: var(--ink-2);
+  transform: translateX(-50%);
+}
+
+/* Template's stateStyle is an outlined chip (colored text + 1px border, no
+   fill), not a filled pill — matches wrm.goal.stateStyle /
+   Argus Trading WebUI.dc.html's goalRow(). */
+.goal-state-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.goal-state-chip.ahead {
+  color: var(--profit);
+}
+
+.goal-state-chip.behind {
+  color: var(--loss);
+}
+
+.goal-state-chip.onTrack {
+  color: var(--accent);
+}
+
+.goal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
 .quality-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

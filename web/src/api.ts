@@ -689,6 +689,9 @@ function getMockData(url: string): any {
   if (path === "/api/wealth/cash") {
     return { asOf: "2026-07-15", items: [], monthlyIn: null, monthlyOut: null, monthlyNet: null, events: [] };
   }
+  if (path === "/api/wealth/goals") {
+    return { asOf: "2026-07-15", goals: [] };
+  }
   if (path === "/api/status") {
     return {
       watchingCount: market === "tw" ? 11 : 14,
@@ -2019,4 +2022,71 @@ export function createWealthCashflow(c: NewCashflow): Promise<{ id: number }> {
 
 export function deactivateWealthCashflow(id: number): Promise<TradeResponse> {
   return postJSON("/api/wealth/cash/deactivate", { id });
+}
+
+// GoalKind/GoalAssetItem/Goal mirror wealth_goals.go's response shapes
+// (Phase 9 波次3 PR6, §8.8/§9.4) — the retirement row (kind "retirement") is
+// the same table, PR7 owns filling in its targetAmount from the retirement
+// calc.
+export type GoalKind = "retirement" | "general";
+export type GoalStatus = "ahead" | "onTrack" | "behind" | "";
+
+export interface GoalAssetItem {
+  assetId: number;
+  name: string;
+  venue?: string;
+  ratio: number;
+  value: number | null;
+}
+
+// Goal mirrors wealth_goals.go's goalItem — saved/progressPct are null
+// together when any earmarked asset's currency couldn't be priced to TWD
+// (§8.17.1's "don't fabricate a number" rule, same as /w/cash's totals).
+export interface Goal {
+  id: number;
+  name: string;
+  kind: GoalKind;
+  targetAmount: number;
+  currency: string;
+  targetDate?: string;
+  note?: string;
+  saved: number | null;
+  progressPct: number | null;
+  status?: GoalStatus;
+  // markPct is where the "expected progress" tick renders on the progress
+  // bar (§8.9 point 5's 應有進度標記) — the same straight-line expectation
+  // status was classified against, unset together with status when there's
+  // no targetDate.
+  markPct?: number;
+  assets: GoalAssetItem[];
+}
+
+export interface WealthGoals {
+  asOf: string;
+  goals: Goal[];
+}
+
+export function fetchWealthGoals(): Promise<WealthGoals> {
+  return getJSON("/api/wealth/goals");
+}
+
+export interface NewGoal {
+  name: string;
+  kind?: GoalKind;
+  targetAmount: number;
+  currency?: string;
+  targetDate?: string;
+  note?: string;
+}
+
+export function createWealthGoal(g: NewGoal): Promise<{ id: number }> {
+  return postJSON("/api/wealth/goals", g);
+}
+
+export function deleteWealthGoal(id: number): Promise<TradeResponse> {
+  return postJSON("/api/wealth/goals/delete", { id });
+}
+
+export function setWealthGoalEarmark(goalId: number, assetId: number, ratio: number): Promise<TradeResponse> {
+  return postJSON("/api/wealth/goals/earmark", { goalId, assetId, ratio });
 }

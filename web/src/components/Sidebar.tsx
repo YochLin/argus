@@ -61,11 +61,16 @@ const llmLink = { path: "/llm", label: (d: Dictionary) => d.navLlm, icon: <LlmIc
 // trading one (docs/phase-9-asset-platform.md §8.1) — its routes live under
 // /w/*, distinct from the trading side's paths. Only /w exists so far
 // (the net-worth home page); later PRs add siblings here as they land.
+// Order mirrors the design template's navDefs (Argus Trading WebUI.dc.html):
+// /w, /w/alloc, /w/balance, /w/cash, ..., /w/goals, ..., /w/tax, /w/docs —
+// /w/import has no template counterpart (it replaces the scrapped PDF-
+// upload flow, §8.15.1) so it stays appended at the end.
 const wealthLinks: Array<{ path: string; label: (dict: Dictionary) => string; icon: ReactNode }> = [
   { path: "/w", label: (d) => d.navWealth, icon: <WealthIcon /> },
   { path: "/w/alloc", label: (d) => d.navWealthAlloc, icon: <AllocIcon /> },
-  { path: "/w/cash", label: (d) => d.navWealthCash, icon: <CashIcon /> },
   { path: "/w/balance", label: (d) => d.navWealthBalance, icon: <BalanceSheetIcon /> },
+  { path: "/w/cash", label: (d) => d.navWealthCash, icon: <CashIcon /> },
+  { path: "/w/goals", label: (d) => d.navWealthGoals, icon: <GoalsIcon /> },
   { path: "/w/import", label: (d) => d.navWealthImport, icon: <ImportIcon /> },
 ];
 
@@ -477,6 +482,16 @@ function CashIcon() {
       <circle cx="8" cy="8" r="1.8" />
       <line x1="3.5" y1="8" x2="3.5" y2="8" />
       <line x1="12.5" y1="8" x2="12.5" y2="8" />
+    </svg>
+  );
+}
+
+function GoalsIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <circle cx="8" cy="8" r="6.2" />
+      <circle cx="8" cy="8" r="3.4" />
+      <circle cx="8" cy="8" r="0.8" fill="currentColor" />
     </svg>
   );
 }
