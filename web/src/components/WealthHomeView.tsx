@@ -606,7 +606,7 @@ export function AddAssetModal({
                   {dict.cancel}
                 </button>
                 <button className="btn-primary" style={{ marginLeft: "auto" }} disabled={!canSubmit || submitting} onClick={submit}>
-                  + {dict.wealthAddAsset}
+                  {dict.wealthAddAsset}
                 </button>
               </div>
             )}

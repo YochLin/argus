@@ -129,7 +129,7 @@ export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
         </span>
         {writable && (
           <button className="btn-tint" style={{ marginLeft: "auto" }} onClick={() => setShowAdd(true)}>
-            + {dict.wealthAddAsset}
+            {dict.wealthAddAsset}
           </button>
         )}
       </div>

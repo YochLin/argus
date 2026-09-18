@@ -3273,6 +3273,20 @@ th {
   border-top: 1px solid var(--border);
 }
 
+/* .btn-primary elsewhere always sits inside .modal-actions, which is what
+   actually supplies padding/border-radius/font (.btn-primary itself only
+   overrides color) - this footer isn't .modal-actions, so its Save button
+   needs that same base styling here or it renders as a plain square
+   browser button. */
+.wealth-drawer-footer .btn-primary {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 17px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
 .wealth-drawer-cancel {
   font-family: var(--font-sans);
   font-size: 13px;
