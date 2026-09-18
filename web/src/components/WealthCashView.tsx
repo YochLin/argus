@@ -106,7 +106,7 @@ function AddCashflowForm({
   }
 
   return (
-    <div className="card">
+    <div className="card" style={{ marginBottom: 16 }}>
       <div className="eyebrow">{dict.wealthCashAddTitle}</div>
       <div className="topbar-tabs" role="group" aria-label="direction" style={{ marginBottom: 10 }}>
         <button className={`topbar-tab${direction === "in" ? " active" : ""}`} onClick={() => changeDirection("in")}>
@@ -150,10 +150,70 @@ function AddCashflowForm({
   );
 }
 
+// BreakdownCard mirrors the template's income/expense breakdown cards
+// (Argus Trading WebUI.dc.html lines 811-850, cashModel()'s inRows/outRows)
+// — each active item sorted by its own TWD value, a bar sized relative to
+// the largest item across BOTH cards (cashModel()'s maxRow), and a % of
+// that column's own total.
+function BreakdownCard({
+  title,
+  items,
+  total,
+  maxValue,
+  positive,
+}: {
+  title: string;
+  items: CashflowItem[];
+  total: number;
+  maxValue: number;
+  positive: boolean;
+}) {
+  return (
+    <div className="card">
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
+        <span className="eyebrow">{title}</span>
+        <span className={`mono ${positive ? "profit" : "loss"}`} style={{ marginLeft: "auto", fontSize: 13 }}>
+          {fmtMoney(total, CURRENCY)}
+        </span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {items.map((item) => {
+          const value = item.valueTwd ?? 0;
+          const pct = total > 0 ? (value / total) * 100 : 0;
+          const barPct = maxValue > 0 ? (value / maxValue) * 100 : 0;
+          return (
+            <div key={item.id} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontFamily: "var(--sans)", fontSize: 12.5 }}>{item.name}</span>
+                <span className="mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>
+                  {pct.toFixed(0)}%
+                </span>
+                <span className="mono" style={{ marginLeft: "auto", fontSize: 12.5 }}>
+                  {fmtMoney(value, CURRENCY)}
+                </span>
+              </div>
+              <div
+                style={{
+                  height: 6,
+                  borderRadius: 3,
+                  width: `${barPct}%`,
+                  background: positive ? "var(--profit)" : "var(--loss)",
+                  opacity: 0.7,
+                }}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
   const [cash, setCash] = useState<WealthCash | null>(null);
   const [error, setError] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
+  const [showAddForm, setShowAddForm] = useState(false);
 
   useEffect(() => {
     setError(false);
@@ -179,82 +239,97 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
     return <div className="error-message">{dict.error}</div>;
   }
 
+  const inItems = (cash?.items ?? [])
+    .filter((i) => i.active && i.direction === "in" && i.valueTwd != null)
+    .sort((a, b) => (b.valueTwd ?? 0) - (a.valueTwd ?? 0));
+  const outItems = (cash?.items ?? [])
+    .filter((i) => i.active && i.direction === "out" && i.valueTwd != null)
+    .sort((a, b) => (b.valueTwd ?? 0) - (a.valueTwd ?? 0));
+  const maxRow = Math.max(inItems[0]?.valueTwd ?? 0, outItems[0]?.valueTwd ?? 0);
+
   return (
     <>
-      <div className="card card--glow" style={{ marginBottom: 16 }}>
-        <div className="eyebrow">{dict.navWealthCash}</div>
-        <div className="wealth-hero-row" style={{ marginTop: 8 }}>
-          <div className="wealth-hero-block">
-            <span className="eyebrow">{dict.wealthCashMonthlyIn}</span>
-            <span className="wealth-hero-block-value profit">
-              {cash?.monthlyIn != null ? fmtMoney(cash.monthlyIn, CURRENCY) : "—"}
+      {/* Unboxed header + "+" trigger, matching the design template's isWCash
+          row exactly (Argus Trading WebUI.dc.html lines 757-760) — unlike
+          /w/goals, this page's template DOES want a write affordance here,
+          it just opens a shared drawer component this app has never built;
+          toggling the existing inline form is the lazy substitute already
+          used by every other wealth page's "+"-less version of this. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "0 0 16px", flexWrap: "wrap" }}>
+        <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: "var(--ink)" }}>
+          {dict.navWealthCash}
+        </span>
+        {writable && (
+          <button className="btn-tint" style={{ marginLeft: "auto" }} onClick={() => setShowAddForm((v) => !v)}>
+            + {dict.wealthCashAdd}
+          </button>
+        )}
+      </div>
+
+      {writable && showAddForm && (
+        <AddCashflowForm
+          dict={dict}
+          onUnauthorized={onUnauthorized}
+          onSaved={() => {
+            setShowAddForm(false);
+            setRefreshSignal((n) => n + 1);
+          }}
+        />
+      )}
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
+        <div className="card card--glow" style={{ flex: "1.5 1 250px" }}>
+          <div className="eyebrow">{dict.wealthCashMonthlyNet}</div>
+          <div
+            className={`mono ${cash?.monthlyNet != null && cash.monthlyNet < 0 ? "loss" : "profit"}`}
+            style={{ fontSize: 40, lineHeight: 1.1, marginTop: 8 }}
+          >
+            {cash?.monthlyNet != null ? fmtMoney(cash.monthlyNet, CURRENCY) : "—"}
+          </div>
+          <div style={{ display: "flex", gap: 22, marginTop: 12, fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--ink-3)", flexWrap: "wrap" }}>
+            <span>
+              {dict.wealthCashMonthlyIn} <span style={{ color: "var(--ink)" }}>{cash?.monthlyIn != null ? fmtMoney(cash.monthlyIn, CURRENCY) : "—"}</span>
+            </span>
+            <span>
+              {dict.wealthCashMonthlyOut} <span style={{ color: "var(--ink)" }}>{cash?.monthlyOut != null ? fmtMoney(cash.monthlyOut, CURRENCY) : "—"}</span>
             </span>
           </div>
-          <div className="wealth-hero-block">
-            <span className="eyebrow">{dict.wealthCashMonthlyOut}</span>
-            <span className="wealth-hero-block-value loss">
-              {cash?.monthlyOut != null ? fmtMoney(cash.monthlyOut, CURRENCY) : "—"}
-            </span>
+        </div>
+        <div className="card" style={{ flex: "1 1 200px" }}>
+          <div className="eyebrow">{dict.wealthCashSaveRateLabel}</div>
+          <div className="mono profit" style={{ fontSize: "clamp(17px,2.1vw,28px)", marginTop: 8 }}>
+            {cash?.saveRatePct != null ? `${cash.saveRatePct.toFixed(1)}%` : "—"}
           </div>
-          <div className="wealth-hero-block">
-            <span className="eyebrow">{dict.wealthCashMonthlyNet}</span>
-            <span className="wealth-hero-block-value big">
-              {cash?.monthlyNet != null ? fmtMoney(cash.monthlyNet, CURRENCY) : "—"}
-            </span>
+          <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6 }}>
+            {dict.wealthCashDcaShareLabel} {cash?.dcaSharePct != null ? `${cash.dcaSharePct.toFixed(1)}%` : "—"}
+          </div>
+        </div>
+        <div className="card" style={{ flex: "1 1 200px" }}>
+          <div className="eyebrow">{dict.wealthCashFixedShareLabel}</div>
+          <div className="mono" style={{ fontSize: "clamp(17px,2.1vw,28px)", marginTop: 8 }}>
+            {cash?.fixedSharePct != null ? `${cash.fixedSharePct.toFixed(1)}%` : "—"}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6 }}>
+            {dict.wealthCashAnnualNetLabel} {cash?.annualNet != null ? fmtMoney(cash.annualNet, CURRENCY) : "—"}
           </div>
         </div>
       </div>
 
-      {writable && <div style={{ marginBottom: 16 }}><AddCashflowForm dict={dict} onUnauthorized={onUnauthorized} onSaved={() => setRefreshSignal((n) => n + 1)} /></div>}
-
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="eyebrow">{dict.wealthCashItemsTitle}</div>
-        {cash && cash.items.length > 0 ? (
-          <table className="mono">
-            <thead>
-              <tr>
-                <th>{dict.wealthCashNameLabel}</th>
-                <th>{dict.wealthCashCategoryLabel}</th>
-                <th>{dict.wealthCashAmountLabel}</th>
-                <th>{dict.wealthCashDayOfMonthLabel}</th>
-                <th>{dict.wealthVenueLabel}</th>
-                {writable && <th />}
-              </tr>
-            </thead>
-            <tbody>
-              {cash.items.map((item) => (
-                <tr key={item.id} style={{ opacity: item.active ? 1 : 0.5 }}>
-                  <td style={{ fontFamily: "var(--sans)" }}>
-                    {item.name}
-                    {!item.active && ` (${dict.wealthCashPaused})`}
-                  </td>
-                  <td style={{ fontFamily: "var(--sans)", fontSize: 12, color: "var(--ink-3)" }}>
-                    {categoryLabel(dict, item.category)}
-                  </td>
-                  <td className={item.direction === "in" ? "profit" : "loss"}>
-                    {item.direction === "in" ? "+" : "-"}
-                    {fmtMoney(item.amount, CURRENCY)}
-                  </td>
-                  <td>{item.dayOfMonth ?? "—"}</td>
-                  <td style={{ fontFamily: "var(--sans)", fontSize: 12, color: "var(--ink-3)" }}>{item.venue || "—"}</td>
-                  {writable && (
-                    <td>
-                      {item.active && (
-                        <button onClick={() => pause(item)}>{dict.wealthCashPause}</button>
-                      )}
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <div className="empty-message">{dict.wealthCashNoItems}</div>
-        )}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 16, marginBottom: 16 }}>
+        <BreakdownCard title={dict.wealthCashInBreakdownTitle} items={inItems} total={cash?.monthlyIn ?? 0} maxValue={maxRow} positive />
+        <BreakdownCard title={dict.wealthCashOutBreakdownTitle} items={outItems} total={cash?.monthlyOut ?? 0} maxValue={maxRow} positive={false} />
       </div>
 
-      <div className="card">
-        <div className="eyebrow">{dict.wealthCashEventsTitle}</div>
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 4, flexWrap: "wrap" }}>
+          <span className="eyebrow">{dict.wealthCashEventsTitle}</span>
+          <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-3)" }}>
+            {dict.wealthCashNet90Label}{" "}
+            <span className={cash?.eventsNet != null && cash.eventsNet < 0 ? "loss" : "profit"}>
+              {cash?.eventsNet != null ? fmtMoney(cash.eventsNet, CURRENCY) : "—"}
+            </span>
+          </span>
+        </div>
         {cash && cash.events.length > 0 ? (
           <table className="mono">
             <thead>
@@ -282,6 +357,53 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
           <div className="empty-message">{dict.wealthCashNoEvents}</div>
         )}
       </div>
+
+      {writable && (
+        <details className="card">
+          <summary style={{ cursor: "pointer", fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-3)" }}>
+            {dict.wealthManageLabel}
+          </summary>
+          <div className="eyebrow" style={{ marginTop: 12 }}>
+            {dict.wealthCashItemsTitle}
+          </div>
+          {cash && cash.items.length > 0 ? (
+            <table className="mono">
+              <thead>
+                <tr>
+                  <th>{dict.wealthCashNameLabel}</th>
+                  <th>{dict.wealthCashCategoryLabel}</th>
+                  <th>{dict.wealthCashAmountLabel}</th>
+                  <th>{dict.wealthCashDayOfMonthLabel}</th>
+                  <th>{dict.wealthVenueLabel}</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {cash.items.map((item) => (
+                  <tr key={item.id} style={{ opacity: item.active ? 1 : 0.5 }}>
+                    <td style={{ fontFamily: "var(--sans)" }}>
+                      {item.name}
+                      {!item.active && ` (${dict.wealthCashPaused})`}
+                    </td>
+                    <td style={{ fontFamily: "var(--sans)", fontSize: 12, color: "var(--ink-3)" }}>
+                      {categoryLabel(dict, item.category)}
+                    </td>
+                    <td className={item.direction === "in" ? "profit" : "loss"}>
+                      {item.direction === "in" ? "+" : "-"}
+                      {fmtMoney(item.amount, CURRENCY)}
+                    </td>
+                    <td>{item.dayOfMonth ?? "—"}</td>
+                    <td style={{ fontFamily: "var(--sans)", fontSize: 12, color: "var(--ink-3)" }}>{item.venue || "—"}</td>
+                    <td>{item.active && <button onClick={() => pause(item)}>{dict.wealthCashPause}</button>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="empty-message">{dict.wealthCashNoItems}</div>
+          )}
+        </details>
+      )}
     </>
   );
 }

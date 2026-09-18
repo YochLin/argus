@@ -90,6 +90,51 @@ func TestHandleWealthCashList(t *testing.T) {
 	if got.MonthlyNet == nil || *got.MonthlyNet != 30000 {
 		t.Errorf("MonthlyNet = %v, want 30000", got.MonthlyNet)
 	}
+	// SaveRatePct/DcaSharePct/FixedSharePct are all percentages of MonthlyIn
+	// (80000): net 30000 -> 37.5%, sip 15000 -> 18.75%, mortgage 35000 (a
+	// "fixed" category) -> 43.75%.
+	if got.SaveRatePct == nil || *got.SaveRatePct != 37.5 {
+		t.Errorf("SaveRatePct = %v, want 37.5", got.SaveRatePct)
+	}
+	if got.DcaSharePct == nil || *got.DcaSharePct != 18.75 {
+		t.Errorf("DcaSharePct = %v, want 18.75", got.DcaSharePct)
+	}
+	if got.FixedSharePct == nil || *got.FixedSharePct != 43.75 {
+		t.Errorf("FixedSharePct = %v, want 43.75", got.FixedSharePct)
+	}
+	if got.AnnualNet == nil || *got.AnnualNet != 360000 {
+		t.Errorf("AnnualNet = %v, want 360000 (flat MonthlyNet*12)", got.AnnualNet)
+	}
+	// Each active item's ValueTwd is its own TWD amount; the paused item
+	// (id 4) has none since it's excluded from every total.
+	byID := map[int64]cashflowItem{}
+	for _, it := range got.Items {
+		byID[it.ID] = it
+	}
+	if v := byID[1].ValueTwd; v == nil || *v != 80000 {
+		t.Errorf("item 1 ValueTwd = %v, want 80000", v)
+	}
+	if v := byID[4].ValueTwd; v != nil {
+		t.Errorf("paused item 4 ValueTwd = %v, want nil", v)
+	}
+	// EventsNet sums the (TWD, all-in-out here) event amounts with sign —
+	// checked against the events list itself rather than a hardcoded number,
+	// since how many monthly occurrences land within the 90-day window
+	// depends on today's date.
+	var wantEventsNet float64
+	for _, e := range got.Events {
+		if e.Amount == nil {
+			continue
+		}
+		if e.Direction == "out" {
+			wantEventsNet -= *e.Amount
+		} else {
+			wantEventsNet += *e.Amount
+		}
+	}
+	if got.EventsNet == nil || *got.EventsNet != wantEventsNet {
+		t.Errorf("EventsNet = %v, want %v", got.EventsNet, wantEventsNet)
+	}
 
 	// Both day_of_month flows fall due today, so at least one occurrence of
 	// each shows up in the 90-day event table, and the asset-linked one
