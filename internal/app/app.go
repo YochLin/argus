@@ -472,6 +472,9 @@ func (a *App) registerJobs(ctx context.Context) {
 	a.Scheduler.AddMonthlyReport(ctx, func(ctx context.Context) {
 		b.RunMonthlyReport(ctx)
 	})
+	a.Scheduler.AddWealthHealthReport(ctx, func(ctx context.Context) {
+		b.RunWealthHealthReport(ctx)
+	})
 
 	// The universe scan is Phase 24 Stage 3 Step 3.2's first fully inverted
 	// job: the scheduler calls a service and gets a DTO back, with no *Bot in

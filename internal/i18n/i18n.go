@@ -920,4 +920,33 @@ const (
 	KeyNetworthSummaryLine  Key = "networth_summary_line"
 	KeyNetworthHealthHeader Key = "networth_health_header"
 	KeyNetworthHealthLine   Key = "networth_health_line"
+
+	// RunWealthHealthReport (Phase 9 波次3 PR9) — the monthly financial
+	// health report: the same four health-metric ratios /networth already
+	// renders (reusing KeyNetworthHealthHeader/KeyNetworthHealthLine, not a
+	// second copy), plus a retirement-goal-progress line and an LLM
+	// interpretation of those already-computed numbers. KeyWealthHealthReportTitle
+	// takes the report month ("2026-09"); KeyWealthHealthRetirementLine's
+	// four args are all pre-formatted strings (goal name, "%", "NT$saved",
+	// "NT$target"), same convention as KeyNetworthSummaryLine.
+	KeyWealthHealthReportTitle    Key = "wealth_health_report_title"
+	KeyWealthHealthRetirementLine Key = "wealth_health_retirement_line"
+	KeyWealthHealthInsightHeader  Key = "wealth_health_insight_header"
+
+	// buildWealthHealthReportPrompt (internal/llm) — the LLM-interpretation
+	// half of the same report. Each line is only rendered when its metric
+	// is computable (same optional-section convention as
+	// buildTradeReviewPrompt), so the model never gets asked to explain a
+	// dash. The four ratio lines take a raw %.1f; KeyWealthHealthPromptRetirementLine
+	// takes goal name (%s) then pct/saved/target as raw numbers, since this
+	// prompt (unlike the Telegram line above) is read by the model, not
+	// rendered for a person, so it doesn't need pre-formatted currency
+	// strings.
+	KeyWealthHealthPromptIntro            Key = "wealth_health_prompt_intro"
+	KeyWealthHealthPromptDebtRatioLine    Key = "wealth_health_prompt_debt_ratio_line"
+	KeyWealthHealthPromptLiquidityLine    Key = "wealth_health_prompt_liquidity_line"
+	KeyWealthHealthPromptSavingsRateLine  Key = "wealth_health_prompt_savings_rate_line"
+	KeyWealthHealthPromptExpenseRatioLine Key = "wealth_health_prompt_expense_ratio_line"
+	KeyWealthHealthPromptRetirementLine   Key = "wealth_health_prompt_retirement_line"
+	KeyWealthHealthPromptTask             Key = "wealth_health_prompt_task"
 )

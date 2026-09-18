@@ -781,4 +781,23 @@ var zhMessages = map[Key]string{
 	KeyNetworthSummaryLine:  "淨值：%s\nYTD：%s ｜ MoM：%s\n總資產：%s ｜ 總負債：%s\n",
 	KeyNetworthHealthHeader: "\n健康指標：\n",
 	KeyNetworthHealthLine:   "負債比：%s ｜ 流動性：%s\n儲蓄率：%s ｜ 收支比：%s\n",
+
+	KeyWealthHealthReportTitle:    "📋 *月度財務健康報告（%s）*\n",
+	KeyWealthHealthRetirementLine: "退休目標「%s」進度：%s（已存 %s ／ 目標 %s）\n",
+	KeyWealthHealthInsightHeader:  "\n解讀：\n",
+
+	KeyWealthHealthPromptIntro:            "你是一位個人理財顧問，請針對以下 %s 這個月的財務健康數字給出簡短解讀（不是重複數字，是指出數字背後代表的意義與變化）。\n\n",
+	KeyWealthHealthPromptDebtRatioLine:    "負債比：%.1f%%\n",
+	KeyWealthHealthPromptLiquidityLine:    "流動性：%.1f 個月\n",
+	KeyWealthHealthPromptSavingsRateLine:  "儲蓄率：%.1f%%\n",
+	KeyWealthHealthPromptExpenseRatioLine: "收支比：%.1f%%\n",
+	KeyWealthHealthPromptRetirementLine:   "退休目標「%s」進度：%.1f%%（已存 NT$%.0f ／ 目標 NT$%.0f）\n",
+	KeyWealthHealthPromptTask: `
+請用繁體中文寫一段 150-250 字的解讀，聚焦：
+1. 這些數字反映的財務體質好壞，哪個指標最值得留意
+2. 有沒有需要留意的風險訊號（例如流動性偏低、儲蓄率偏低、負債比偏高）
+3. 若有退休目標進度，用一句話點出目前是超前還是落後
+
+不要重複列出上面已經給的數字，不要給具體投資標的建議。
+`,
 }

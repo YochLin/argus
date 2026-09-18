@@ -249,6 +249,19 @@ func (c *Client) ReviewTrade(ctx context.Context, trade ClosedTrade) (result str
 	return result, parseLesson(c.lang, result), nil
 }
 
+// WealthHealthReport is Phase 9 波次3 PR9's monthly financial-health
+// interpretation (see bot.RunWealthHealthReport): a one-shot narrative read
+// on the four health-metric ratios and the retirement goal's progress,
+// which the caller has already computed via service.ComputeHealthMetrics/
+// service.ComputeRetirementGoalProgress — this call never computes a
+// metric itself. Reuses checkModel, same reasoning as ReviewTrade/
+// InsightPortfolio: a once-a-month call doesn't warrant its own model tier.
+func (c *Client) WealthHealthReport(ctx context.Context, in WealthHealthReportInput) (string, error) {
+	prompt := buildWealthHealthReportPrompt(c.lang, in)
+	reply, _, _, err := c.prompt(ctx, prompt, func(b backend) string { return b.checkModel })
+	return reply, err
+}
+
 // ExplainPriceEvent is Phase 20's gap/big-move event summary (see
 // docs/phase-20-price-event-log.md §4.3): a one-shot call reading the day's
 // gap%/change% numbers plus ticker-only news, asked to state the facts and

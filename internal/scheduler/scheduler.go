@@ -188,6 +188,25 @@ func (s *Scheduler) AddMonthlyReport(ctx context.Context, fn JobFunc) {
 	logger.Info("scheduler: monthly report registered at 09:30 CST (1st of month)")
 }
 
+// AddWealthHealthReport schedules Phase 9 波次3 PR9's monthly financial
+// health report (bot.RunWealthHealthReport) at 10:00 CST on the 1st of
+// every month — 30 minutes after AddMonthlyReport's 09:30 run so the two
+// unrelated monthly reports (stock net worth vs. wealth-platform health
+// metrics) never land in the same minute, same spacing reasoning as
+// AddMonthlyReport's own doc comment. Same "*" day-of-week (not "1") as
+// AddMonthlyReport, for the same cron OR-semantics reason.
+// Cron with seconds: "0 0 10 1 * *"
+func (s *Scheduler) AddWealthHealthReport(ctx context.Context, fn JobFunc) {
+	_, err := s.c.AddFunc("0 0 10 1 * *", func() {
+		logger.Info("scheduler: running wealth health report")
+		fn(ctx)
+	})
+	if err != nil {
+		logger.Fatalf("scheduler: add wealth health report: %v", err)
+	}
+	logger.Info("scheduler: wealth health report registered at 10:00 CST (1st of month)")
+}
+
 // AddMorningBriefing schedules the US-market morning briefing at 07:00 CST,
 // Tuesday–Saturday — a read-only narrative recap of the US session that just
 // closed (indices, macro backdrop, watchlist/mover highlights), distinct
