@@ -495,9 +495,6 @@ export interface Dictionary {
   wealthAssetsLabel: string;
   wealthAddAsset: string;
   wealthEmpty: string;
-  wealthSide: string;
-  wealthSideAsset: string;
-  wealthSideLiability: string;
   wealthType: string;
   wealthName: string;
   wealthGroupLabel: string;
@@ -524,6 +521,7 @@ export interface Dictionary {
   wealthOriginalPrincipal: string;
   wealthRemainingMonths: string;
   wealthAddTitle: string;
+  wealthAddChange: string;
   wealthInitialValue: string;
   wealthEditValueTitle: string;
   // Phase 9 PR2 (partial): balance sheet page (/w/balance), health-metric
@@ -1132,9 +1130,6 @@ const en: Dictionary = {
   wealthAssetsLabel: "ASSETS",
   wealthAddAsset: "+ Add",
   wealthEmpty: "No assets yet — add your first one.",
-  wealthSide: "Side",
-  wealthSideAsset: "Asset",
-  wealthSideLiability: "Liability",
   wealthType: "Type",
   wealthName: "Name",
   wealthGroupLabel: "Group",
@@ -1161,6 +1156,7 @@ const en: Dictionary = {
   wealthOriginalPrincipal: "Original principal",
   wealthRemainingMonths: "Remaining months",
   wealthAddTitle: "Add Asset",
+  wealthAddChange: "‹ Change",
   wealthInitialValue: "Starting value",
   wealthEditValueTitle: "Update value",
   navWealthBalance: "Balance Sheet",
@@ -1742,9 +1738,6 @@ const zh: Dictionary = {
   wealthAssetsLabel: "資產列表",
   wealthAddAsset: "＋ 新增",
   wealthEmpty: "尚未新增任何資產，點擊上方按鈕新增第一筆。",
-  wealthSide: "類別",
-  wealthSideAsset: "資產",
-  wealthSideLiability: "負債",
   wealthType: "型別",
   wealthName: "名稱",
   wealthGroupLabel: "分組",
@@ -1771,6 +1764,7 @@ const zh: Dictionary = {
   wealthOriginalPrincipal: "原始本金",
   wealthRemainingMonths: "剩餘月數",
   wealthAddTitle: "新增資產",
+  wealthAddChange: "‹ 更改",
   wealthInitialValue: "起始金額",
   wealthEditValueTitle: "更新現值",
   navWealthBalance: "資產負債表",

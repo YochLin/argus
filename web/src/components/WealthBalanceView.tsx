@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ApiError,
+  fetchWealthAssets,
   fetchWealthBalance,
   fetchWealthDebtPayoff,
   saveWealthProfile,
@@ -10,9 +11,10 @@ import {
   type DebtPayoffResult,
   type LiabilityDetail,
   type QuarterPoint,
+  type WealthAsset,
 } from "../api";
 import type { Dictionary } from "../i18n";
-import { fmtMoney, groupColorClass, groupLabel } from "./WealthHomeView";
+import { AddAssetModal, EditValueModal, fmtMoney, groupColorClass, groupLabel } from "./WealthHomeView";
 
 interface Props {
   dict: Dictionary;
@@ -40,6 +42,7 @@ function srcLabel(dict: Dictionary, source: string): string {
 
 export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
   const [sheet, setSheet] = useState<BalanceSheet | null>(null);
+  const [assets, setAssets] = useState<WealthAsset[] | null>(null);
   const [error, setError] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
   const [salaryInput, setSalaryInput] = useState("");
@@ -47,6 +50,8 @@ export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
   const [extra, setExtra] = useState("");
   const [payoff, setPayoff] = useState<DebtPayoffResult | null>(null);
   const [payoffLoading, setPayoffLoading] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<WealthAsset | null>(null);
 
   useEffect(() => {
     setError(false);
@@ -54,6 +59,25 @@ export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
       .then(setSheet)
       .catch(() => setError(true));
   }, [refreshSignal]);
+
+  // Fetched alongside the balance sheet only so an item row's value can be
+  // edited from here (design mock: isWBalance's i.editing/i.notEditing
+  // click-to-edit cells) — BalanceSheetItem/LiabilityDetail only carry the
+  // already-FX-converted valueTwd, but EditValueModal (shared with /w) needs
+  // the asset's native currency/value, hence the separate WealthAsset lookup.
+  useEffect(() => {
+    fetchWealthAssets()
+      .then((r) => setAssets(r.assets))
+      .catch(() => setError(true));
+  }, [refreshSignal]);
+
+  function refresh() {
+    setRefreshSignal((n) => n + 1);
+  }
+
+  function findAsset(assetId?: number): WealthAsset | undefined {
+    return assetId != null ? assets?.find((a) => a.id === assetId) : undefined;
+  }
 
   async function saveSalary() {
     const v = Number(salaryInput);
@@ -93,6 +117,23 @@ export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
 
   return (
     <>
+      {/* Header + "+" trigger, matching the design template's isWBalance row
+          (Argus Trading WebUI.dc.html lines 632-636), including its
+          top+bottom margin:var(--gap) 0 — this row sits directly under the
+          app's fixed topbar with nothing else providing breathing room
+          above it, unlike a .card (which gets one from .content>.card+.card),
+          so it needs its own top margin too, not just bottom. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0", flexWrap: "wrap" }}>
+        <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: "var(--ink)" }}>
+          {dict.navWealthBalance}
+        </span>
+        {writable && (
+          <button className="btn-tint" style={{ marginLeft: "auto" }} onClick={() => setShowAdd(true)}>
+            {dict.wealthAddAsset}
+          </button>
+        )}
+      </div>
+
       <div className="card card--glow" style={{ marginBottom: 16 }}>
         <div className="eyebrow">{dict.wealthNetWorth}</div>
         <div className="wealth-hero-row" style={{ marginTop: 8 }}>
@@ -160,9 +201,17 @@ export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
                       </span>
                       <span className="wealth-group-header-value">{fmtMoney(g.marketValue, CURRENCY)}</span>
                     </div>
-                    {g.assets.map((item, i) => (
-                      <AssetItemRow key={item.assetId ?? `${g.group}-${i}`} dict={dict} item={item} />
-                    ))}
+                    {g.assets.map((item, i) => {
+                      const match = writable ? findAsset(item.assetId) : undefined;
+                      return (
+                        <AssetItemRow
+                          key={item.assetId ?? `${g.group}-${i}`}
+                          dict={dict}
+                          item={item}
+                          onEdit={match ? () => setEditing(match) : undefined}
+                        />
+                      );
+                    })}
                   </div>
                 ))}
             </div>
@@ -183,9 +232,17 @@ export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
               <div className="empty-message">{dict.wealthEmpty}</div>
             ) : (
               <div className="wealth-col-stack" style={{ gap: 8 }}>
-                {sheet.liabilities.map((l) => (
-                  <LiabilityItemRow key={l.assetId} dict={dict} item={l} />
-                ))}
+                {sheet.liabilities.map((l) => {
+                  const match = writable ? findAsset(l.assetId) : undefined;
+                  return (
+                    <LiabilityItemRow
+                      key={l.assetId}
+                      dict={dict}
+                      item={l}
+                      onEdit={match ? () => setEditing(match) : undefined}
+                    />
+                  );
+                })}
               </div>
             )}
           </div>
@@ -254,21 +311,67 @@ export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
           )}
         </div>
       )}
+
+      {showAdd && (
+        <AddAssetModal
+          dict={dict}
+          onClose={() => setShowAdd(false)}
+          onSuccess={() => {
+            setShowAdd(false);
+            refresh();
+          }}
+          onUnauthorized={onUnauthorized}
+        />
+      )}
+      {editing && (
+        <EditValueModal
+          dict={dict}
+          asset={editing}
+          onClose={() => setEditing(null)}
+          onSuccess={() => {
+            setEditing(null);
+            refresh();
+          }}
+          onUnauthorized={onUnauthorized}
+        />
+      )}
     </>
   );
 }
 
-function AssetItemRow({ dict, item }: { dict: Dictionary; item: BalanceSheetItem }) {
+function AssetItemRow({
+  dict,
+  item,
+  onEdit,
+}: {
+  dict: Dictionary;
+  item: BalanceSheetItem;
+  onEdit?: () => void;
+}) {
   return (
     <div className="wealth-item-row">
       <span>{item.assetId ? item.name : equityLabel(dict, item.type)}</span>
       <span className={`wealth-src-tag ${item.source}`}>{srcLabel(dict, item.source)}</span>
-      <span className="wealth-item-row-value">{fmtMoney(item.valueTwd, CURRENCY)}</span>
+      {onEdit ? (
+        <span className="wealth-item-row-value wealth-value-editable" onClick={onEdit} title={dict.wealthEditValueTitle}>
+          {fmtMoney(item.valueTwd, CURRENCY)}
+        </span>
+      ) : (
+        <span className="wealth-item-row-value">{fmtMoney(item.valueTwd, CURRENCY)}</span>
+      )}
     </div>
   );
 }
 
-function LiabilityItemRow({ dict, item }: { dict: Dictionary; item: LiabilityDetail }) {
+function LiabilityItemRow({
+  dict,
+  item,
+  onEdit,
+}: {
+  dict: Dictionary;
+  item: LiabilityDetail;
+  onEdit?: () => void;
+}) {
   return (
     <div className="wealth-item-row">
       <span>{item.name}</span>
@@ -277,7 +380,17 @@ function LiabilityItemRow({ dict, item }: { dict: Dictionary; item: LiabilityDet
         {item.remainingMonths != null ? ` · ${item.remainingMonths} ${dict.wealthRemainingMonths}` : ""}
       </span>
       <span className={`wealth-src-tag ${item.source}`}>{srcLabel(dict, item.source)}</span>
-      <span className="wealth-item-row-value loss">{fmtMoney(item.valueTwd, CURRENCY)}</span>
+      {onEdit ? (
+        <span
+          className="wealth-item-row-value loss wealth-value-editable"
+          onClick={onEdit}
+          title={dict.wealthEditValueTitle}
+        >
+          {fmtMoney(item.valueTwd, CURRENCY)}
+        </span>
+      ) : (
+        <span className="wealth-item-row-value loss">{fmtMoney(item.valueTwd, CURRENCY)}</span>
+      )}
     </div>
   );
 }
