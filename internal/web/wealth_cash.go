@@ -25,6 +25,12 @@ type cashflowItem struct {
 	AssetID    *int64  `json:"assetId,omitempty"`
 	Venue      string  `json:"venue,omitempty"`
 	Active     bool    `json:"active"`
+	// ValueTwd is Amount converted to TWD as of today — nil if the item is
+	// inactive (not part of any monthly total) or its currency couldn't be
+	// priced. Backs the in/out breakdown's per-item bar (§8.4's wcm.inRows/
+	// outRows), computed once here rather than making the frontend redo FX
+	// conversion it has no quotes access to do.
+	ValueTwd *float64 `json:"valueTwd,omitempty"`
 }
 
 // cashEvent is one row of the 90-day cash event table (§8.4) — derived, not
@@ -50,7 +56,27 @@ type cashResponse struct {
 	MonthlyIn  *float64       `json:"monthlyIn"`
 	MonthlyOut *float64       `json:"monthlyOut"`
 	MonthlyNet *float64       `json:"monthlyNet"`
-	Events     []cashEvent    `json:"events"`
+	// SaveRatePct/DcaSharePct/FixedSharePct mirror the design template's
+	// wcm.saveRate/dcaShare/fixedShare (§8.4) — all percentages of
+	// MonthlyIn, nil together with it when FX can't be resolved. DCA share
+	// sums active "out" items tagged category "sip"; fixed share sums
+	// "mortgage"/"loan"/"insurance" — the three categories the template's
+	// own mockup numbers add up (38400+21600+18500 in cashModel()).
+	SaveRatePct   *float64 `json:"saveRatePct"`
+	DcaSharePct   *float64 `json:"dcaSharePct"`
+	FixedSharePct *float64 `json:"fixedSharePct"`
+	// AnnualNet is a flat MonthlyNet*12 projection — the template's own
+	// annual figure (wcm.fcNet) additionally layers one-off Taiwan-calendar
+	// assumptions (annual premium in March, tax bill in May, dividend
+	// season in July, land tax in November, year-end bonus in December)
+	// that nothing in our schema can source, so this is deliberately just
+	// the flat multiple, not a claim to replicate those lumps.
+	AnnualNet *float64 `json:"annualNet"`
+	// EventsNet is the 90-day event table's net (§8.4's wcm.eventsNet),
+	// each event's amount converted to today's TWD rate — nil if any
+	// event's currency can't be priced.
+	EventsNet *float64    `json:"eventsNet"`
+	Events    []cashEvent `json:"events"`
 }
 
 func daysInMonth(year int, month time.Month) int {
@@ -139,11 +165,13 @@ func (s *Server) handleWealthCashList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var active []db.RecurringCashflow
+	indexByID := make(map[int64]int, len(all))
 	for _, c := range all {
 		venue := ""
 		if c.AssetID != nil {
 			venue = venueByAsset[*c.AssetID]
 		}
+		indexByID[c.ID] = len(resp.Items)
 		resp.Items = append(resp.Items, cashflowItem{
 			ID: c.ID, Direction: c.Direction, Name: c.Name, Amount: c.Amount, Currency: c.Currency,
 			DayOfMonth: c.DayOfMonth, Category: c.Category, AssetID: c.AssetID, Venue: venue, Active: c.Active,
@@ -153,8 +181,9 @@ func (s *Server) handleWealthCashList(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var monthlyIn, monthlyOut float64
+	var monthlyIn, monthlyOut, dcaOut, fixedOut float64
 	fxOK := true
+	isFixedCategory := map[string]bool{"mortgage": true, "loan": true, "insurance": true}
 	for _, c := range active {
 		rate, rok := service.RateToTWD(c.Currency, resp.AsOf, true, s.quotes, s.fxDB)
 		if !rok {
@@ -162,15 +191,28 @@ func (s *Server) handleWealthCashList(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		amt := c.Amount * rate
+		resp.Items[indexByID[c.ID]].ValueTwd = &amt
 		if c.Direction == "in" {
 			monthlyIn += amt
 		} else {
 			monthlyOut += amt
+			if c.Category == "sip" {
+				dcaOut += amt
+			}
+			if isFixedCategory[c.Category] {
+				fixedOut += amt
+			}
 		}
 	}
 	if fxOK {
 		net := monthlyIn - monthlyOut
 		resp.MonthlyIn, resp.MonthlyOut, resp.MonthlyNet = &monthlyIn, &monthlyOut, &net
+		annual := net * 12
+		resp.AnnualNet = &annual
+		if monthlyIn > 0 {
+			saveRate, dca, fixed := net/monthlyIn*100, dcaOut/monthlyIn*100, fixedOut/monthlyIn*100
+			resp.SaveRatePct, resp.DcaSharePct, resp.FixedSharePct = &saveRate, &dca, &fixed
+		}
 	}
 
 	events := recurringCashflowEvents(active, venueByAsset, today)
@@ -183,6 +225,27 @@ func (s *Server) handleWealthCashList(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(events, func(i, j int) bool { return events[i].Date < events[j].Date })
 	if events == nil {
 		events = []cashEvent{}
+	}
+
+	var eventsNet float64
+	eventsNetOK := true
+	for _, e := range events {
+		if e.Amount == nil {
+			continue
+		}
+		rate, rok := service.RateToTWD(e.Currency, resp.AsOf, true, s.quotes, s.fxDB)
+		if !rok {
+			eventsNetOK = false
+			break
+		}
+		amt := *e.Amount * rate
+		if e.Direction == "out" {
+			amt = -amt
+		}
+		eventsNet += amt
+	}
+	if eventsNetOK {
+		resp.EventsNet = &eventsNet
 	}
 	resp.Events = events
 

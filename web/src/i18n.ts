@@ -587,6 +587,11 @@ export interface Dictionary {
   wealthNoOrders: string;
   wealthLockedTitle: string;
   wealthVenueLabel: string;
+  // Generic disclosure label for a wealth page's collapsed write-affordance
+  // section (a <details>/<summary>, not shown in the design template) — see
+  // [[verify-ui-against-design-template]] for why write UI lives behind
+  // this rather than always on screen.
+  wealthManageLabel: string;
   wealthRiskTitle: string;
   wealthRiskBand: string;
   wealthFxExposure: string;
@@ -602,6 +607,13 @@ export interface Dictionary {
   wealthCashMonthlyIn: string;
   wealthCashMonthlyOut: string;
   wealthCashMonthlyNet: string;
+  wealthCashSaveRateLabel: string;
+  wealthCashDcaShareLabel: string;
+  wealthCashFixedShareLabel: string;
+  wealthCashAnnualNetLabel: string;
+  wealthCashNet90Label: string;
+  wealthCashInBreakdownTitle: string;
+  wealthCashOutBreakdownTitle: string;
   wealthCashItemsTitle: string;
   wealthCashEventsTitle: string;
   wealthCashNoItems: string;
@@ -1179,6 +1191,7 @@ const en: Dictionary = {
   wealthNoOrders: "Everything is within the rebalance band — no orders suggested.",
   wealthLockedTitle: "LOCKED (NOT REBALANCEABLE)",
   wealthVenueLabel: "via",
+  wealthManageLabel: "Manage",
   wealthRiskTitle: "RISK-ASSET SHARE",
   wealthRiskBand: "target band",
   wealthFxExposure: "CURRENCY EXPOSURE",
@@ -1190,6 +1203,13 @@ const en: Dictionary = {
   wealthCashMonthlyIn: "Monthly income",
   wealthCashMonthlyOut: "Monthly expense",
   wealthCashMonthlyNet: "Monthly net",
+  wealthCashSaveRateLabel: "Savings rate",
+  wealthCashDcaShareLabel: "DCA / income",
+  wealthCashFixedShareLabel: "Fixed / income",
+  wealthCashAnnualNetLabel: "Full-year surplus",
+  wealthCashNet90Label: "Net over period",
+  wealthCashInBreakdownTitle: "Income sources",
+  wealthCashOutBreakdownTitle: "Expense breakdown",
   wealthCashItemsTitle: "Recurring cash flows",
   wealthCashEventsTitle: "Next 90 days",
   wealthCashNoItems: "No recurring cash flows yet.",
@@ -1755,6 +1775,7 @@ const zh: Dictionary = {
   wealthNoOrders: "所有分組都在再平衡區間內，沒有建議指令。",
   wealthLockedTitle: "不可調整（已鎖定）",
   wealthVenueLabel: "經由",
+  wealthManageLabel: "管理",
   wealthRiskTitle: "風險性資產比重",
   wealthRiskBand: "目標區間",
   wealthFxExposure: "幣別曝險",
@@ -1766,6 +1787,13 @@ const zh: Dictionary = {
   wealthCashMonthlyIn: "月收入",
   wealthCashMonthlyOut: "月支出",
   wealthCashMonthlyNet: "月結餘",
+  wealthCashSaveRateLabel: "儲蓄率",
+  wealthCashDcaShareLabel: "定期定額佔收入",
+  wealthCashFixedShareLabel: "固定支出佔收入",
+  wealthCashAnnualNetLabel: "全年累計結餘",
+  wealthCashNet90Label: "期間淨額",
+  wealthCashInBreakdownTitle: "收入來源",
+  wealthCashOutBreakdownTitle: "支出分佈",
   wealthCashItemsTitle: "經常性收支",
   wealthCashEventsTitle: "未來 90 天",
   wealthCashNoItems: "尚無經常性收支項目。",

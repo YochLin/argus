@@ -687,7 +687,19 @@ function getMockData(url: string): any {
     };
   }
   if (path === "/api/wealth/cash") {
-    return { asOf: "2026-07-15", items: [], monthlyIn: null, monthlyOut: null, monthlyNet: null, events: [] };
+    return {
+      asOf: "2026-07-15",
+      items: [],
+      monthlyIn: null,
+      monthlyOut: null,
+      monthlyNet: null,
+      saveRatePct: null,
+      dcaSharePct: null,
+      fixedSharePct: null,
+      annualNet: null,
+      eventsNet: null,
+      events: [],
+    };
   }
   if (path === "/api/wealth/goals") {
     return { asOf: "2026-07-15", goals: [] };
@@ -1979,6 +1991,10 @@ export interface CashflowItem {
   assetId?: number;
   venue?: string;
   active: boolean;
+  // valueTwd is amount converted to TWD as of today — absent for a paused
+  // item or one whose currency couldn't be priced. Backs the in/out
+  // breakdown's per-item bar.
+  valueTwd?: number;
 }
 
 export interface CashEvent {
@@ -1999,6 +2015,16 @@ export interface WealthCash {
   monthlyIn: number | null;
   monthlyOut: number | null;
   monthlyNet: number | null;
+  // saveRatePct/dcaSharePct/fixedSharePct are all percentages of monthlyIn,
+  // null together with it when FX can't be resolved.
+  saveRatePct: number | null;
+  dcaSharePct: number | null;
+  fixedSharePct: number | null;
+  // annualNet is a flat monthlyNet*12 projection — see wealth_cash.go's
+  // doc comment for why it doesn't attempt the template's one-off
+  // Taiwan-calendar lumps (annual premium, tax season, etc).
+  annualNet: number | null;
+  eventsNet: number | null;
   events: CashEvent[];
 }
 
