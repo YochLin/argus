@@ -659,6 +659,35 @@ export interface Dictionary {
   wealthGoalsBehindCountLabel: string;
   wealthGoalsEtaLabel: string;
   wealthGoalsExpectedLabel: string;
+  wealthGoalsSeeRetireLink: string;
+
+  // Retirement page (`/w/retire`, Phase 9 波次3 PR7, §8.7) — real-return
+  // projection off the retirement-earmarked pool, plus three named §10.2②
+  // scenarios. Copy lifted verbatim from the design template's t.wRet* keys.
+  // Mirrors internal/web/wealth_retire.go.
+  navWealthRetire: string;
+  wealthRetireTargetAgeLabel: string;
+  wealthRetireSpendLabel: string;
+  wealthRetireNeedLabel: string;
+  wealthRetireProjLabel: string;
+  wealthRetireGapLabel: string;
+  wealthRetireRateLabel: string;
+  wealthRetireChartLabel: string;
+  wealthRetireDepleteLabel: string;
+  wealthRetireDepleteNever: string;
+  wealthRetireFundedLabel: string;
+  wealthRetireAssumption: string;
+  wealthRetirePoolLabel: string;
+  wealthRetireContribLabel: string;
+  wealthRetireScenarioBaseline: string;
+  wealthRetireScenarioCrash: string;
+  wealthRetireScenarioLowReturn: string;
+  wealthRetireSetupTitle: string;
+  wealthRetireBirthYearLabel: string;
+  wealthRetireContribInputLabel: string;
+  wealthRetireSetupSave: string;
+  wealthRetireSeeGoalsLink: string;
+  wealthRetireGoalProgressLabel: string;
 }
 
 const en: Dictionary = {
@@ -1249,6 +1278,32 @@ const en: Dictionary = {
   wealthGoalsBehindCountLabel: "BEHIND",
   wealthGoalsEtaLabel: "ETA",
   wealthGoalsExpectedLabel: "expected",
+  wealthGoalsSeeRetireLink: "Retirement plan ›",
+
+  navWealthRetire: "Retirement",
+  wealthRetireTargetAgeLabel: "RETIREMENT AGE",
+  wealthRetireSpendLabel: "MONTHLY SPEND",
+  wealthRetireNeedLabel: "ASSETS REQUIRED",
+  wealthRetireProjLabel: "PROJECTED AT RETIREMENT",
+  wealthRetireGapLabel: "GAP",
+  wealthRetireRateLabel: "FUNDED",
+  wealthRetireChartLabel: "PROJECTION TO AGE 92",
+  wealthRetireDepleteLabel: "DEPLETES AT",
+  wealthRetireDepleteNever: "Never (92+)",
+  wealthRetireFundedLabel: "Funded",
+  wealthRetireAssumption:
+    "Real returns after inflation: 3.0% before retirement, 1.0% after. Spending in today's dollars, assets required per the 4% rule. Counts retirement-earmarked assets only (other invested balances back the other goals); excludes primary residence and mortgage.",
+  wealthRetirePoolLabel: "EARMARKED TODAY",
+  wealthRetireContribLabel: "MONTHLY CONTRIBUTION",
+  wealthRetireScenarioBaseline: "Baseline",
+  wealthRetireScenarioCrash: "Crash 5y before retirement",
+  wealthRetireScenarioLowReturn: "Long-term return -1.5pt",
+  wealthRetireSetupTitle: "Set up retirement inputs",
+  wealthRetireBirthYearLabel: "Birth year",
+  wealthRetireContribInputLabel: "Monthly contribution",
+  wealthRetireSetupSave: "Save",
+  wealthRetireSeeGoalsLink: "See in goal tracker ›",
+  wealthRetireGoalProgressLabel: "GOAL PROGRESS",
 };
 
 const zh: Dictionary = {
@@ -1833,6 +1888,32 @@ const zh: Dictionary = {
   wealthGoalsBehindCountLabel: "落後項目",
   wealthGoalsEtaLabel: "預計達成",
   wealthGoalsExpectedLabel: "應有進度",
+  wealthGoalsSeeRetireLink: "退休規劃 ›",
+
+  navWealthRetire: "退休規劃",
+  wealthRetireTargetAgeLabel: "退休年齡",
+  wealthRetireSpendLabel: "退休後月支出",
+  wealthRetireNeedLabel: "所需資產",
+  wealthRetireProjLabel: "預估退休資產",
+  wealthRetireGapLabel: "缺口",
+  wealthRetireRateLabel: "達成率",
+  wealthRetireChartLabel: "資產推估（至 92 歲）",
+  wealthRetireDepleteLabel: "資產耗盡",
+  wealthRetireDepleteNever: "92 歲後仍有結餘",
+  wealthRetireFundedLabel: "已達標",
+  wealthRetireAssumption:
+    "假設：以實質報酬計算（退休前 3.0%、退休後 1.0%，已扣通膨），支出以今日幣值表示，四%法則推估所需資產。僅計入退休專用資產（其餘投資部位分屬其他目標），不含自住不動產與房貸。",
+  wealthRetirePoolLabel: "退休專用資產",
+  wealthRetireContribLabel: "每月提撥",
+  wealthRetireScenarioBaseline: "基準情境",
+  wealthRetireScenarioCrash: "退休前五年遇大跌",
+  wealthRetireScenarioLowReturn: "長期報酬低 1.5pt",
+  wealthRetireSetupTitle: "設定退休規劃參數",
+  wealthRetireBirthYearLabel: "出生年",
+  wealthRetireContribInputLabel: "每月投入退休資產",
+  wealthRetireSetupSave: "儲存",
+  wealthRetireSeeGoalsLink: "在目標追蹤中檢視 ›",
+  wealthRetireGoalProgressLabel: "目標進度",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

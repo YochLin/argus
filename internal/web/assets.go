@@ -36,6 +36,9 @@ type wealthWriter interface {
 	CreateGoal(g db.NewGoal) (int64, error)
 	DeleteGoal(id int64) error
 	SetGoalAsset(goalID, assetID int64, ratio float64) error
+	// UpsertRetirementGoal backs wealth_retire.go's quick-switch save (Phase
+	// 9 波次3 PR7) — creates or updates the single kind="retirement" goal row.
+	UpsertRetirementGoal(name string, targetAmount float64, targetDate string) (int64, error)
 }
 
 // assetResponse mirrors db.AssetWithValue for JSON — Value/Cost stay nil

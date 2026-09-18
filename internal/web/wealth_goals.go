@@ -13,10 +13,10 @@ import (
 // goalAssetItem is one earmarked asset on a goal's card, resolved with the
 // asset's own name/venue so the page doesn't need a second lookup.
 type goalAssetItem struct {
-	AssetID int64   `json:"assetId"`
-	Name    string  `json:"name"`
-	Venue   string  `json:"venue,omitempty"`
-	Ratio   float64 `json:"ratio"`
+	AssetID int64    `json:"assetId"`
+	Name    string   `json:"name"`
+	Venue   string   `json:"venue,omitempty"`
+	Ratio   float64  `json:"ratio"`
 	Value   *float64 `json:"value"` // TWD, nil if the asset itself has no value yet or FX couldn't be priced
 }
 
@@ -88,6 +88,39 @@ func goalStatus(createdAt, targetDate string, progressPct float64, today time.Ti
 	return status, expectedPct, true
 }
 
+// earmarkedSavedTWD sums one goal's earmarked assets converted to TWD as of
+// today — nil (not a partial sum) if any earmarked asset's currency can't be
+// priced, the same whole-metric-degrades rule as everywhere else in wealth.
+// Shared by handleWealthGoalsList and the retirement page (PR7): the
+// retirement pool is exactly this number for the kind="retirement" goal.
+func (s *Server) earmarkedSavedTWD(earmarks []db.GoalAsset, assetByID map[int64]db.AssetWithValue, asOf string) (items []goalAssetItem, saved *float64) {
+	items = []goalAssetItem{}
+	var sum float64
+	ok := true
+	for _, ga := range earmarks {
+		a, found := assetByID[ga.AssetID]
+		row := goalAssetItem{AssetID: ga.AssetID, Ratio: ga.Ratio}
+		if found {
+			row.Name, row.Venue = a.Name, a.Venue
+		}
+		if found && a.Value != nil {
+			rate, rok := service.RateToTWD(a.Currency, asOf, true, s.quotes, s.fxDB)
+			if !rok {
+				ok = false
+			} else {
+				v := *a.Value * ga.Ratio * rate
+				row.Value = &v
+				sum += v
+			}
+		}
+		items = append(items, row)
+	}
+	if !ok {
+		return items, nil
+	}
+	return items, &sum
+}
+
 // handleWealthGoalsList backs GET /api/wealth/goals — ungated read, same
 // convention as every other wealth GET route.
 func (s *Server) handleWealthGoalsList(w http.ResponseWriter, r *http.Request) {
@@ -135,29 +168,10 @@ func (s *Server) handleWealthGoalsList(w http.ResponseWriter, r *http.Request) {
 			Currency: g.Currency, TargetDate: g.TargetDate, Note: g.Note, Assets: []goalAssetItem{},
 		}
 
-		var saved float64
-		fxOK := true
-		for _, ga := range earmarksByGoal[g.ID] {
-			a, ok := assetByID[ga.AssetID]
-			row := goalAssetItem{AssetID: ga.AssetID, Ratio: ga.Ratio}
-			if ok {
-				row.Name, row.Venue = a.Name, a.Venue
-			}
-			if ok && a.Value != nil {
-				rate, rok := service.RateToTWD(a.Currency, today, true, s.quotes, s.fxDB)
-				if !rok {
-					fxOK = false
-				} else {
-					v := *a.Value * ga.Ratio * rate
-					row.Value = &v
-					saved += v
-				}
-			}
-			item.Assets = append(item.Assets, row)
-		}
+		item.Assets, item.Saved = s.earmarkedSavedTWD(earmarksByGoal[g.ID], assetByID, today)
 
-		if fxOK {
-			item.Saved = &saved
+		if item.Saved != nil {
+			saved := *item.Saved
 			if g.TargetAmount > 0 {
 				// Capped at 100 (matching the design template's goalRow, which
 				// does the same) — an overfunded goal reads as "done", not as a

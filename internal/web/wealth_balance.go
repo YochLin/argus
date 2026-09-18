@@ -16,6 +16,14 @@ import (
 // service.AnnualSalarySettingKey for local brevity.
 const annualSalarySettingKey = service.AnnualSalarySettingKey
 
+// birthYearSettingKey/retirementContribSettingKey back the retirement page's
+// two extra "個人參數" (Phase 9 波次3 PR7) — see service.BirthYearSettingKey's
+// doc comment.
+const (
+	birthYearSettingKey         = service.BirthYearSettingKey
+	retirementContribSettingKey = service.RetirementMonthlyContributionSettingKey
+)
+
 type balanceSheetItem struct {
 	AssetID  int64   `json:"assetId,omitempty"` // 0 for the equity virtual row
 	Name     string  `json:"name"`
@@ -279,7 +287,9 @@ func (s *Server) handleWealthBalance(w http.ResponseWriter, r *http.Request) {
 // settings page yet (that's PR8/PR13 scope) — this is the minimal write
 // path so the balance-sheet page isn't permanently stuck at "—".
 type wealthProfileResponse struct {
-	AnnualSalary *float64 `json:"annualSalary"`
+	AnnualSalary                  *float64 `json:"annualSalary"`
+	BirthYear                     *int     `json:"birthYear"`
+	RetirementMonthlyContribution *float64 `json:"retirementMonthlyContribution"`
 }
 
 func (s *Server) handleWealthProfileGet(w http.ResponseWriter, r *http.Request) {
@@ -289,11 +299,27 @@ func (s *Server) handleWealthProfileGet(w http.ResponseWriter, r *http.Request) 
 			resp.AnnualSalary = &v
 		}
 	}
+	if raw, ok, err := s.db.GetSetting(birthYearSettingKey); err == nil && ok {
+		if v, perr := strconv.Atoi(raw); perr == nil {
+			resp.BirthYear = &v
+		}
+	}
+	if raw, ok, err := s.db.GetSetting(retirementContribSettingKey); err == nil && ok {
+		if v, perr := strconv.ParseFloat(raw, 64); perr == nil {
+			resp.RetirementMonthlyContribution = &v
+		}
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// wealthProfileUpdateRequest fields are pointers so a caller can update just
+// one of the three settings without clobbering the others — the balance
+// sheet's salary form and the retirement page's birth-year/contribution form
+// both post to this same endpoint independently.
 type wealthProfileUpdateRequest struct {
-	AnnualSalary float64 `json:"annualSalary"`
+	AnnualSalary                  *float64 `json:"annualSalary"`
+	BirthYear                     *int     `json:"birthYear"`
+	RetirementMonthlyContribution *float64 `json:"retirementMonthlyContribution"`
 }
 
 func (s *Server) handleWealthProfileUpdate(w http.ResponseWriter, r *http.Request) {
@@ -301,14 +327,38 @@ func (s *Server) handleWealthProfileUpdate(w http.ResponseWriter, r *http.Reques
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if req.AnnualSalary < 0 {
-		writeError(w, http.StatusBadRequest, "annualSalary must be >= 0")
-		return
+	if req.AnnualSalary != nil {
+		if *req.AnnualSalary < 0 {
+			writeError(w, http.StatusBadRequest, "annualSalary must be >= 0")
+			return
+		}
+		if err := s.wealthDB.SetSetting(annualSalarySettingKey, strconv.FormatFloat(*req.AnnualSalary, 'f', 2, 64)); err != nil {
+			logger.Errorf("web: set %s: %v", annualSalarySettingKey, err)
+			writeError(w, http.StatusInternalServerError, "failed to save")
+			return
+		}
 	}
-	if err := s.wealthDB.SetSetting(annualSalarySettingKey, strconv.FormatFloat(req.AnnualSalary, 'f', 2, 64)); err != nil {
-		logger.Errorf("web: set %s: %v", annualSalarySettingKey, err)
-		writeError(w, http.StatusInternalServerError, "failed to save")
-		return
+	if req.BirthYear != nil {
+		if *req.BirthYear < 1900 || *req.BirthYear > time.Now().Year() {
+			writeError(w, http.StatusBadRequest, "birthYear is out of range")
+			return
+		}
+		if err := s.wealthDB.SetSetting(birthYearSettingKey, strconv.Itoa(*req.BirthYear)); err != nil {
+			logger.Errorf("web: set %s: %v", birthYearSettingKey, err)
+			writeError(w, http.StatusInternalServerError, "failed to save")
+			return
+		}
+	}
+	if req.RetirementMonthlyContribution != nil {
+		if *req.RetirementMonthlyContribution < 0 {
+			writeError(w, http.StatusBadRequest, "retirementMonthlyContribution must be >= 0")
+			return
+		}
+		if err := s.wealthDB.SetSetting(retirementContribSettingKey, strconv.FormatFloat(*req.RetirementMonthlyContribution, 'f', 2, 64)); err != nil {
+			logger.Errorf("web: set %s: %v", retirementContribSettingKey, err)
+			writeError(w, http.StatusInternalServerError, "failed to save")
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, tradeResponse{Message: "saved"})
 }

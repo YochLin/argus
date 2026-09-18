@@ -5,6 +5,7 @@ import { fmtMoney } from "./WealthHomeView";
 
 interface Props {
   dict: Dictionary;
+  onNavigate: (path: string) => void;
 }
 
 const CURRENCY = "NT$"; // display currency fixed to TWD, same known gap as WealthHomeView/WealthCashView
@@ -104,7 +105,7 @@ function GoalCard({ dict, goal, big }: { dict: Dictionary; goal: Goal; big: bool
   );
 }
 
-export function WealthGoalsView({ dict }: Props) {
+export function WealthGoalsView({ dict, onNavigate }: Props) {
   const [goals, setGoals] = useState<Goal[] | null>(null);
   const [error, setError] = useState(false);
 
@@ -136,6 +137,9 @@ export function WealthGoalsView({ dict }: Props) {
         <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: "var(--ink)" }}>
           {dict.navWealthGoals}
         </span>
+        <a href="#" style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11 }} onClick={(e) => { e.preventDefault(); onNavigate("/w/retire"); }}>
+          {dict.wealthGoalsSeeRetireLink}
+        </a>
       </div>
 
       {goals && goals.length === 0 && <div className="card empty-message">{dict.wealthGoalsNoGoals}</div>}

@@ -668,7 +668,7 @@ function getMockData(url: string): any {
     };
   }
   if (path === "/api/wealth/profile") {
-    return { annualSalary: null };
+    return { annualSalary: null, birthYear: null, retirementMonthlyContribution: null };
   }
   if (path === "/api/wealth/alloc") {
     return {
@@ -703,6 +703,23 @@ function getMockData(url: string): any {
   }
   if (path === "/api/wealth/goals") {
     return { asOf: "2026-07-15", goals: [] };
+  }
+  if (path === "/api/wealth/retire") {
+    return {
+      asOf: "2026-07-15",
+      hasBirthYear: false,
+      retirementAge: 60,
+      retirementAgeOptions: [55, 60, 65],
+      monthlySpend: 90000,
+      monthlySpendOptions: [70000, 90000, 120000],
+      monthlyContribution: 0,
+      pool: null,
+      need: null,
+      baseline: null,
+      crash: null,
+      lowReturn: null,
+      path: [],
+    };
   }
   if (path === "/api/status") {
     return {
@@ -1965,14 +1982,25 @@ export function fetchWealthDebtPayoff(extraMonthly: number): Promise<DebtPayoffR
 
 export interface WealthProfile {
   annualSalary: number | null;
+  // birthYear/retirementMonthlyContribution back the retirement page (Phase
+  // 9 波次3 PR7) — two more "個人參數" the platform can't derive on its own.
+  birthYear: number | null;
+  retirementMonthlyContribution: number | null;
 }
 
 export function fetchWealthProfile(): Promise<WealthProfile> {
   return getJSON("/api/wealth/profile");
 }
 
-export function saveWealthProfile(annualSalary: number): Promise<TradeResponse> {
-  return postJSON("/api/wealth/profile", { annualSalary });
+// saveWealthProfile takes a partial patch — the balance sheet's salary form
+// and the retirement page's birth-year/contribution form each save just
+// their own field without clobbering the others.
+export function saveWealthProfile(patch: {
+  annualSalary?: number;
+  birthYear?: number;
+  retirementMonthlyContribution?: number;
+}): Promise<TradeResponse> {
+  return postJSON("/api/wealth/profile", patch);
 }
 
 // CashflowDirection/CashflowItem/CashEvent mirror wealth_cash.go's
@@ -2115,4 +2143,47 @@ export function deleteWealthGoal(id: number): Promise<TradeResponse> {
 
 export function setWealthGoalEarmark(goalId: number, assetId: number, ratio: number): Promise<TradeResponse> {
   return postJSON("/api/wealth/goals/earmark", { goalId, assetId, ratio });
+}
+
+// RetirementScenario/WealthRetire mirror wealth_retire.go's response shapes
+// (Phase 9 波次3 PR7, §8.7/§10.2②) — the real-return projection off the
+// retirement-earmarked pool (the goals row above with kind "retirement"),
+// plus three named scenarios instead of a Monte Carlo distribution.
+export interface RetirementScenario {
+  projectedAtRetirement: number;
+  achievementPct: number;
+  gapAmount: number;
+  funded: boolean;
+  depletionAge?: number;
+}
+
+export interface RetirementPathPoint {
+  year: number;
+  balance: number;
+}
+
+export interface WealthRetire {
+  asOf: string;
+  hasBirthYear: boolean;
+  retirementAge: number;
+  retirementAgeOptions: number[];
+  monthlySpend: number;
+  monthlySpendOptions: number[];
+  monthlyContribution: number;
+  pool: number | null;
+  retirementYear?: number;
+  need: number | null;
+  baseline: RetirementScenario | null;
+  crash: RetirementScenario | null;
+  lowReturn: RetirementScenario | null;
+  path: RetirementPathPoint[];
+  goal?: Goal;
+}
+
+export function fetchWealthRetire(): Promise<WealthRetire> {
+  return getJSON("/api/wealth/retire");
+}
+
+export function saveWealthRetire(name: string, retirementAge: number, monthlySpend: number): Promise<WealthRetire> {
+  return postJSON("/api/wealth/retire", { name, retirementAge, monthlySpend });
 }

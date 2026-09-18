@@ -60,7 +60,7 @@ export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
     if (Number.isNaN(v) || v < 0) return;
     setSavingSalary(true);
     try {
-      await saveWealthProfile(v);
+      await saveWealthProfile({ annualSalary: v });
       setRefreshSignal((n) => n + 1);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {

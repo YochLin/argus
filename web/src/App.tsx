@@ -27,6 +27,7 @@ import { WealthImportView } from "./components/WealthImportView";
 import { WealthAllocView } from "./components/WealthAllocView";
 import { WealthCashView } from "./components/WealthCashView";
 import { WealthGoalsView } from "./components/WealthGoalsView";
+import { WealthRetireView } from "./components/WealthRetireView";
 
 // Four client-side routes (dashboard, calendar, round list, round detail)
 // don't justify pulling in a routing library — a hand-rolled route
@@ -252,7 +253,16 @@ export default function App() {
       />
     );
   } else if (path === "/w/goals") {
-    body = <WealthGoalsView dict={dict} />;
+    body = <WealthGoalsView dict={dict} onNavigate={navigate} />;
+  } else if (path === "/w/retire") {
+    body = (
+      <WealthRetireView
+        dict={dict}
+        writable={status?.writable ?? false}
+        onUnauthorized={(retry) => setAuthRetry(() => retry)}
+        onNavigate={navigate}
+      />
+    );
   } else if (path === "/w/balance") {
     body = (
       <WealthBalanceView

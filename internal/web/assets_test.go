@@ -27,16 +27,20 @@ type fakeWealthDB struct {
 	lastDeleteGoalID                      int64
 	lastEarmarkGoalID, lastEarmarkAssetID int64
 	lastEarmarkRatio                      float64
+	lastRetirementGoalName                string
+	lastRetirementGoalTargetAmount        float64
+	lastRetirementGoalTargetDate          string
 
-	createErr     error
-	snapshotErr   error
-	archiveErr    error
-	settingErr    error
-	cashflowErr   error
-	deactivateErr error
-	goalErr       error
-	deleteGoalErr error
-	earmarkErr    error
+	createErr         error
+	snapshotErr       error
+	archiveErr        error
+	settingErr        error
+	cashflowErr       error
+	deactivateErr     error
+	goalErr           error
+	deleteGoalErr     error
+	earmarkErr        error
+	retirementGoalErr error
 
 	nextCashflowID int64
 	nextGoalID     int64
@@ -90,6 +94,11 @@ func (f *fakeWealthDB) DeleteGoal(id int64) error {
 func (f *fakeWealthDB) SetGoalAsset(goalID, assetID int64, ratio float64) error {
 	f.lastEarmarkGoalID, f.lastEarmarkAssetID, f.lastEarmarkRatio = goalID, assetID, ratio
 	return f.earmarkErr
+}
+func (f *fakeWealthDB) UpsertRetirementGoal(name string, targetAmount float64, targetDate string) (int64, error) {
+	f.lastRetirementGoalName, f.lastRetirementGoalTargetAmount, f.lastRetirementGoalTargetDate = name, targetAmount, targetDate
+	f.nextGoalID++
+	return f.nextGoalID, f.retirementGoalErr
 }
 
 func newWealthTestServer(password string, wealthDB wealthWriter, dbr dbReader) *Server {

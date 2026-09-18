@@ -151,7 +151,7 @@ func TestHandleWealthProfileGetAndUpdate(t *testing.T) {
 	}
 
 	cookie := loginAndGetCookie(t, s, "secret")
-	body, _ := json.Marshal(wealthProfileUpdateRequest{AnnualSalary: 900000})
+	body, _ := json.Marshal(wealthProfileUpdateRequest{AnnualSalary: floatPtr(900000)})
 	req := httptest.NewRequest(http.MethodPost, "/api/wealth/profile", bytes.NewReader(body))
 	req.AddCookie(cookie)
 	rec = httptest.NewRecorder()
@@ -166,7 +166,7 @@ func TestHandleWealthProfileGetAndUpdate(t *testing.T) {
 
 func TestHandleWealthProfileUpdateRequiresAuth(t *testing.T) {
 	s := newWealthBalanceTestServer(&fakeDB{}, &fakeWealthDB{}, "secret")
-	body, _ := json.Marshal(wealthProfileUpdateRequest{AnnualSalary: 100})
+	body, _ := json.Marshal(wealthProfileUpdateRequest{AnnualSalary: floatPtr(100)})
 	req := httptest.NewRequest(http.MethodPost, "/api/wealth/profile", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	s.mux.ServeHTTP(rec, req)

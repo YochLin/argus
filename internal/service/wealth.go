@@ -15,6 +15,19 @@ import (
 // key/value table rather than a new one, same convention as CashSettingKey.
 const AnnualSalarySettingKey = "profile.annual_salary"
 
+// BirthYearSettingKey/RetirementMonthlyContributionSettingKey back the
+// retirement page (§8.7/§8.8, Phase 9 波次3 PR7) — two more "個人參數" facts
+// the platform can't derive (birth year to turn a target retirement age into
+// a calendar date; the monthly amount routed to the retirement-earmarked
+// pool, which can't be safely inferred from /w/cash's SIP category since not
+// every DCA contribution is earmarked for retirement). There's still no
+// dedicated "個人參數" settings page (PR8/PR13 scope) — same minimal-write-path
+// reasoning as AnnualSalarySettingKey.
+const (
+	BirthYearSettingKey                     = "profile.birth_year"
+	RetirementMonthlyContributionSettingKey = "profile.retirement_monthly_contribution"
+)
+
 // WealthStore is the read boundary the wealth-summary logic (net worth,
 // health metrics, debt payoff) needs — shared by internal/web's wealth
 // pages and internal/bot's /networth command so neither duplicates the

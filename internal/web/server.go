@@ -329,6 +329,14 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("POST /api/wealth/goals", s.requireWritable(s.requireAuth(s.handleWealthGoalCreate)))
 	s.mux.HandleFunc("POST /api/wealth/goals/delete", s.requireWritable(s.requireAuth(s.handleWealthGoalDelete)))
 	s.mux.HandleFunc("POST /api/wealth/goals/earmark", s.requireWritable(s.requireAuth(s.handleWealthGoalEarmark)))
+	// /api/wealth/retire (`/w/retire`, §9.4 PR7) — real-return retirement
+	// projection off the retirement-earmarked pool (kind="retirement" goal),
+	// plus three §10.2② scenarios. GET ungated; the quick-switch save (age/
+	// spend) behind the usual write gate — it needs the birth year set via
+	// /api/wealth/profile first, since there's no calendar date to save
+	// without it.
+	s.mux.HandleFunc("GET /api/wealth/retire", s.handleWealthRetireGet)
+	s.mux.HandleFunc("POST /api/wealth/retire", s.requireWritable(s.requireAuth(s.handleWealthRetireSave)))
 	// /api/settings (Phase 17 PR2) sits behind the same gate as every write
 	// route, GET included: the read side reports which credentials are
 	// configured, which is not something to hand out unauthenticated.

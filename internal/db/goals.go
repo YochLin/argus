@@ -120,6 +120,23 @@ func (d *DB) ListAllGoalAssets() ([]GoalAsset, error) {
 	return out, rows.Err()
 }
 
+// UpsertRetirementGoal creates or updates the single kind="retirement" goal
+// row — PR7's "存目標＋就地重算" (§8.7): the retirement page's quick-switch
+// buttons call this instead of a form, since §8.8 folded retirement_plans
+// into goals and there's only ever one retirement row.
+func (d *DB) UpsertRetirementGoal(name string, targetAmount float64, targetDate string) (int64, error) {
+	var id int64
+	err := d.conn.QueryRow(`SELECT id FROM goals WHERE kind = 'retirement' LIMIT 1`).Scan(&id)
+	if err == sql.ErrNoRows {
+		return d.CreateGoal(NewGoal{Name: name, Kind: "retirement", TargetAmount: targetAmount, Currency: "TWD", TargetDate: targetDate})
+	}
+	if err != nil {
+		return 0, err
+	}
+	_, err = d.conn.Exec(`UPDATE goals SET name = ?, target_amount = ?, target_date = ? WHERE id = ?`, name, targetAmount, targetDate, id)
+	return id, err
+}
+
 // SetGoalAsset upserts an earmark's ratio, or removes it when ratio <= 0 —
 // one call covers both linking an asset to a goal and unlinking it.
 func (d *DB) SetGoalAsset(goalID, assetID int64, ratio float64) error {
