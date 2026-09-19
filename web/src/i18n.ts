@@ -686,6 +686,50 @@ export interface Dictionary {
   wealthRetireSetupSave: string;
   wealthRetireSeeGoalsLink: string;
   wealthRetireGoalProgressLabel: string;
+
+  // Insurance gap-analysis page (`/w/insure`, Phase 9 波次3 PR8, §8.6/
+  // §8.16.1) — six-coverage-kind have/need table (a pure-function survivor-
+  // needs estimate, never LLM-derived) plus the policy list. Mirrors
+  // internal/web/wealth_insure.go.
+  navWealthInsure: string;
+  wealthInsureAdd: string;
+  wealthInsureAddTitle: string;
+  wealthInsureInsurerLabel: string;
+  wealthInsurePolicyNameLabel: string;
+  wealthInsureKindLabel: string;
+  wealthInsureAmountLabel: string;
+  wealthInsuredLabel: string;
+  wealthInsureAnnualPremiumLabel: string;
+  wealthInsurePremiumYearsLabel: string;
+  wealthInsureBiggestGapLabel: string;
+  wealthInsureCoverageLabel: string;
+  wealthInsureTotalGapLabel: string;
+  wealthInsurePremiumLabel: string;
+  wealthInsurePremShareLabel: string;
+  wealthInsureCountLabel: string;
+  wealthInsureGapTitle: string;
+  wealthInsureHaveLabel: string;
+  wealthInsureNeedLabel: string;
+  wealthInsureGapLabel: string;
+  wealthInsureCoveredLabel: string;
+  wealthInsureKindLife: string;
+  wealthInsureKindAccident: string;
+  wealthInsureKindCi: string;
+  wealthInsureKindCancer: string;
+  wealthInsureKindDisability: string;
+  wealthInsureKindHospital: string;
+  wealthInsurePerMonthSuffix: string;
+  wealthInsurePerDaySuffix: string;
+  wealthInsurePoliciesTitle: string;
+  wealthInsureNoPolicies: string;
+  wealthInsureSetupTitle: string;
+  wealthInsureDependentsLabel: string;
+  wealthInsureYoungestChildAgeLabel: string;
+  wealthInsureSpouseIncomeLabel: string;
+  wealthInsureSpouseIncomeYes: string;
+  wealthInsureSpouseIncomeNo: string;
+  wealthInsureSetupSave: string;
+  wealthInsureNeedPendingNote: string;
 }
 
 const en: Dictionary = {
@@ -1300,6 +1344,46 @@ const en: Dictionary = {
   wealthRetireSetupSave: "Save",
   wealthRetireSeeGoalsLink: "See in goal tracker ›",
   wealthRetireGoalProgressLabel: "GOAL PROGRESS",
+
+  navWealthInsure: "Insurance",
+  wealthInsureAdd: "Add policy",
+  wealthInsureAddTitle: "Add a policy",
+  wealthInsureInsurerLabel: "Insurer",
+  wealthInsurePolicyNameLabel: "Policy name",
+  wealthInsureKindLabel: "Coverage type",
+  wealthInsureAmountLabel: "Coverage amount",
+  wealthInsuredLabel: "Insured",
+  wealthInsureAnnualPremiumLabel: "Annual premium",
+  wealthInsurePremiumYearsLabel: "Premium years",
+  wealthInsureBiggestGapLabel: "BIGGEST GAP",
+  wealthInsureCoverageLabel: "coverage",
+  wealthInsureTotalGapLabel: "TOTAL LUMP-SUM GAP",
+  wealthInsurePremiumLabel: "ANNUAL PREMIUM",
+  wealthInsurePremShareLabel: "share of annual income",
+  wealthInsureCountLabel: "POLICIES",
+  wealthInsureGapTitle: "Coverage gap & ratio",
+  wealthInsureHaveLabel: "Have",
+  wealthInsureNeedLabel: "Need",
+  wealthInsureGapLabel: "Gap",
+  wealthInsureCoveredLabel: "Covered",
+  wealthInsureKindLife: "Life",
+  wealthInsureKindAccident: "Accidental death",
+  wealthInsureKindCi: "Critical illness",
+  wealthInsureKindCancer: "Cancer lump sum",
+  wealthInsureKindDisability: "Disability support",
+  wealthInsureKindHospital: "Hospital daily",
+  wealthInsurePerMonthSuffix: " /mo",
+  wealthInsurePerDaySuffix: " /day",
+  wealthInsurePoliciesTitle: "Policy list",
+  wealthInsureNoPolicies: "No policies recorded yet.",
+  wealthInsureSetupTitle: "Set up household details",
+  wealthInsureDependentsLabel: "Dependents",
+  wealthInsureYoungestChildAgeLabel: "Youngest child's age",
+  wealthInsureSpouseIncomeLabel: "Spouse has independent income",
+  wealthInsureSpouseIncomeYes: "Yes",
+  wealthInsureSpouseIncomeNo: "No",
+  wealthInsureSetupSave: "Save",
+  wealthInsureNeedPendingNote: "Set up household details below to see life/accidental-death/disability need estimates.",
 };
 
 const zh: Dictionary = {
@@ -1908,6 +1992,46 @@ const zh: Dictionary = {
   wealthRetireSetupSave: "儲存",
   wealthRetireSeeGoalsLink: "在目標追蹤中檢視 ›",
   wealthRetireGoalProgressLabel: "目標進度",
+
+  navWealthInsure: "保單健檢",
+  wealthInsureAdd: "新增保單",
+  wealthInsureAddTitle: "新增保單",
+  wealthInsureInsurerLabel: "保險公司",
+  wealthInsurePolicyNameLabel: "保單名稱",
+  wealthInsureKindLabel: "保障類型",
+  wealthInsureAmountLabel: "保額",
+  wealthInsuredLabel: "被保人",
+  wealthInsureAnnualPremiumLabel: "年繳保費",
+  wealthInsurePremiumYearsLabel: "繳費年期",
+  wealthInsureBiggestGapLabel: "最大缺口",
+  wealthInsureCoverageLabel: "覆蓋率",
+  wealthInsureTotalGapLabel: "一次金缺口合計",
+  wealthInsurePremiumLabel: "年繳保費",
+  wealthInsurePremShareLabel: "保費佔年收入",
+  wealthInsureCountLabel: "保單件數",
+  wealthInsureGapTitle: "保障缺口與覆蓋率",
+  wealthInsureHaveLabel: "現有保額",
+  wealthInsureNeedLabel: "需求保額",
+  wealthInsureGapLabel: "缺口",
+  wealthInsureCoveredLabel: "已足額",
+  wealthInsureKindLife: "壽險",
+  wealthInsureKindAccident: "意外身故",
+  wealthInsureKindCi: "重大疾病",
+  wealthInsureKindCancer: "癌症一次金",
+  wealthInsureKindDisability: "失能扶助",
+  wealthInsureKindHospital: "住院日額",
+  wealthInsurePerMonthSuffix: "／月",
+  wealthInsurePerDaySuffix: "／日",
+  wealthInsurePoliciesTitle: "保單清冊",
+  wealthInsureNoPolicies: "尚未登錄任何保單。",
+  wealthInsureSetupTitle: "設定家庭參數",
+  wealthInsureDependentsLabel: "扶養人數",
+  wealthInsureYoungestChildAgeLabel: "最小孩子年齡",
+  wealthInsureSpouseIncomeLabel: "配偶是否有收入",
+  wealthInsureSpouseIncomeYes: "有",
+  wealthInsureSpouseIncomeNo: "沒有",
+  wealthInsureSetupSave: "儲存",
+  wealthInsureNeedPendingNote: "設定下方家庭參數後，才能算出壽險／意外／失能扶助的需求保額。",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

@@ -81,6 +81,10 @@ type fakeDB struct {
 	// wealth_goals_test.go (Phase 9 波次3 PR6).
 	goals      []db.Goal
 	goalAssets []db.GoalAsset
+	// insuranceCoverages/insuranceDetails back ListInsuranceCoverages/
+	// GetInsuranceDetails for wealth_insure_test.go (Phase 9 波次3 PR8).
+	insuranceCoverages []db.InsuranceCoverage
+	insuranceDetails   map[int64]*db.InsuranceDetails
 }
 
 func (f *fakeDB) GetPositions() ([]db.Position, error)          { return f.positions, nil }
@@ -218,6 +222,12 @@ func (f *fakeDB) ListRecurringCashflows(activeOnly bool) ([]db.RecurringCashflow
 }
 func (f *fakeDB) ListGoals() ([]db.Goal, error)              { return f.goals, nil }
 func (f *fakeDB) ListAllGoalAssets() ([]db.GoalAsset, error) { return f.goalAssets, nil }
+func (f *fakeDB) ListInsuranceCoverages() ([]db.InsuranceCoverage, error) {
+	return f.insuranceCoverages, nil
+}
+func (f *fakeDB) GetInsuranceDetails(assetID int64) (*db.InsuranceDetails, error) {
+	return f.insuranceDetails[assetID], nil
+}
 
 // BlockNewsSource/UnblockNewsSource let fakeDB double as a newsSourceWriter
 // in newssources_test.go, mutating blockedSources the same way a real DB

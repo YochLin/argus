@@ -120,6 +120,12 @@ type dbReader interface {
 	// interface below, same GET-vs-write split as ListAssetsWithValue.
 	ListGoals() ([]db.Goal, error)
 	ListAllGoalAssets() ([]db.GoalAsset, error)
+	// ListInsuranceCoverages/GetInsuranceDetails back wealth_insure.go's GET
+	// /api/wealth/insure (Phase 9 波次3 PR8) — writes go through the
+	// separate wealthWriter interface below, same GET-vs-write split as
+	// ListAssetsWithValue.
+	ListInsuranceCoverages() ([]db.InsuranceCoverage, error)
+	GetInsuranceDetails(assetID int64) (*db.InsuranceDetails, error)
 }
 
 // netWorthBaseline resolves the capital base for a period starting at

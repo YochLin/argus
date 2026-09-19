@@ -39,6 +39,10 @@ type wealthWriter interface {
 	// UpsertRetirementGoal backs wealth_retire.go's quick-switch save (Phase
 	// 9 波次3 PR7) — creates or updates the single kind="retirement" goal row.
 	UpsertRetirementGoal(name string, targetAmount float64, targetDate string) (int64, error)
+	// CreateInsuranceAsset backs wealth_insure.go's add-policy form (Phase 9
+	// 波次3 PR8) — one call creates the asset + insurance_details +
+	// insurance_coverages row atomically.
+	CreateInsuranceAsset(a db.NewAsset, det db.InsuranceDetails, cov db.InsuranceCoverage) (int64, error)
 }
 
 // assetResponse mirrors db.AssetWithValue for JSON — Value/Cost stay nil

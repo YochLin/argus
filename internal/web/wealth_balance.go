@@ -282,14 +282,25 @@ func (s *Server) handleWealthBalance(w http.ResponseWriter, r *http.Request) {
 }
 
 // wealthProfileResponse/handleWealthProfileGet+Update back GET/POST
-// /api/wealth/profile — the single settings field (profile.annual_salary)
-// the health metrics need, per §9.3. There's no dedicated "個人參數"
-// settings page yet (that's PR8/PR13 scope) — this is the minimal write
-// path so the balance-sheet page isn't permanently stuck at "—".
+// /api/wealth/profile — every "個人參數" field the platform can't derive on
+// its own, per §9.3. There's no dedicated shared settings page (§8.16.2's
+// aspiration is deferred to PR13, see PLAN.md's 2026-09-18 note) — each
+// wealth page that needs one of these fields carries its own mini setup
+// card (WealthBalanceView's salary card, WealthRetireView's birth-year
+// card, WealthInsureView's dependents/spouse card) and they all write
+// through this one endpoint so a value set on one page is visible on every
+// other.
 type wealthProfileResponse struct {
 	AnnualSalary                  *float64 `json:"annualSalary"`
 	BirthYear                     *int     `json:"birthYear"`
 	RetirementMonthlyContribution *float64 `json:"retirementMonthlyContribution"`
+	// Dependents/YoungestChildAge/SpouseHasIncome back the insurance page's
+	// need formula (§8.16.1, Phase 9 波次3 PR8). Dependents==0 is a real,
+	// explicitly-saved "no dependents" — the frontend must check for a nil
+	// pointer to tell "not set yet" apart from that.
+	Dependents       *int  `json:"dependents"`
+	YoungestChildAge *int  `json:"youngestChildAge"`
+	SpouseHasIncome  *bool `json:"spouseHasIncome"`
 }
 
 func (s *Server) handleWealthProfileGet(w http.ResponseWriter, r *http.Request) {
@@ -309,17 +320,33 @@ func (s *Server) handleWealthProfileGet(w http.ResponseWriter, r *http.Request) 
 			resp.RetirementMonthlyContribution = &v
 		}
 	}
+	if raw, ok, err := s.db.GetSetting(dependentsSettingKey); err == nil && ok {
+		if v, perr := strconv.Atoi(raw); perr == nil {
+			resp.Dependents = &v
+		}
+	}
+	if raw, ok, err := s.db.GetSetting(youngestChildAgeSettingKey); err == nil && ok {
+		if v, perr := strconv.Atoi(raw); perr == nil {
+			resp.YoungestChildAge = &v
+		}
+	}
+	if raw, ok, err := s.db.GetSetting(spouseIncomeSettingKey); err == nil && ok {
+		v := raw == "1"
+		resp.SpouseHasIncome = &v
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
 // wealthProfileUpdateRequest fields are pointers so a caller can update just
-// one of the three settings without clobbering the others — the balance
-// sheet's salary form and the retirement page's birth-year/contribution form
-// both post to this same endpoint independently.
+// its own field(s) without clobbering the others — every mini setup card
+// listed on wealthProfileResponse posts to this same endpoint independently.
 type wealthProfileUpdateRequest struct {
 	AnnualSalary                  *float64 `json:"annualSalary"`
 	BirthYear                     *int     `json:"birthYear"`
 	RetirementMonthlyContribution *float64 `json:"retirementMonthlyContribution"`
+	Dependents                    *int     `json:"dependents"`
+	YoungestChildAge              *int     `json:"youngestChildAge"`
+	SpouseHasIncome               *bool    `json:"spouseHasIncome"`
 }
 
 func (s *Server) handleWealthProfileUpdate(w http.ResponseWriter, r *http.Request) {
@@ -356,6 +383,39 @@ func (s *Server) handleWealthProfileUpdate(w http.ResponseWriter, r *http.Reques
 		}
 		if err := s.wealthDB.SetSetting(retirementContribSettingKey, strconv.FormatFloat(*req.RetirementMonthlyContribution, 'f', 2, 64)); err != nil {
 			logger.Errorf("web: set %s: %v", retirementContribSettingKey, err)
+			writeError(w, http.StatusInternalServerError, "failed to save")
+			return
+		}
+	}
+	if req.Dependents != nil {
+		if *req.Dependents < 0 {
+			writeError(w, http.StatusBadRequest, "dependents must be >= 0")
+			return
+		}
+		if err := s.wealthDB.SetSetting(dependentsSettingKey, strconv.Itoa(*req.Dependents)); err != nil {
+			logger.Errorf("web: set %s: %v", dependentsSettingKey, err)
+			writeError(w, http.StatusInternalServerError, "failed to save")
+			return
+		}
+	}
+	if req.YoungestChildAge != nil {
+		if *req.YoungestChildAge < 0 || *req.YoungestChildAge > 30 {
+			writeError(w, http.StatusBadRequest, "youngestChildAge is out of range")
+			return
+		}
+		if err := s.wealthDB.SetSetting(youngestChildAgeSettingKey, strconv.Itoa(*req.YoungestChildAge)); err != nil {
+			logger.Errorf("web: set %s: %v", youngestChildAgeSettingKey, err)
+			writeError(w, http.StatusInternalServerError, "failed to save")
+			return
+		}
+	}
+	if req.SpouseHasIncome != nil {
+		v := "0"
+		if *req.SpouseHasIncome {
+			v = "1"
+		}
+		if err := s.wealthDB.SetSetting(spouseIncomeSettingKey, v); err != nil {
+			logger.Errorf("web: set %s: %v", spouseIncomeSettingKey, err)
 			writeError(w, http.StatusInternalServerError, "failed to save")
 			return
 		}

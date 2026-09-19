@@ -149,6 +149,9 @@ func (f *fakeWealthImportDB) SetGoalAsset(goalID, assetID int64, ratio float64) 
 func (f *fakeWealthImportDB) UpsertRetirementGoal(name string, targetAmount float64, targetDate string) (int64, error) {
 	return 0, nil
 }
+func (f *fakeWealthImportDB) CreateInsuranceAsset(a db.NewAsset, det db.InsuranceDetails, cov db.InsuranceCoverage) (int64, error) {
+	return 0, nil
+}
 
 func TestApplyWealthImportRows(t *testing.T) {
 	fake := &fakeWealthImportDB{}

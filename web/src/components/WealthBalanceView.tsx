@@ -34,7 +34,7 @@ function equityLabel(dict: Dictionary, type: string): string {
   return "";
 }
 
-function srcLabel(dict: Dictionary, source: string): string {
+export function srcLabel(dict: Dictionary, source: string): string {
   if (source === "import") return dict.wealthSrcImport;
   if (source === "sync") return dict.wealthSrcSync;
   return dict.wealthSrcManual;
