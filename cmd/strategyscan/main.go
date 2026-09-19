@@ -65,7 +65,17 @@ var sp600TickersRaw string
 // twStrategies adds Phase 15's 網 5 (TW only — no US equivalent, see
 // docs/phase-15-trust-follow.md §6). Order is shared by the hit map, the
 // record loop and the summary printout.
-var baseStrategies = []string{"squeeze_breakout", "box_bottom", "trend_breakout", "trend_pullback", gapDriftStrategy, gapDriftT1Strategy}
+var baseStrategies = []string{"squeeze_breakout", "box_bottom", "trend_breakout", "trend_pullback", gapDriftStrategy, gapDriftT1Strategy, emaCrossStrategy, emaCrossUpStrategy}
+
+// emaCrossStrategy is the plain EMA10 reclaim (see
+// signals.CheckEMACrossExact), exited through paper.DefaultExits like every
+// other screen and like the control.
+const emaCrossStrategy = "ema10_cross"
+
+// emaCrossUpStrategy is the same cross gated on the EMA10 itself rising (see
+// signals.CheckEMACrossUpExact) — a strict subset of emaCrossStrategy's
+// triggers, scored against the same control in the same run.
+const emaCrossUpStrategy = "ema10_cross_up"
 
 // confirmableStrategies is which screens Phase 25 §8.4① tests a delayed,
 // pullback-confirmed entry against (see entryConfirmDaysFlag/pullbackEntryIdx
@@ -213,8 +223,11 @@ type TriggerRecord struct {
 	// simulateTrade doc comment).
 	HasTrade        bool
 	TradeExitRet    float64
-	TradeExitReason string // "stop" | "target" | "timeout"
+	TradeExitReason string // "stop" | "target" | "trailing" | "timeout"
 	TradeHoldDays   int
+	TradeStop       float64 // initial stop, as the live sizing rules set it
+	TradeExitDate   string
+	TradeExitPrice  float64
 
 	// Candidate-ranking factors, populated only on the baseline rows that
 	// get a trade replay — they are what -dump-trades exists to carry, and
@@ -238,6 +251,14 @@ type TradeOutcome struct {
 	HoldDays   int
 	Entry      float64
 	Stop       float64
+
+	// ExitDate and ExitPrice are the bar the replay actually sold on and the
+	// close it sold at, GROSS of the fees and slippage already netted out of
+	// ExitRet — so (ExitPrice-Entry)/Entry deliberately does NOT reproduce
+	// ExitRet. They exist for eyeballing a trade against a chart, which is a
+	// question about the price path, not about the P&L.
+	ExitDate  string
+	ExitPrice float64
 }
 
 // simulatedAccountCash is a huge starting balance for simulateTrade's
@@ -347,7 +368,8 @@ func simulateTradeHorizons(candles []data.Candle, entryIdx int, cfg paper.Config
 			sell := trades[0]
 			feePct := (buyTrade.Fee + sell.Fee) / notional * 100.0
 			exitRet := (sell.Price-entry)/entry*100.0 - feePct - slippageRoundTripPct
-			ruleExit = &TradeOutcome{ExitRet: exitRet, ExitReason: sell.Reason, HoldDays: i, Entry: entry, Stop: buyTrade.Stop}
+			ruleExit = &TradeOutcome{ExitRet: exitRet, ExitReason: sell.Reason, HoldDays: i, Entry: entry, Stop: buyTrade.Stop,
+				ExitDate: date, ExitPrice: sell.Price}
 			break
 		}
 	}
@@ -373,7 +395,8 @@ func simulateTradeHorizons(candles []data.Candle, entryIdx int, cfg paper.Config
 			continue
 		}
 		exitRet := (candles[entryIdx+days].Close-entry)/entry*100.0 - timeoutFeePct - slippageRoundTripPct
-		out[h] = TradeOutcome{ExitRet: exitRet, ExitReason: "timeout", HoldDays: days, Entry: entry, Stop: buyTrade.Stop}
+		out[h] = TradeOutcome{ExitRet: exitRet, ExitReason: "timeout", HoldDays: days, Entry: entry, Stop: buyTrade.Stop,
+			ExitDate: candles[entryIdx+days].Date.Format("2006-01-02"), ExitPrice: candles[entryIdx+days].Close}
 	}
 	return out
 }
@@ -1244,6 +1267,8 @@ func main() {
 				"trend_breakout":   signals.CheckTrendBreakoutExact(sub, screenParams),
 				"trend_pullback":   signals.CheckTrendPullbackExact(sub, screenParams),
 				gapDriftStrategy:   signals.CheckPostGapDriftExact(sub, screenParams),
+				emaCrossStrategy:   signals.CheckEMACrossExact(sub),
+				emaCrossUpStrategy: signals.CheckEMACrossUpExact(sub),
 			}
 			// Same signal, different entry bar — never re-screened, so the
 			// two variants can only ever differ by the entry.
@@ -1309,6 +1334,9 @@ func main() {
 					rec.TradeExitRet = outcome.ExitRet
 					rec.TradeExitReason = outcome.ExitReason
 					rec.TradeHoldDays = outcome.HoldDays
+					rec.TradeStop = outcome.Stop
+					rec.TradeExitDate = outcome.ExitDate
+					rec.TradeExitPrice = outcome.ExitPrice
 				}
 				records = append(records, rec)
 
@@ -1381,6 +1409,8 @@ func main() {
 	printSummary(benchTicker, "Trend Pullback (網 4)", filterByStrategy(records, "trend_pullback"), &ctrl)
 	printSummary(benchTicker, "Post-Gap Drift (網 6，訊號日收盤進場)", filterByStrategy(records, gapDriftStrategy), &ctrl)
 	printSummary(benchTicker, "Post-Gap Drift (網 6，延一日進場)", filterByStrategy(records, gapDriftT1Strategy), &ctrl)
+	printSummary(benchTicker, "EMA10 站上（實驗）", filterByStrategy(records, emaCrossStrategy), &ctrl)
+	printSummary(benchTicker, "EMA10 站上＋均線向上（實驗）", filterByStrategy(records, emaCrossUpStrategy), &ctrl)
 	if earningsDates != nil {
 		printSummary(benchTicker, "Post-Gap Drift Confirmed (網 6 + SEC filed 日期 ±1 交易日)", filterByStrategy(records, gapDriftConfirmedStrategy), &ctrl)
 	}
@@ -1907,6 +1937,7 @@ func writeCSV(path string, recs []TriggerRecord) {
 		"Ret10d", "BenchRet10d", "BeatBench10d", "Has10d",
 		"Ret20d", "BenchRet20d", "BeatBench20d", "Has20d",
 		"TradeExitRet", "TradeExitReason", "TradeHoldDays", "HasTrade",
+		"TradeStop", "TradeExitDate", "TradeExitPrice",
 	})
 
 	for _, r := range recs {
@@ -1935,6 +1966,9 @@ func writeCSV(path string, recs []TriggerRecord) {
 			r.TradeExitReason,
 			fmt.Sprintf("%d", r.TradeHoldDays),
 			fmt.Sprintf("%t", r.HasTrade),
+			fmt.Sprintf("%.2f", r.TradeStop),
+			r.TradeExitDate,
+			fmt.Sprintf("%.2f", r.TradeExitPrice),
 		})
 	}
 	fmt.Printf("Saved CSV report to %s\n", path)

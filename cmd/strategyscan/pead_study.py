@@ -53,7 +53,8 @@ SCREENS = ["post_gap_drift", "post_gap_drift_t1", "post_gap_drift_confirmed",
            # Phase 25 §8.4①: same-signal delayed-entry variants (see
            # cmd/strategyscan/main.go's entryConfirmDaysFlag/confirmableStrategies).
            "squeeze_breakout_confirm", "box_bottom_confirm", "trend_breakout_confirm", "trend_pullback_confirm",
-           "insider_cluster_buy"]  # Phase 25 §8.2
+           "insider_cluster_buy",  # Phase 25 §8.2
+           "ema10_cross", "ema10_cross_up"]
 
 
 def load_screens(path):

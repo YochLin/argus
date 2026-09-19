@@ -374,3 +374,28 @@ func TestFeeFor_TWSellMinFeeAppliesBeforeTax(t *testing.T) {
 		t.Errorf("TW sell fee below commission floor: got %v, want %v (commission alone would be %v)", got, want, commission)
 	}
 }
+
+func TestTrailingStopThreshold(t *testing.T) {
+	// peak 100, ATR 4 -> 6 ATR is 24%, deliberately WIDER than the 18%
+	// fallback: the point of the 2026-09-19 change is that ATR replaces the
+	// fixed distance instead of being capped by it. A min() would return 18
+	// here and give the whole measured effect back.
+	if pct, atrBased, ok := TrailingStopThreshold(18, 6, 4, 100); !ok || !atrBased || !almostEqual(pct, 24) {
+		t.Errorf("ATR wider than fixed: got (%v, %v, %v), want (24, true, true)", pct, atrBased, ok)
+	}
+	// Quiet ticker: 6 x 1 / 100 = 6%, tighter than the fallback, still ATR.
+	if pct, atrBased, ok := TrailingStopThreshold(18, 6, 1, 100); !ok || !atrBased || !almostEqual(pct, 6) {
+		t.Errorf("ATR tighter than fixed: got (%v, %v, %v), want (6, true, true)", pct, atrBased, ok)
+	}
+	// No usable ATR (too little history, data gap) falls back to the fixed %
+	// rather than leaving the position with no trailing stop at all.
+	for _, tc := range []struct{ atrMult, atr, peak float64 }{{0, 4, 100}, {6, 0, 100}, {6, 4, 0}} {
+		if pct, atrBased, ok := TrailingStopThreshold(18, tc.atrMult, tc.atr, tc.peak); !ok || atrBased || !almostEqual(pct, 18) {
+			t.Errorf("fallback %+v: got (%v, %v, %v), want (18, false, true)", tc, pct, atrBased, ok)
+		}
+	}
+	// Neither leg usable is the one case with no threshold to report.
+	if _, _, ok := TrailingStopThreshold(0, 0, 0, 0); ok {
+		t.Error("no fixed pct and no ATR should report ok=false")
+	}
+}
