@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -62,6 +63,37 @@ func TestHandleWealthBalanceGroupsAndTotals(t *testing.T) {
 	}
 	if len(got.QuarterlyTrend) != quarterlyTrendQuarters {
 		t.Errorf("len(QuarterlyTrend) = %d, want %d", len(got.QuarterlyTrend), quarterlyTrendQuarters)
+	}
+}
+
+// TestHandleWealthBalanceNoLiabilitiesRendersEmptySlice pins the
+// nil-vs-empty-slice convention (same as wealth_goals_test.go's
+// TestHandleWealthGoalsListEmptyRendersEmptySlices) for the one field on this
+// endpoint that used to violate it: with zero liability-type assets, the
+// loop that builds `liabilities` never appends anything, so an
+// un-initialized `var liabilities []liabilityDetail` serializes as JSON
+// `null` — which crashed the frontend's `sheet.liabilities.length` on a
+// real account with no debt at all (live-verified on production 2026-09-19).
+func TestHandleWealthBalanceNoLiabilitiesRendersEmptySlice(t *testing.T) {
+	fake := &fakeDB{wealthAssets: []db.AssetWithValue{
+		{Asset: db.Asset{ID: 1, Side: "asset", Type: "deposit", Name: "活存", AssetGroup: "liquid", Currency: "TWD"}, Value: floatPtr(100000)},
+	}}
+	s := newWealthBalanceTestServer(fake, &fakeWealthDB{}, "")
+
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/balance", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), `"liabilities":null`) {
+		t.Errorf("liabilities serialized as null, want []: %s", rec.Body.String())
+	}
+	var got balanceSheetResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.Liabilities == nil || len(got.Liabilities) != 0 {
+		t.Errorf("Liabilities = %#v, want non-nil empty slice", got.Liabilities)
 	}
 }
 
