@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -155,14 +154,6 @@ func resolveTradeDate(date string) (string, bool) {
 		return "", false
 	}
 	return date, true
-}
-
-func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
-	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return false
-	}
-	return true
 }
 
 // errInvalidTradeDate distinguishes a bad ?date= from a rejected trade

@@ -1,43 +1,10 @@
 package web
 
 import (
-	"encoding/json"
 	"net/http"
-	"time"
 
 	"argus/internal/logger"
 )
-
-// apiResponse is Step 4.2's standardized envelope. Every /api/v1 route
-// answers with exactly this shape, success and failure alike, so a generated
-// mobile client has one response type to unwrap instead of one per endpoint.
-// The pre-v1 /api/* routes keep their bare-object shape — the existing SPA
-// reads them and there's nothing to gain from churning both sides.
-//
-// Timestamp is Unix seconds, matching the plan doc's example payload.
-type apiResponse struct {
-	Success   bool   `json:"success"`
-	Data      any    `json:"data"`
-	Error     string `json:"error,omitempty"`
-	Timestamp int64  `json:"timestamp"`
-}
-
-func writeAPIOK(w http.ResponseWriter, data any) {
-	writeJSON(w, http.StatusOK, apiResponse{Success: true, Data: data, Timestamp: time.Now().Unix()})
-}
-
-func writeAPIError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, apiResponse{Success: false, Error: msg, Timestamp: time.Now().Unix()})
-}
-
-// decodeAPIJSON is decodeJSON with the v1 envelope on the failure path.
-func decodeAPIJSON(w http.ResponseWriter, r *http.Request, v any) bool {
-	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
-		writeAPIError(w, http.StatusBadRequest, "invalid request body")
-		return false
-	}
-	return true
-}
 
 // minJWTSecretLen is HS256's entropy floor here: a token's signature is only
 // as hard to forge as this key. Anyone who ever sees one signed token can
