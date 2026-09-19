@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
 import {
   ApiError,
   createWealthCashflow,
@@ -55,12 +56,24 @@ function categoryLabel(dict: Dictionary, category: string | undefined): string {
   }
 }
 
+// AddCashflowForm matches WealthHomeView.tsx's AddAssetModal shell (the
+// design template's shared "quick-add drawer", Argus Trading WebUI.dc.html
+// lines 3304-3438) — right-side sliding panel, same wealth-drawer-* classes
+// — but skips AddAssetModal's step-1 kind picker: this button only ever
+// creates one kind of thing (a recurring cash flow), so there's nothing to
+// pick between. This used to be a plain .card toggled inline in the page
+// flow instead of a real Dialog/drawer — a stopgap from before this
+// component existed, now replaced so /w/cash's "+" matches every other
+// wealth page with a write affordance (/w/balance) instead of being the one
+// page where it behaves differently.
 function AddCashflowForm({
   dict,
+  onClose,
   onUnauthorized,
   onSaved,
 }: {
   dict: Dictionary;
+  onClose: () => void;
   onUnauthorized: (retry: () => void) => void;
   onSaved: () => void;
 }) {
@@ -90,9 +103,6 @@ function AddCashflowForm({
     setError(null);
     try {
       await createWealthCashflow({ direction, name: name.trim(), amount: amt, dayOfMonth: day, category });
-      setName("");
-      setAmount("");
-      setDayOfMonth("");
       onSaved();
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
@@ -105,48 +115,76 @@ function AddCashflowForm({
     }
   }
 
+  const canSubmit = name.trim() !== "" && Number(amount) > 0;
+
   return (
-    <div className="card" style={{ marginBottom: 16 }}>
-      <div className="eyebrow">{dict.wealthCashAddTitle}</div>
-      <div className="topbar-tabs" role="group" aria-label="direction" style={{ marginBottom: 10 }}>
-        <button className={`topbar-tab${direction === "in" ? " active" : ""}`} onClick={() => changeDirection("in")}>
-          {dict.wealthCashDirectionIn}
-        </button>
-        <button className={`topbar-tab${direction === "out" ? " active" : ""}`} onClick={() => changeDirection("out")}>
-          {dict.wealthCashDirectionOut}
-        </button>
-      </div>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <label className="form-field" style={{ flex: "1 1 160px" }}>
-          <span>{dict.wealthCashNameLabel}</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-        <label className="form-field" style={{ width: 130 }}>
-          <span>{dict.wealthCashAmountLabel}</span>
-          <input className="mono" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
-        </label>
-        <label className="form-field" style={{ width: 110 }}>
-          <span>{dict.wealthCashDayOfMonthLabel}</span>
-          <input className="mono" type="number" min={1} max={31} value={dayOfMonth} onChange={(e) => setDayOfMonth(e.target.value)} />
-        </label>
-        <label className="form-field" style={{ width: 160 }}>
-          <span>{dict.wealthCashCategoryLabel}</span>
-          <select value={category} onChange={(e) => setCategory(e.target.value)}>
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {categoryLabel(dict, c)}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      {error && <div className="error-message">{error}</div>}
-      <div className="modal-actions">
-        <button className="btn-primary" disabled={submitting} onClick={submit}>
-          {dict.wealthCashAdd}
-        </button>
-      </div>
-    </div>
+    <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="wealth-drawer-overlay">
+          <Dialog.Content className="wealth-drawer-panel" aria-describedby={undefined} onOpenAutoFocus={(e) => e.preventDefault()}>
+            <div className="wealth-drawer-header">
+              <Dialog.Title style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11 }}>
+                {dict.wealthCashAddTitle}
+              </Dialog.Title>
+              <Dialog.Close className="modal-close" style={{ marginLeft: "auto" }} aria-label="close">
+                ×
+              </Dialog.Close>
+            </div>
+            <div className="wealth-drawer-body">
+              <div className="topbar-tabs" role="group" aria-label="direction">
+                <button className={`topbar-tab${direction === "in" ? " active" : ""}`} onClick={() => changeDirection("in")}>
+                  {dict.wealthCashDirectionIn}
+                </button>
+                <button className={`topbar-tab${direction === "out" ? " active" : ""}`} onClick={() => changeDirection("out")}>
+                  {dict.wealthCashDirectionOut}
+                </button>
+              </div>
+
+              <div className="wealth-drawer-field">
+                <span className="wealth-drawer-field-label">
+                  {dict.wealthCashNameLabel}
+                  <span className="wealth-drawer-required">*</span>
+                </span>
+                <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+              </div>
+
+              <div className="wealth-drawer-field">
+                <span className="wealth-drawer-field-label">
+                  {dict.wealthCashAmountLabel}
+                  <span className="wealth-drawer-required">*</span>
+                </span>
+                <input className="mono" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
+              </div>
+
+              <div className="wealth-drawer-field">
+                <span className="wealth-drawer-field-label">{dict.wealthCashDayOfMonthLabel}</span>
+                <input className="mono" type="number" min={1} max={31} value={dayOfMonth} onChange={(e) => setDayOfMonth(e.target.value)} />
+              </div>
+
+              <div className="wealth-drawer-field">
+                <span className="wealth-drawer-field-label">{dict.wealthCashCategoryLabel}</span>
+                <select value={category} onChange={(e) => setCategory(e.target.value)}>
+                  {categories.map((c) => (
+                    <option key={c} value={c}>
+                      {categoryLabel(dict, c)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {error && <div className="error-message">{error}</div>}
+            </div>
+            <div className="wealth-drawer-footer">
+              <button className="wealth-drawer-cancel" onClick={onClose}>
+                {dict.cancel}
+              </button>
+              <button className="btn-primary" style={{ marginLeft: "auto" }} disabled={!canSubmit || submitting} onClick={submit}>
+                {dict.wealthCashAdd}
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Overlay>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
@@ -250,17 +288,15 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
   return (
     <>
       {/* Unboxed header + "+" trigger, matching the design template's isWCash
-          row exactly (Argus Trading WebUI.dc.html lines 757-760) — unlike
-          /w/goals, this page's template DOES want a write affordance here,
-          it just opens a shared drawer component this app has never built;
-          toggling the existing inline form is the lazy substitute already
-          used by every other wealth page's "+"-less version of this. */}
+          row exactly (Argus Trading WebUI.dc.html lines 757-760) — opens the
+          same drawer shell as /w/balance's AddAssetModal (AddCashflowForm
+          below), so every wealth page's "+" behaves the same way now. */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0", flexWrap: "wrap" }}>
         <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: "var(--ink)" }}>
           {dict.navWealthCash}
         </span>
         {writable && (
-          <button className="btn-tint" style={{ marginLeft: "auto" }} onClick={() => setShowAddForm((v) => !v)}>
+          <button className="btn-tint" style={{ marginLeft: "auto" }} onClick={() => setShowAddForm(true)}>
             + {dict.wealthCashAdd}
           </button>
         )}
@@ -269,6 +305,7 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
       {writable && showAddForm && (
         <AddCashflowForm
           dict={dict}
+          onClose={() => setShowAddForm(false)}
           onUnauthorized={onUnauthorized}
           onSaved={() => {
             setShowAddForm(false);
