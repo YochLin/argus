@@ -230,7 +230,8 @@ type optionChainInput struct {
 type emptyInput struct{}
 
 func normalizeTicker(s string) string {
-	return strings.ToUpper(strings.TrimSpace(s))
+	t, _ := service.NormalizeTicker(s)
+	return t
 }
 
 func textResult(text string) *mcp.CallToolResult {

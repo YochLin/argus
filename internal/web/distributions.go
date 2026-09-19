@@ -7,6 +7,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/logger"
 	"argus/internal/market"
+	"argus/internal/service"
 )
 
 // distSample is one closed round's R-multiple. Only rounds whose closing
@@ -67,39 +68,10 @@ type distributionsResponse struct {
 	SkippedMAECount int `json:"skippedMaeCount"`
 }
 
-// roundEntryPrice is the round's weighted-average entry price across its BUY
-// legs only — the same formula db.RecordBuy/maefe.go's dailyCostBasis use,
-// but collapsed to the round's final value (SELL legs never change cost
-// basis) since R-multiple only needs the one number, not a per-date
-// checkpoint series. ok is false for a round with no BUY legs (shouldn't
-// happen — segmentRounds only ever starts a round at a BUY).
-func roundEntryPrice(legs []db.Transaction) (float64, bool) {
-	var shares, cost float64
-	for _, l := range legs {
-		if l.Side == "BUY" {
-			cost = (shares*cost + l.Shares*l.Price + l.Fee) / (shares + l.Shares)
-			shares += l.Shares
-		}
-	}
-	if shares <= 0 {
-		return 0, false
-	}
-	return cost, true
-}
-
-// roundHoldingDays is a closed round's calendar-day holding period —
-// StartDate to EndDate, both guaranteed non-empty for a closed round.
-func roundHoldingDays(r round) (int, bool) {
-	startT, err := time.Parse("2006-01-02", r.StartDate)
-	if err != nil {
-		return 0, false
-	}
-	endT, err := time.Parse("2006-01-02", r.EndDate)
-	if err != nil {
-		return 0, false
-	}
-	return int(endT.Sub(startT).Hours() / 24), true
-}
+var (
+	roundEntryPrice  = service.RoundEntryPrice
+	roundHoldingDays = service.RoundHoldingDays
+)
 
 // buildDistributions assembles /api/distributions: every closed round across
 // market m, reduced three ways. One ticker's history fetch failing (for the
