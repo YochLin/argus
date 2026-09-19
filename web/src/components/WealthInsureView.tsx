@@ -330,7 +330,7 @@ export function WealthInsureView({ dict, writable, onUnauthorized }: Props) {
           998) is the one wealth page besides /w/cash whose template
           actually draws a write affordance here (goals' isWGoals has none,
           see WealthGoalsView.tsx's comment on the opposite case). */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "0 0 16px", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0", flexWrap: "wrap" }}>
         <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: "var(--ink)" }}>
           {dict.navWealthInsure}
         </span>
