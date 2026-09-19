@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
 import {
   ApiError,
   createInsurancePolicy,
@@ -67,12 +68,19 @@ function gapColor(pct: number): string {
   return "var(--loss)";
 }
 
+// AddPolicyForm matches WealthHomeView.tsx's AddAssetModal shell (the design
+// template's shared "quick-add drawer", Argus Trading WebUI.dc.html lines
+// 3304-3438) — same as WealthCashView.tsx's AddCashflowForm was converted to
+// — instead of a step-1 kind picker, since this button only ever creates one
+// kind of thing (an insurance policy).
 function AddPolicyForm({
   dict,
+  onClose,
   onUnauthorized,
   onSaved,
 }: {
   dict: Dictionary;
+  onClose: () => void;
   onUnauthorized: (retry: () => void) => void;
   onSaved: () => void;
 }) {
@@ -104,12 +112,6 @@ function AddPolicyForm({
         annualPremium: annualPremium.trim() ? Number(annualPremium) : undefined,
         premiumYears: premiumYears.trim() ? Number(premiumYears) : undefined,
       });
-      setInsurer("");
-      setName("");
-      setAmount("");
-      setInsured("");
-      setAnnualPremium("");
-      setPremiumYears("");
       onSaved();
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
@@ -123,53 +125,85 @@ function AddPolicyForm({
   }
 
   const amountLabel = `${dict.wealthInsureAmountLabel}${periodSuffix(dict, KIND_PER_PERIOD[kind])}`;
+  const canSubmit = insurer.trim() !== "" && name.trim() !== "" && Number(amount) > 0;
 
   return (
-    <div className="card" style={{ marginBottom: 16 }}>
-      <div className="eyebrow">{dict.wealthInsureAddTitle}</div>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-        <label className="form-field" style={{ flex: "1 1 160px" }}>
-          <span>{dict.wealthInsureInsurerLabel}</span>
-          <input value={insurer} onChange={(e) => setInsurer(e.target.value)} />
-        </label>
-        <label className="form-field" style={{ flex: "1 1 160px" }}>
-          <span>{dict.wealthInsurePolicyNameLabel}</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-        <label className="form-field" style={{ width: 160 }}>
-          <span>{dict.wealthInsureKindLabel}</span>
-          <select value={kind} onChange={(e) => setKind(e.target.value as InsuranceKind)}>
-            {KIND_ORDER.map((k) => (
-              <option key={k} value={k}>
-                {kindLabel(dict, k)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="form-field" style={{ width: 150 }}>
-          <span>{amountLabel}</span>
-          <input className="mono" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
-        </label>
-        <label className="form-field" style={{ width: 130 }}>
-          <span>{dict.wealthInsuredLabel}</span>
-          <input value={insured} onChange={(e) => setInsured(e.target.value)} />
-        </label>
-        <label className="form-field" style={{ width: 140 }}>
-          <span>{dict.wealthInsureAnnualPremiumLabel}</span>
-          <input className="mono" type="number" value={annualPremium} onChange={(e) => setAnnualPremium(e.target.value)} />
-        </label>
-        <label className="form-field" style={{ width: 120 }}>
-          <span>{dict.wealthInsurePremiumYearsLabel}</span>
-          <input className="mono" type="number" value={premiumYears} onChange={(e) => setPremiumYears(e.target.value)} />
-        </label>
-      </div>
-      {error && <div className="error-message">{error}</div>}
-      <div className="modal-actions">
-        <button className="btn-primary" disabled={submitting} onClick={submit}>
-          {dict.wealthInsureAdd}
-        </button>
-      </div>
-    </div>
+    <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="wealth-drawer-overlay">
+          <Dialog.Content className="wealth-drawer-panel" aria-describedby={undefined} onOpenAutoFocus={(e) => e.preventDefault()}>
+            <div className="wealth-drawer-header">
+              <Dialog.Title style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11 }}>
+                {dict.wealthInsureAddTitle}
+              </Dialog.Title>
+              <Dialog.Close className="modal-close" style={{ marginLeft: "auto" }} aria-label="close">
+                ×
+              </Dialog.Close>
+            </div>
+            <div className="wealth-drawer-body">
+              <div className="wealth-drawer-field">
+                <span className="wealth-drawer-field-label">
+                  {dict.wealthInsureInsurerLabel}
+                  <span className="wealth-drawer-required">*</span>
+                </span>
+                <input value={insurer} onChange={(e) => setInsurer(e.target.value)} autoFocus />
+              </div>
+
+              <div className="wealth-drawer-field">
+                <span className="wealth-drawer-field-label">
+                  {dict.wealthInsurePolicyNameLabel}
+                  <span className="wealth-drawer-required">*</span>
+                </span>
+                <input value={name} onChange={(e) => setName(e.target.value)} />
+              </div>
+
+              <div className="wealth-drawer-field">
+                <span className="wealth-drawer-field-label">{dict.wealthInsureKindLabel}</span>
+                <select value={kind} onChange={(e) => setKind(e.target.value as InsuranceKind)}>
+                  {KIND_ORDER.map((k) => (
+                    <option key={k} value={k}>
+                      {kindLabel(dict, k)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="wealth-drawer-field">
+                <span className="wealth-drawer-field-label">
+                  {amountLabel}
+                  <span className="wealth-drawer-required">*</span>
+                </span>
+                <input className="mono" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
+              </div>
+
+              <div className="wealth-drawer-field">
+                <span className="wealth-drawer-field-label">{dict.wealthInsuredLabel}</span>
+                <input value={insured} onChange={(e) => setInsured(e.target.value)} />
+              </div>
+
+              <div className="wealth-drawer-field">
+                <span className="wealth-drawer-field-label">{dict.wealthInsureAnnualPremiumLabel}</span>
+                <input className="mono" type="number" value={annualPremium} onChange={(e) => setAnnualPremium(e.target.value)} />
+              </div>
+
+              <div className="wealth-drawer-field">
+                <span className="wealth-drawer-field-label">{dict.wealthInsurePremiumYearsLabel}</span>
+                <input className="mono" type="number" value={premiumYears} onChange={(e) => setPremiumYears(e.target.value)} />
+              </div>
+              {error && <div className="error-message">{error}</div>}
+            </div>
+            <div className="wealth-drawer-footer">
+              <button className="wealth-drawer-cancel" onClick={onClose}>
+                {dict.cancel}
+              </button>
+              <button className="btn-primary" style={{ marginLeft: "auto" }} disabled={!canSubmit || submitting} onClick={submit}>
+                {dict.wealthInsureAdd}
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Overlay>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
@@ -329,13 +363,15 @@ export function WealthInsureView({ dict, writable, onUnauthorized }: Props) {
       {/* Header + "+" trigger — the design template's isWInsure row (line
           998) is the one wealth page besides /w/cash whose template
           actually draws a write affordance here (goals' isWGoals has none,
-          see WealthGoalsView.tsx's comment on the opposite case). */}
+          see WealthGoalsView.tsx's comment on the opposite case). Opens the
+          same drawer shell as /w/balance's AddAssetModal (AddPolicyForm
+          below), matching every other wealth page's "+". */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0", flexWrap: "wrap" }}>
         <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: "var(--ink)" }}>
           {dict.navWealthInsure}
         </span>
         {writable && (
-          <button className="btn-tint" style={{ marginLeft: "auto" }} onClick={() => setShowAddForm((v) => !v)}>
+          <button className="btn-tint" style={{ marginLeft: "auto" }} onClick={() => setShowAddForm(true)}>
             + {dict.wealthInsureAdd}
           </button>
         )}
@@ -344,6 +380,7 @@ export function WealthInsureView({ dict, writable, onUnauthorized }: Props) {
       {writable && showAddForm && (
         <AddPolicyForm
           dict={dict}
+          onClose={() => setShowAddForm(false)}
           onUnauthorized={onUnauthorized}
           onSaved={() => {
             setShowAddForm(false);
