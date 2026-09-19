@@ -651,7 +651,6 @@ export interface Dictionary {
   wealthGoalsStatusAhead: string;
   wealthGoalsStatusOnTrack: string;
   wealthGoalsStatusBehind: string;
-  wealthGoalsKindRetirement: string;
   wealthGoalsTotalProgress: string;
   wealthGoalsMonthlyLabel: string;
   wealthGoalsBehindCountLabel: string;
@@ -1340,7 +1339,6 @@ const en: Dictionary = {
   wealthGoalsStatusAhead: "Ahead",
   wealthGoalsStatusOnTrack: "On track",
   wealthGoalsStatusBehind: "Behind",
-  wealthGoalsKindRetirement: "Retirement",
   wealthGoalsTotalProgress: "ALL GOALS",
   wealthGoalsMonthlyLabel: "Monthly",
   wealthGoalsBehindCountLabel: "BEHIND",
@@ -2016,7 +2014,6 @@ const zh: Dictionary = {
   wealthGoalsStatusAhead: "超前",
   wealthGoalsStatusOnTrack: "進度正常",
   wealthGoalsStatusBehind: "落後",
-  wealthGoalsKindRetirement: "退休",
   wealthGoalsTotalProgress: "全部目標合計",
   wealthGoalsMonthlyLabel: "每月投入",
   wealthGoalsBehindCountLabel: "落後項目",

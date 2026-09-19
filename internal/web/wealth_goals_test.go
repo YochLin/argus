@@ -104,6 +104,43 @@ func TestHandleWealthGoalsList(t *testing.T) {
 	}
 }
 
+// TestHandleWealthGoalsListRetirementMonthlyContribution pins that the
+// kind="retirement" row's MonthlyContribution comes from the same
+// profile.retirement_monthly_contribution setting /w/retire reads — the
+// design template shows a real "每月投入" figure for the retirement row, and
+// a general goal (no such setting to read) must stay nil rather than reuse
+// it.
+func TestHandleWealthGoalsListRetirementMonthlyContribution(t *testing.T) {
+	fake := &fakeDB{
+		goals: []db.Goal{
+			{ID: 1, Name: "退休金", Kind: "retirement", TargetAmount: 27000000, Currency: "TWD", CreatedAt: "2026-01-01 00:00:00"},
+			{ID: 2, Name: "緊急預備金", Kind: "general", TargetAmount: 300000, Currency: "TWD", CreatedAt: "2026-01-01 00:00:00"},
+		},
+		settings: map[string]string{retirementContribSettingKey: "28000"},
+	}
+	s := newWealthGoalsTestServer("", fake, &fakeWealthDB{})
+
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/goals", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	var got goalsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	byID := map[int64]goalItem{}
+	for _, g := range got.Goals {
+		byID[g.ID] = g
+	}
+	if mc := byID[1].MonthlyContribution; mc == nil || *mc != 28000 {
+		t.Errorf("retirement goal MonthlyContribution = %v, want 28000", mc)
+	}
+	if byID[2].MonthlyContribution != nil {
+		t.Errorf("general goal MonthlyContribution = %v, want nil", byID[2].MonthlyContribution)
+	}
+}
+
 // TestGoalStatus pins the straight-line expected-progress classification a
 // target_date goal gets: ahead/behind/onTrack around a 5pp band.
 func TestGoalStatus(t *testing.T) {
