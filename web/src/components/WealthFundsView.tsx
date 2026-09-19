@@ -25,7 +25,11 @@ function fmtPct(v: number): string {
 // solid + area fill) — same hand-rolled-polyline pattern WealthRetireView's
 // RetireChart already uses, no chart library. A point with a null cost/value
 // (no fund had a priceable snapshot that far back yet) is simply skipped
-// from that line rather than drawn as zero.
+// from that line rather than drawn as zero. The area fill uses
+// --accent-tint-bg, not the design template's own --tint — this app's
+// theme.css never defines a bare --tint token, only --accent-tint-bg (same
+// rgba value); using --tint here rendered as solid black (fill's CSS
+// initial value) instead of a translucent wash.
 function FundsChart({ dict, points }: { dict: Dictionary; points: WealthFunds["chart"] }) {
   const known = points.filter((p) => p.value != null || p.cost != null);
   if (known.length < 2) {
@@ -81,7 +85,7 @@ function FundsChart({ dict, points }: { dict: Dictionary; points: WealthFunds["c
         </span>
       </div>
       <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ width: "100%", height: 180, display: "block" }}>
-        {areaPath && <path d={areaPath} fill="var(--tint)" stroke="none" />}
+        {areaPath && <path d={areaPath} fill="var(--accent-tint-bg)" stroke="none" />}
         {costPath && <path d={costPath} fill="none" stroke="var(--ink-3)" strokeWidth={1.5} strokeDasharray="4 3" vectorEffect="non-scaling-stroke" />}
         {mvPath && <path d={mvPath} fill="none" stroke="var(--accent)" strokeWidth={2} vectorEffect="non-scaling-stroke" />}
       </svg>
