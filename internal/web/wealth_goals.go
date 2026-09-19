@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,18 +31,24 @@ type goalAssetItem struct {
 // classification itself, so the bar can render the same reference point the
 // status label describes.
 type goalItem struct {
-	ID           int64           `json:"id"`
-	Name         string          `json:"name"`
-	Kind         string          `json:"kind"`
-	TargetAmount float64         `json:"targetAmount"`
-	Currency     string          `json:"currency"`
-	TargetDate   string          `json:"targetDate,omitempty"`
-	Note         string          `json:"note,omitempty"`
-	Saved        *float64        `json:"saved"`
-	ProgressPct  *float64        `json:"progressPct"`
-	Status       string          `json:"status,omitempty"` // "ahead" | "onTrack" | "behind"
-	MarkPct      *float64        `json:"markPct,omitempty"`
-	Assets       []goalAssetItem `json:"assets"`
+	ID           int64    `json:"id"`
+	Name         string   `json:"name"`
+	Kind         string   `json:"kind"`
+	TargetAmount float64  `json:"targetAmount"`
+	Currency     string   `json:"currency"`
+	TargetDate   string   `json:"targetDate,omitempty"`
+	Note         string   `json:"note,omitempty"`
+	Saved        *float64 `json:"saved"`
+	ProgressPct  *float64 `json:"progressPct"`
+	Status       string   `json:"status,omitempty"` // "ahead" | "onTrack" | "behind"
+	MarkPct      *float64 `json:"markPct,omitempty"`
+	// MonthlyContribution is set only for the kind="retirement" row, read
+	// from the same profile.retirement_monthly_contribution setting /w/retire
+	// uses (§9.2's goals table has no monthly-contribution column for general
+	// goals — the design template's per-row "每月投入" figure is otherwise
+	// unknown data, not a value this page just forgot to render).
+	MonthlyContribution *float64        `json:"monthlyContribution,omitempty"`
+	Assets              []goalAssetItem `json:"assets"`
 }
 
 type goalsResponse struct {
@@ -186,6 +193,13 @@ func (s *Server) handleWealthGoalsList(w http.ResponseWriter, r *http.Request) {
 						item.Status = status
 						item.MarkPct = &expectedPct
 					}
+				}
+			}
+		}
+		if g.Kind == "retirement" {
+			if raw, ok, err := s.db.GetSetting(retirementContribSettingKey); err == nil && ok {
+				if v, perr := strconv.ParseFloat(raw, 64); perr == nil {
+					item.MonthlyContribution = &v
 				}
 			}
 		}

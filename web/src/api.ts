@@ -2123,6 +2123,10 @@ export interface Goal {
   // status was classified against, unset together with status when there's
   // no targetDate.
   markPct?: number;
+  // monthlyContribution is set only for the kind="retirement" row (read from
+  // the same profile.retirement_monthly_contribution setting /w/retire
+  // uses) — general goals have no monthly-contribution column (§8.8/§9.2).
+  monthlyContribution?: number | null;
   assets: GoalAssetItem[];
 }
 
