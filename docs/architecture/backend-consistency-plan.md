@@ -56,13 +56,21 @@ flowchart TD
 ### Phase 2: Web API 規範與回應協定收斂 (Web API Protocol Unification)
 **目標**：明確 Pre-v1 (`/api/*`) 與 API v1 (`/api/v1/*`) 的關係，推進一致的回應結構與路由規範。
 
-- [ ] **2.1 API 長期演進策略**
-  - 定調 Pre-v1 路由（目前由 React SPA 存取）是否長期保留或包裝成與 v1 一致的規範。
-- [ ] **2.2 錯誤處理與回應格式標準化**
-  - 統一 HTTP 錯誤的 JSON Payload 結構與狀態碼對應。
-  - 提供一致的 Response Helper，避免各 Handler 存在些微格式差異。
-- [ ] **2.3 路由宣告與 OpenAPI 規格持續同步**
-  - 將尚未納入 OpenAPI 的端點依需求逐步規格化，維持 `openapi_test.go` 的不變量防護。
+- [x] **2.1 API 雙軌架構與長期演進策略 (Dual-Track API Architecture & Evolution Strategy)**
+  - **定調雙軌分工**：
+    - **Pre-v1 內部 API (`/api/*`)**：專供 React SPA 儀表板使用。採取扁平裸 JSON (Bare JSON) 視圖模型（ViewModel），直接對應 UI 渲染所需結構，長期保留維護，不強制為 SPA 增加額外 envelope 包裝，避免前端無謂的反序列化開銷與大規模 TypeScript 重構風險。錯誤回應全數標準化為 `{"error": "<message>"}`。
+    - **API v1 公開 API (`/api/v1/*`)**：供外部整合、行動客戶端（Mobile App）、自動化腳本及 CLI 存取。全面強制採用標準封套 Envelope（`{"success": bool, "data": any, "error": string, "timestamp": int64}`）。
+- [x] **2.2 錯誤處理與回應格式標準化 (Response Protocol Standardization)**
+  - 建立 [`internal/web/response.go`](file:///Users/yoch/Desktop/side_project/argus/internal/web/response.go)，收斂所有 Web 回應與請求解構 Primitive：
+    - Pre-v1: `writeJSON`, `writeError` (回傳 `errorResponse`), `decodeJSON`
+    - API v1: `apiResponse`, `writeAPIOK`, `writeAPIResponse`, `writeAPIError`, `decodeAPIJSON`
+  - 徹底消除重複實作：從 `handlers.go` 移除 `writeJSON`/`writeError`，從 `trade.go` 移除 `decodeJSON`，從 `apiv1.go` 移除 `apiResponse` 與封套 helper。
+  - 收斂 `auth.go` 中唯一遺留的裸 `json.NewDecoder` 呼叫為 `decodeJSON`。
+  - 將 `apiv1_resources.go` 中的手工 `apiResponse` 構建統一為 `writeAPIResponse(w, http.StatusAccepted, ...)`。
+  - 統一規範 HTTP 狀態碼語意（400 格式驗證不合、401 未認證、403 唯讀、404 不存在或寫入端點未啟用、409 伺服器狀態衝突、500 內部錯誤、503 上游服務未配置）。
+- [x] **2.3 路由宣告、OpenAPI 規格與單元測試防護 (Contract Invariant & Test Coverage)**
+  - 新增 [`internal/web/response_test.go`](file:///Users/yoch/Desktop/side_project/argus/internal/web/response_test.go)，100% 覆蓋所有 response 與 decoder helper 之正常與異常情境（狀態碼、Content-Type、Envelope 結構、時間戳）。
+  - 維持 `openapi_test.go` 之雙向驗證防護（`TestOpenAPICoversEveryRoute` 與 `TestOpenAPIDescribesNoPhantomRoutes`），確保 OpenAPI 規格與實作無漂移。
 
 ---
 
@@ -98,6 +106,6 @@ flowchart TD
 | 階段 | 狀態 | 預計產出 |
 | :--- | :---: | :--- |
 | **Phase 1: 業務邏輯下沉 & 工具收斂** | 已完成 | `internal/service/round.go`, `internal/service/pnl.go`, `internal/service/maefe.go`, `internal/service/analytics.go` |
-| **Phase 2: Web API 規範收斂** | 待執行 | API Response / Error 統一標準、SPA/v1 轉接規範 |
+| **Phase 2: Web API 規範收斂** | 已完成 | `internal/web/response.go`, `internal/web/response_test.go`, Pre-v1/v1 協定收斂 |
 | **Phase 3: Context 傳遞策略** | 待執行 | `data.Provider` 介面升級、Context 透傳 |
 | **Phase 4: 日誌與錯誤收斂** | 待執行 | 全域日誌風格定調、領域哨兵錯誤補齊 |
