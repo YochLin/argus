@@ -133,7 +133,7 @@ export function WealthGoalsView({ dict, onNavigate }: Props) {
           template (isWAlloc/isWBalance/isWCash all open with the same
           flex row before any card) rather than the eyebrow-in-first-card
           shape this page used before its template pass. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "0 0 16px", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0", flexWrap: "wrap" }}>
         <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: "var(--ink)" }}>
           {dict.navWealthGoals}
         </span>

@@ -255,7 +255,7 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
           it just opens a shared drawer component this app has never built;
           toggling the existing inline form is the lazy substitute already
           used by every other wealth page's "+"-less version of this. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "0 0 16px", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0", flexWrap: "wrap" }}>
         <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: "var(--ink)" }}>
           {dict.navWealthCash}
         </span>

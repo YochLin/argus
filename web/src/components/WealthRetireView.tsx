@@ -173,7 +173,7 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
           isWRetire row exactly (Argus Trading WebUI.dc.html lines 1060-1074)
           — retirement age and monthly spend each save immediately on click
           rather than needing a separate "save" step. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "0 0 16px", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0", flexWrap: "wrap" }}>
         <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: "var(--ink)" }}>
           {dict.navWealthRetire}
         </span>
