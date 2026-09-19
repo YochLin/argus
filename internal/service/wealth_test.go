@@ -16,6 +16,8 @@ type fakeWealthStore struct {
 	netWorth   map[market.MarketID]float64
 	netWorthOK map[market.MarketID]bool
 	settings   map[string]string
+	goals      []db.Goal
+	goalAssets []db.GoalAsset
 }
 
 func (f *fakeWealthStore) ListAssetsWithValue(includeArchived bool) ([]db.AssetWithValue, error) {
@@ -33,6 +35,14 @@ func (f *fakeWealthStore) GetNetWorthOnOrBefore(date string, m market.MarketID) 
 func (f *fakeWealthStore) GetSetting(key string) (string, bool, error) {
 	v, ok := f.settings[key]
 	return v, ok, nil
+}
+
+func (f *fakeWealthStore) ListGoals() ([]db.Goal, error) {
+	return f.goals, nil
+}
+
+func (f *fakeWealthStore) ListAllGoalAssets() ([]db.GoalAsset, error) {
+	return f.goalAssets, nil
 }
 
 type fakeWealthFX struct {
@@ -140,5 +150,51 @@ func TestWealthTotalsUsesCachedHistoricalRate(t *testing.T) {
 	}
 	if total != 30000 {
 		t.Errorf("total = %v, want 30000", total)
+	}
+}
+
+func TestComputeRetirementGoalProgressCapsAt100(t *testing.T) {
+	store := &fakeWealthStore{
+		assets: []db.AssetWithValue{
+			{Asset: db.Asset{ID: 1, Side: "asset", AssetGroup: "growth", Currency: "TWD"}, Value: floatPtr(9000000)},
+		},
+		goals:      []db.Goal{{ID: 1, Name: "退休", Kind: "retirement", TargetAmount: 8000000}},
+		goalAssets: []db.GoalAsset{{GoalID: 1, AssetID: 1, Ratio: 1}},
+	}
+
+	p, ok := ComputeRetirementGoalProgress(store, &fakeWealthFX{}, &fakeWealthQuotes{}, "2026-09-15")
+	if !ok {
+		t.Fatal("ComputeRetirementGoalProgress() ok = false, want true")
+	}
+	if p.Saved != 9000000 {
+		t.Errorf("Saved = %v, want 9000000", p.Saved)
+	}
+	if p.ProgressPct != 100 {
+		t.Errorf("ProgressPct = %v, want 100 (capped, overfunded goal)", p.ProgressPct)
+	}
+}
+
+func TestComputeRetirementGoalProgressNoGoalDegrades(t *testing.T) {
+	store := &fakeWealthStore{goals: []db.Goal{{ID: 1, Name: "小孩教育金", Kind: "general", TargetAmount: 500000}}}
+
+	if _, ok := ComputeRetirementGoalProgress(store, &fakeWealthFX{}, &fakeWealthQuotes{}, "2026-09-15"); ok {
+		t.Error("ComputeRetirementGoalProgress() ok = true, want false (no kind=retirement goal)")
+	}
+}
+
+func TestComputeRetirementGoalProgressFXFailureDegrades(t *testing.T) {
+	store := &fakeWealthStore{
+		assets: []db.AssetWithValue{
+			{Asset: db.Asset{ID: 1, Side: "asset", AssetGroup: "growth", Currency: "USD"}, Value: floatPtr(1000)},
+		},
+		goals:      []db.Goal{{ID: 1, Name: "退休", Kind: "retirement", TargetAmount: 8000000}},
+		goalAssets: []db.GoalAsset{{GoalID: 1, AssetID: 1, Ratio: 1}},
+	}
+
+	// No USDTWD quote and no cached rate — RateToTWD can't price the
+	// earmarked asset, so the whole progress must degrade rather than
+	// silently report progress based on a partial sum (§8.17.1).
+	if _, ok := ComputeRetirementGoalProgress(store, &fakeWealthFX{}, &fakeWealthQuotes{}, "2026-09-15"); ok {
+		t.Error("ComputeRetirementGoalProgress() ok = true, want false (FX unresolvable)")
 	}
 }

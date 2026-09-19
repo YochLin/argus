@@ -796,4 +796,23 @@ If nothing in the transcript is worth extracting, output nothing.
 	KeyNetworthSummaryLine:  "Net worth: %s\nYTD: %s | MoM: %s\nTotal assets: %s | Total liabilities: %s\n",
 	KeyNetworthHealthHeader: "\nHealth metrics:\n",
 	KeyNetworthHealthLine:   "Debt ratio: %s | Liquidity: %s\nSavings rate: %s | Expense ratio: %s\n",
+
+	KeyWealthHealthReportTitle:    "📋 *Monthly Financial Health Report (%s)*\n",
+	KeyWealthHealthRetirementLine: "Retirement goal \"%s\" progress: %s (saved %s / target %s)\n",
+	KeyWealthHealthInsightHeader:  "\nInterpretation:\n",
+
+	KeyWealthHealthPromptIntro:            "You are a personal finance advisor. Give a short interpretation of %s's financial health numbers below (don't just repeat the numbers — point out what they mean and what changed).\n\n",
+	KeyWealthHealthPromptDebtRatioLine:    "Debt ratio: %.1f%%\n",
+	KeyWealthHealthPromptLiquidityLine:    "Liquidity: %.1f months\n",
+	KeyWealthHealthPromptSavingsRateLine:  "Savings rate: %.1f%%\n",
+	KeyWealthHealthPromptExpenseRatioLine: "Expense ratio: %.1f%%\n",
+	KeyWealthHealthPromptRetirementLine:   "Retirement goal \"%s\" progress: %.1f%% (saved NT$%.0f / target NT$%.0f)\n",
+	KeyWealthHealthPromptTask: `
+Write a 150-250 word interpretation, focusing on:
+1. What these numbers say about overall financial health, and which metric deserves the most attention
+2. Any risk signals worth flagging (e.g. low liquidity, low savings rate, high debt ratio)
+3. If a retirement goal progress figure is given, one sentence on whether it's ahead or behind
+
+Don't repeat the numbers already listed above, and don't recommend specific investments.
+`,
 }

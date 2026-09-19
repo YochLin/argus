@@ -49,10 +49,11 @@ func TestBootWithoutTelegram(t *testing.T) {
 				t.Error("telegram must be false without a Telegram token")
 			}
 			// The 9 Telegram-era jobs + 2 universe scans + the TW
-			// universe refresh + log rotation + backup, and the two
-			// sector-flow scans only when Web exists. Asserted as a count,
-			// not a list, so re-gating any of them on Telegram fails here.
-			wantJobs := 14
+			// universe refresh + log rotation + backup + the wealth health
+			// report (Phase 9 波次3 PR9), and the two sector-flow scans only
+			// when Web exists. Asserted as a count, not a list, so
+			// re-gating any of them on Telegram fails here.
+			wantJobs := 15
 			if tc.wantWeb {
 				wantJobs += 2
 			}

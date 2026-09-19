@@ -51,6 +51,8 @@ type WealthStore interface {
 	ListAssetsValueAsOf(asOfDate string, includeArchived bool) ([]db.AssetWithValue, error)
 	GetNetWorthOnOrBefore(date string, m market.MarketID) (float64, bool, error)
 	GetSetting(key string) (string, bool, error)
+	ListGoals() ([]db.Goal, error)
+	ListAllGoalAssets() ([]db.GoalAsset, error)
 }
 
 // WealthFXStore is the currency-conversion cache (§8.2) — read-and-write
@@ -360,4 +362,77 @@ func ComputeHealthMetrics(store WealthStore, fx WealthFXStore, quotes QuoteReade
 		}
 	}
 	return m
+}
+
+// RetirementGoalProgress is the kind="retirement" goal's funding snapshot —
+// PR9's "一行退休目標進度" input. ProgressPct is capped at 100, same
+// overfunded-reads-as-done convention as /w/goals' own progress bar.
+type RetirementGoalProgress struct {
+	Name         string
+	TargetAmount float64
+	Saved        float64
+	ProgressPct  float64
+}
+
+// ComputeRetirementGoalProgress sums the retirement goal's earmarked assets
+// to TWD as of asOf — the same math wealth_goals.go's earmarkedSavedTWD and
+// wealth_retire.go's buildRetirementResponse already do for /w/goals and
+// /w/retire, hoisted here so the monthly health report (internal/bot) can
+// share it too without internal/bot importing internal/web (not a
+// dependency this codebase allows, AGENTS.md's per-package boundaries).
+// Kept as its own small function rather than refactoring those two web
+// handlers onto it — they also need per-asset rows for their own JSON
+// responses, which this single-number report doesn't. ok=false when there's
+// no retirement goal yet, it has no target amount, or any earmarked asset's
+// currency can't be priced (whole-metric-degrades, §8.17.1).
+func ComputeRetirementGoalProgress(store WealthStore, fx WealthFXStore, quotes QuoteReader, asOf string) (RetirementGoalProgress, bool) {
+	goals, err := store.ListGoals()
+	if err != nil {
+		return RetirementGoalProgress{}, false
+	}
+	var goal *db.Goal
+	for i := range goals {
+		if goals[i].Kind == "retirement" {
+			goal = &goals[i]
+			break
+		}
+	}
+	if goal == nil || goal.TargetAmount <= 0 {
+		return RetirementGoalProgress{}, false
+	}
+
+	earmarks, err := store.ListAllGoalAssets()
+	if err != nil {
+		return RetirementGoalProgress{}, false
+	}
+	assetList, err := store.ListAssetsWithValue(true)
+	if err != nil {
+		return RetirementGoalProgress{}, false
+	}
+	assetByID := make(map[int64]db.AssetWithValue, len(assetList))
+	for _, a := range assetList {
+		assetByID[a.ID] = a
+	}
+
+	var saved float64
+	for _, ga := range earmarks {
+		if ga.GoalID != goal.ID {
+			continue
+		}
+		a, found := assetByID[ga.AssetID]
+		if !found || a.Value == nil {
+			continue
+		}
+		rate, ok := RateToTWD(a.Currency, asOf, true, quotes, fx)
+		if !ok {
+			return RetirementGoalProgress{}, false
+		}
+		saved += *a.Value * ga.Ratio * rate
+	}
+
+	pct := saved / goal.TargetAmount * 100
+	if pct > 100 {
+		pct = 100
+	}
+	return RetirementGoalProgress{Name: goal.Name, TargetAmount: goal.TargetAmount, Saved: saved, ProgressPct: pct}, true
 }
