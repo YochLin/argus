@@ -730,6 +730,34 @@ export interface Dictionary {
   wealthInsureSpouseIncomeNo: string;
   wealthInsureSetupSave: string;
   wealthInsureNeedPendingNote: string;
+
+  navWealthFunds: string;
+  wealthFundsMvLabel: string;
+  wealthFundsCostLabel: string;
+  wealthFundsPnlLabel: string;
+  wealthFundsMonthlyLabel: string;
+  wealthFundsChartTitle: string;
+  wealthFundsCostLeg: string;
+  wealthFundsMvLeg: string;
+  wealthFundsChartAxis24: string;
+  wealthFundsChartAxis12: string;
+  wealthFundsChartAxisNow: string;
+  wealthFundsScheduleTitle: string;
+  wealthFundsScheduleEmpty: string;
+  wealthFundsTableTitle: string;
+  wealthFundsColClass: string;
+  wealthFundsColCode: string;
+  wealthFundsColPlatform: string;
+  wealthFundsColMonthly: string;
+  wealthFundsColCost: string;
+  wealthFundsColMv: string;
+  wealthFundsColPnl: string;
+  wealthFundsColReturn: string;
+  wealthFundsColOneYear: string;
+  wealthFundsColNext: string;
+  wealthFundsStopped: string;
+  wealthFundsClassName: string;
+  wealthFundsNoFunds: string;
 }
 
 const en: Dictionary = {
@@ -1384,6 +1412,34 @@ const en: Dictionary = {
   wealthInsureSpouseIncomeNo: "No",
   wealthInsureSetupSave: "Save",
   wealthInsureNeedPendingNote: "Set up household details below to see life/accidental-death/disability need estimates.",
+
+  navWealthFunds: "Funds & DCA",
+  wealthFundsMvLabel: "MARKET VALUE",
+  wealthFundsCostLabel: "TOTAL INVESTED",
+  wealthFundsPnlLabel: "UNREALIZED P&L",
+  wealthFundsMonthlyLabel: "MONTHLY CONTRIBUTION",
+  wealthFundsChartTitle: "INVESTED VS MARKET VALUE (24 MO)",
+  wealthFundsCostLeg: "invested",
+  wealthFundsMvLeg: "market value",
+  wealthFundsChartAxis24: "24 mo ago",
+  wealthFundsChartAxis12: "12 mo ago",
+  wealthFundsChartAxisNow: "now",
+  wealthFundsScheduleTitle: "THIS MONTH'S SCHEDULE",
+  wealthFundsScheduleEmpty: "No upcoming contributions",
+  wealthFundsTableTitle: "HOLDINGS & PERFORMANCE",
+  wealthFundsColClass: "Class",
+  wealthFundsColCode: "Code",
+  wealthFundsColPlatform: "Platform",
+  wealthFundsColMonthly: "Monthly",
+  wealthFundsColCost: "Invested",
+  wealthFundsColMv: "Market value",
+  wealthFundsColPnl: "P&L",
+  wealthFundsColReturn: "Return",
+  wealthFundsColOneYear: "1-yr",
+  wealthFundsColNext: "Next",
+  wealthFundsStopped: "lump sum",
+  wealthFundsClassName: "Fund",
+  wealthFundsNoFunds: "No funds yet — import via CSV on the Import page.",
 };
 
 const zh: Dictionary = {
@@ -2032,6 +2088,34 @@ const zh: Dictionary = {
   wealthInsureSpouseIncomeNo: "沒有",
   wealthInsureSetupSave: "儲存",
   wealthInsureNeedPendingNote: "設定下方家庭參數後，才能算出壽險／意外／失能扶助的需求保額。",
+
+  navWealthFunds: "基金與定期定額",
+  wealthFundsMvLabel: "投資市值",
+  wealthFundsCostLabel: "累積投入",
+  wealthFundsPnlLabel: "未實現損益",
+  wealthFundsMonthlyLabel: "每月扣款",
+  wealthFundsChartTitle: "累積投入 vs 市值（近 24 個月）",
+  wealthFundsCostLeg: "累積投入",
+  wealthFundsMvLeg: "市值",
+  wealthFundsChartAxis24: "24 個月前",
+  wealthFundsChartAxis12: "12 個月前",
+  wealthFundsChartAxisNow: "現在",
+  wealthFundsScheduleTitle: "本月扣款排程",
+  wealthFundsScheduleEmpty: "近期沒有排定扣款",
+  wealthFundsTableTitle: "扣款標的與績效",
+  wealthFundsColClass: "類別",
+  wealthFundsColCode: "代號",
+  wealthFundsColPlatform: "平台",
+  wealthFundsColMonthly: "每月扣款",
+  wealthFundsColCost: "累積投入",
+  wealthFundsColMv: "市值",
+  wealthFundsColPnl: "損益",
+  wealthFundsColReturn: "報酬率",
+  wealthFundsColOneYear: "近一年",
+  wealthFundsColNext: "下次扣款",
+  wealthFundsStopped: "已停扣",
+  wealthFundsClassName: "基金",
+  wealthFundsNoFunds: "尚無基金資料 — 請至匯入頁用 CSV 匯入。",
 };
 
 const dictionaries: Record<string, Dictionary> = { en, zh };

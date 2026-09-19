@@ -41,6 +41,40 @@ func TestParseWealthImportCSV(t *testing.T) {
 		}
 	})
 
+	t.Run("fund row parses its type-specific columns", func(t *testing.T) {
+		csv := "side,type,name,group,venue,currency,value,date,bank,accountNote,lender,ratePct,originalPrincipal,remainingMonths,fundCode,fundPlatform,fundMonthlyAmount,fundNextContributionDate\n" +
+			"asset,fund,元大台灣50,growth,券商,TWD,640000,2026-09-01,,,,,,,0050,券商,12000,2026-10-06\n"
+		rows, err := parseWealthImportCSV(csv)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(rows) != 1 {
+			t.Fatalf("len(rows) = %d, want 1", len(rows))
+		}
+		f := rows[0]
+		if f.Status != "ok" || f.Type != "fund" || f.FundCode != "0050" || f.FundPlatform != "券商" {
+			t.Errorf("fund row = %+v, want ok fund with code/platform set", f)
+		}
+		if f.FundMonthlyAmount == nil || *f.FundMonthlyAmount != 12000 {
+			t.Errorf("fund FundMonthlyAmount = %v, want 12000", f.FundMonthlyAmount)
+		}
+		if f.FundNextContributionDate != "2026-10-06" {
+			t.Errorf("fund FundNextContributionDate = %q, want 2026-10-06", f.FundNextContributionDate)
+		}
+	})
+
+	t.Run("fund row with no monthly amount (lump-sum/stopped)", func(t *testing.T) {
+		csv := "side,type,name,group,venue,currency,value,date,bank,accountNote,lender,ratePct,originalPrincipal,remainingMonths,fundCode,fundPlatform,fundMonthlyAmount,fundNextContributionDate\n" +
+			"asset,fund,富邦科技（單筆）,growth,券商,TWD,411000,2026-09-01,,,,,,,0052,券商,,\n"
+		rows, err := parseWealthImportCSV(csv)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(rows) != 1 || rows[0].Status != "ok" || rows[0].FundMonthlyAmount != nil {
+			t.Errorf("rows = %+v, want one ok row with nil FundMonthlyAmount", rows)
+		}
+	})
+
 	t.Run("other-type row needs no detail columns", func(t *testing.T) {
 		rows, err := parseWealthImportCSV("side,type,name,group,venue,currency,value,date\n" +
 			"asset,other,黃金,hard,,TWD,50000,2026-09-01\n")
@@ -112,6 +146,7 @@ type fakeWealthImportDB struct {
 	nextID       int64
 	createdAsset []db.NewAsset
 	createdLoan  []db.LoanDetails
+	createdFund  []db.FundDetails
 	snapshots    []db.AssetSnapshot
 }
 
@@ -152,21 +187,33 @@ func (f *fakeWealthImportDB) UpsertRetirementGoal(name string, targetAmount floa
 func (f *fakeWealthImportDB) CreateInsuranceAsset(a db.NewAsset, det db.InsuranceDetails, cov db.InsuranceCoverage) (int64, error) {
 	return 0, nil
 }
+func (f *fakeWealthImportDB) CreateFundAsset(a db.NewAsset, det db.FundDetails) (int64, error) {
+	f.nextID++
+	f.createdAsset = append(f.createdAsset, a)
+	f.createdFund = append(f.createdFund, det)
+	return f.nextID, nil
+}
 
 func TestApplyWealthImportRows(t *testing.T) {
 	fake := &fakeWealthImportDB{}
+	monthly := 12000.0
 	rows := []wealthImportRow{
 		{Status: "ok", Side: "asset", Type: "deposit", Name: "玉山活存", Group: "liquid", Currency: "TWD", Value: 100000, Date: "2026-09-01"},
 		{Status: "ok", Side: "liability", Type: "loan", Name: "房貸", Group: "hard", Currency: "TWD", Value: 3000000, Date: "2026-09-01", Lender: "國泰世華"},
+		{Status: "ok", Side: "asset", Type: "fund", Name: "元大台灣50", Group: "growth", Currency: "TWD", Value: 640000, Date: "2026-09-01",
+			FundCode: "0050", FundPlatform: "券商", FundMonthlyAmount: &monthly, FundNextContributionDate: "2026-10-06"},
 		{Status: "duplicate", Side: "asset", Type: "deposit", Name: "重複", Group: "liquid", Value: 1},
 	}
 
 	applied := applyWealthImportRows(fake, rows)
-	if applied != 2 {
-		t.Fatalf("applied = %d, want 2 (duplicate row skipped)", applied)
+	if applied != 3 {
+		t.Fatalf("applied = %d, want 3 (duplicate row skipped)", applied)
 	}
-	if len(fake.createdAsset) != 2 || len(fake.snapshots) != 2 {
-		t.Fatalf("createdAsset=%d snapshots=%d, want 2 and 2", len(fake.createdAsset), len(fake.snapshots))
+	if len(fake.createdAsset) != 3 || len(fake.snapshots) != 3 {
+		t.Fatalf("createdAsset=%d snapshots=%d, want 3 and 3", len(fake.createdAsset), len(fake.snapshots))
+	}
+	if len(fake.createdFund) != 1 || fake.createdFund[0].Code != "0050" || fake.createdFund[0].MonthlyAmount == nil || *fake.createdFund[0].MonthlyAmount != 12000 {
+		t.Errorf("createdFund = %+v, want one entry with Code=0050 MonthlyAmount=12000", fake.createdFund)
 	}
 	for _, a := range fake.createdAsset {
 		if a.Source != "import" {
@@ -178,11 +225,11 @@ func TestApplyWealthImportRows(t *testing.T) {
 			t.Errorf("snapshot Source = %q, want \"import\"", s.Source)
 		}
 	}
-	if rows[0].Status != "applied" || rows[1].Status != "applied" {
-		t.Errorf("rows[0/1].Status = %q/%q, want applied/applied", rows[0].Status, rows[1].Status)
+	if rows[0].Status != "applied" || rows[1].Status != "applied" || rows[2].Status != "applied" {
+		t.Errorf("rows[0/1/2].Status = %q/%q/%q, want applied/applied/applied", rows[0].Status, rows[1].Status, rows[2].Status)
 	}
-	if rows[2].Status != "duplicate" {
-		t.Errorf("rows[2].Status = %q, want unchanged duplicate", rows[2].Status)
+	if rows[3].Status != "duplicate" {
+		t.Errorf("rows[3].Status = %q, want unchanged duplicate", rows[3].Status)
 	}
 	if len(fake.createdLoan) != 1 || fake.createdLoan[0].Lender != "國泰世華" {
 		t.Errorf("createdLoan = %+v, want one entry with Lender 國泰世華", fake.createdLoan)
