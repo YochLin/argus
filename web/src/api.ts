@@ -2180,12 +2180,18 @@ export interface RetirementPathPoint {
 export interface WealthRetire {
   asOf: string;
   hasBirthYear: boolean;
+  currentAge: number;
   retirementAge: number;
   retirementAgeOptions: number[];
   monthlySpend: number;
   monthlySpendOptions: number[];
   monthlyContribution: number;
+  otherIncome: number;
   pool: number | null;
+  horizonAge: number;
+  preReturnPct: number;
+  postReturnPct: number;
+  withdrawalRatePct: number;
   retirementYear?: number;
   need: number | null;
   baseline: RetirementScenario | null;
@@ -2197,6 +2203,13 @@ export interface WealthRetire {
 
 export function fetchWealthRetire(): Promise<WealthRetire> {
   return getJSON("/api/wealth/retire");
+}
+
+// fetchWealthRetireLive is the settings drawer's what-if preview — the same
+// GET endpoint with the drawer's overrides as a query string, never
+// persisted server-side (see wealth_retire.go's retirementLiveOverrides).
+export function fetchWealthRetireLive(params: URLSearchParams): Promise<WealthRetire> {
+  return getJSON(`/api/wealth/retire?${params.toString()}`);
 }
 
 export function saveWealthRetire(name: string, retirementAge: number, monthlySpend: number): Promise<WealthRetire> {

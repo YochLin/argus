@@ -7,7 +7,10 @@ import "testing"
 // 3%/1% real returns, spend low enough to be funded on one input and a spend
 // high enough to leave a gap on another.
 func TestComputeRetirementProjectionFundedVsGap(t *testing.T) {
-	in := RetirementInputs{YearsToRetirement: 2, YearsPostRetirement: 3, Pool: 1000000, MonthlySpend: 1000}
+	in := RetirementInputs{
+		YearsToRetirement: 2, YearsPostRetirement: 3, Pool: 1000000, MonthlySpend: 1000,
+		PreReturn: RetirementPreReturnReal, PostReturn: RetirementPostReturnReal, WithdrawalRate: RetirementWithdrawalRateReal,
+	}
 	got := ComputeRetirementProjection(in)
 	wantAtRet := 1000000 * 1.03 * 1.03
 	if diff := got.ProjectedAtRetirement - wantAtRet; diff > 1 || diff < -1 {
@@ -21,7 +24,10 @@ func TestComputeRetirementProjectionFundedVsGap(t *testing.T) {
 		t.Errorf("expected funded with pool far exceeding a 300k need, got Funded=%v GapAmount=%v", got.Funded, got.GapAmount)
 	}
 
-	underfunded := ComputeRetirementProjection(RetirementInputs{YearsToRetirement: 0, YearsPostRetirement: 30, Pool: 100000, MonthlySpend: 90000})
+	underfunded := ComputeRetirementProjection(RetirementInputs{
+		YearsToRetirement: 0, YearsPostRetirement: 30, Pool: 100000, MonthlySpend: 90000,
+		PreReturn: RetirementPreReturnReal, PostReturn: RetirementPostReturnReal, WithdrawalRate: RetirementWithdrawalRateReal,
+	})
 	if underfunded.Funded {
 		t.Errorf("expected an underfunded plan, got Funded=true")
 	}
@@ -35,7 +41,10 @@ func TestComputeRetirementProjectionFundedVsGap(t *testing.T) {
 // baseline, and that a plan with money left over at the horizon reports
 // DepletionYearsAfterRetirement == nil in every scenario.
 func TestComputeRetirementScenariosCrashHurtsBaseline(t *testing.T) {
-	in := RetirementInputs{YearsToRetirement: 10, YearsPostRetirement: 30, Pool: 20000000, MonthlyContribution: 30000, MonthlySpend: 50000}
+	in := RetirementInputs{
+		YearsToRetirement: 10, YearsPostRetirement: 30, Pool: 20000000, MonthlyContribution: 30000, MonthlySpend: 50000,
+		PreReturn: RetirementPreReturnReal, PostReturn: RetirementPostReturnReal, WithdrawalRate: RetirementWithdrawalRateReal,
+	}
 	baseline, crash, lowReturn := ComputeRetirementScenarios(in)
 
 	if crash.ProjectedAtRetirement >= baseline.ProjectedAtRetirement {

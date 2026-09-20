@@ -9,16 +9,22 @@ package service
 // 1.0% after — so spending is expressed in today's dollars and there's no
 // separate inflation parameter to misread as nominal.
 //
-// These are plain constants, not env-tunable, even though §10.2②'s doc text
-// suggests "情境參數走 env 可調": every other wealth threshold actually shipped
-// in this codebase (goalStatus's 5pp band, /w/alloc's drift bands) is a plain
-// constant too — this stays consistent with what was actually built rather
-// than the doc's unimplemented aspiration.
+// These are the plain-constant defaults, not env-tunable, even though
+// §10.2②'s doc text suggests "情境參數走 env 可調": every other wealth
+// threshold actually shipped in this codebase (goalStatus's 5pp band,
+// /w/alloc's drift bands) is a plain constant too — this stays consistent
+// with what was actually built rather than the doc's unimplemented
+// aspiration. /w/retire's settings drawer does let a user override the
+// return/withdrawal/horizon figures per RetirementInputs below, but that's
+// a page-local, unpersisted "what-if" query param (internal/web/wealth_retire.go),
+// not an env var — these constants stay the resolved default whenever no
+// override is given.
 const (
-	RetirementPreReturnReal          = 0.03 // real return, still contributing
-	RetirementPostReturnReal         = 0.01 // real return, drawing down
+	RetirementPreReturnReal          = 0.03 // default real return, still contributing
+	RetirementPostReturnReal         = 0.01 // default real return, drawing down
 	RetirementWithdrawalMultiple     = 25   // 4% rule: need = annual spend * 25
-	RetirementHorizonAge             = 92   // simulate depletion out to this age
+	RetirementWithdrawalRateReal     = 0.04 // same 4% rule as a rate rather than a multiple — RetirementInputs.WithdrawalRate takes this form
+	RetirementHorizonAge             = 92   // default simulate-depletion-out-to age
 	RetirementScenarioCrashPct       = 0.30 // one-off shock, sequence-of-returns scenario
 	RetirementScenarioCrashLeadYears = 5    // years before retirement the shock lands
 	RetirementScenarioLowReturnDelta = 0.015
@@ -35,6 +41,15 @@ type RetirementInputs struct {
 	Pool                float64 // today's TWD value of retirement-earmarked assets
 	MonthlyContribution float64
 	MonthlySpend        float64 // today's dollars
+	// PreReturn/PostReturn/WithdrawalRate are caller-resolved fractions
+	// (e.g. 0.04 for 4%) — this package no longer defaults them internally,
+	// same "caller resolves, package stays a pure function" rule as
+	// YearsToRetirement/YearsPostRetirement above. A caller with no custom
+	// value passes RetirementPreReturnReal/RetirementPostReturnReal/
+	// RetirementWithdrawalRateReal.
+	PreReturn      float64
+	PostReturn     float64
+	WithdrawalRate float64
 }
 
 // RetirementPathPoint is one yearly balance sample for the projection chart.
@@ -96,7 +111,7 @@ func simulate(in RetirementInputs, preReturn, postReturn float64, crashAtYear in
 
 func project(in RetirementInputs, preReturn, postReturn float64, crashAtYear int) RetirementProjection {
 	path, atRet, depletion := simulate(in, preReturn, postReturn, crashAtYear)
-	need := in.MonthlySpend * 12 * RetirementWithdrawalMultiple
+	need := in.MonthlySpend * 12 / in.WithdrawalRate
 	achievement := 999.0
 	if need > 0 {
 		achievement = atRet / need * 100
@@ -117,7 +132,7 @@ func project(in RetirementInputs, preReturn, postReturn float64, crashAtYear int
 
 // ComputeRetirementProjection is the baseline scenario.
 func ComputeRetirementProjection(in RetirementInputs) RetirementProjection {
-	return project(in, RetirementPreReturnReal, RetirementPostReturnReal, -1)
+	return project(in, in.PreReturn, in.PostReturn, -1)
 }
 
 // ComputeRetirementScenarios runs the three §10.2② scenarios off the same
@@ -134,8 +149,8 @@ func ComputeRetirementScenarios(in RetirementInputs) (baseline, crash, lowReturn
 	if crashAtYear < 0 {
 		crashAtYear = 0
 	}
-	crash = project(in, RetirementPreReturnReal, RetirementPostReturnReal, crashAtYear)
+	crash = project(in, in.PreReturn, in.PostReturn, crashAtYear)
 
-	lowReturn = project(in, RetirementPreReturnReal-RetirementScenarioLowReturnDelta, RetirementPostReturnReal-RetirementScenarioLowReturnDelta, -1)
+	lowReturn = project(in, in.PreReturn-RetirementScenarioLowReturnDelta, in.PostReturn-RetirementScenarioLowReturnDelta, -1)
 	return baseline, crash, lowReturn
 }
