@@ -208,7 +208,7 @@ func (s *Server) handleWealthBalance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var totalLiabilities float64
-	var liabilities []liabilityDetail
+	liabilities := []liabilityDetail{}
 	liabFxOK := true
 	for _, a := range list {
 		if a.Value == nil || a.Side != "liability" {
