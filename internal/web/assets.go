@@ -43,6 +43,11 @@ type wealthWriter interface {
 	// 波次3 PR8) — one call creates the asset + insurance_details +
 	// insurance_coverages row atomically.
 	CreateInsuranceAsset(a db.NewAsset, det db.InsuranceDetails, cov db.InsuranceCoverage) (int64, error)
+	// CreateFundAsset backs wealth_import.go's fund-type CSV rows (Phase 9
+	// 波次4 PR10) — /w/funds itself has no add form (§9.4 PR10: fund rows
+	// only ever arrive via /w/import), so this is CSV-only, unlike the other
+	// CreateXxxAsset methods above.
+	CreateFundAsset(a db.NewAsset, det db.FundDetails) (int64, error)
 }
 
 // assetResponse mirrors db.AssetWithValue for JSON — Value/Cost stay nil
@@ -133,8 +138,11 @@ type wealthAssetCreateRequest struct {
 
 // depositAssetTypes picks which detail table a create request writes to;
 // the loan-side equivalent is assets.LoanTypes (shared with
-// internal/service's balance-sheet/debt-payoff assembly).
+// internal/service's balance-sheet/debt-payoff assembly). fundAssetTypes is
+// the fund-side equivalent, used only by wealth_import.go — /w/funds has no
+// quick-add drawer (§9.4 PR10), so handleWealthAssetCreate never checks it.
 var depositAssetTypes = map[string]bool{"deposit": true}
+var fundAssetTypes = map[string]bool{"fund": true}
 
 // handleWealthAssetCreate backs POST /api/wealth/assets — the quick-add
 // drawer's single write path, gated like every other write route. It always

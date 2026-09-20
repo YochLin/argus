@@ -61,31 +61,36 @@ function GoalProgressBar({
   );
 }
 
-// GoalCard mirrors the template's goal row exactly (lines 1166-1201): name +
-// state chip + pct on top, note below, progress bar with the
+// GoalCard mirrors the template's goal row exactly (lines 1166-1201): the
+// big (retirement) row puts note inline in the header next to the name
+// (line 1170), the small grid cards put it on its own line below the header
+// instead (line 1192) — two different layouts for the same field, not an
+// oversight, so `big` picks which one renders. Progress bar with the
 // expected-progress mark, then a Saved/Target/Monthly/ETA stat line — no
 // write affordances anywhere, since the template's own /w/goals section has
 // none (unlike /w/cash's "+" drawer trigger, this page's header is just a
-// "see retirement" link). `big` renders it as the enlarged "glow" card the
+// "see retirement" link). `big` also renders the enlarged "glow" card the
 // template reserves for the retirement row (lines 1166-1182) instead of the
-// plain grid card (lines 1186-1200) — Monthly is always "—": the goals
-// schema (§8.8/§9.2) has no monthly-contribution column, so there's nothing
-// to compute it from yet; ETA falls back to the user's own targetDate rather
-// than a projected completion date, since that projection also needs the
-// monthly figure we don't have.
+// plain grid card (lines 1186-1200). Monthly is real data only for the
+// retirement row (goal.monthlyContribution, read from the same
+// profile.retirement_monthly_contribution setting /w/retire uses) — general
+// goals stay "—": the goals schema (§8.8/§9.2) has no monthly-contribution
+// column for them, so there's nothing to compute it from yet. ETA falls back
+// to the user's own targetDate rather than a projected completion date,
+// since that projection also needs a monthly figure most goals don't have.
 function GoalCard({ dict, goal, big }: { dict: Dictionary; goal: Goal; big: boolean }) {
   const pct = goal.progressPct != null ? Math.max(0, Math.min(100, goal.progressPct)) : 0;
   return (
     <div className={`card${big ? " card--glow" : ""}`} style={{ display: "flex", flexDirection: "column", gap: 9 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
         <span style={{ fontFamily: "var(--sans)", fontSize: big ? 16 : 13.5 }}>{goal.name}</span>
-        {goal.kind === "retirement" && <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{dict.wealthGoalsKindRetirement}</span>}
+        {big && goal.note && <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{goal.note}</span>}
         <StatusChip dict={dict} status={goal.status} />
         <span className="mono" style={{ marginLeft: "auto", fontSize: big ? 24 : 17 }}>
           {goal.progressPct != null ? `${goal.progressPct.toFixed(1)}%` : "—"}
         </span>
       </div>
-      {goal.note && <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{goal.note}</div>}
+      {!big && goal.note && <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{goal.note}</div>}
       <GoalProgressBar dict={dict} pct={pct} markPct={goal.markPct} status={goal.status} />
       <div style={{ display: "flex", gap: big ? 22 : 18, flexWrap: "wrap", fontFamily: "var(--font-mono)", fontSize: big ? 11 : 10.5, color: "var(--ink-3)" }}>
         <span>
@@ -95,7 +100,8 @@ function GoalCard({ dict, goal, big }: { dict: Dictionary; goal: Goal; big: bool
           {dict.wealthGoalsTargetLabel} <span style={{ color: "var(--ink)" }}>{fmtMoney(goal.targetAmount, CURRENCY)}</span>
         </span>
         <span>
-          {dict.wealthGoalsMonthlyLabel} <span style={{ color: "var(--ink)" }}>—</span>
+          {dict.wealthGoalsMonthlyLabel}{" "}
+          <span style={{ color: "var(--ink)" }}>{goal.monthlyContribution != null ? fmtMoney(goal.monthlyContribution, CURRENCY) : "—"}</span>
         </span>
         <span>
           {dict.wealthGoalsEtaLabel} <span style={{ color: "var(--ink)" }}>{goal.targetDate || "—"}</span>

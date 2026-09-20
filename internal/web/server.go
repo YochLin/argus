@@ -342,6 +342,11 @@ func New(cfg Config) *Server {
 	// add-policy form behind the usual write gate.
 	s.mux.HandleFunc("GET /api/wealth/insure", s.handleWealthInsureGet)
 	s.mux.HandleFunc("POST /api/wealth/insure", s.requireWritable(s.requireAuth(s.handleWealthInsureCreate)))
+	// /api/wealth/funds (`/w/funds`, §9.4 PR10) — DCA/fund holdings' KPI row,
+	// 24-month cost-vs-value chart, upcoming contribution schedule, and
+	// per-fund performance table. Read-only, GET only — the page has no add
+	// form (fund rows only ever arrive via /w/import's CSV path).
+	s.mux.HandleFunc("GET /api/wealth/funds", s.handleWealthFundsGet)
 	// /api/settings (Phase 17 PR2) sits behind the same gate as every write
 	// route, GET included: the read side reports which credentials are
 	// configured, which is not something to hand out unauthenticated.

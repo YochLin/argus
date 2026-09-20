@@ -85,6 +85,10 @@ type fakeDB struct {
 	// GetInsuranceDetails for wealth_insure_test.go (Phase 9 波次3 PR8).
 	insuranceCoverages []db.InsuranceCoverage
 	insuranceDetails   map[int64]*db.InsuranceDetails
+	// fundDetails backs GetFundDetails for wealth_funds_test.go (Phase 9
+	// 波次4 PR10) — keyed by asset id, nil (the zero value) behaves as "no
+	// fund_details row."
+	fundDetails map[int64]*db.FundDetails
 }
 
 func (f *fakeDB) GetPositions() ([]db.Position, error)          { return f.positions, nil }
@@ -227,6 +231,9 @@ func (f *fakeDB) ListInsuranceCoverages() ([]db.InsuranceCoverage, error) {
 }
 func (f *fakeDB) GetInsuranceDetails(assetID int64) (*db.InsuranceDetails, error) {
 	return f.insuranceDetails[assetID], nil
+}
+func (f *fakeDB) GetFundDetails(assetID int64) (*db.FundDetails, error) {
+	return f.fundDetails[assetID], nil
 }
 
 // BlockNewsSource/UnblockNewsSource let fakeDB double as a newsSourceWriter

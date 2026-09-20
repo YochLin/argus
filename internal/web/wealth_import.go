@@ -12,11 +12,15 @@ import (
 	"argus/internal/logger"
 )
 
-// wealthImportRow is one parsed/annotated CSV row — Bank/AccountNote or
-// Lender/RatePct/OriginalPrincipal/RemainingMonths are populated only when
-// Type routes to that detail table (same depositAssetTypes/assets.LoanTypes
-// split handleWealthAssetCreate uses); an "other"-type row leaves them all
-// zero/nil.
+// wealthImportRow is one parsed/annotated CSV row — Bank/AccountNote,
+// Lender/RatePct/OriginalPrincipal/RemainingMonths, or FundCode/
+// FundPlatform/FundMonthlyAmount/FundNextContributionDate are populated only
+// when Type routes to that detail table (same depositAssetTypes/
+// assets.LoanTypes/fundAssetTypes split handleWealthAssetCreate uses); an
+// "other"-type row leaves them all zero/nil. Fund is the only type with no
+// quick-add drawer equivalent — /w/funds has no add form (§9.4 PR10), CSV
+// import is its one write path — but the columns still sit at the same
+// fixed positions as the deposit/loan ones so the template stays one shape.
 type wealthImportRow struct {
 	Line     int     `json:"line"`
 	Side     string  `json:"side"`
@@ -35,6 +39,11 @@ type wealthImportRow struct {
 	OriginalPrincipal *float64 `json:"originalPrincipal,omitempty"`
 	RemainingMonths   *int64   `json:"remainingMonths,omitempty"`
 
+	FundCode                 string   `json:"fundCode,omitempty"`
+	FundPlatform             string   `json:"fundPlatform,omitempty"`
+	FundMonthlyAmount        *float64 `json:"fundMonthlyAmount,omitempty"`
+	FundNextContributionDate string   `json:"fundNextContributionDate,omitempty"`
+
 	Status  string `json:"status"` // "ok" | "warning" | "duplicate" | "error" | "applied"
 	Message string `json:"message"`
 }
@@ -52,10 +61,11 @@ type wealthImportResponse struct {
 
 // parseWealthImportCSV parses the initial-data-entry template (§8.15.1):
 // side,type,name,group,venue,currency,value,date,bank,accountNote,lender,
-// ratePct,originalPrincipal,remainingMonths — the last six columns are only
-// read when Type routes to deposit_details/loan_details, blank otherwise. A
-// header row is always present and always skipped, same convention as
-// parseImportCSV's trade template.
+// ratePct,originalPrincipal,remainingMonths,fundCode,fundPlatform,
+// fundMonthlyAmount,fundNextContributionDate — the last ten columns are only
+// read when Type routes to deposit_details/loan_details/fund_details, blank
+// otherwise. A header row is always present and always skipped, same
+// convention as parseImportCSV's trade template.
 func parseWealthImportCSV(csvText string) ([]wealthImportRow, error) {
 	reader := csv.NewReader(strings.NewReader(csvText))
 	reader.FieldsPerRecord = -1
@@ -162,6 +172,29 @@ func parseWealthImportCSV(csvText string) ([]wealthImportRow, error) {
 				}
 				row.RemainingMonths = &n
 			}
+		case fundAssetTypes[row.Type]:
+			row.FundCode = col(rec, 14)
+			row.FundPlatform = col(rec, 15)
+			if v := col(rec, 16); v != "" {
+				f, perr := strconv.ParseFloat(v, 64)
+				if perr != nil {
+					row.Status = "error"
+					row.Message = "invalid fundMonthlyAmount: " + v
+					rows = append(rows, row)
+					continue
+				}
+				row.FundMonthlyAmount = &f
+			}
+			if v := col(rec, 17); v != "" {
+				fundDate, fok := resolveTradeDate(v)
+				if !fok {
+					row.Status = "error"
+					row.Message = "invalid fundNextContributionDate, expected YYYY-MM-DD: " + v
+					rows = append(rows, row)
+					continue
+				}
+				row.FundNextContributionDate = fundDate
+			}
 		}
 
 		row.Status = "ok"
@@ -230,6 +263,11 @@ func applyWealthImportRows(w wealthWriter, rows []wealthImportRow) int {
 			id, err = w.CreateLoanAsset(na, db.LoanDetails{
 				Lender: row.Lender, RatePct: row.RatePct,
 				OriginalPrincipal: row.OriginalPrincipal, RemainingMonths: row.RemainingMonths,
+			})
+		case fundAssetTypes[row.Type]:
+			id, err = w.CreateFundAsset(na, db.FundDetails{
+				Code: row.FundCode, Platform: row.FundPlatform,
+				MonthlyAmount: row.FundMonthlyAmount, NextContributionDate: row.FundNextContributionDate,
 			})
 		default:
 			id, err = w.CreateAsset(na)

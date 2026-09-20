@@ -62,16 +62,17 @@ const llmLink = { path: "/llm", label: (d: Dictionary) => d.navLlm, icon: <LlmIc
 // /w/*, distinct from the trading side's paths. Order mirrors the design
 // template's navDefs (Argus Trading WebUI.dc.html lines 7299-7304):
 // /w, /w/alloc, /w/balance, /w/cash, /w/bonds, /w/funds, /w/insure,
-// /w/retire, /w/goals, /w/tax, /w/docs — /w/bonds/funds/tax/docs don't exist
-// yet (later PRs), but /w/insure (PR8) already sits between /w/cash and
-// /w/retire per that order. /w/import has no template counterpart (it
-// replaces the scrapped PDF-upload flow, §8.15.1) so it stays appended at
-// the end.
+// /w/retire, /w/goals, /w/tax, /w/docs — /w/bonds/tax/docs don't exist yet
+// (later PRs), but /w/funds (PR10) and /w/insure (PR8) already sit between
+// /w/cash and /w/retire per that order. /w/import has no template
+// counterpart (it replaces the scrapped PDF-upload flow, §8.15.1) so it
+// stays appended at the end.
 const wealthLinks: Array<{ path: string; label: (dict: Dictionary) => string; icon: ReactNode }> = [
   { path: "/w", label: (d) => d.navWealth, icon: <WealthIcon /> },
   { path: "/w/alloc", label: (d) => d.navWealthAlloc, icon: <AllocIcon /> },
   { path: "/w/balance", label: (d) => d.navWealthBalance, icon: <BalanceSheetIcon /> },
   { path: "/w/cash", label: (d) => d.navWealthCash, icon: <CashIcon /> },
+  { path: "/w/funds", label: (d) => d.navWealthFunds, icon: <FundsIcon /> },
   { path: "/w/insure", label: (d) => d.navWealthInsure, icon: <RiskIcon /> },
   { path: "/w/retire", label: (d) => d.navWealthRetire, icon: <RetireIcon /> },
   { path: "/w/goals", label: (d) => d.navWealthGoals, icon: <GoalsIcon /> },
@@ -486,6 +487,17 @@ function CashIcon() {
       <circle cx="8" cy="8" r="1.8" />
       <line x1="3.5" y1="8" x2="3.5" y2="8" />
       <line x1="12.5" y1="8" x2="12.5" y2="8" />
+    </svg>
+  );
+}
+
+function FundsIcon() {
+  return (
+    <svg {...iconProps} aria-hidden="true">
+      <line x1="2.5" y1="13.5" x2="13.5" y2="13.5" />
+      <rect x="3.5" y="9" width="2.4" height="4.5" />
+      <rect x="6.8" y="6" width="2.4" height="7.5" />
+      <rect x="10.1" y="3" width="2.4" height="10.5" />
     </svg>
   );
 }

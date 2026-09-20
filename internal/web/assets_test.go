@@ -33,6 +33,8 @@ type fakeWealthDB struct {
 	lastInsuranceAsset                    db.NewAsset
 	lastInsuranceDetails                  db.InsuranceDetails
 	lastInsuranceCoverage                 db.InsuranceCoverage
+	lastFundAsset                         db.NewAsset
+	lastFundDetails                       db.FundDetails
 
 	createErr         error
 	snapshotErr       error
@@ -45,6 +47,7 @@ type fakeWealthDB struct {
 	earmarkErr        error
 	retirementGoalErr error
 	insuranceErr      error
+	fundErr           error
 
 	nextCashflowID int64
 	nextGoalID     int64
@@ -108,6 +111,11 @@ func (f *fakeWealthDB) CreateInsuranceAsset(a db.NewAsset, det db.InsuranceDetai
 	f.lastInsuranceAsset, f.lastInsuranceDetails, f.lastInsuranceCoverage = a, det, cov
 	f.nextID++
 	return f.nextID, f.insuranceErr
+}
+func (f *fakeWealthDB) CreateFundAsset(a db.NewAsset, det db.FundDetails) (int64, error) {
+	f.lastFundAsset, f.lastFundDetails = a, det
+	f.nextID++
+	return f.nextID, f.fundErr
 }
 
 func newWealthTestServer(password string, wealthDB wealthWriter, dbr dbReader) *Server {

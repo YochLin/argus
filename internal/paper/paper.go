@@ -188,29 +188,29 @@ func SuggestShares(equity, riskPct, price, stop float64) int {
 
 // TrailingStopThreshold is internal/bot/jobs.go's trailing-stop distance
 // formula, moved here for the same no-drift reason as SuggestShares — see
-// jobs.go's checkTrailingStopAlerts, which now calls this instead. atrMult
-// <=0 disables the ATR-based leg; when both legs are usable the tighter one
-// wins (see the original doc comment this carries forward).
+// jobs.go's checkTrailingStopAlerts, which now calls this instead. It is the
+// single choke point both the paper/backtest engine (MarkClose) and the live
+// alert path (service.RiskService.EvaluateTrailingStopAlerts) go through, so
+// the rule below only exists once.
+//
+// When ATR is usable it REPLACES the fixed percentage; fixedPct is the
+// fallback for when it is not (a fresh listing with under 15 bars, a data
+// gap). It used to take the tighter of the two, which sounds prudent and is
+// measurably pointless — see DefaultExits for the numbers. min() can only
+// ever tighten, and tightening is the half that does not help: replaying the
+// random-entry control at min(18%, 6 ATR) against a plain 18% moves the mean
+// exit return by -0.02 to +0.00pp across all four samples, i.e. nothing,
+// while letting ATR replace the 18% is worth +0.13 to +0.38pp at 1.8-5.1
+// sigma. The entire gain comes from WIDENING the stop on a high-volatility
+// ticker, which is exactly what a cap forbids.
 func TrailingStopThreshold(fixedPct, atrMult, atr, peak float64) (thresholdPct float64, atrBased, ok bool) {
-	atrPct := 0.0
-	atrOK := atrMult > 0 && atr > 0 && peak > 0
-	if atrOK {
-		atrPct = atrMult * atr / peak * 100
+	if atrMult > 0 && atr > 0 && peak > 0 {
+		return atrMult * atr / peak * 100, true, true
 	}
-
-	switch {
-	case fixedPct > 0 && atrOK:
-		if atrPct < fixedPct {
-			return atrPct, true, true
-		}
+	if fixedPct > 0 {
 		return fixedPct, false, true
-	case fixedPct > 0:
-		return fixedPct, false, true
-	case atrOK:
-		return atrPct, true, true
-	default:
-		return 0, false, false
 	}
+	return 0, false, false
 }
 
 // Equity is cash plus the mark-to-market value of every holding. A holding

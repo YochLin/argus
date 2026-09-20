@@ -731,4 +731,25 @@ var migrations = []string{
 	);
 	CREATE INDEX IF NOT EXISTS idx_insurance_coverages_asset ON insurance_coverages(asset_id);
 	`,
+	// 33: Phase 9 波次4 PR10 — fund_details backs /w/funds
+	// (docs/phase-9-asset-platform.md §8.7/§9.2). A fund/DCA holding is an
+	// assets row with type='fund'; fund_details is its 1:1 detail row, same
+	// shape as deposit_details/loan_details. MonthlyAmount NULL or 0 means
+	// "stopped" (a lump-sum-only holding, e.g. the template's 富邦科技（單筆）
+	// row) — displayed as 已停扣, excluded from the monthly-contribution
+	// total and the upcoming-schedule card, same as a nil pointer elsewhere
+	// in this schema means "not applicable" rather than a real zero.
+	// NextContributionDate is "" when MonthlyAmount is 0/NULL. Cost-basis and
+	// market-value both live in asset_snapshots (migration 24 already has the
+	// cost column) — fund_details only carries what asset_snapshots doesn't:
+	// the DCA identity fields.
+	`
+	CREATE TABLE IF NOT EXISTS fund_details (
+		asset_id                INTEGER PRIMARY KEY,
+		code                    TEXT,
+		platform                TEXT,
+		monthly_amount          REAL,
+		next_contribution_date  TEXT
+	);
+	`,
 }

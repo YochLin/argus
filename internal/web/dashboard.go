@@ -126,6 +126,11 @@ type dbReader interface {
 	// ListAssetsWithValue.
 	ListInsuranceCoverages() ([]db.InsuranceCoverage, error)
 	GetInsuranceDetails(assetID int64) (*db.InsuranceDetails, error)
+	// GetFundDetails backs wealth_funds.go's GET /api/wealth/funds (Phase 9
+	// 波次4 PR10) — writes go through the separate wealthWriter interface
+	// below (fund rows are only ever created via CSV import, see
+	// wealth_import.go).
+	GetFundDetails(assetID int64) (*db.FundDetails, error)
 }
 
 // netWorthBaseline resolves the capital base for a period starting at

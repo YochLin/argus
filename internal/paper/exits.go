@@ -41,6 +41,49 @@ type ExitDefaults struct {
 // deliberately not taken — see .env.example for why the metric the backtest
 // maximizes is not what this setting is for.
 //
+// Since 2026-09-19 TrailingPct is only the FALLBACK: TrailingATRMult is 6,
+// and TrailingStopThreshold uses the ATR distance whenever ATR is computable,
+// falling back to the 18% when it is not. A fixed percentage is one number
+// asserted over every ticker, and the tickers disagree — ATR(14)/price has an
+// interquartile range of 1.76-2.83% on US and 1.94-4.44% on TW, so 18% is a
+// very different stop on a utility than on a small-cap semi.
+//
+// 6 was chosen to hold the FIRING RATE fixed rather than to maximize return,
+// which is what makes it a like-for-like swap of the same rule rather than a
+// looser one (random-entry control, share of exits coming from the trailing
+// stop, 18% fixed -> 6 ATR): US 2.9%->4.2% and 4.5%->5.9%, TW 14.5%->14.1%
+// and 18.0%->14.5%. One value covers both markets; no TW-specific override is
+// needed, unlike StopLossPct.
+//
+// At matched firing rate it is better in all four samples. Paired
+// date-clustered bootstrap, 400 resamples, identical control entries in both
+// arms (58-66k trades per sample), mean exit return per trade:
+//
+//	18% fixed ->    US in-samp    US holdout    TW in-samp    TW holdout
+//	  4 ATR         -0.11  0.9o    +0.02  0.2o   -0.06  0.9o   +0.27  2.8o
+//	  6 ATR         +0.23  1.8o    +0.13  5.1o   +0.18  2.4o   +0.38  3.1o
+//	  8 ATR         +0.26  2.3o    +0.13  4.6o   +0.24  2.8o   +0.41  3.0o
+//
+// 8 ATR measures best and is rejected on the same ground 25% fixed was: it
+// fires on 0.7-1.1% of US exits, so it has stopped being a trailing stop at
+// all, and for real positions this threshold is an ALERT — one that almost
+// never fires is not a warning. 4 ATR fails the bar (negative in two
+// samples). 6 is the only multiple tested that both clears §4.4 in all four
+// samples and keeps the alert cadence the user already lives with.
+//
+// The gain is entirely from widening on volatile tickers, NOT from tightening
+// on quiet ones — see TrailingStopThreshold for the min()-vs-replace
+// measurement that establishes this. Do not "improve" this by capping the ATR
+// distance at TrailingPct; that has been measured and it gives the whole
+// effect back.
+//
+// Reproduce:
+//
+//	strategyscan -market=<us|tw> ... -trailing-pct=18 -trailing-atr=0 -dump-trades=a.csv
+//	strategyscan -market=<us|tw> ... -trailing-pct=0  -trailing-atr=6 -dump-trades=b.csv
+//	then a paired bootstrap on b-a joined by (Date, Ticker) — the control
+//	entries are identical across runs, so the pairing is exact.
+//
 // TakeProfitATRMult stays 0 on evidence rather than by default: every value
 // tested (2/3/4/6 ATR) costs return in all four samples, and the tighter the
 // worse. 2 ATR lifts the US out-of-sample win rate from 41.6% to 59.6% while
@@ -95,9 +138,10 @@ type ExitDefaults struct {
 // about it.
 func DefaultExits(m market.MarketID) ExitDefaults {
 	d := ExitDefaults{
-		StopATRMult: 2,
-		StopLossPct: 10,
-		TrailingPct: 18,
+		StopATRMult:     2,
+		StopLossPct:     10,
+		TrailingPct:     18,
+		TrailingATRMult: 6,
 	}
 	if m == market.TW {
 		d.StopLossPct = 12
