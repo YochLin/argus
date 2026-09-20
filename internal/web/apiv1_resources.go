@@ -396,9 +396,5 @@ func (s *Server) handleAPIRecommendationsTrigger(w http.ResponseWriter, r *http.
 		defer s.recRunning.Store(false)
 		s.recommender.RunRecommend(ctx, m)
 	}()
-	writeJSON(w, http.StatusAccepted, apiResponse{
-		Success:   true,
-		Data:      map[string]string{"status": "started", "market": string(m)},
-		Timestamp: time.Now().Unix(),
-	})
+	writeAPIResponse(w, http.StatusAccepted, map[string]string{"status": "started", "market": string(m)})
 }
