@@ -685,6 +685,33 @@ export interface Dictionary {
   wealthRetireSetupSave: string;
   wealthRetireSeeGoalsLink: string;
   wealthRetireGoalProgressLabel: string;
+  // Settings drawer ("設定我的假設") — a live, unpersisted what-if preview
+  // over every assumption the projection above depends on (design template
+  // lines 1073-1139/4585-4619). wealthRetireChartLabelWithAge/
+  // wealthRetireDepleteNeverWithAge carry a literal "{age}" token the
+  // component substitutes with the live horizon age, mirroring the
+  // template's own string concatenation for the same dynamic text.
+  wealthRetireSettingsButton: string;
+  wealthRetireCfgTitle: string;
+  wealthRetireCfgNote: string;
+  wealthRetireCfgEdited: string;
+  wealthRetireCfgReset: string;
+  wealthRetireCfgDone: string;
+  wealthRetireCfgSecTime: string;
+  wealthRetireCfgSecFlow: string;
+  wealthRetireCfgSecAssume: string;
+  wealthRetireCurrentAgeLabel: string;
+  wealthRetireLifeLabel: string;
+  wealthRetireOtherIncomeLabel: string;
+  wealthRetireOtherIncomeHint: string;
+  wealthRetireCfgContribLabel: string;
+  wealthRetirePreRLabel: string;
+  wealthRetirePostRLabel: string;
+  wealthRetireSwrLabel: string;
+  wealthRetireSwrHint: string;
+  wealthRetireNetSpendLabel: string;
+  wealthRetireChartLabelWithAge: string;
+  wealthRetireDepleteNeverWithAge: string;
 
   // Insurance gap-analysis page (`/w/insure`, Phase 9 波次3 PR8, §8.6/
   // §8.16.1) — six-coverage-kind have/need table (a pure-function survivor-
@@ -1370,6 +1397,27 @@ const en: Dictionary = {
   wealthRetireSetupSave: "Save",
   wealthRetireSeeGoalsLink: "See in goal tracker ›",
   wealthRetireGoalProgressLabel: "GOAL PROGRESS",
+  wealthRetireSettingsButton: "Edit assumptions",
+  wealthRetireCfgTitle: "RETIREMENT SETTINGS",
+  wealthRetireCfgNote: "These inputs only drive this projection — your recorded assets stay untouched.",
+  wealthRetireCfgEdited: "CUSTOM",
+  wealthRetireCfgReset: "Reset",
+  wealthRetireCfgDone: "Done",
+  wealthRetireCfgSecTime: "TIMELINE",
+  wealthRetireCfgSecFlow: "CASH FLOW & PRINCIPAL",
+  wealthRetireCfgSecAssume: "RETURN & WITHDRAWAL",
+  wealthRetireCurrentAgeLabel: "Current age",
+  wealthRetireLifeLabel: "Life expectancy",
+  wealthRetireOtherIncomeLabel: "Other income after retirement",
+  wealthRetireOtherIncomeHint: "Labor pension, rent, etc. — subtracted from monthly spend",
+  wealthRetireCfgContribLabel: "Monthly contribution",
+  wealthRetirePreRLabel: "Pre-retirement real return",
+  wealthRetirePostRLabel: "Post-retirement real return",
+  wealthRetireSwrLabel: "WITHDRAWAL RATE",
+  wealthRetireSwrHint: "4% ≈ 25× annual spend",
+  wealthRetireNetSpendLabel: "NET MONTHLY WITHDRAWAL",
+  wealthRetireChartLabelWithAge: "PROJECTION TO AGE {age}",
+  wealthRetireDepleteNeverWithAge: "Never ({age}+)",
 
   navWealthInsure: "Insurance",
   wealthInsureAdd: "Add policy",
@@ -2045,6 +2093,27 @@ const zh: Dictionary = {
   wealthRetireSetupSave: "儲存",
   wealthRetireSeeGoalsLink: "在目標追蹤中檢視 ›",
   wealthRetireGoalProgressLabel: "目標進度",
+  wealthRetireSettingsButton: "設定我的假設",
+  wealthRetireCfgTitle: "退休規劃設定",
+  wealthRetireCfgNote: "這些數字只影響退休頁的試算，不會改動你的實際資產紀錄。",
+  wealthRetireCfgEdited: "已自訂",
+  wealthRetireCfgReset: "恢復預設",
+  wealthRetireCfgDone: "完成",
+  wealthRetireCfgSecTime: "時程",
+  wealthRetireCfgSecFlow: "現金流與本金",
+  wealthRetireCfgSecAssume: "報酬與提領假設",
+  wealthRetireCurrentAgeLabel: "目前年齡",
+  wealthRetireLifeLabel: "預期壽命",
+  wealthRetireOtherIncomeLabel: "退休後其他月收入",
+  wealthRetireOtherIncomeHint: "勞保年金、勞退月領、租金等，會從月支出中扣除",
+  wealthRetireCfgContribLabel: "每月投入",
+  wealthRetirePreRLabel: "退休前實質報酬",
+  wealthRetirePostRLabel: "退休後實質報酬",
+  wealthRetireSwrLabel: "年提領率",
+  wealthRetireSwrHint: "4% 約等於 25 倍年支出",
+  wealthRetireNetSpendLabel: "淨提領月支出",
+  wealthRetireChartLabelWithAge: "資產推估（至 {age} 歲）",
+  wealthRetireDepleteNeverWithAge: "{age} 歲後仍有結餘",
 
   navWealthInsure: "保單健檢",
   wealthInsureAdd: "新增保單",

@@ -3,6 +3,7 @@ package web
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -64,12 +65,28 @@ type retirementPathPoint struct {
 type retirementResponse struct {
 	AsOf                 string    `json:"asOf"`
 	HasBirthYear         bool      `json:"hasBirthYear"`
+	CurrentAge           int       `json:"currentAge"`
 	RetirementAge        int       `json:"retirementAge"`
 	RetirementAgeOptions []int     `json:"retirementAgeOptions"`
 	MonthlySpend         float64   `json:"monthlySpend"`
 	MonthlySpendOptions  []float64 `json:"monthlySpendOptions"`
 	MonthlyContribution  float64   `json:"monthlyContribution"`
-	Pool                 *float64  `json:"pool"`
+	// OtherIncome is the settings drawer's "其他月收入" what-if input
+	// (labour pension, rent, ...) — always 0 unless a live override sets
+	// it; there's no persisted source for this figure yet.
+	OtherIncome float64  `json:"otherIncome"`
+	Pool        *float64 `json:"pool"`
+	// HorizonAge/PreReturnPct/PostReturnPct/WithdrawalRatePct are the
+	// resolved (default-or-overridden) assumptions the projection below was
+	// actually computed with — echoed back so the settings drawer can
+	// prefill its fields from the real defaults on first open (Argus
+	// Trading WebUI.dc.html's retDefaults(), lines 4486-4499) without the
+	// frontend duplicating service.RetirementHorizonAge/PreReturnReal/
+	// PostReturnReal/WithdrawalRateReal as separate constants.
+	HorizonAge        int     `json:"horizonAge"`
+	PreReturnPct      float64 `json:"preReturnPct"`
+	PostReturnPct     float64 `json:"postReturnPct"`
+	WithdrawalRatePct float64 `json:"withdrawalRatePct"`
 	// RetirementYear is the calendar year the chart's vertical marker sits
 	// at — 0 when it can't be computed (no birth year yet).
 	RetirementYear int                        `json:"retirementYear,omitempty"`
@@ -81,10 +98,57 @@ type retirementResponse struct {
 	Goal           *goalItem                  `json:"goal,omitempty"`
 }
 
+// retirementLiveOverrides holds GET /api/wealth/retire's optional
+// "settings drawer" query params — a page-local, never-persisted what-if
+// preview (Argus Trading WebUI.dc.html's wRetCfg/retCfg(), lines 4490-4510:
+// "這些數字只影響退休頁的試算，不會改動你的實際資產紀錄"). Absent params fall
+// back to the real computed value, same merge semantics as retCfg().
+type retirementLiveOverrides struct {
+	age, retAge, lifeAge             *int
+	spend, otherInc, pool, contribMo *float64
+	preR, postR, swr                 *float64
+}
+
+func parseRetirementLiveOverrides(r *http.Request) retirementLiveOverrides {
+	q := r.URL.Query()
+	return retirementLiveOverrides{
+		age: queryIntPtr(q, "age"), retAge: queryIntPtr(q, "retAge"), lifeAge: queryIntPtr(q, "lifeAge"),
+		spend: queryFloatPtr(q, "spend"), otherInc: queryFloatPtr(q, "otherInc"),
+		pool: queryFloatPtr(q, "pool"), contribMo: queryFloatPtr(q, "contribMo"),
+		preR: queryFloatPtr(q, "preR"), postR: queryFloatPtr(q, "postR"), swr: queryFloatPtr(q, "swr"),
+	}
+}
+
+func queryIntPtr(q url.Values, key string) *int {
+	raw := q.Get(key)
+	if raw == "" {
+		return nil
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil {
+		return nil
+	}
+	return &v
+}
+
+func queryFloatPtr(q url.Values, key string) *float64 {
+	raw := q.Get(key)
+	if raw == "" {
+		return nil
+	}
+	v, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return nil
+	}
+	return &v
+}
+
 // buildRetirementResponse is shared by the GET and POST handlers — a save
 // just writes the goal row and then falls through to the same read path so
-// the two never compute the projection differently.
-func (s *Server) buildRetirementResponse() (retirementResponse, error) {
+// the two never compute the projection differently. r's query string carries
+// GET's optional live overrides (see retirementLiveOverrides); a POST's
+// request has none, so it always renders the real, just-persisted state.
+func (s *Server) buildRetirementResponse(r *http.Request) (retirementResponse, error) {
 	now := time.Now()
 	today := now.Format("2006-01-02")
 	resp := retirementResponse{
@@ -173,12 +237,66 @@ func (s *Server) buildRetirementResponse() (retirementResponse, error) {
 		return resp, nil
 	}
 
+	// ov holds the settings drawer's optional live-assumption overrides
+	// (GET only, never persisted). resp.Goal above is deliberately built
+	// from the real pool, never an override, so a what-if pool figure can
+	// never leak into the trustworthy "saved vs target" goal card.
+	ov := parseRetirementLiveOverrides(r)
+
 	currentAge := now.Year() - birthYear
+	if ov.age != nil {
+		currentAge = *ov.age
+	}
+	resp.CurrentAge = currentAge
+
+	if ov.retAge != nil {
+		resp.RetirementAge = *ov.retAge
+	}
+	if ov.spend != nil {
+		resp.MonthlySpend = *ov.spend
+	}
+	if ov.contribMo != nil {
+		resp.MonthlyContribution = *ov.contribMo
+	}
+
+	projPool := *pool
+	if ov.pool != nil {
+		projPool = *ov.pool
+		resp.Pool = ov.pool
+	}
+
+	resp.HorizonAge = service.RetirementHorizonAge
+	if ov.lifeAge != nil {
+		resp.HorizonAge = *ov.lifeAge
+	}
+
+	if ov.otherInc != nil {
+		resp.OtherIncome = *ov.otherInc
+	}
+	netSpend := resp.MonthlySpend - resp.OtherIncome
+	if netSpend < 0 {
+		netSpend = 0
+	}
+
+	preReturn := service.RetirementPreReturnReal
+	if ov.preR != nil {
+		preReturn = *ov.preR / 100
+	}
+	postReturn := service.RetirementPostReturnReal
+	if ov.postR != nil {
+		postReturn = *ov.postR / 100
+	}
+	withdrawalRate := service.RetirementWithdrawalRateReal
+	if ov.swr != nil {
+		withdrawalRate = *ov.swr / 100
+	}
+	resp.PreReturnPct, resp.PostReturnPct, resp.WithdrawalRatePct = preReturn*100, postReturn*100, withdrawalRate*100
+
 	yearsToRetirement := resp.RetirementAge - currentAge
 	if yearsToRetirement < 0 {
 		yearsToRetirement = 0
 	}
-	yearsPostRetirement := service.RetirementHorizonAge - resp.RetirementAge
+	yearsPostRetirement := resp.HorizonAge - resp.RetirementAge
 	if yearsPostRetirement < 0 {
 		yearsPostRetirement = 0
 	}
@@ -186,7 +304,8 @@ func (s *Server) buildRetirementResponse() (retirementResponse, error) {
 
 	in := service.RetirementInputs{
 		YearsToRetirement: yearsToRetirement, YearsPostRetirement: yearsPostRetirement,
-		Pool: *pool, MonthlyContribution: resp.MonthlyContribution, MonthlySpend: resp.MonthlySpend,
+		Pool: projPool, MonthlyContribution: resp.MonthlyContribution, MonthlySpend: netSpend,
+		PreReturn: preReturn, PostReturn: postReturn, WithdrawalRate: withdrawalRate,
 	}
 	baseline, crash, lowReturn := service.ComputeRetirementScenarios(in)
 	bs, cs, ls := toScenarioSummary(baseline, resp.RetirementAge), toScenarioSummary(crash, resp.RetirementAge), toScenarioSummary(lowReturn, resp.RetirementAge)
@@ -208,7 +327,7 @@ func (s *Server) handleWealthRetireGet(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "internal error")
 		}
 	}()
-	resp, err := s.buildRetirementResponse()
+	resp, err := s.buildRetirementResponse(r)
 	if err != nil {
 		logger.Errorf("web: wealth retire: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to load retirement plan")
@@ -260,7 +379,7 @@ func (s *Server) handleWealthRetireSave(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	resp, err := s.buildRetirementResponse()
+	resp, err := s.buildRetirementResponse(r)
 	if err != nil {
 		logger.Errorf("web: wealth retire: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to load retirement plan")

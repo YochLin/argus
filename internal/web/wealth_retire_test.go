@@ -95,6 +95,60 @@ func TestHandleWealthRetireGetComputesProjection(t *testing.T) {
 	}
 }
 
+// TestHandleWealthRetireGetLiveOverridesDontPersist pins the settings
+// drawer's what-if contract: a query-param override changes the returned
+// projection but never the goal card's real saved/target figures, and a
+// follow-up request with no query params comes back identical to the
+// pre-override baseline — nothing from the override was written anywhere.
+func TestHandleWealthRetireGetLiveOverridesDontPersist(t *testing.T) {
+	birthYear := time.Now().Year() - 40
+	retireYear := time.Now().Year() + 20
+	v := 20000000.0
+	fake := &fakeDB{
+		settings: map[string]string{birthYearSettingKey: strconv.Itoa(birthYear)},
+		wealthAssets: []db.AssetWithValue{
+			{Asset: db.Asset{ID: 1, Side: "asset", Type: "fund", Name: "退休基金", Currency: "TWD"}, Value: &v},
+		},
+		goals: []db.Goal{
+			{ID: 1, Name: "退休金", Kind: "retirement", TargetAmount: 90000 * 12 * 25, Currency: "TWD", TargetDate: strconv.Itoa(retireYear) + "-01-01", CreatedAt: "2020-01-01 00:00:00"},
+		},
+		goalAssets: []db.GoalAsset{{GoalID: 1, AssetID: 1, Ratio: 1.0}},
+	}
+	s := newWealthRetireTestServer("", fake, &fakeWealthDB{})
+
+	get := func(query string) retirementResponse {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/retire"+query, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+		}
+		var got retirementResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		return got
+	}
+
+	base := get("")
+	live := get("?preR=8&postR=1&swr=4")
+
+	if live.PreReturnPct != 8 {
+		t.Errorf("live PreReturnPct = %v, want 8", live.PreReturnPct)
+	}
+	if live.Baseline == nil || base.Baseline == nil || live.Baseline.AchievementPct <= base.Baseline.AchievementPct {
+		t.Errorf("expected a higher achievement rate under the 8%% preR override, live=%+v base=%+v", live.Baseline, base.Baseline)
+	}
+	if live.Goal == nil || base.Goal == nil || live.Goal.Saved == nil || base.Goal.Saved == nil || *live.Goal.Saved != *base.Goal.Saved {
+		t.Errorf("goal's saved figure must stay the real pool regardless of overrides, live=%v base=%v", live.Goal, base.Goal)
+	}
+
+	after := get("")
+	if after.PreReturnPct != base.PreReturnPct || after.RetirementAge != base.RetirementAge {
+		t.Errorf("override leaked into persisted state: after=%+v, want same as base=%+v", after, base)
+	}
+}
+
 // TestHandleWealthRetireSaveRequiresBirthYearThenUpsertsGoal pins the
 // write path's precondition (birth year must already be set) and, once
 // satisfied, that the quick-switch save computes the right target date and
