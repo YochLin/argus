@@ -79,8 +79,13 @@ func (b *Bot) handleList() {
 	b.Send(i18n.T(b.lang, i18n.KeyWatchlistTitle) + strings.Join(labels, "\n"))
 }
 
+func normalizeTicker(raw string) string {
+	t, _ := service.NormalizeTicker(raw)
+	return t
+}
+
 func (b *Bot) handleStatus(ticker string) {
-	ticker = strings.ToUpper(strings.TrimSpace(ticker))
+	ticker = normalizeTicker(ticker)
 	if ticker == "" {
 		watchlist := b.watchlists()
 		if watchlist == nil {
@@ -199,7 +204,7 @@ func (b *Bot) RunRecommend(ctx context.Context, m market.MarketID) {
 }
 
 func (b *Bot) handleCheck(ctx context.Context, ticker string) {
-	ticker = strings.ToUpper(strings.TrimSpace(ticker))
+	ticker = normalizeTicker(ticker)
 	if ticker == "" {
 		b.Send(i18n.T(b.lang, i18n.KeyCheckUsage))
 		return
@@ -732,7 +737,7 @@ func (b *Bot) recordBuy(ticker string, shares, price, fee float64, feeAuto bool,
 // Notify), so a web trade's Telegram push is now internal/web's explicit
 // choice rather than baked into every Execute* call.
 func (b *Bot) ExecuteBuy(ticker string, shares, price float64, fee *float64, date string) (string, error) {
-	ticker = strings.ToUpper(strings.TrimSpace(ticker))
+	ticker = normalizeTicker(ticker)
 	if ticker == "" || shares <= 0 || price <= 0 || (fee != nil && *fee < 0) {
 		msg := i18n.T(b.lang, i18n.KeyBuyUsage)
 		return msg, fmt.Errorf("invalid buy arguments")
@@ -859,7 +864,7 @@ func (b *Bot) recordSell(ticker string, shares, price, fee float64, feeAuto bool
 // ExecuteBuy), plus triggering the same sell-review goroutine handleSell
 // kicks off on a closing sell.
 func (b *Bot) ExecuteSell(ctx context.Context, ticker string, shares, price float64, fee *float64, date string) (string, error) {
-	ticker = strings.ToUpper(strings.TrimSpace(ticker))
+	ticker = normalizeTicker(ticker)
 	if ticker == "" || shares <= 0 || price <= 0 || (fee != nil && *fee < 0) {
 		msg := i18n.T(b.lang, i18n.KeySellUsage)
 		return msg, fmt.Errorf("invalid sell arguments")
@@ -882,7 +887,7 @@ func (b *Bot) ExecuteSell(ctx context.Context, ticker string, shares, price floa
 // Anything older than the latest is out of scope by design — see
 // db.DB.DeleteTransaction's doc comment.
 func (b *Bot) handleUndo(args string) {
-	ticker := strings.ToUpper(strings.TrimSpace(args))
+	ticker := normalizeTicker(args)
 	if ticker == "" {
 		b.Send(i18n.T(b.lang, i18n.KeyUndoUsage))
 		return
@@ -953,7 +958,7 @@ func (b *Bot) ExecuteDeleteTransaction(id int64) (string, error) {
 // so the web form rejects a stop price at/above the latest close the exact
 // same way /stop TICKER PRICE does.
 func (b *Bot) ExecuteSetStop(ticker string, price float64) (string, error) {
-	ticker = strings.ToUpper(strings.TrimSpace(ticker))
+	ticker = normalizeTicker(ticker)
 	if ticker == "" || price <= 0 {
 		msg := i18n.T(b.lang, i18n.KeyStopUsage)
 		return msg, fmt.Errorf("invalid stop arguments")
@@ -961,78 +966,14 @@ func (b *Bot) ExecuteSetStop(ticker string, price float64) (string, error) {
 	return b.setStop(ticker, price)
 }
 
-// tradeRound is a fully closed round trip in a ticker's transaction history:
-// the share balance went from 0 up to some positive amount (via one or more
-// BUYs) and back down to 0 (via one or more SELLs), possibly with several
-// buys and partial sells interleaved. Legs holds every transaction in that
-// round, oldest first.
-type tradeRound struct {
-	Legs      []db.Transaction
-	StartDate string // the first BUY's date
-	EndDate   string // the date the balance returned to 0
-}
+// tradeRound is a fully closed round trip in a ticker's transaction history.
+// Re-exported from internal/service for bot backwards compatibility.
+type tradeRound = service.Round
 
-// lastClosedRound segments txs (expected sorted oldest-first, as
-// db.GetTransactions returns them) into round trips by walking the running
-// share balance, and returns the most recent one that closed back to 0 —
-// deliberately not db.GetEarliestBuyDate's all-time MIN(date), which would
-// anchor to an earlier round if the ticker was fully closed out and later
-// re-entered (see docs/phase-3.8-sell-review.md's note on this exact
-// conflict). ok is false when there's no closed round at all (never traded,
-// or the only round on record is still open). A round still open at the end
-// of txs is simply not returned — /review reviews what's actually finished,
-// not an in-progress position. Balances within 1e-9 of 0 count as closed,
-// the same float-dust threshold db.RecordSell uses to decide whether a sell
-// fully closes a position.
-func lastClosedRound(txs []db.Transaction) (tradeRound, bool) {
-	var last tradeRound
-	found := false
-
-	balance := 0.0
-	start := -1
-	for i, tx := range txs {
-		if start == -1 {
-			start = i
-		}
-		switch tx.Side {
-		case "BUY":
-			balance += tx.Shares
-		case "SELL":
-			balance -= tx.Shares
-		}
-		if math.Abs(balance) < 1e-9 {
-			last = tradeRound{
-				Legs:      append([]db.Transaction{}, txs[start:i+1]...),
-				StartDate: txs[start].Date,
-				EndDate:   tx.Date,
-			}
-			found = true
-			start = -1
-			balance = 0
-		}
-	}
-	return last, found
-}
-
-// weightedAvgPrice returns the shares-weighted average price across every
-// leg in legs matching side ("BUY" or "SELL"), or 0 if there are none — the
-// same weighted-average shape db.RecordBuy uses for cost basis, just over a
-// fixed slice of legs instead of an incremental running update. Used to
-// reduce a multi-leg round trip's entry/exit down to single reference prices
-// for the vs-SPY comparison.
-func weightedAvgPrice(legs []db.Transaction, side string) float64 {
-	var shares, cost float64
-	for _, l := range legs {
-		if l.Side == side {
-			shares += l.Shares
-			cost += l.Shares * l.Price
-		}
-	}
-	if shares == 0 {
-		return 0
-	}
-	return cost / shares
-}
+var (
+	lastClosedRound  = service.LastClosedRound
+	weightedAvgPrice = service.WeightedAvgPrice
+)
 
 // buildClosedTradeReview assembles Phase 3.8 追加項's sell-review input (see
 // docs/phase-3.8-sell-review.md) for ticker's most recent fully closed round
@@ -1229,7 +1170,7 @@ const (
 // lesson as /recommend's empty-result fix, see docs/phase-20-price-event-log.md
 // §4.4) rather than going silent.
 func (b *Bot) handleEvents(args string) {
-	ticker := strings.ToUpper(strings.TrimSpace(args))
+	ticker := normalizeTicker(args)
 
 	var events []db.PriceEvent
 	var err error
@@ -1654,7 +1595,7 @@ func (b *Bot) handleUniverse(args string) {
 	sub := strings.ToLower(fields[0])
 	ticker := ""
 	if len(fields) > 1 {
-		ticker = strings.ToUpper(strings.TrimSpace(fields[1]))
+		ticker = normalizeTicker(fields[1])
 	}
 
 	switch sub {
@@ -1772,7 +1713,7 @@ func (b *Bot) handleThesis(args string) {
 	}
 
 	parts := strings.SplitN(args, " ", 2)
-	ticker := strings.ToUpper(strings.TrimSpace(parts[0]))
+	ticker := normalizeTicker(parts[0])
 	if ticker == "" {
 		b.Send(i18n.T(b.lang, i18n.KeyThesisUsage))
 		return

@@ -3,7 +3,6 @@ package web
 import (
 	"errors"
 	"fmt"
-	"math"
 	"sort"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/logger"
 	"argus/internal/market"
+	"argus/internal/service"
 )
 
 // errRoundNotFound distinguishes "no such round" (404) from any other
@@ -18,88 +18,15 @@ import (
 // to branch on via errors.Is.
 var errRoundNotFound = errors.New("web: round not found")
 
-// round is one position round trip in a ticker's transaction history: share
-// balance goes from 0 up (one or more BUYs) and, for a closed round, back
-// down to 0 (one or more SELLs) — mirrors internal/bot's tradeRound/
-// lastClosedRound (handlers.go), duplicated here rather than imported since
-// internal/web doesn't import internal/bot (transport-layer package; same
-// can't-share-an-import boundary as formatFundamentals elsewhere in this
-// project). Unlike lastClosedRound (which only returns the most recent
-// *closed* round, for the sell-review feature), segmentRounds below returns
-// every round including a still-open trailing one — the design doc's
-// "未清倉的持倉就是「進行中的回合」" — since the round detail page needs to
-// list and open all of them, not just the latest closed one.
-type round struct {
-	Legs      []db.Transaction
-	StartDate string
-	EndDate   string // "" if still open
-}
+// round is one position round trip in a ticker's transaction history.
+// Re-exported from internal/service for web backwards compatibility.
+type round = service.Round
 
-// segmentRounds walks txs (must be date-ordered, as db.GetAllTransactions/
-// GetTransactions already return them) into 0→positive→0 round trips,
-// exactly like internal/bot's lastClosedRound, but keeps every round instead
-// of just the latest closed one, and returns a still-open trailing round
-// (EndDate "") instead of omitting it. Balances within 1e-9 of 0 count as
-// closed, the same float-dust threshold db.RecordSell uses.
-func segmentRounds(txs []db.Transaction) []round {
-	var rounds []round
-	balance := 0.0
-	start := -1
-	for i, tx := range txs {
-		if start == -1 {
-			start = i
-		}
-		switch tx.Side {
-		case "BUY":
-			balance += tx.Shares
-		case "SELL":
-			balance -= tx.Shares
-		}
-		if math.Abs(balance) < 1e-9 {
-			rounds = append(rounds, round{
-				Legs:      append([]db.Transaction{}, txs[start:i+1]...),
-				StartDate: txs[start].Date,
-				EndDate:   tx.Date,
-			})
-			start = -1
-			balance = 0
-		}
-	}
-	if start != -1 {
-		rounds = append(rounds, round{
-			Legs:      append([]db.Transaction{}, txs[start:]...),
-			StartDate: txs[start].Date,
-			EndDate:   "",
-		})
-	}
-	return rounds
-}
-
-// roundRealizedPnL sums the realized_pnl of every SELL leg — meaningful for
-// both a closed round (its final total) and an in-progress one with partial
-// sells along the way (db.RecordSell computes realized_pnl per sell
-// regardless of whether that sell fully closes the position).
-func roundRealizedPnL(legs []db.Transaction) float64 {
-	var total float64
-	for _, l := range legs {
-		if l.Side == "SELL" {
-			total += l.RealizedPnL
-		}
-	}
-	return total
-}
-
-// roundBuyShares sums the BUY legs — the round's total position size, for
-// the picker list's display.
-func roundBuyShares(legs []db.Transaction) float64 {
-	var total float64
-	for _, l := range legs {
-		if l.Side == "BUY" {
-			total += l.Shares
-		}
-	}
-	return total
-}
+var (
+	segmentRounds    = service.SegmentRounds
+	roundRealizedPnL = service.RoundRealizedPnL
+	roundBuyShares   = service.RoundBuyShares
+)
 
 // buildRounds assembles /api/rounds: every round in market m, across every
 // ticker ever transacted in it, most-recently-started first — the flat list
