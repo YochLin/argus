@@ -136,11 +136,14 @@ type Bot struct {
 	// rule-based exit-discipline checks (checkStopLossAlerts/
 	// checkTrailingStopAlerts) — 0 disables the corresponding check entirely.
 	// trailingStopATRMult (TRAILING_STOP_ATR_MULT env, Phase 3.8 追加項) is an
-	// opt-in ATR(14) multiplier that tightens the trailing-stop distance for
-	// lower-volatility tickers — see paper.TrailingStopThreshold and
-	// docs/phase-3.8-atr-trailing-stop.md; <= 0 (the default) leaves
-	// trailingStopPct as the sole threshold, unchanged from before this field
-	// existed.
+	// ATR(14) multiplier that SETS the trailing-stop distance per ticker —
+	// wider for a volatile one, tighter for a quiet one — with
+	// trailingStopPct demoted to the fallback for when ATR is uncomputable.
+	// Default 6 as of 2026-09-19; it used to be an opt-in cap that could only
+	// tighten, which measured as worth nothing. See
+	// paper.TrailingStopThreshold, paper.DefaultExits and
+	// docs/phase-3.8-atr-trailing-stop.md. <= 0 leaves trailingStopPct as the
+	// sole threshold.
 	stopLossPct         float64
 	trailingStopPct     float64
 	stopLossPctTW       float64

@@ -120,6 +120,35 @@ func MA(closes []float64, period int) float64 {
 	return sum / float64(period)
 }
 
+// EMA returns the exponential moving average of the trailing closes (closes
+// is oldest-first, same convention as MA), or 0 if there isn't enough
+// history yet.
+//
+// A textbook EMA is seeded at the very first bar and recursed over the whole
+// series, which would make every per-bar call O(len(closes)) and every
+// backtest that walks bar-by-bar O(n^2). It is seeded here from an SMA over
+// a trailing window of emaSeedMultiple*period bars instead: the weight the
+// dropped history still carries is (1-2/(period+1))^(9*period), which is
+// ~3e-9 at period=10 — below the price resolution of any market this reads.
+func EMA(closes []float64, period int) float64 {
+	if period < 1 || len(closes) < period {
+		return 0
+	}
+	if n := emaSeedMultiple * period; len(closes) > n {
+		closes = closes[len(closes)-n:]
+	}
+	ema := MA(closes[:period], period)
+	k := 2.0 / float64(period+1)
+	for _, c := range closes[period:] {
+		ema += k * (c - ema)
+	}
+	return ema
+}
+
+// emaSeedMultiple is how many periods of history EMA seeds itself from; see
+// that function's doc comment for the truncation error it accepts.
+const emaSeedMultiple = 10
+
 // VolumeRatio returns the latest day's volume as a multiple of the average
 // of the preceding period days (excluding the latest day itself, so a huge
 // print doesn't inflate its own baseline), or 0 if there isn't enough
