@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { fetchWealthAlloc, type AllocationModel, type AllocCategory, type WealthAlloc, type WealthAllocRow } from "../api";
 import type { Dictionary } from "../i18n";
 import { fmtMoney } from "./WealthHomeView";
+import { categoryLabel, loadModel, saveModel } from "../wealthCategory";
 
 interface Props {
   dict: Dictionary;
@@ -14,33 +15,10 @@ function modelLabel(dict: Dictionary, m: AllocationModel): string {
   return m === "conserv" ? dict.wealthModelConserv : m === "growth" ? dict.wealthModelGrowth : dict.wealthModelBalanced;
 }
 
-// categoryLabel/categoryColorClass are /w/alloc's own nine-category
-// taxonomy (assets.AllocCategories, docs/phase-9-asset-platform.md §8.5) —
-// separate from WealthHomeView's four-bucket groupLabel/groupColorClass,
-// which the home page and balance sheet still use.
-function categoryLabel(dict: Dictionary, c: AllocCategory): string {
-  switch (c) {
-    case "cash":
-      return dict.wealthCategoryCash;
-    case "equity":
-      return dict.wealthCategoryEquity;
-    case "fund":
-      return dict.wealthCategoryFund;
-    case "bond":
-      return dict.wealthCategoryBond;
-    case "insurance":
-      return dict.wealthCategoryInsurance;
-    case "estate":
-      return dict.wealthCategoryEstate;
-    case "gold":
-      return dict.wealthCategoryGold;
-    case "crypto":
-      return dict.wealthCategoryCrypto;
-    case "pension":
-      return dict.wealthCategoryPension;
-  }
-}
-
+// categoryLabel (shared with the home page, wealthCategory.ts) and
+// categoryColorClass are /w/alloc's nine-category taxonomy
+// (assets.AllocCategories, docs/phase-9-asset-platform.md §8.5) — separate from
+// balance's four-bucket groupLabel/groupColorClass.
 const CATEGORY_COLOR_CLASS: Record<AllocCategory, string> = {
   cash: "s1",
   equity: "s2",
@@ -76,7 +54,7 @@ function donutGradient(rows: WealthAllocRow[]): string {
 }
 
 export function WealthAllocView({ dict }: Props) {
-  const [model, setModel] = useState<AllocationModel>("balanced");
+  const [model, setModel] = useState<AllocationModel>(loadModel);
   const [alloc, setAlloc] = useState<WealthAlloc | null>(null);
   const [error, setError] = useState(false);
 
@@ -102,7 +80,10 @@ export function WealthAllocView({ dict }: Props) {
         </span>
         <div className="topbar-tabs" role="group" aria-label="allocation model">
           {MODELS.map((m) => (
-            <button key={m} className={`topbar-tab${model === m ? " active" : ""}`} onClick={() => setModel(m)}>
+            <button key={m} className={`topbar-tab${model === m ? " active" : ""}`} onClick={() => {
+                setModel(m);
+                saveModel(m);
+              }}>
               {modelLabel(dict, m)}
             </button>
           ))}

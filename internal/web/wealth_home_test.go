@@ -131,3 +131,23 @@ func TestHandleWealthFX(t *testing.T) {
 		t.Errorf("rates = %v, want only USD=31.8", got.Rates)
 	}
 }
+
+// TestCountStale pins the banner's rule: only manual/import records with a
+// snapshot older than 90 days count; synced ones, snapshot-less ones and
+// fresh ones don't.
+func TestCountStale(t *testing.T) {
+	now := time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC)
+	mk := func(source, asOf string) db.AssetWithValue {
+		return db.AssetWithValue{Asset: db.Asset{Source: source}, AsOf: asOf}
+	}
+	list := []db.AssetWithValue{
+		mk("manual", "2026-01-01"), // stale
+		mk("import", "2026-06-01"), // 116 days: stale
+		mk("import", "2026-07-01"), // 86 days: fresh
+		mk("sync", "2025-01-01"),   // synced: never stale
+		mk("manual", ""),           // no snapshot: empty, not stale
+	}
+	if got := countStale(list, now); got != 2 {
+		t.Errorf("countStale = %d, want 2", got)
+	}
+}

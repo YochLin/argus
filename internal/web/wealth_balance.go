@@ -51,6 +51,7 @@ type liabilityDetail struct {
 	RemainingMonths *int64   `json:"remainingMonths,omitempty"`
 	MinPayment      *float64 `json:"minPayment,omitempty"`
 	Source          string   `json:"source"` // "manual"/"import"/"sync" (§9.1)
+	Type            string   `json:"type"`   // the asset's own Type ("loan"/"credit_card"/...)
 }
 
 type quarterPoint struct {
@@ -221,7 +222,7 @@ func (s *Server) handleWealthBalance(w http.ResponseWriter, r *http.Request) {
 		}
 		valueTWD := *a.Value * rate
 		totalLiabilities += valueTWD
-		ld := liabilityDetail{AssetID: a.ID, Name: a.Name, Venue: a.Venue, Currency: a.Currency, ValueTWD: valueTWD, Source: a.Source}
+		ld := liabilityDetail{AssetID: a.ID, Name: a.Name, Venue: a.Venue, Currency: a.Currency, ValueTWD: valueTWD, Source: a.Source, Type: a.Type}
 		if assets.LoanTypes[a.Type] {
 			if det, err := s.db.GetLoanDetails(a.ID); err == nil && det != nil {
 				ld.RatePct = det.RatePct
