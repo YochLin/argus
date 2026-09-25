@@ -185,13 +185,13 @@ function GoalDrawer({
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="wealth-drawer-overlay">
-          <Dialog.Content className="wealth-drawer-panel" aria-describedby={undefined} onOpenAutoFocus={(e) => e.preventDefault()}>
+          <Dialog.Content className="wealth-drawer-panel goal-drawer" aria-describedby={undefined} onOpenAutoFocus={(e) => e.preventDefault()}>
             <div className="wealth-drawer-header">
-              <Dialog.Title style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11 }}>
+              <Dialog.Title style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, fontWeight: 400 }}>
                 {goal ? dict.wealthGoalsEditTitle : dict.wealthGoalsAddTitle}
               </Dialog.Title>
               <Dialog.Close className="modal-close" style={{ marginLeft: "auto" }} aria-label="close">
-                ×
+                ✕
               </Dialog.Close>
             </div>
             <div className="wealth-drawer-body">
@@ -240,7 +240,7 @@ function GoalDrawer({
                 <button className="wealth-drawer-cancel" onClick={onClose}>
                   {dict.cancel}
                 </button>
-                <button className="btn-primary" style={{ flex: 1 }} disabled={!kind || busy} onClick={save}>
+                <button className="goal-save-btn" style={{ flex: 1 }} disabled={!kind || busy} onClick={save}>
                   {dict.wealthGoalsSave}
                 </button>
               </div>
@@ -300,7 +300,7 @@ function GoalCard({
       {big && (
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
           <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-3)" }}>{dict.wealthGoalsRetireLocked}</span>
-          <a href="#" style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11 }} onClick={(e) => { e.preventDefault(); onNavigate("/w/retire"); }}>
+          <a href="#" style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)", textDecoration: "none" }} onClick={(e) => { e.preventDefault(); onNavigate("/w/retire"); }}>
             {dict.wealthRetireSettingsButton}
           </a>
         </div>
@@ -361,12 +361,15 @@ export function WealthGoalsView({ dict, writable, onUnauthorized, onNavigate }: 
         <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: "var(--ink)" }}>
           {dict.navWealthGoals}
         </span>
-        <a href="#" style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11 }} onClick={(e) => { e.preventDefault(); onNavigate("/w/retire"); }}>
+        <a href="#" style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)", textDecoration: "none" }} onClick={(e) => { e.preventDefault(); onNavigate("/w/retire"); }}>
           {dict.wealthGoalsSeeRetireLink}
         </a>
         {writable && (
-          <button className="btn-tint" onClick={() => setDrawer(null)}>
-            + {dict.wealthGoalsAddBtn}
+          <button className="goal-add-btn" onClick={() => setDrawer(null)}>
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+              <path d="M8 3v10M3 8h10" />
+            </svg>
+            {dict.wealthGoalsAddBtn}
           </button>
         )}
       </div>

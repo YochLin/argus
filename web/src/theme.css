@@ -1596,6 +1596,76 @@ th {
   color: var(--loss);
 }
 
+/* Template's "+ 新增目標": sans 12.5px/700, a step larger than .btn-tint. */
+.goal-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 7px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+/* The template's goals drawer diverges from the shared wealth drawer shell
+   (add-asset et al.): 430px, ink-2 labels, tighter inputs, boxed close, a
+   surface Cancel and a tint Save (own class: .btn-primary is !important) (grey until a kind is picked). Scoped here
+   so the other drawers keep matching their own template markup. */
+.wealth-drawer-panel.goal-drawer {
+  width: min(430px, 100%);
+}
+
+.goal-drawer .modal-close {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.goal-drawer .wealth-drawer-field-label {
+  color: var(--ink-2);
+}
+
+.goal-drawer .wealth-drawer-field input {
+  padding: 8px 10px;
+}
+
+.goal-drawer .wealth-drawer-cancel {
+  font-size: 12.5px;
+  font-weight: 400;
+  padding: 8px 14px;
+  background: var(--surface);
+}
+
+.goal-drawer .goal-save-btn {
+  font-family: var(--font-sans);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 8px 14px;
+  border: 1px solid var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+.goal-drawer .goal-save-btn:disabled {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
 .goal-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
