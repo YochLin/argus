@@ -177,6 +177,7 @@ func (f *fakeWealthImportDB) CreateRecurringCashflow(c db.NewRecurringCashflow) 
 }
 func (f *fakeWealthImportDB) DeactivateRecurringCashflow(id int64) error { return nil }
 func (f *fakeWealthImportDB) CreateGoal(g db.NewGoal) (int64, error)     { return 0, nil }
+func (f *fakeWealthImportDB) UpdateGoal(id int64, g db.NewGoal) error    { return nil }
 func (f *fakeWealthImportDB) DeleteGoal(id int64) error                  { return nil }
 func (f *fakeWealthImportDB) SetGoalAsset(goalID, assetID int64, ratio float64) error {
 	return nil

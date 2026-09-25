@@ -293,6 +293,7 @@ func New(cfg Config) *Server {
 	// this auth gate, which every write route carries regardless).
 	s.mux.HandleFunc("GET /api/wealth/assets", s.handleWealthAssetsList)
 	s.mux.HandleFunc("GET /api/wealth/networth", s.handleWealthHome)
+	s.mux.HandleFunc("GET /api/wealth/fx", s.handleWealthFX)
 	s.mux.HandleFunc("POST /api/wealth/assets", s.requireWritable(s.requireAuth(s.handleWealthAssetCreate)))
 	s.mux.HandleFunc("POST /api/wealth/assets/snapshot", s.requireWritable(s.requireAuth(s.handleWealthAssetSnapshot)))
 	s.mux.HandleFunc("POST /api/wealth/assets/archive", s.requireWritable(s.requireAuth(s.handleWealthAssetArchive)))
@@ -327,6 +328,7 @@ func New(cfg Config) *Server {
 	// stay behind the usual gate as an API surface for managing goals.
 	s.mux.HandleFunc("GET /api/wealth/goals", s.handleWealthGoalsList)
 	s.mux.HandleFunc("POST /api/wealth/goals", s.requireWritable(s.requireAuth(s.handleWealthGoalCreate)))
+	s.mux.HandleFunc("POST /api/wealth/goals/update", s.requireWritable(s.requireAuth(s.handleWealthGoalUpdate)))
 	s.mux.HandleFunc("POST /api/wealth/goals/delete", s.requireWritable(s.requireAuth(s.handleWealthGoalDelete)))
 	s.mux.HandleFunc("POST /api/wealth/goals/earmark", s.requireWritable(s.requireAuth(s.handleWealthGoalEarmark)))
 	// /api/wealth/retire (`/w/retire`, §9.4 PR7) — real-return retirement

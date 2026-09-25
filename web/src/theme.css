@@ -32,7 +32,7 @@
   --s9: #22d3ee;
 
   --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-  --font-sans: "Plus Jakarta Sans", "PingFang TC", "Microsoft JhengHei", "Noto Sans TC",
+  --font-sans: "Plus Jakarta Sans", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei",
     -apple-system, sans-serif;
 }
 
@@ -75,6 +75,7 @@ body {
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -89,6 +90,14 @@ body {
 
 a {
   color: inherit;
+}
+
+/* Design template's in-page links (a{color:accent;text-decoration:none}) —
+   opt-in rather than on bare `a`, since table ticker links and the sidebar
+   already carry their own styling. */
+.accent-link {
+  color: var(--accent);
+  text-decoration: none;
 }
 
 input {
@@ -1534,6 +1543,137 @@ th {
 
 .goal-state-chip.onTrack {
   color: var(--accent);
+}
+
+/* /w/goals add/edit drawer (design template's goalEditModel): kind chips,
+   a two-up number grid, and the live progress footer. */
+.goal-kind-chip {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+}
+
+.goal-kind-chip.active {
+  border-color: var(--accent);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+.goal-edit-btn {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-3);
+}
+
+.goal-drawer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 13px;
+}
+
+.goal-live-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.goal-live-stat > span:first-child {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+.goal-delete-btn {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid var(--loss);
+  background: rgba(239, 68, 68, 0.14);
+  color: var(--loss);
+}
+
+/* Template's "+ 新增目標": sans 12.5px/700, a step larger than .btn-tint. */
+.goal-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 7px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+/* The template's goals drawer diverges from the shared wealth drawer shell
+   (add-asset et al.): 430px, ink-2 labels, tighter inputs, boxed close, a
+   surface Cancel and a tint Save (own class: .btn-primary is !important) (grey until a kind is picked). Scoped here
+   so the other drawers keep matching their own template markup. */
+.wealth-drawer-panel.goal-drawer {
+  width: min(430px, 100%);
+}
+
+.goal-drawer .modal-close {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: normal;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.goal-drawer .wealth-drawer-field-label {
+  color: var(--ink-2);
+}
+
+.goal-drawer .wealth-drawer-field input {
+  padding: 8px 10px;
+}
+
+.goal-drawer .wealth-drawer-cancel {
+  font-size: 12.5px;
+  font-weight: 400;
+  padding: 8px 14px;
+  background: var(--surface);
+}
+
+.goal-drawer .goal-save-btn {
+  font-family: var(--font-sans);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 8px 14px;
+  border: 1px solid var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+.goal-drawer .goal-save-btn:disabled {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: not-allowed;
+  opacity: 1;
 }
 
 .goal-grid {
@@ -3451,4 +3591,9 @@ th {
   border-color: var(--accent-tint-border);
   background: var(--accent-tint-bg);
   color: var(--accent);
+}
+
+.lang-dropdown-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }

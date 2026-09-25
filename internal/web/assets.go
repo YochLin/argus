@@ -29,11 +29,12 @@ type wealthWriter interface {
 	CreateRecurringCashflow(c db.NewRecurringCashflow) (int64, error)
 	DeactivateRecurringCashflow(id int64) error
 	// CreateGoal/DeleteGoal/SetGoalAsset back wealth_goals.go's
-	// create/delete/earmark write routes (Phase 9 波次3 PR6) — the
-	// design template's /w/goals section has no write UI of its own
-	// (see WealthGoalsView.tsx), so nothing in the frontend calls these
-	// yet, but the routes stay as the API surface for managing goals.
+	// create/delete/earmark write routes (Phase 9 波次3 PR6). The goals
+	// drawer calls create/update/delete; earmark has no UI, the route stays
+	// as API surface.
 	CreateGoal(g db.NewGoal) (int64, error)
+	// UpdateGoal backs the goals drawer's edit path (general goals only).
+	UpdateGoal(id int64, g db.NewGoal) error
 	DeleteGoal(id int64) error
 	SetGoalAsset(goalID, assetID int64, ratio float64) error
 	// UpsertRetirementGoal backs wealth_retire.go's quick-switch save (Phase

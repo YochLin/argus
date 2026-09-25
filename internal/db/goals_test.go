@@ -1,6 +1,9 @@
 package db
 
-import "testing"
+import (
+	"database/sql"
+	"testing"
+)
 
 func TestCreateListDeleteGoal(t *testing.T) {
 	d := newTestDB(t)
@@ -80,5 +83,42 @@ func TestSetGoalAsset(t *testing.T) {
 	earmarks, _ = d.ListAllGoalAssets()
 	if len(earmarks) != 0 {
 		t.Fatalf("earmarks after remove = %+v, want none", earmarks)
+	}
+}
+
+func TestUpdateGoalPersistsDrawerFields(t *testing.T) {
+	d := newTestDB(t)
+	id, err := d.CreateGoal(NewGoal{Name: "旅行基金", TargetAmount: 600000, TargetDate: "2028-12-31"})
+	if err != nil {
+		t.Fatalf("CreateGoal: %v", err)
+	}
+	retID, err := d.CreateGoal(NewGoal{Name: "退休", Kind: "retirement", TargetAmount: 1})
+	if err != nil {
+		t.Fatalf("CreateGoal retirement: %v", err)
+	}
+
+	saved, monthly := 470000.0, 6000.0
+	err = d.UpdateGoal(id, NewGoal{Name: "長假旅行", Note: "三個月", TargetAmount: 900000, TargetDate: "2028-12-31",
+		SavedAmount: &saved, MonthlyContribution: &monthly, StartYear: 2024})
+	if err != nil {
+		t.Fatalf("UpdateGoal: %v", err)
+	}
+	goals, _ := d.ListGoals()
+	var got Goal
+	for _, g := range goals {
+		if g.ID == id {
+			got = g
+		}
+	}
+	if got.Name != "長假旅行" || got.TargetAmount != 900000 || got.Note != "三個月" || got.StartYear != 2024 {
+		t.Errorf("updated goal = %+v", got)
+	}
+	if got.SavedAmount == nil || *got.SavedAmount != 470000 || got.MonthlyContribution == nil || *got.MonthlyContribution != 6000 {
+		t.Errorf("saved/monthly = %v/%v, want 470000/6000", got.SavedAmount, got.MonthlyContribution)
+	}
+
+	// The retirement row is derived data — UpdateGoal must not touch it.
+	if err := d.UpdateGoal(retID, NewGoal{Name: "x", TargetAmount: 2}); err != sql.ErrNoRows {
+		t.Errorf("UpdateGoal(retirement) err = %v, want sql.ErrNoRows", err)
 	}
 }

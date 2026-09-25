@@ -237,6 +237,7 @@ export interface Dictionary {
   // convention as Sidebar's market/lang pills labeling the destination.
   themeLight: string;
   themeDark: string;
+  wealthDisplayCurrency: string;
   // Phase 10 (docs/phase-10-web-trade-input.md §4.3): TradeModal/LoginModal
   // copy plus PositionsTable/ChartListView's new write-affordance labels.
   // Server-side confirmation/error text (e.g. TradeResponse.message) is
@@ -657,6 +658,42 @@ export interface Dictionary {
   wealthGoalsEtaLabel: string;
   wealthGoalsExpectedLabel: string;
   wealthGoalsSeeRetireLink: string;
+  wealthGoalsAddBtn: string;
+  wealthGoalsAddTitle: string;
+  wealthGoalsEditTitle: string;
+  wealthGoalsEditBtn: string;
+  wealthGoalsKindLabel: string;
+  wealthGoalsNameLabel: string;
+  wealthGoalsNamePlaceholder: string;
+  wealthGoalsNoteLabel: string;
+  wealthGoalsStartYearLabel: string;
+  wealthGoalsEtaYearLabel: string;
+  wealthGoalsSave: string;
+  wealthGoalsDelete: string;
+  wealthGoalsProgressLabel: string;
+  wealthGoalsRemainLabel: string;
+  wealthGoalsPaceLabel: string;
+  wealthGoalsPaceNone: string;
+  wealthGoalsPaceDone: string;
+  wealthGoalsPaceAt: string;
+  wealthGoalsRetireNote: string;
+  wealthGoalsAgeSuffix: string;
+  wealthGoalsRetireLocked: string;
+  wealthGoalsKindEdu: string;
+  wealthGoalsKindEduNote: string;
+  wealthGoalsKindHome: string;
+  wealthGoalsKindHomeNote: string;
+  wealthGoalsKindEmg: string;
+  wealthGoalsKindEmgNote: string;
+  wealthGoalsKindTravel: string;
+  wealthGoalsKindTravelNote: string;
+  wealthGoalsKindCar: string;
+  wealthGoalsKindCarNote: string;
+  wealthGoalsKindStudy: string;
+  wealthGoalsKindStudyNote: string;
+  wealthGoalsKindWed: string;
+  wealthGoalsKindWedNote: string;
+  wealthGoalsKindCustom: string;
 
   // Retirement page (`/w/retire`, Phase 9 波次3 PR7, §8.7) — real-return
   // projection off the retirement-earmarked pool, plus three named §10.2②
@@ -1008,6 +1045,7 @@ const en: Dictionary = {
   skippedSamples: "skipped (no snapshot data)",
   themeLight: "Light",
   themeDark: "Dark",
+  wealthDisplayCurrency: "DISPLAY CURRENCY",
   addTrade: "+ Trade",
   tradeBuyTitle: "Buy",
   tradeSellTitle: "Sell",
@@ -1372,6 +1410,42 @@ const en: Dictionary = {
   wealthGoalsEtaLabel: "ETA",
   wealthGoalsExpectedLabel: "expected",
   wealthGoalsSeeRetireLink: "Retirement plan ›",
+  wealthGoalsAddBtn: "Add goal",
+  wealthGoalsAddTitle: "NEW GOAL",
+  wealthGoalsEditTitle: "EDIT GOAL",
+  wealthGoalsEditBtn: "Edit",
+  wealthGoalsKindLabel: "GOAL TYPE",
+  wealthGoalsNameLabel: "Goal name",
+  wealthGoalsNamePlaceholder: "e.g. Parents' care fund",
+  wealthGoalsNoteLabel: "Description",
+  wealthGoalsStartYearLabel: "Start year",
+  wealthGoalsEtaYearLabel: "Target year",
+  wealthGoalsSave: "Save",
+  wealthGoalsDelete: "Delete goal",
+  wealthGoalsProgressLabel: "PROGRESS",
+  wealthGoalsRemainLabel: "REMAINING",
+  wealthGoalsPaceLabel: "AT CURRENT PACE",
+  wealthGoalsPaceNone: "Set a monthly amount",
+  wealthGoalsPaceDone: "Funded",
+  wealthGoalsPaceAt: "%s at this pace",
+  wealthGoalsRetireNote: "Earmarked today vs required · projected %1 at %2",
+  wealthGoalsAgeSuffix: "",
+  wealthGoalsRetireLocked: "Driven by the retirement plan's assumptions",
+  wealthGoalsKindEdu: "Children's education",
+  wealthGoalsKindEduNote: "two children · overseas undergrad",
+  wealthGoalsKindHome: "Home down payment",
+  wealthGoalsKindHomeNote: "upgrade or first home",
+  wealthGoalsKindEmg: "Emergency fund",
+  wealthGoalsKindEmgNote: "6–12 months of outflow",
+  wealthGoalsKindTravel: "Travel fund",
+  wealthGoalsKindTravelNote: "long trip or sabbatical",
+  wealthGoalsKindCar: "Car",
+  wealthGoalsKindCarNote: "replacement or first car",
+  wealthGoalsKindStudy: "Further study",
+  wealthGoalsKindStudyNote: "degree or certification",
+  wealthGoalsKindWed: "Wedding",
+  wealthGoalsKindWedNote: "ceremony and honeymoon",
+  wealthGoalsKindCustom: "Custom",
 
   navWealthRetire: "Retirement",
   wealthRetireTargetAgeLabel: "RETIREMENT AGE",
@@ -1705,6 +1779,7 @@ const zh: Dictionary = {
   skippedSamples: "略過（無快照資料）",
   themeLight: "日間",
   themeDark: "夜間",
+  wealthDisplayCurrency: "顯示幣別",
   addTrade: "＋交易",
   tradeBuyTitle: "買入",
   tradeSellTitle: "賣出",
@@ -2068,6 +2143,42 @@ const zh: Dictionary = {
   wealthGoalsEtaLabel: "預計達成",
   wealthGoalsExpectedLabel: "應有進度",
   wealthGoalsSeeRetireLink: "退休規劃 ›",
+  wealthGoalsAddBtn: "新增目標",
+  wealthGoalsAddTitle: "新增目標",
+  wealthGoalsEditTitle: "編輯目標",
+  wealthGoalsEditBtn: "編輯",
+  wealthGoalsKindLabel: "目標類型",
+  wealthGoalsNameLabel: "目標名稱",
+  wealthGoalsNamePlaceholder: "例如：父母安養金",
+  wealthGoalsNoteLabel: "說明",
+  wealthGoalsStartYearLabel: "開始年份",
+  wealthGoalsEtaYearLabel: "目標年份",
+  wealthGoalsSave: "儲存",
+  wealthGoalsDelete: "刪除目標",
+  wealthGoalsProgressLabel: "目前進度",
+  wealthGoalsRemainLabel: "還差",
+  wealthGoalsPaceLabel: "依目前速度",
+  wealthGoalsPaceNone: "尚未設定每月投入",
+  wealthGoalsPaceDone: "已達標",
+  wealthGoalsPaceAt: "依此速度約 %s 年達成",
+  wealthGoalsRetireNote: "退休專用資產對比所需資產 · %2 歲屆退推估 %1",
+  wealthGoalsAgeSuffix: " 歲",
+  wealthGoalsRetireLocked: "退休金由「退休規劃」的假設自動計算",
+  wealthGoalsKindEdu: "子女教育金",
+  wealthGoalsKindEduNote: "兩名子女 · 海外大學",
+  wealthGoalsKindHome: "購屋頭期款",
+  wealthGoalsKindHomeNote: "換屋或首購",
+  wealthGoalsKindEmg: "緊急預備金",
+  wealthGoalsKindEmgNote: "6–12 個月支出",
+  wealthGoalsKindTravel: "旅行基金",
+  wealthGoalsKindTravelNote: "長假或長途旅行",
+  wealthGoalsKindCar: "購車基金",
+  wealthGoalsKindCarNote: "換車或首購",
+  wealthGoalsKindStudy: "進修基金",
+  wealthGoalsKindStudyNote: "學位或証照",
+  wealthGoalsKindWed: "結婚基金",
+  wealthGoalsKindWedNote: "婚禮與蜜月",
+  wealthGoalsKindCustom: "自訂",
 
   navWealthRetire: "退休規劃",
   wealthRetireTargetAgeLabel: "退休年齡",

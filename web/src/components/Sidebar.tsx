@@ -3,6 +3,7 @@ import type { Dictionary } from "../i18n";
 import { currencySymbol, type Market, type Status, type WealthHome } from "../api";
 import { formatValue } from "./KpiCard";
 import { ChevronDownIcon } from "./TopBar";
+import { fmtMoney } from "./WealthHomeView";
 
 interface Props {
   path: string;
@@ -270,7 +271,7 @@ function AccountMenu({
           <>
             <div className="sidebar-account-value mono">
               {wealthHome?.netWorth != null
-                ? `NT$${wealthHome.netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                ? fmtMoney(wealthHome.netWorth, "NT$")
                 : "—"}
             </div>
             <div
@@ -283,9 +284,9 @@ function AccountMenu({
                 : "—"}
             </div>
             <div className="sidebar-account-stats">
-              {dict.wealthTotalAssets} {wealthHome?.totalAssets != null ? `NT$${wealthHome.totalAssets.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+              {dict.wealthTotalAssets} {wealthHome?.totalAssets != null ? fmtMoney(wealthHome.totalAssets, "NT$") : "—"}
               {" · "}
-              {dict.wealthTotalLiabilities} {wealthHome?.totalLiabilities != null ? `NT$${wealthHome.totalLiabilities.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+              {dict.wealthTotalLiabilities} {wealthHome?.totalLiabilities != null ? fmtMoney(wealthHome.totalLiabilities, "NT$") : "—"}
             </div>
           </>
         ) : (

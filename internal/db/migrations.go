@@ -752,4 +752,16 @@ var migrations = []string{
 		next_contribution_date  TEXT
 	);
 	`,
+	// 34: /w/goals add/edit drawer (Argus Trading WebUI.dc.html's goalEditModel)
+	// — the design lets the user type 已累積 / 每月投入 / 起始年 straight into a
+	// goal, so all three become nullable columns on goals itself. NULL
+	// saved_amount means "not typed, fall back to the goal_assets earmark
+	// sum" (the pre-drawer behavior), NULL monthly_contribution renders as
+	// "—", 0/NULL start_year falls back to created_at for the expected-
+	// progress mark.
+	`
+	ALTER TABLE goals ADD COLUMN saved_amount REAL;
+	ALTER TABLE goals ADD COLUMN monthly_contribution REAL;
+	ALTER TABLE goals ADD COLUMN start_year INTEGER;
+	`,
 }

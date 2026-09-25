@@ -25,6 +25,8 @@ type fakeWealthDB struct {
 	lastDeactivateID                      int64
 	lastNewGoal                           db.NewGoal
 	lastDeleteGoalID                      int64
+	lastUpdateGoalID                      int64
+	updateGoalErr                         error
 	lastEarmarkGoalID, lastEarmarkAssetID int64
 	lastEarmarkRatio                      float64
 	lastRetirementGoalName                string
@@ -93,6 +95,10 @@ func (f *fakeWealthDB) CreateGoal(g db.NewGoal) (int64, error) {
 	f.lastNewGoal = g
 	f.nextGoalID++
 	return f.nextGoalID, f.goalErr
+}
+func (f *fakeWealthDB) UpdateGoal(id int64, g db.NewGoal) error {
+	f.lastUpdateGoalID, f.lastNewGoal = id, g
+	return f.updateGoalErr
 }
 func (f *fakeWealthDB) DeleteGoal(id int64) error {
 	f.lastDeleteGoalID = id
