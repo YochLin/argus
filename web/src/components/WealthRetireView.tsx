@@ -513,7 +513,7 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
         <div className="card">
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
             <span className="eyebrow">{dict.wealthRetireGoalProgressLabel}</span>
-            <a href="#" style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11 }} onClick={(e) => { e.preventDefault(); onNavigate("/w/goals"); }}>
+            <a href="#" className="accent-link" style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11 }} onClick={(e) => { e.preventDefault(); onNavigate("/w/goals"); }}>
               {dict.wealthRetireSeeGoalsLink}
             </a>
           </div>

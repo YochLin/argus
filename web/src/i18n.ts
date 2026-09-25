@@ -237,6 +237,7 @@ export interface Dictionary {
   // convention as Sidebar's market/lang pills labeling the destination.
   themeLight: string;
   themeDark: string;
+  wealthDisplayCurrency: string;
   // Phase 10 (docs/phase-10-web-trade-input.md §4.3): TradeModal/LoginModal
   // copy plus PositionsTable/ChartListView's new write-affordance labels.
   // Server-side confirmation/error text (e.g. TradeResponse.message) is
@@ -1042,6 +1043,7 @@ const en: Dictionary = {
   skippedSamples: "skipped (no snapshot data)",
   themeLight: "Light",
   themeDark: "Dark",
+  wealthDisplayCurrency: "DISPLAY CURRENCY",
   addTrade: "+ Trade",
   tradeBuyTitle: "Buy",
   tradeSellTitle: "Sell",
@@ -1773,6 +1775,7 @@ const zh: Dictionary = {
   skippedSamples: "略過（無快照資料）",
   themeLight: "日間",
   themeDark: "夜間",
+  wealthDisplayCurrency: "顯示幣別",
   addTrade: "＋交易",
   tradeBuyTitle: "買入",
   tradeSellTitle: "賣出",

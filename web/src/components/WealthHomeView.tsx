@@ -14,6 +14,7 @@ import {
   type WealthHome,
 } from "../api";
 import type { Dictionary } from "../i18n";
+import { convertTWD } from "../currency";
 
 interface Props {
   dict: Dictionary;
@@ -97,7 +98,14 @@ export function groupLabel(dict: Dictionary, g: AssetGroup): string {
   }
 }
 
+// currency is the caller's own prefix; "NT$" marks a TWD-denominated wealth
+// value, the only kind the 顯示幣別 selector converts (foreign-currency rows
+// like a USD cash event keep their own symbol).
 export function fmtMoney(v: number, currency: string): string {
+  if (currency === "NT$") {
+    const c = convertTWD(v);
+    return `${c.symbol}${c.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  }
   return `${currency}${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
