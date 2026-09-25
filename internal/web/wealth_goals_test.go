@@ -297,3 +297,33 @@ func TestHandleWealthGoalUpdate(t *testing.T) {
 		t.Errorf("non-editable goal status = %d, want 404", code)
 	}
 }
+
+// TestApplyRetirementPace pins the template's retirement-card semantics:
+// marker = (age-25)/(retAge-25), "behind" only when the projection falls
+// short of the need, otherwise ahead once progress reaches the marker.
+func TestApplyRetirementPace(t *testing.T) {
+	pct := func(v float64) *float64 { return &v }
+	tests := []struct {
+		name            string
+		progress        float64
+		projected, need float64
+		wantStatus      string
+	}{
+		{"projection short is behind even if progress is past the marker", 80, 9e6, 10e6, "behind"},
+		{"funded and past the marker is ahead", 40, 12e6, 10e6, "ahead"},
+		{"funded but under the marker is on track", 10, 12e6, 10e6, "onTrack"},
+	}
+	for _, tt := range tests {
+		g := &goalItem{ProgressPct: pct(tt.progress)}
+		applyRetirementPace(g, 36, 60, tt.projected, tt.need) // (36-25)/(60-25) = 31.43 -> 31
+		if g.Status != tt.wantStatus {
+			t.Errorf("%s: status = %q, want %q", tt.name, g.Status, tt.wantStatus)
+		}
+		if g.MarkPct == nil || *g.MarkPct != 31 {
+			t.Errorf("%s: markPct = %v, want 31", tt.name, g.MarkPct)
+		}
+		if g.RetirementAge != 60 || g.ProjectedAtRetirement == nil || *g.ProjectedAtRetirement != tt.projected {
+			t.Errorf("%s: retirement fields not set: %+v", tt.name, g)
+		}
+	}
+}

@@ -2129,6 +2129,10 @@ export interface Goal {
   monthlyContribution?: number | null;
   // startYear is the drawer's 起始年 (0/absent = never typed).
   startYear?: number;
+  // projectedAtRetirement/retirementAge: retirement row only (birth year set)
+  // — the card subtitle's "60 歲屆退推估 …" and its 預計達成 age.
+  projectedAtRetirement?: number;
+  retirementAge?: number;
   assets: GoalAssetItem[];
 }
 

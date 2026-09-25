@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -53,6 +54,38 @@ type goalItem struct {
 	// StartYear is the drawer's 起始年, echoed back so an edit can prefill it.
 	StartYear int             `json:"startYear,omitempty"`
 	Assets    []goalAssetItem `json:"assets"`
+	// ProjectedAtRetirement/RetirementAge are set on the kind="retirement"
+	// row only (once a birth year is on file): the template's card subtitle
+	// reads "… · 60 歲屆退推估 NT$25.35M".
+	ProjectedAtRetirement *float64 `json:"projectedAtRetirement,omitempty"`
+	RetirementAge         int      `json:"retirementAge,omitempty"`
+}
+
+// retirementStartAge is the age the template measures retirement progress
+// from: the card's marker sits at (age-25)/(retirementAge-25), not at a
+// calendar fraction of the goal row's created_at → target_date.
+const retirementStartAge = 25
+
+// applyRetirementPace gives the retirement goal card the template's pace
+// semantics (goalRow with eta_late/expect overrides): the marker is age
+// progress, "behind" means the baseline projection falls short of the need,
+// otherwise ahead when saved progress has reached the marker.
+func applyRetirementPace(g *goalItem, currentAge, retirementAge int, projected, need float64) {
+	if g.ProgressPct == nil || retirementAge <= retirementStartAge {
+		return
+	}
+	expected := math.Round(float64(currentAge-retirementStartAge) / float64(retirementAge-retirementStartAge) * 100)
+	expected = math.Max(0, math.Min(100, expected))
+	g.MarkPct = &expected
+	switch {
+	case projected < need:
+		g.Status = "behind"
+	case *g.ProgressPct >= expected:
+		g.Status = "ahead"
+	default:
+		g.Status = "onTrack"
+	}
+	g.ProjectedAtRetirement, g.RetirementAge = &projected, retirementAge
 }
 
 type goalsResponse struct {
@@ -218,6 +251,13 @@ func (s *Server) handleWealthGoalsList(w http.ResponseWriter, r *http.Request) {
 				if v, perr := strconv.ParseFloat(raw, 64); perr == nil {
 					item.MonthlyContribution = &v
 				}
+			}
+			// Same pace numbers /w/retire's own goal card shows, so the two
+			// pages can't disagree; without a birth year the created_at-based
+			// status above stands.
+			if rr, err := s.buildRetirementResponse(r); err == nil && rr.Goal != nil && rr.Goal.ProjectedAtRetirement != nil {
+				item.Status, item.MarkPct = rr.Goal.Status, rr.Goal.MarkPct
+				item.ProjectedAtRetirement, item.RetirementAge = rr.Goal.ProjectedAtRetirement, rr.Goal.RetirementAge
 			}
 		}
 		resp.Goals = append(resp.Goals, item)

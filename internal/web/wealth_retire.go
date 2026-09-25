@@ -311,6 +311,11 @@ func (s *Server) buildRetirementResponse(r *http.Request) (retirementResponse, e
 	bs, cs, ls := toScenarioSummary(baseline, resp.RetirementAge), toScenarioSummary(crash, resp.RetirementAge), toScenarioSummary(lowReturn, resp.RetirementAge)
 	resp.Baseline, resp.Crash, resp.LowReturn = &bs, &cs, &ls
 	resp.Need = &baseline.Need
+	// The goal card stays on the real (non-what-if) numbers, so the template's
+	// pace semantics apply only when no drawer override is in play.
+	if resp.Goal != nil && ov == (retirementLiveOverrides{}) {
+		applyRetirementPace(resp.Goal, currentAge, resp.RetirementAge, baseline.ProjectedAtRetirement, baseline.Need)
+	}
 
 	for _, p := range baseline.Path {
 		resp.Path = append(resp.Path, retirementPathPoint{Year: now.Year() + p.YearsFromNow, Balance: p.Balance})

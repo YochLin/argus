@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { ApiError, createWealthGoal, deleteWealthGoal, fetchWealthGoals, updateWealthGoal, type Goal, type NewGoal } from "../api";
 import type { Dictionary } from "../i18n";
+import { shortTWD } from "../currency";
 import { fmtMoney } from "./WealthHomeView";
 
 interface Props {
@@ -187,7 +188,7 @@ function GoalDrawer({
         <Dialog.Overlay className="wealth-drawer-overlay">
           <Dialog.Content className="wealth-drawer-panel goal-drawer" aria-describedby={undefined} onOpenAutoFocus={(e) => e.preventDefault()}>
             <div className="wealth-drawer-header">
-              <Dialog.Title style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, fontWeight: 400 }}>
+              <Dialog.Title style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, fontWeight: 400, margin: 0 }}>
                 {goal ? dict.wealthGoalsEditTitle : dict.wealthGoalsAddTitle}
               </Dialog.Title>
               <Dialog.Close className="modal-close" style={{ marginLeft: "auto" }} aria-label="close">
@@ -195,8 +196,10 @@ function GoalDrawer({
               </Dialog.Close>
             </div>
             <div className="wealth-drawer-body">
-              <div className="wealth-drawer-field" style={{ gridColumn: "1 / -1" }}>
-                <span className="wealth-drawer-field-label">{dict.wealthGoalsKindLabel}</span>
+              <div className="wealth-drawer-field" style={{ gridColumn: "1 / -1", gap: 9 }}>
+                <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 10, color: "var(--ink-3)" }}>
+                  {dict.wealthGoalsKindLabel}
+                </span>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   {GOAL_KINDS.map((k) => (
                     <button key={k.id} type="button" className={`goal-kind-chip${kind === k.id ? " active" : ""}`} onClick={() => pickKind(k)}>
@@ -204,8 +207,10 @@ function GoalDrawer({
                     </button>
                   ))}
                 </div>
+                {kind === "custom" && (
+                  <div style={{ marginTop: 4 }}>{field(dict.wealthGoalsNameLabel, name, setName, { placeholder: dict.wealthGoalsNamePlaceholder })}</div>
+                )}
               </div>
-              {kind === "custom" && field(dict.wealthGoalsNameLabel, name, setName, { placeholder: dict.wealthGoalsNamePlaceholder })}
               <div className="goal-drawer-grid">
                 {field(dict.wealthGoalsNoteLabel, note, (v) => { setNote(v); setNoteTouched(true); }, { wide: true })}
                 {field(dict.wealthGoalsTargetLabel, target, setTarget, { mono: true })}
@@ -274,11 +279,19 @@ function GoalCard({
   const pct = goal.progressPct != null ? Math.max(0, Math.min(100, goal.progressPct)) : 0;
   const pctText = goal.progressPct != null ? `${goal.progressPct.toFixed(1)}%` : "—";
   const valueColor = big ? "var(--ink)" : "var(--ink-2)";
+  // The retirement card's subtitle and 預計達成 come from the retirement
+  // projection (template: "… · 60 歲屆退推估 NT$25.35M", "60 歲"); the row's
+  // own note/target-year stand in until a birth year is on file.
+  const retProjected = big && goal.projectedAtRetirement != null && goal.retirementAge != null;
+  const note = retProjected
+    ? dict.wealthGoalsRetireNote.replace("%1", shortTWD(goal.projectedAtRetirement as number)).replace("%2", String(goal.retirementAge))
+    : goal.note;
+  const eta = retProjected ? `${goal.retirementAge}${dict.wealthGoalsAgeSuffix}` : yearOf(goal.targetDate) || "—";
   return (
-    <div className={`card${big ? " card--glow" : ""}`} style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+    <div className={`card${big ? " card--glow" : ""}`} style={{ display: "flex", flexDirection: "column", gap: 9, padding: big ? 19.2 : undefined }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
         <span style={{ fontFamily: "var(--sans)", fontSize: big ? 16 : 13.5 }}>{goal.name}</span>
-        {big && goal.note && <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{goal.note}</span>}
+        {big && note && <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{note}</span>}
         <StatusChip dict={dict} status={goal.status} />
         {big ? (
           <span className="mono" style={{ marginLeft: "auto", fontSize: 24 }}>{pctText}</span>
@@ -317,7 +330,7 @@ function GoalCard({
           <span style={{ color: valueColor }}>{goal.monthlyContribution != null ? fmtMoney(goal.monthlyContribution, CURRENCY) : "—"}</span>
         </span>
         <span>
-          {dict.wealthGoalsEtaLabel} <span style={{ color: valueColor }}>{yearOf(goal.targetDate) || "—"}</span>
+          {dict.wealthGoalsEtaLabel} <span style={{ color: valueColor }}>{eta}</span>
         </span>
       </div>
     </div>
@@ -343,7 +356,8 @@ export function WealthGoalsView({ dict, writable, onUnauthorized, onNavigate }: 
   }
 
   const bigGoal = goals?.find((g) => g.kind === "retirement");
-  const otherGoals = goals?.filter((g) => g.id !== bigGoal?.id) ?? [];
+  // Template order is creation order (oldest first); the API lists newest first.
+  const otherGoals = (goals?.filter((g) => g.id !== bigGoal?.id) ?? []).sort((a, b) => a.id - b.id);
   const totalSaved = goals?.reduce((sum, g) => (g.saved != null ? sum + g.saved : sum), 0) ?? 0;
   const totalTarget = goals?.reduce((sum, g) => sum + g.targetAmount, 0) ?? 0;
   const totalPct = totalTarget > 0 ? (totalSaved / totalTarget) * 100 : null;
@@ -369,7 +383,7 @@ export function WealthGoalsView({ dict, writable, onUnauthorized, onNavigate }: 
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
               <path d="M8 3v10M3 8h10" />
             </svg>
-            {dict.wealthGoalsAddBtn}
+            <span>{dict.wealthGoalsAddBtn}</span>
           </button>
         )}
       </div>

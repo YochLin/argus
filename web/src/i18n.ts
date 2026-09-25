@@ -676,6 +676,8 @@ export interface Dictionary {
   wealthGoalsPaceNone: string;
   wealthGoalsPaceDone: string;
   wealthGoalsPaceAt: string;
+  wealthGoalsRetireNote: string;
+  wealthGoalsAgeSuffix: string;
   wealthGoalsRetireLocked: string;
   wealthGoalsKindEdu: string;
   wealthGoalsKindEduNote: string;
@@ -1426,6 +1428,8 @@ const en: Dictionary = {
   wealthGoalsPaceNone: "Set a monthly amount",
   wealthGoalsPaceDone: "Funded",
   wealthGoalsPaceAt: "%s at this pace",
+  wealthGoalsRetireNote: "Earmarked today vs required · projected %1 at %2",
+  wealthGoalsAgeSuffix: "",
   wealthGoalsRetireLocked: "Driven by the retirement plan's assumptions",
   wealthGoalsKindEdu: "Children's education",
   wealthGoalsKindEduNote: "two children · overseas undergrad",
@@ -2157,6 +2161,8 @@ const zh: Dictionary = {
   wealthGoalsPaceNone: "尚未設定每月投入",
   wealthGoalsPaceDone: "已達標",
   wealthGoalsPaceAt: "依此速度約 %s 年達成",
+  wealthGoalsRetireNote: "退休專用資產對比所需資產 · %2 歲屆退推估 %1",
+  wealthGoalsAgeSuffix: " 歲",
   wealthGoalsRetireLocked: "退休金由「退休規劃」的假設自動計算",
   wealthGoalsKindEdu: "子女教育金",
   wealthGoalsKindEduNote: "兩名子女 · 海外大學",

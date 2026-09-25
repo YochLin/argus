@@ -32,7 +32,7 @@
   --s9: #22d3ee;
 
   --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-  --font-sans: "Plus Jakarta Sans", "PingFang TC", "Microsoft JhengHei", "Noto Sans TC",
+  --font-sans: "Plus Jakarta Sans", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei",
     -apple-system, sans-serif;
 }
 
@@ -1632,6 +1632,7 @@ th {
 .goal-drawer .modal-close {
   font-family: var(--font-mono);
   font-size: 12px;
+  line-height: normal;
   padding: 4px 9px;
   border: 1px solid var(--border);
   border-radius: 6px;

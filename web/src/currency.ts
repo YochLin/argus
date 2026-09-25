@@ -24,3 +24,15 @@ export function setDisplayCurrency(code: DisplayCurrency, twdPerUnit: number) {
 export function convertTWD(v: number): { symbol: string; value: number } {
   return { symbol: CURRENCY_SYMBOL[active.code], value: v / active.twdPerUnit };
 }
+
+// shortTWD is the template's wshort(): a compact amount for subtitles
+// ("NT$25.35M"); JPY switches to 億 from 1e8 like the template does.
+export function shortTWD(v: number): string {
+  const { symbol, value } = convertTWD(v);
+  const abs = Math.abs(value);
+  const sign = value < 0 ? "−" : "";
+  if (active.code === "JPY" && abs >= 1e8) return `${sign}${symbol}${(abs / 1e8).toFixed(2)}億`;
+  if (abs >= 1e6) return `${sign}${symbol}${(abs / 1e6).toFixed(2)}M`;
+  if (abs >= 1e3) return `${sign}${symbol}${Math.round(abs / 1e3)}K`;
+  return `${sign}${symbol}${Math.round(abs)}`;
+}
