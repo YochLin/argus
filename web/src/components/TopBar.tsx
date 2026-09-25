@@ -129,12 +129,12 @@ function FxDropdown({
         <ChevronDownIcon className={`lang-dropdown-chevron${open ? " open" : ""}`} />
       </button>
       {open && (
-        <div className="lang-dropdown-panel" style={{ minWidth: 120 }}>
+        <div className="lang-dropdown-panel" style={{ minWidth: 120, borderRadius: 10 }}>
           {DISPLAY_CURRENCIES.map((c) => (
             <button
               key={c}
               className={`lang-dropdown-item${c === code ? " active" : ""}`}
-              style={{ fontFamily: "var(--font-mono)" }}
+              style={{ fontFamily: "var(--font-mono)", padding: "8px 14px" }}
               disabled={c !== "TWD" && !rates[c]}
               onClick={() => {
                 onChange(c);
