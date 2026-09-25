@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +19,7 @@ func newWealthGoalsTestServer(password string, fake *fakeDB, wealthDB wealthWrit
 	s.mux.HandleFunc("POST /api/login", s.requireWritable(s.handleLogin))
 	s.mux.HandleFunc("GET /api/wealth/goals", s.handleWealthGoalsList)
 	s.mux.HandleFunc("POST /api/wealth/goals", s.requireWritable(s.requireAuth(s.handleWealthGoalCreate)))
+	s.mux.HandleFunc("POST /api/wealth/goals/update", s.requireWritable(s.requireAuth(s.handleWealthGoalUpdate)))
 	s.mux.HandleFunc("POST /api/wealth/goals/delete", s.requireWritable(s.requireAuth(s.handleWealthGoalDelete)))
 	s.mux.HandleFunc("POST /api/wealth/goals/earmark", s.requireWritable(s.requireAuth(s.handleWealthGoalEarmark)))
 	return s
@@ -223,5 +225,75 @@ func TestHandleWealthGoalCreateDeleteEarmark(t *testing.T) {
 	s.mux.ServeHTTP(rec5, badRatioReq)
 	if rec5.Code != http.StatusBadRequest {
 		t.Errorf("ratio>1 status = %d, want 400", rec5.Code)
+	}
+}
+
+// TestHandleWealthGoalsListDrawerFields pins the hand-typed columns: a typed
+// 已累積 wins over the earmark sum, 每月投入 and 起始年 are echoed back for a
+// general goal, and 起始年 (not created_at) anchors the expected-progress mark.
+func TestHandleWealthGoalsListDrawerFields(t *testing.T) {
+	saved, monthly := 470000.0, 6000.0
+	v := 900000.0
+	fake := &fakeDB{
+		wealthAssets: []db.AssetWithValue{{Asset: db.Asset{ID: 1, Side: "asset", Type: "deposit", Name: "活存", Currency: "TWD"}, Value: &v}},
+		goals: []db.Goal{{
+			ID: 1, Name: "長假旅行", Kind: "general", TargetAmount: 900000, Currency: "TWD",
+			TargetDate: "2028-12-31", CreatedAt: "2026-09-01 00:00:00",
+			SavedAmount: &saved, MonthlyContribution: &monthly, StartYear: 2024,
+		}},
+		goalAssets: []db.GoalAsset{{GoalID: 1, AssetID: 1, Ratio: 1}}, // 900000 earmarked, must lose to the typed 470000
+	}
+	s := newWealthGoalsTestServer("", fake, &fakeWealthDB{})
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/goals", nil))
+	var got goalsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	g := got.Goals[0]
+	if g.Saved == nil || *g.Saved != 470000 {
+		t.Errorf("Saved = %v, want typed 470000 over earmark 900000", g.Saved)
+	}
+	if g.MonthlyContribution == nil || *g.MonthlyContribution != 6000 || g.StartYear != 2024 {
+		t.Errorf("monthly/startYear = %v/%d, want 6000/2024", g.MonthlyContribution, g.StartYear)
+	}
+	// From 2024-01-01, elapsed through today is well past 0 — with created_at
+	// (2026-09-01) the mark would sit near 0%. Anything above 20 proves the
+	// start year was used.
+	if g.MarkPct == nil || *g.MarkPct < 20 {
+		t.Errorf("MarkPct = %v, want >20 (anchored at startYear 2024)", g.MarkPct)
+	}
+}
+
+// TestHandleWealthGoalUpdate pins the edit path: fields reach the DB, the
+// retirement/missing-id case maps to 404, and the shared validation 400s.
+func TestHandleWealthGoalUpdate(t *testing.T) {
+	wealthDB := &fakeWealthDB{}
+	s := newWealthGoalsTestServer("secret", &fakeDB{}, wealthDB)
+	cookie := loginAndGetCookie(t, s, "secret")
+	post := func(body map[string]any) int {
+		b, _ := json.Marshal(body)
+		req := httptest.NewRequest(http.MethodPost, "/api/wealth/goals/update", bytes.NewReader(b))
+		req.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	if code := post(map[string]any{"id": 4, "name": "長假旅行", "targetAmount": 900000, "savedAmount": 470000, "monthlyContribution": 6000, "startYear": 2024}); code != http.StatusOK {
+		t.Fatalf("update status = %d, want 200", code)
+	}
+	if wealthDB.lastUpdateGoalID != 4 || wealthDB.lastNewGoal.StartYear != 2024 || wealthDB.lastNewGoal.SavedAmount == nil || *wealthDB.lastNewGoal.SavedAmount != 470000 {
+		t.Errorf("update reached DB as id=%d %+v", wealthDB.lastUpdateGoalID, wealthDB.lastNewGoal)
+	}
+	if code := post(map[string]any{"name": "x", "targetAmount": 1}); code != http.StatusBadRequest {
+		t.Errorf("missing id status = %d, want 400", code)
+	}
+	if code := post(map[string]any{"id": 4, "name": "x", "targetAmount": 1, "savedAmount": -5}); code != http.StatusBadRequest {
+		t.Errorf("negative saved status = %d, want 400", code)
+	}
+	wealthDB.updateGoalErr = sql.ErrNoRows
+	if code := post(map[string]any{"id": 4, "name": "x", "targetAmount": 1}); code != http.StatusNotFound {
+		t.Errorf("non-editable goal status = %d, want 404", code)
 	}
 }

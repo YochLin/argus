@@ -1536,6 +1536,66 @@ th {
   color: var(--accent);
 }
 
+/* /w/goals add/edit drawer (design template's goalEditModel): kind chips,
+   a two-up number grid, and the live progress footer. */
+.goal-kind-chip {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+}
+
+.goal-kind-chip.active {
+  border-color: var(--accent);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+.goal-edit-btn {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-3);
+}
+
+.goal-drawer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 13px;
+}
+
+.goal-live-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.goal-live-stat > span:first-child {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+.goal-delete-btn {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid var(--loss);
+  background: rgba(239, 68, 68, 0.14);
+  color: var(--loss);
+}
+
 .goal-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));

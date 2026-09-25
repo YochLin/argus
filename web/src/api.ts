@@ -2127,6 +2127,8 @@ export interface Goal {
   // the same profile.retirement_monthly_contribution setting /w/retire
   // uses) — general goals have no monthly-contribution column (§8.8/§9.2).
   monthlyContribution?: number | null;
+  // startYear is the drawer's 起始年 (0/absent = never typed).
+  startYear?: number;
   assets: GoalAssetItem[];
 }
 
@@ -2146,10 +2148,18 @@ export interface NewGoal {
   currency?: string;
   targetDate?: string;
   note?: string;
+  // The drawer's hand-typed fields (migration 34); omit to leave unset.
+  savedAmount?: number;
+  monthlyContribution?: number;
+  startYear?: number;
 }
 
 export function createWealthGoal(g: NewGoal): Promise<{ id: number }> {
   return postJSON("/api/wealth/goals", g);
+}
+
+export function updateWealthGoal(id: number, g: NewGoal): Promise<TradeResponse> {
+  return postJSON("/api/wealth/goals/update", { id, ...g });
 }
 
 export function deleteWealthGoal(id: number): Promise<TradeResponse> {

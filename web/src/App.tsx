@@ -255,7 +255,14 @@ export default function App() {
       />
     );
   } else if (path === "/w/goals") {
-    body = <WealthGoalsView dict={dict} onNavigate={navigate} />;
+    body = (
+      <WealthGoalsView
+        dict={dict}
+        writable={status?.writable ?? false}
+        onUnauthorized={(retry) => setAuthRetry(() => retry)}
+        onNavigate={navigate}
+      />
+    );
   } else if (path === "/w/retire") {
     body = (
       <WealthRetireView

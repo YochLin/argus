@@ -327,6 +327,7 @@ func New(cfg Config) *Server {
 	// stay behind the usual gate as an API surface for managing goals.
 	s.mux.HandleFunc("GET /api/wealth/goals", s.handleWealthGoalsList)
 	s.mux.HandleFunc("POST /api/wealth/goals", s.requireWritable(s.requireAuth(s.handleWealthGoalCreate)))
+	s.mux.HandleFunc("POST /api/wealth/goals/update", s.requireWritable(s.requireAuth(s.handleWealthGoalUpdate)))
 	s.mux.HandleFunc("POST /api/wealth/goals/delete", s.requireWritable(s.requireAuth(s.handleWealthGoalDelete)))
 	s.mux.HandleFunc("POST /api/wealth/goals/earmark", s.requireWritable(s.requireAuth(s.handleWealthGoalEarmark)))
 	// /api/wealth/retire (`/w/retire`, §9.4 PR7) — real-return retirement

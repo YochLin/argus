@@ -1,6 +1,9 @@
 package web
 
 import (
+	"database/sql"
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -42,13 +45,14 @@ type goalItem struct {
 	ProgressPct  *float64 `json:"progressPct"`
 	Status       string   `json:"status,omitempty"` // "ahead" | "onTrack" | "behind"
 	MarkPct      *float64 `json:"markPct,omitempty"`
-	// MonthlyContribution is set only for the kind="retirement" row, read
-	// from the same profile.retirement_monthly_contribution setting /w/retire
-	// uses (§9.2's goals table has no monthly-contribution column for general
-	// goals — the design template's per-row "每月投入" figure is otherwise
-	// unknown data, not a value this page just forgot to render).
-	MonthlyContribution *float64        `json:"monthlyContribution,omitempty"`
-	Assets              []goalAssetItem `json:"assets"`
+	// MonthlyContribution is read from the same profile.retirement_monthly_
+	// contribution setting /w/retire uses for the kind="retirement" row, and
+	// from the goals.monthly_contribution column (typed in the drawer) for
+	// general goals — nil renders as "—".
+	MonthlyContribution *float64 `json:"monthlyContribution,omitempty"`
+	// StartYear is the drawer's 起始年, echoed back so an edit can prefill it.
+	StartYear int             `json:"startYear,omitempty"`
+	Assets    []goalAssetItem `json:"assets"`
 }
 
 type goalsResponse struct {
@@ -176,6 +180,15 @@ func (s *Server) handleWealthGoalsList(w http.ResponseWriter, r *http.Request) {
 		}
 
 		item.Assets, item.Saved = s.earmarkedSavedTWD(earmarksByGoal[g.ID], assetByID, today)
+		if g.Kind != "retirement" {
+			// A hand-typed 已累積 wins over the earmark sum (drawer, migration
+			// 34); the retirement row's saved stays the earmarked pool.
+			if g.SavedAmount != nil {
+				item.Saved = g.SavedAmount
+			}
+			item.MonthlyContribution = g.MonthlyContribution
+			item.StartYear = g.StartYear
+		}
 
 		if item.Saved != nil {
 			saved := *item.Saved
@@ -189,7 +202,11 @@ func (s *Server) handleWealthGoalsList(w http.ResponseWriter, r *http.Request) {
 				}
 				item.ProgressPct = &pct
 				if g.TargetDate != "" {
-					if status, expectedPct, ok := goalStatus(g.CreatedAt, g.TargetDate, pct, now); ok {
+					start := g.CreatedAt
+					if g.StartYear > 0 {
+						start = fmt.Sprintf("%04d-01-01 00:00:00", g.StartYear)
+					}
+					if status, expectedPct, ok := goalStatus(start, g.TargetDate, pct, now); ok {
 						item.Status = status
 						item.MarkPct = &expectedPct
 					}
@@ -216,6 +233,29 @@ type wealthGoalCreateRequest struct {
 	Currency     string  `json:"currency"`
 	TargetDate   string  `json:"targetDate"`
 	Note         string  `json:"note"`
+
+	SavedAmount         *float64 `json:"savedAmount"`
+	MonthlyContribution *float64 `json:"monthlyContribution"`
+	StartYear           int      `json:"startYear"`
+}
+
+// newGoal validates a create/update body into a db.NewGoal, writing the 400
+// itself so both handlers share one rule set.
+func (req wealthGoalCreateRequest) newGoal(w http.ResponseWriter) (db.NewGoal, bool) {
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" || req.TargetAmount <= 0 {
+		writeError(w, http.StatusBadRequest, "name and a positive targetAmount are required")
+		return db.NewGoal{}, false
+	}
+	if (req.SavedAmount != nil && *req.SavedAmount < 0) || (req.MonthlyContribution != nil && *req.MonthlyContribution < 0) || req.StartYear < 0 {
+		writeError(w, http.StatusBadRequest, "savedAmount, monthlyContribution and startYear must not be negative")
+		return db.NewGoal{}, false
+	}
+	return db.NewGoal{
+		Name: req.Name, Kind: strings.TrimSpace(req.Kind), TargetAmount: req.TargetAmount,
+		Currency: strings.TrimSpace(req.Currency), TargetDate: strings.TrimSpace(req.TargetDate), Note: strings.TrimSpace(req.Note),
+		SavedAmount: req.SavedAmount, MonthlyContribution: req.MonthlyContribution, StartYear: req.StartYear,
+	}, true
 }
 
 // handleWealthGoalCreate backs POST /api/wealth/goals — the add-goal form's
@@ -225,21 +265,49 @@ func (s *Server) handleWealthGoalCreate(w http.ResponseWriter, r *http.Request) 
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	req.Name = strings.TrimSpace(req.Name)
-	if req.Name == "" || req.TargetAmount <= 0 {
-		writeError(w, http.StatusBadRequest, "name and a positive targetAmount are required")
+	ng, ok := req.newGoal(w)
+	if !ok {
 		return
 	}
-	id, err := s.wealthDB.CreateGoal(db.NewGoal{
-		Name: req.Name, Kind: strings.TrimSpace(req.Kind), TargetAmount: req.TargetAmount,
-		Currency: strings.TrimSpace(req.Currency), TargetDate: strings.TrimSpace(req.TargetDate), Note: strings.TrimSpace(req.Note),
-	})
+	id, err := s.wealthDB.CreateGoal(ng)
 	if err != nil {
 		logger.Errorf("web: create goal: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to create goal")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+}
+
+type wealthGoalUpdateRequest struct {
+	ID int64 `json:"id"`
+	wealthGoalCreateRequest
+}
+
+// handleWealthGoalUpdate backs POST /api/wealth/goals/update — the edit
+// drawer's save path. Only general goals are editable; the retirement row is
+// derived (see db.UpdateGoal), so it 404s here.
+func (s *Server) handleWealthGoalUpdate(w http.ResponseWriter, r *http.Request) {
+	var req wealthGoalUpdateRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.ID <= 0 {
+		writeError(w, http.StatusBadRequest, "id is required")
+		return
+	}
+	ng, ok := req.newGoal(w)
+	if !ok {
+		return
+	}
+	switch err := s.wealthDB.UpdateGoal(req.ID, ng); {
+	case errors.Is(err, sql.ErrNoRows):
+		writeError(w, http.StatusNotFound, "goal not found or not editable")
+	case err != nil:
+		logger.Errorf("web: update goal: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to update goal")
+	default:
+		writeJSON(w, http.StatusOK, tradeResponse{Message: "saved"})
+	}
 }
 
 type wealthGoalDeleteRequest struct {

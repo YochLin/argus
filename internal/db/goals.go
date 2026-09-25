@@ -17,6 +17,12 @@ type Goal struct {
 	TargetDate   string // "" = no target date
 	Note         string
 	CreatedAt    string
+	// SavedAmount/MonthlyContribution/StartYear are the drawer's hand-typed
+	// fields (migration 34). nil/0 = never typed; see the migration comment
+	// for what each falls back to.
+	SavedAmount         *float64
+	MonthlyContribution *float64
+	StartYear           int
 }
 
 // NewGoal is the caller-supplied subset of Goal's fields for CreateGoal —
@@ -28,6 +34,10 @@ type NewGoal struct {
 	Currency     string
 	TargetDate   string
 	Note         string
+
+	SavedAmount         *float64
+	MonthlyContribution *float64
+	StartYear           int
 }
 
 // GoalAsset is one goal_assets earmark row — Ratio lets an asset count only
@@ -49,9 +59,10 @@ func (d *DB) CreateGoal(g NewGoal) (int64, error) {
 		g.Currency = "TWD"
 	}
 	res, err := d.conn.Exec(`
-		INSERT INTO goals (name, kind, target_amount, currency, target_date, note, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+		INSERT INTO goals (name, kind, target_amount, currency, target_date, note, saved_amount, monthly_contribution, start_year, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
 		g.Name, g.Kind, g.TargetAmount, g.Currency, nullableString(g.TargetDate), nullableString(g.Note),
+		g.SavedAmount, g.MonthlyContribution, nullableInt(g.StartYear),
 	)
 	if err != nil {
 		return 0, err
@@ -61,7 +72,7 @@ func (d *DB) CreateGoal(g NewGoal) (int64, error) {
 
 // ListGoals returns every goal, newest first.
 func (d *DB) ListGoals() ([]Goal, error) {
-	rows, err := d.conn.Query(`SELECT id, name, kind, target_amount, currency, target_date, note, created_at FROM goals ORDER BY id DESC`)
+	rows, err := d.conn.Query(`SELECT id, name, kind, target_amount, currency, target_date, note, created_at, saved_amount, monthly_contribution, start_year FROM goals ORDER BY id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -71,14 +82,45 @@ func (d *DB) ListGoals() ([]Goal, error) {
 	for rows.Next() {
 		var g Goal
 		var targetDate, note sql.NullString
-		if err := rows.Scan(&g.ID, &g.Name, &g.Kind, &g.TargetAmount, &g.Currency, &targetDate, &note, &g.CreatedAt); err != nil {
+		var saved, monthly sql.NullFloat64
+		var startYear sql.NullInt64
+		if err := rows.Scan(&g.ID, &g.Name, &g.Kind, &g.TargetAmount, &g.Currency, &targetDate, &note, &g.CreatedAt, &saved, &monthly, &startYear); err != nil {
 			return nil, err
 		}
 		g.TargetDate = targetDate.String
 		g.Note = note.String
+		if saved.Valid {
+			g.SavedAmount = &saved.Float64
+		}
+		if monthly.Valid {
+			g.MonthlyContribution = &monthly.Float64
+		}
+		g.StartYear = int(startYear.Int64)
 		out = append(out, g)
 	}
 	return out, rows.Err()
+}
+
+// UpdateGoal rewrites a general goal's editable fields (the drawer's edit
+// path). The retirement row is excluded on purpose — its target/date are
+// derived by wealth_retire.go, so a hand edit here would be overwritten on
+// the next quick-switch anyway. Returns sql.ErrNoRows when id doesn't name
+// a general goal.
+func (d *DB) UpdateGoal(id int64, g NewGoal) error {
+	res, err := d.conn.Exec(`
+		UPDATE goals SET name = ?, target_amount = ?, target_date = ?, note = ?,
+			saved_amount = ?, monthly_contribution = ?, start_year = ?
+		WHERE id = ? AND kind = 'general'`,
+		g.Name, g.TargetAmount, nullableString(g.TargetDate), nullableString(g.Note),
+		g.SavedAmount, g.MonthlyContribution, nullableInt(g.StartYear), id,
+	)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // DeleteGoal removes a goal and its earmarks. Unlike assets/cashflows, a
@@ -150,4 +192,12 @@ func (d *DB) SetGoalAsset(goalID, assetID int64, ratio float64) error {
 		goalID, assetID, ratio,
 	)
 	return err
+}
+
+// nullableInt stores 0 as NULL — for start_year, 0 means "never typed".
+func nullableInt(i int) any {
+	if i == 0 {
+		return nil
+	}
+	return i
 }
