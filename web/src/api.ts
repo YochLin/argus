@@ -2135,6 +2135,12 @@ export interface WealthGoals {
   goals: Goal[];
 }
 
+// fetchWealthFX returns TWD per one unit of each display currency the server
+// could price; a currency missing from the map is unavailable.
+export function fetchWealthFX(): Promise<{ rates: Record<string, number> }> {
+  return getJSON("/api/wealth/fx");
+}
+
 export function fetchWealthGoals(): Promise<WealthGoals> {
   return getJSON("/api/wealth/goals");
 }

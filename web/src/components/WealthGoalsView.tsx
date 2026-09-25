@@ -143,7 +143,7 @@ export function WealthGoalsView({ dict, onNavigate }: Props) {
         <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: "var(--ink)" }}>
           {dict.navWealthGoals}
         </span>
-        <a href="#" style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11 }} onClick={(e) => { e.preventDefault(); onNavigate("/w/retire"); }}>
+        <a href="#" className="accent-link" style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11 }} onClick={(e) => { e.preventDefault(); onNavigate("/w/retire"); }}>
           {dict.wealthGoalsSeeRetireLink}
         </a>
       </div>

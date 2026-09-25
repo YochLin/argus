@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { fetchCompanyNames, fetchConfig, fetchStatus, fetchWealthHome, marketOf, type Market, type Status, type WealthHome } from "./api";
+import { fetchCompanyNames, fetchConfig, fetchStatus, fetchWealthFX, fetchWealthHome, marketOf, type Market, type Status, type WealthHome } from "./api";
+import { setDisplayCurrency, type DisplayCurrency } from "./currency";
 import { getDictionary, normalizeLang, type Lang } from "./i18n";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
@@ -219,6 +220,14 @@ export default function App() {
   // convention as every other feature-gated chrome element.
   const isWealth = path === "/w" || path.startsWith("/w/");
 
+  // 顯示幣別: fmtMoney reads the module-level currency during this render,
+  // so it has to be set before any child renders. A currency whose rate
+  // hasn't loaded (or can't be priced) falls back to TWD.
+  const [fxCode, setFxCode] = useState<DisplayCurrency>("TWD");
+  const [fxRates, setFxRates] = useState<Record<string, number>>({});
+  const fxRate = fxCode === "TWD" ? 1 : fxRates[fxCode];
+  setDisplayCurrency(fxRate ? fxCode : "TWD", fxRate || 1);
+
   useEffect(() => {
     // The sidebar's bottom account card (Sidebar.tsx's AccountMenu) needs
     // net worth/YTD/totals while on any /w/* page, same numbers
@@ -232,6 +241,9 @@ export default function App() {
     }
     fetchWealthHome("balanced")
       .then(setWealthHome)
+      .catch(() => {});
+    fetchWealthFX()
+      .then((r) => setFxRates(r.rates))
       .catch(() => {});
   }, [isWealth]);
 
@@ -443,6 +455,7 @@ export default function App() {
           dict={dict}
           writable={!isWealth && (status?.writable ?? false)}
           onAddTrade={() => setTradeModal({ mode: "buy", ticker: "", editableTicker: true })}
+          fx={isWealth ? { code: fxCode, rates: fxRates, onChange: setFxCode } : undefined}
         />
         {!isWealth &&
           (status ? <StatusBar status={status} dict={dict} market={market} /> : <div className="status-bar" />)}

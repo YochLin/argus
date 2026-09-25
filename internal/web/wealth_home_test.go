@@ -2,9 +2,11 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"argus/internal/db"
 	"argus/internal/market"
@@ -104,5 +106,28 @@ func TestHandleWealthHomeEquityVirtualRow(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &got)
 	if got.NetWorth == nil || *got.NetWorth != 500000 {
 		t.Errorf("NetWorth = %v, want 500000 (TW equity virtual row, no assets rows at all)", got.NetWorth)
+	}
+}
+
+// TestHandleWealthFX pins that only priceable currencies appear: USD has a
+// cached rate today, the rest have no rate and no live quote, so they're
+// omitted rather than guessed.
+func TestHandleWealthFX(t *testing.T) {
+	today := time.Now().Format("2006-01-02")
+	noQuote := errors.New("no quote")
+	s := &Server{
+		quotes: &fakeQuotes{err: map[string]error{"JPYTWD=X": noQuote, "EURTWD=X": noQuote, "CNYTWD=X": noQuote}},
+		fxDB:   &fakeFXDB{rates: map[string]float64{fxKey(today, "USDTWD"): 31.8}},
+	}
+	rec := httptest.NewRecorder()
+	s.handleWealthFX(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/fx", nil))
+	var got struct {
+		Rates map[string]float64 `json:"rates"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Rates) != 1 || got.Rates["USD"] != 31.8 {
+		t.Errorf("rates = %v, want only USD=31.8", got.Rates)
 	}
 }

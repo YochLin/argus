@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Market } from "../api";
 import type { Dictionary, Lang } from "../i18n";
+import { DISPLAY_CURRENCIES, type DisplayCurrency } from "../currency";
 
 const LANGS: Array<{ id: Lang; flag: string; code: string; label: string }> = [
   { id: "zh", flag: "🇹🇼", code: "中文", label: "繁體中文" },
@@ -27,6 +28,13 @@ interface Props {
   // just disabled) when WEB_PASSWORD isn't configured server-side.
   writable?: boolean;
   onAddTrade?: () => void;
+  // fx (wealth pages only): the 顯示幣別 selector. rates = TWD per unit from
+  // /api/wealth/fx; a currency without a rate is disabled, not guessed.
+  fx?: {
+    code: DisplayCurrency;
+    rates: Record<string, number>;
+    onChange: (code: DisplayCurrency) => void;
+  };
 }
 
 // Shell-level top bar (Figma reference layout): market switch on the left,
@@ -44,6 +52,7 @@ export function TopBar({
   dict,
   writable = false,
   onAddTrade,
+  fx,
 }: Props) {
   return (
     <div className="topbar">
@@ -66,6 +75,7 @@ export function TopBar({
         </div>
       )}
       <div className="topbar-right">
+        {fx && <FxDropdown dict={dict} {...fx} />}
         {writable && (
           <button className="theme-toggle" onClick={onAddTrade}>
             {dict.addTrade}
@@ -77,6 +87,65 @@ export function TopBar({
           <span>{isDark ? dict.themeLight : dict.themeDark}</span>
         </button>
       </div>
+    </div>
+  );
+}
+
+function FxDropdown({
+  dict,
+  code,
+  rates,
+  onChange,
+}: {
+  dict: Dictionary;
+  code: DisplayCurrency;
+  rates: Record<string, number>;
+  onChange: (code: DisplayCurrency) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div className="lang-dropdown" ref={ref}>
+      <button
+        className="lang-dropdown-trigger"
+        style={{ fontFamily: "var(--font-mono)" }}
+        onClick={() => setOpen((v) => !v)}
+        aria-label="display currency"
+      >
+        <span style={{ color: "var(--ink-3)", fontSize: 10, letterSpacing: ".06em" }}>
+          {dict.wealthDisplayCurrency}
+        </span>
+        <span>{code}</span>
+        <ChevronDownIcon className={`lang-dropdown-chevron${open ? " open" : ""}`} />
+      </button>
+      {open && (
+        <div className="lang-dropdown-panel" style={{ minWidth: 120 }}>
+          {DISPLAY_CURRENCIES.map((c) => (
+            <button
+              key={c}
+              className={`lang-dropdown-item${c === code ? " active" : ""}`}
+              style={{ fontFamily: "var(--font-mono)" }}
+              disabled={c !== "TWD" && !rates[c]}
+              onClick={() => {
+                onChange(c);
+                setOpen(false);
+              }}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

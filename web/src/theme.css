@@ -91,6 +91,14 @@ a {
   color: inherit;
 }
 
+/* Design template's in-page links (a{color:accent;text-decoration:none}) —
+   opt-in rather than on bare `a`, since table ticker links and the sidebar
+   already carry their own styling. */
+.accent-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
 input {
   font-family: var(--font-mono);
 }
@@ -3451,4 +3459,9 @@ th {
   border-color: var(--accent-tint-border);
   background: var(--accent-tint-bg);
   color: var(--accent);
+}
+
+.lang-dropdown-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
