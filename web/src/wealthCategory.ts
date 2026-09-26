@@ -1,9 +1,7 @@
 import type { AllocCategory, AllocationModel } from "./api";
 import type { Dictionary } from "./i18n";
 
-// Design template's nine asset-type colours (wColors()). The home page uses
-// these directly; /w/alloc still maps categories onto the generic --s1..--s9
-// series palette until its own design pass.
+// Design template's nine asset-type colours (wColors()), shared by home and /w/alloc.
 export const CATEGORY_COLOR: Record<AllocCategory, string> = {
   cash: "#38bdf8",
   equity: "var(--accent)",

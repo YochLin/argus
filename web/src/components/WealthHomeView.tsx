@@ -140,13 +140,13 @@ function loadVariant(): Variant {
 }
 
 const CARD_BASE: React.CSSProperties = { marginBottom: 16 };
-const MONO_LABEL: React.CSSProperties = {
+export const MONO_LABEL: React.CSSProperties = {
   fontFamily: "var(--font-mono)",
   textTransform: "uppercase",
   letterSpacing: ".08em",
   fontSize: 11,
 };
-const DOTTED: React.CSSProperties = { borderBottom: "1px dotted currentColor", cursor: "help" };
+export const DOTTED: React.CSSProperties = { borderBottom: "1px dotted currentColor", cursor: "help" };
 
 function driftColor(thin: boolean, d: number): string {
   return thin || Math.abs(d) < 2 ? "var(--ink-3)" : d > 0 ? "var(--loss)" : "var(--profit)";
