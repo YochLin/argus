@@ -1790,6 +1790,8 @@ export interface WealthHome {
   totalLiabilities: number | null;
   model: AllocationModel;
   allocation: WealthAllocationRow[];
+  // staleCount: manual/import records last valued 90+ days ago (the amber banner).
+  staleCount: number;
 }
 
 export function fetchWealthHome(model: AllocationModel): Promise<WealthHome> {
@@ -1859,6 +1861,7 @@ export interface LiabilityDetail {
   remainingMonths: number | null;
   minPayment: number | null;
   source: "manual" | "import" | "sync";
+  type: string; // the liability's own type, e.g. "loan" / "credit_card"
 }
 
 export interface QuarterPoint {

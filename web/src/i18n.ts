@@ -489,6 +489,48 @@ export interface Dictionary {
   wealthCategoryGold: string;
   wealthCategoryCrypto: string;
   wealthCategoryPension: string;
+  wealthHomeVariantLabel: string;
+  wealthHomeVariantBoard: string;
+  wealthHomeVariantStory: string;
+  wealthHomeAddNew: string;
+  wealthHomeNetWorth: string;
+  wealthHomeYtd: string;
+  wealthHomeMom: string;
+  wealthHomeDriftLabel: string;
+  wealthHomeRebalanceLabel: string;
+  wealthHomeDriftOnTarget: string;
+  wealthHomeDriftNoRebal: string;
+  wealthHomeDriftCount: string;
+  wealthHomeDriftOff: string;
+  wealthHomeDriftHead: string;
+  wealthHomeHeadOk: string;
+  wealthHomeThinShort: string;
+  wealthHomeNeedAssets: string;
+  wealthHomeAllocTitle: string;
+  wealthHomeClass: string;
+  wealthHomeCurrent: string;
+  wealthHomeTarget: string;
+  wealthHomeDrift: string;
+  wealthHomeAction: string;
+  wealthHomeActionTrim: string;
+  wealthHomeActionAdd: string;
+  wealthHomeActionOk: string;
+  wealthHomeOffTitle: string;
+  wealthHomeGroupTitle: string;
+  wealthHomeLiabTitle: string;
+  wealthHomeRate: string;
+  wealthHomeLiquidLabel: string;
+  wealthHomeMonths: string;
+  wealthHomeStaleBanner: string;
+  wealthHomeStaleGo: string;
+  wealthHomeTipDrift: string;
+  wealthHomeTipRebal: string;
+  wealthHomeTipDebt: string;
+  wealthHomeTipLiquid: string;
+  wealthHomeTipYtd: string;
+  wealthHomeYearsLeft: string;
+  wealthHomePayFirst: string;
+  wealthHomeMonthlyPay: string;
   wealthCurrentPct: string;
   wealthTargetPct: string;
   wealthDeviation: string;
@@ -1250,15 +1292,57 @@ const en: Dictionary = {
   wealthGroupGrowth: "Growth",
   wealthGroupIncome: "Income",
   wealthGroupHard: "Hard Assets",
-  wealthCategoryCash: "Cash & FX",
-  wealthCategoryEquity: "Stocks",
-  wealthCategoryFund: "ETFs & Funds",
-  wealthCategoryBond: "Bonds",
-  wealthCategoryInsurance: "Insurance",
-  wealthCategoryEstate: "Real Estate",
-  wealthCategoryGold: "Gold & Physical",
+  wealthCategoryCash: "Cash & FX deposits",
+  wealthCategoryEquity: "Equities (trading account)",
+  wealthCategoryFund: "ETFs & mutual funds",
+  wealthCategoryBond: "Bonds & fixed income",
+  wealthCategoryInsurance: "Insurance policies",
+  wealthCategoryEstate: "Real estate",
+  wealthCategoryGold: "Gold & physical",
   wealthCategoryCrypto: "Crypto",
-  wealthCategoryPension: "Pension",
+  wealthCategoryPension: "Labor pension & insurance",
+  wealthHomeVariantLabel: "HOME VARIANT",
+  wealthHomeVariantBoard: "Allocation board",
+  wealthHomeVariantStory: "Net-worth story",
+  wealthHomeAddNew: "ADD",
+  wealthHomeNetWorth: "NET WORTH",
+  wealthHomeYtd: "YTD NET WORTH",
+  wealthHomeMom: "MOM",
+  wealthHomeDriftLabel: "ALLOCATION DRIFT",
+  wealthHomeRebalanceLabel: "REBALANCE AMOUNT",
+  wealthHomeDriftOnTarget: "On target",
+  wealthHomeDriftNoRebal: "no rebalance needed",
+  wealthHomeDriftCount: "%s",
+  wealthHomeDriftOff: "classes off target",
+  wealthHomeDriftHead: "%s classes off target",
+  wealthHomeHeadOk: "On target",
+  wealthHomeThinShort: "not enough data",
+  wealthHomeNeedAssets: "only %s assets — need at least 3",
+  wealthHomeAllocTitle: "ALLOCATION VS TARGET",
+  wealthHomeClass: "Asset class",
+  wealthHomeCurrent: "Current",
+  wealthHomeTarget: "Target",
+  wealthHomeDrift: "Drift",
+  wealthHomeAction: "Action",
+  wealthHomeActionTrim: "trim %s",
+  wealthHomeActionAdd: "add %s",
+  wealthHomeActionOk: "on target",
+  wealthHomeOffTitle: "MOST OFF TARGET",
+  wealthHomeGroupTitle: "BY GROUP",
+  wealthHomeLiabTitle: "LIABILITIES",
+  wealthHomeRate: "Rate",
+  wealthHomeLiquidLabel: "EMERGENCY FUND",
+  wealthHomeMonths: "%s months",
+  wealthHomeStaleBanner: "%s records haven't been updated in 90+ days — net worth and ratios may be out of date.",
+  wealthHomeStaleGo: "Update on balance sheet →",
+  wealthHomeTipDrift: "How far current weights are from target. Within 2 points is normal.",
+  wealthHomeTipRebal: "Roughly how much you would need to buy or sell to get back to target.",
+  wealthHomeTipDebt: "Total liabilities ÷ total assets. Under 40% is healthy; lower means less reliance on debt.",
+  wealthHomeTipLiquid: "How many months of spending your liquid assets cover (liquid ÷ monthly spending). 3–6 months is the usual guide.",
+  wealthHomeTipYtd: "Change in net worth since January 1 this year.",
+  wealthHomeYearsLeft: "%s yrs left",
+  wealthHomePayFirst: "pay off first",
+  wealthHomeMonthlyPay: "%s/mo",
   wealthCurrentPct: "Current %",
   wealthTargetPct: "Target %",
   wealthDeviation: "Deviation",
@@ -1983,15 +2067,57 @@ const zh: Dictionary = {
   wealthGroupGrowth: "成長",
   wealthGroupIncome: "收益",
   wealthGroupHard: "實體",
-  wealthCategoryCash: "現金/外幣",
-  wealthCategoryEquity: "股票",
-  wealthCategoryFund: "ETF與基金",
-  wealthCategoryBond: "債券",
-  wealthCategoryInsurance: "保單",
+  wealthCategoryCash: "活存 · 定存 · 外幣",
+  wealthCategoryEquity: "股票（交易帳戶）",
+  wealthCategoryFund: "ETF 與共同基金",
+  wealthCategoryBond: "債券與固定收益",
+  wealthCategoryInsurance: "保單（儲蓄＋投資型）",
   wealthCategoryEstate: "不動產",
-  wealthCategoryGold: "黃金與實體",
+  wealthCategoryGold: "黃金與實體資產",
   wealthCategoryCrypto: "加密貨幣",
-  wealthCategoryPension: "勞保勞退",
+  wealthCategoryPension: "勞保 · 勞退",
+  wealthHomeVariantLabel: "首頁版本",
+  wealthHomeVariantBoard: "配置盤面",
+  wealthHomeVariantStory: "淨值敘事",
+  wealthHomeAddNew: "新增",
+  wealthHomeNetWorth: "資產淨值",
+  wealthHomeYtd: "YTD 淨值成長",
+  wealthHomeMom: "月變化",
+  wealthHomeDriftLabel: "配置偏離",
+  wealthHomeRebalanceLabel: "建議再平衡金額",
+  wealthHomeDriftOnTarget: "符合",
+  wealthHomeDriftNoRebal: "無須再平衡",
+  wealthHomeDriftCount: "%s 項",
+  wealthHomeDriftOff: "偏離目標",
+  wealthHomeDriftHead: "%s 項偏離目標",
+  wealthHomeHeadOk: "配置符合目標",
+  wealthHomeThinShort: "資料不足",
+  wealthHomeNeedAssets: "資產僅 %s 筆，至少需 3 筆",
+  wealthHomeAllocTitle: "資產配置 vs 目標",
+  wealthHomeClass: "資產類別",
+  wealthHomeCurrent: "現在",
+  wealthHomeTarget: "目標",
+  wealthHomeDrift: "偏離",
+  wealthHomeAction: "建議",
+  wealthHomeActionTrim: "減碼 %s",
+  wealthHomeActionAdd: "加碼 %s",
+  wealthHomeActionOk: "符合",
+  wealthHomeOffTitle: "最需要處理的偏離",
+  wealthHomeGroupTitle: "大類配置",
+  wealthHomeLiabTitle: "負債",
+  wealthHomeRate: "利率",
+  wealthHomeLiquidLabel: "緊急預備金",
+  wealthHomeMonths: "%s 個月",
+  wealthHomeStaleBanner: "有 %s 筆資料超過 90 天未更新，淨值與比率可能已過時。",
+  wealthHomeStaleGo: "到資產負債表更新 →",
+  wealthHomeTipDrift: "目前比例和目標比例差多少。差 2 個百分點以內算正常。",
+  wealthHomeTipRebal: "要回到目標比例，大約需要買賣的金額。",
+  wealthHomeTipDebt: "總負債 ÷ 總資產。40% 以下算健康，越低代表越不依賴借貸。",
+  wealthHomeTipLiquid: "流動資產夠支付幾個月的生活支出（流動資產 ÷ 每月支出）。一般建議 3–6 個月。",
+  wealthHomeTipYtd: "今年 1 月 1 日到現在，淨值增加或減少的比例。",
+  wealthHomeYearsLeft: "剩 %s 年",
+  wealthHomePayFirst: "建議優先清償",
+  wealthHomeMonthlyPay: "月付 %s",
   wealthCurrentPct: "現值佔比",
   wealthTargetPct: "目標佔比",
   wealthDeviation: "偏離",
