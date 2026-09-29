@@ -14,6 +14,7 @@ import {
   type AssetGroup,
   type AssetSide,
   type BalanceSheet,
+  type LiabilityDetail,
   type WealthAlloc,
   type WealthAsset,
   type WealthHome,
@@ -124,6 +125,21 @@ const GROUP_COLOR_CLASS: Record<AssetGroup, string> = {
 
 export function groupColorClass(g: AssetGroup): string {
   return GROUP_COLOR_CLASS[g];
+}
+
+// liabilityNote renders a liability's "剩 N 年 · 月付 NT$X" line (design mock's
+// l.term/l.pay), or "建議優先清償" for a credit-card balance with no term set
+// — shared by the home page's off-target list and WealthBalanceView's
+// liability rows so the wording/rounding stays in exactly one place.
+export function liabilityNote(dict: Dictionary, currency: string, l: LiabilityDetail): string {
+  const term =
+    l.type === "credit_card" && l.remainingMonths == null
+      ? dict.wealthHomePayFirst
+      : l.remainingMonths != null
+        ? dict.wealthHomeYearsLeft.replace("%s", String(Math.round(l.remainingMonths / 12)))
+        : "";
+  const pay = l.minPayment ? dict.wealthHomeMonthlyPay.replace("%s", fmtMoney(l.minPayment, currency)) : "";
+  return [term, pay].filter(Boolean).join(" · ");
 }
 
 // The two home variants (design template's wVariant "a"/"b") share one data
@@ -281,20 +297,13 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
     .filter((r): r is { group: AssetGroup; cur: number; target: number; drift: number } => !!r);
   const liabTotal = balance?.totalLiabilities ?? 0;
   const liabs = [...(balance?.liabilities ?? [])].sort((a, b) => b.valueTwd - a.valueTwd).map((l) => {
-    const term =
-      l.type === "credit_card" && l.remainingMonths == null
-        ? dict.wealthHomePayFirst
-        : l.remainingMonths != null
-          ? dict.wealthHomeYearsLeft.replace("%s", String(Math.round(l.remainingMonths / 12)))
-          : "";
-    const pay = l.minPayment ? dict.wealthHomeMonthlyPay.replace("%s", fmtMoney(l.minPayment, currency)) : "";
     return {
       key: l.assetId,
       name: l.name,
       rate: l.ratePct != null ? `${l.ratePct}%` : "—",
       value: fmtMoney(l.valueTwd, currency),
       share: liabTotal > 0 ? (l.valueTwd / liabTotal) * 100 : 0,
-      note: [term, pay].filter(Boolean).join(" · "),
+      note: liabilityNote(dict, currency, l),
     };
   });
   const debtRatio = balance?.debtRatioPct != null ? `${balance.debtRatioPct.toFixed(1)}%` : "—";

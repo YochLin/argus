@@ -1841,7 +1841,9 @@ export interface BalanceSheetItem {
   currency: string;
   valueTwd: number;
   type: string; // the asset's own type, or "equity_us"/"equity_tw" for the virtual row
+  category: string; // AllocCategory — the item's dot color, wealthCategory.ts
   source: "manual" | "import" | "sync";
+  staleDays?: number; // set only past the 90-day threshold (manual/import only)
 }
 
 export interface AssetGroupRow {
@@ -1862,6 +1864,14 @@ export interface LiabilityDetail {
   minPayment: number | null;
   source: "manual" | "import" | "sync";
   type: string; // the liability's own type, e.g. "loan" / "credit_card"
+  staleDays?: number;
+}
+
+export interface LiabGroupRow {
+  kind: "short" | "long";
+  marketValue: number;
+  pctOfLiabilities: number | null;
+  liabilities: LiabilityDetail[];
 }
 
 export interface QuarterPoint {
@@ -1884,6 +1894,7 @@ export interface BalanceSheet {
   monthlySalary: number | null;
   assetGroups: AssetGroupRow[];
   liabilities: LiabilityDetail[];
+  liabGroups: LiabGroupRow[];
   quarterlyTrend: QuarterPoint[];
 }
 

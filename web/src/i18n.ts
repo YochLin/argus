@@ -653,6 +653,16 @@ export interface Dictionary {
   wealthRiskConservative: string;
   wealthGeoExposure: string;
   wealthNeedGeo: string;
+  wealthRateLabel: string;
+  wealthNetWorthFormula: string;
+  wealthStaleDaysSuffix: string;
+  wealthPctOfLiabilities: string;
+  wealthLiabShortTerm: string;
+  wealthLiabLongTerm: string;
+  wealthDebtRatioNote: string;
+  wealthLiquidityNote: string;
+  wealthSavingsRateNote: string;
+  wealthExpenseRatioNote: string;
   // Phase 9 波次2 PR5: cash flow page (/w/cash) — recurring income/expense
   // lines (hand-maintained monthly amounts, not a transaction ledger) and
   // the 90-day cash event table derived from them. Mirrors
@@ -1472,6 +1482,16 @@ const en: Dictionary = {
   wealthRiskConservative: "Conservative",
   wealthGeoExposure: "GEOGRAPHIC EXPOSURE",
   wealthNeedGeo: "Region exposure needs holdings detail; manual entries can't be broken down.",
+  wealthRateLabel: "Rate",
+  wealthNetWorthFormula: "NET WORTH = ASSETS − LIABILITIES",
+  wealthStaleDaysSuffix: "%sd not updated",
+  wealthPctOfLiabilities: "of liabilities",
+  wealthLiabShortTerm: "SHORT TERM",
+  wealthLiabLongTerm: "LONG TERM",
+  wealthDebtRatioNote: "target under 40%",
+  wealthLiquidityNote: "liquid assets ÷ monthly spending",
+  wealthSavingsRateNote: "(salary − spending) ÷ salary",
+  wealthExpenseRatioNote: "monthly spending ÷ salary",
   navWealthCash: "Cash Flow",
   wealthCashMonthlyIn: "Monthly income",
   wealthCashMonthlyOut: "Monthly expense",
@@ -2262,6 +2282,16 @@ const zh: Dictionary = {
   wealthRiskConservative: "保守",
   wealthGeoExposure: "地區曝險",
   wealthNeedGeo: "地區曝險需要持股明細，手動建檔的資產無法推算。",
+  wealthRateLabel: "利率",
+  wealthNetWorthFormula: "淨值 ＝ 總資產 − 總負債",
+  wealthStaleDaysSuffix: "%s 天未更新",
+  wealthPctOfLiabilities: "佔總負債",
+  wealthLiabShortTerm: "短期負債",
+  wealthLiabLongTerm: "長期負債",
+  wealthDebtRatioNote: "目標 40% 以下",
+  wealthLiquidityNote: "流動資產 ÷ 每月支出",
+  wealthSavingsRateNote: "（月薪－支出）÷ 月薪",
+  wealthExpenseRatioNote: "月支出 ÷ 月薪",
   navWealthCash: "現金流",
   wealthCashMonthlyIn: "月收入",
   wealthCashMonthlyOut: "月支出",
