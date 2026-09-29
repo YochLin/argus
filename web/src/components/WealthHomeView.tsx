@@ -148,6 +148,13 @@ export const MONO_LABEL: React.CSSProperties = {
 };
 export const DOTTED: React.CSSProperties = { borderBottom: "1px dotted currentColor", cursor: "help" };
 
+// mmdd formats a "YYYY-MM-DD" (or "YYYY-MM") date string as "MM/DD" (or
+// "MM"), the design template's short date style for anything inside a
+// 90-day/12-month window where the year is implied.
+export function mmdd(iso: string): string {
+  return iso.slice(5).replace("-", "/");
+}
+
 function driftColor(thin: boolean, d: number): string {
   return thin || Math.abs(d) < 2 ? "var(--ink-3)" : d > 0 ? "var(--loss)" : "var(--profit)";
 }

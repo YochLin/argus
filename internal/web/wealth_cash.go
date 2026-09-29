@@ -46,6 +46,27 @@ type cashEvent struct {
 	Direction string   `json:"direction"` // "in" | "out" | "event"
 }
 
+// cashForecastMonth is one bar of the 12-month forecast chart (§8.4's
+// wcm.forecast) — Net is MonthlyNet projected flat across the next 12
+// calendar months. The design mock additionally layers Taiwan-calendar
+// one-off lumps onto this (annual premium in March, income tax in May,
+// dividend season in July, property tax in November, year-end bonus in
+// December); nothing in this schema sources those (same reasoning as
+// AnnualNet below), so this is honestly flat rather than fabricating them.
+type cashForecastMonth struct {
+	Month string  `json:"month"` // "2006-01"
+	Net   float64 `json:"net"`
+}
+
+func buildCashForecast(today time.Time, monthlyNet float64) []cashForecastMonth {
+	start := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, today.Location())
+	out := make([]cashForecastMonth, 12)
+	for i := range out {
+		out[i] = cashForecastMonth{Month: start.AddDate(0, i, 0).Format("2006-01"), Net: monthlyNet}
+	}
+	return out
+}
+
 // cashResponse backs GET /api/wealth/cash (`/w/cash`, §9.4 PR5).
 // MonthlyIn/Out/Net are nil when any active flow's currency couldn't be
 // priced to TWD today — same whole-metric-degrades rule as /w/alloc's
@@ -77,6 +98,9 @@ type cashResponse struct {
 	// event's currency can't be priced.
 	EventsNet *float64    `json:"eventsNet"`
 	Events    []cashEvent `json:"events"`
+	// Forecast is the 12-month bar chart (§8.4's wcm.forecast) — empty when
+	// MonthlyNet is nil (FX unresolved), same degrade rule as the rest.
+	Forecast []cashForecastMonth `json:"forecast"`
 }
 
 func daysInMonth(year int, month time.Month) int {
@@ -144,7 +168,7 @@ func (s *Server) handleWealthCashList(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	resp := cashResponse{AsOf: today.Format("2006-01-02"), Items: []cashflowItem{}, Events: []cashEvent{}}
+	resp := cashResponse{AsOf: today.Format("2006-01-02"), Items: []cashflowItem{}, Events: []cashEvent{}, Forecast: []cashForecastMonth{}}
 
 	all, err := s.db.ListRecurringCashflows(false)
 	if err != nil {
@@ -213,6 +237,7 @@ func (s *Server) handleWealthCashList(w http.ResponseWriter, r *http.Request) {
 			saveRate, dca, fixed := net/monthlyIn*100, dcaOut/monthlyIn*100, fixedOut/monthlyIn*100
 			resp.SaveRatePct, resp.DcaSharePct, resp.FixedSharePct = &saveRate, &dca, &fixed
 		}
+		resp.Forecast = buildCashForecast(today, net)
 	}
 
 	events := recurringCashflowEvents(active, venueByAsset, today)
