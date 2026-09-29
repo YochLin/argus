@@ -12,7 +12,7 @@ import {
   type WealthInsure,
 } from "../api";
 import type { Dictionary } from "../i18n";
-import { fmtMoney } from "./WealthHomeView";
+import { DOTTED, fmtMoney } from "./WealthHomeView";
 import { srcLabel } from "./WealthBalanceView";
 
 interface Props {
@@ -214,7 +214,10 @@ function CoverageRow({ dict, row }: { dict: Dictionary; row: InsuranceCoverageRo
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
         <span style={{ fontSize: 13, flex: "1 1 120px" }}>{kindLabel(dict, row.kind)}</span>
         <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>
-          {dict.wealthInsureHaveLabel} {fmtCoverage(dict, row.have, row.perPeriod)} / {dict.wealthInsureNeedLabel}{" "}
+          {dict.wealthInsureHaveLabel} {fmtCoverage(dict, row.have, row.perPeriod)} /{" "}
+          <span title={dict.wealthInsureTipNeed} style={DOTTED}>
+            {dict.wealthInsureNeedLabel}
+          </span>{" "}
           {row.need != null ? fmtCoverage(dict, row.need, row.perPeriod) : "—"}
         </span>
         <span className="mono" style={{ marginLeft: "auto", fontSize: 12, color: "var(--ink-2)" }}>
@@ -394,13 +397,16 @@ export function WealthInsureView({ dict, writable, onUnauthorized }: Props) {
       )}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
-        <div className="card card--glow" style={{ flex: "1.5 1 250px" }}>
+        <div className="card card--glow" style={{ flex: "1.5 1 250px", padding: 19.2 }}>
           <div className="eyebrow">{dict.wealthInsureBiggestGapLabel}</div>
           <div className="mono loss" style={{ fontSize: 30, lineHeight: 1.15, marginTop: 8, wordBreak: "keep-all" }}>
             {data && data.worstKind ? fmtCoverage(dict, data.worstGap, worst?.perPeriod) : "—"}
           </div>
           <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 4 }}>
-            {data?.worstKind ? kindLabel(dict, data.worstKind) : "—"} · {dict.wealthInsureCoverageLabel}{" "}
+            {data?.worstKind ? kindLabel(dict, data.worstKind) : "—"} ·{" "}
+            <span title={dict.wealthInsureTipCoverage} style={DOTTED}>
+              {dict.wealthInsureCoverageLabel}
+            </span>{" "}
             {data?.worstKind ? `${data.worstPct.toFixed(0)}%` : "—"}
           </div>
         </div>
@@ -427,9 +433,12 @@ export function WealthInsureView({ dict, writable, onUnauthorized }: Props) {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="eyebrow" style={{ marginBottom: 18 }}>
+      <div className="card" style={{ marginBottom: 16, padding: 17.6 }}>
+        <div className="eyebrow" style={{ marginBottom: 6 }}>
           {dict.wealthInsureGapTitle}
+        </div>
+        <div style={{ fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.6, marginBottom: 18, maxWidth: 640 }}>
+          {dict.wealthInsureNeedHow}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {data?.rows.map((row) => (
@@ -446,12 +455,12 @@ export function WealthInsureView({ dict, writable, onUnauthorized }: Props) {
           <table className="mono">
             <thead>
               <tr>
-                <th style={{ textAlign: "left" }}>{dict.wealthInsurePolicyNameLabel}</th>
+                <th style={{ textAlign: "left" }}>{dict.wealthAllocClass}</th>
                 <th style={{ textAlign: "left" }}>{dict.wealthInsureInsurerLabel}</th>
-                <th style={{ textAlign: "left" }}>{dict.wealthInsureKindLabel}</th>
+                <th style={{ textAlign: "left" }}>{dict.wealthInsureColType}</th>
                 <th>{dict.wealthInsureAmountLabel}</th>
                 <th>{dict.wealthInsureAnnualPremiumLabel}</th>
-                <th style={{ textAlign: "left" }}>{dict.wealthInsurePremiumYearsLabel}</th>
+                <th style={{ textAlign: "left" }}>{dict.wealthInsureColTerm}</th>
               </tr>
             </thead>
             <tbody>
