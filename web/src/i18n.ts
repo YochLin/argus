@@ -838,6 +838,15 @@ export interface Dictionary {
   wealthInsurePremShareLabel: string;
   wealthInsureCountLabel: string;
   wealthInsureGapTitle: string;
+  // wealthInsureNeedHow is the gap card's subtitle explaining the need
+  // figures are this app's own estimate, not an insurer's number.
+  // wealthInsureTipCoverage/wealthInsureTipNeed back the design's two
+  // dotted-underline hover tooltips (native title attr + DOTTED style) on
+  // "覆蓋率"/"需求保額" — same pattern WealthHomeView/WealthAllocView
+  // already use for their own dotted-underline labels.
+  wealthInsureNeedHow: string;
+  wealthInsureTipCoverage: string;
+  wealthInsureTipNeed: string;
   wealthInsureHaveLabel: string;
   wealthInsureNeedLabel: string;
   wealthInsureGapLabel: string;
@@ -851,6 +860,12 @@ export interface Dictionary {
   wealthInsurePerMonthSuffix: string;
   wealthInsurePerDaySuffix: string;
   wealthInsurePoliciesTitle: string;
+  // wealthInsureColType/wealthInsureColTerm are the policy table's own
+  // column-header wording (design reuses shorter contextual text there —
+  // "類型"/"繳費／保障期間" — distinct from wealthInsureKindLabel/
+  // wealthInsurePremiumYearsLabel, which stay the add-form field labels).
+  wealthInsureColType: string;
+  wealthInsureColTerm: string;
   wealthInsureNoPolicies: string;
   wealthInsureSetupTitle: string;
   wealthInsureDependentsLabel: string;
@@ -1648,6 +1663,9 @@ const en: Dictionary = {
   wealthInsurePremShareLabel: "share of annual income",
   wealthInsureCountLabel: "POLICIES",
   wealthInsureGapTitle: "Coverage gap & ratio",
+  wealthInsureNeedHow: "Needed cover is an estimate from your debts, household spending and income — not an insurer's figure. Hover “needed” to see how each line is derived.",
+  wealthInsureTipCoverage: "Current cover ÷ needed cover. 100% means fully covered; under 50% is a clear gap.",
+  wealthInsureTipNeed: "Rule-of-thumb estimates: life = debts + 10 yrs of household spending; accident = half of life; critical illness = 3–5 yrs of income; cancer = one course of treatment; disability = 60% of monthly income; hospital = daily income.",
   wealthInsureHaveLabel: "Have",
   wealthInsureNeedLabel: "Need",
   wealthInsureGapLabel: "Gap",
@@ -1661,6 +1679,8 @@ const en: Dictionary = {
   wealthInsurePerMonthSuffix: " /mo",
   wealthInsurePerDaySuffix: " /day",
   wealthInsurePoliciesTitle: "Policy list",
+  wealthInsureColType: "Type",
+  wealthInsureColTerm: "Term",
   wealthInsureNoPolicies: "No policies recorded yet.",
   wealthInsureSetupTitle: "Set up household details",
   wealthInsureDependentsLabel: "Dependents",
@@ -2448,6 +2468,9 @@ const zh: Dictionary = {
   wealthInsurePremShareLabel: "保費佔年收入",
   wealthInsureCountLabel: "保單件數",
   wealthInsureGapTitle: "保障缺口與覆蓋率",
+  wealthInsureNeedHow: "需求保額是依你的負債、家庭支出與收入推估的建議值，不是保險公司給的數字。滑過「需求保額」可看各項算法。",
+  wealthInsureTipCoverage: "現有保額 ÷ 需求保額。100% 代表足額，低於 50% 為明顯不足。",
+  wealthInsureTipNeed: "依常見原則估算：壽險＝負債＋10 年家庭支出；意外＝壽險的一半；重大疾病＝3–5 年收入；癌症＝一次療程費用；失能＝月收入的 6 成；住院日額＝每日收入。",
   wealthInsureHaveLabel: "現有保額",
   wealthInsureNeedLabel: "需求保額",
   wealthInsureGapLabel: "缺口",
@@ -2461,6 +2484,8 @@ const zh: Dictionary = {
   wealthInsurePerMonthSuffix: "／月",
   wealthInsurePerDaySuffix: "／日",
   wealthInsurePoliciesTitle: "保單清冊",
+  wealthInsureColType: "類型",
+  wealthInsureColTerm: "繳費／保障期間",
   wealthInsureNoPolicies: "尚未登錄任何保單。",
   wealthInsureSetupTitle: "設定家庭參數",
   wealthInsureDependentsLabel: "扶養人數",
