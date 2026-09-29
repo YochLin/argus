@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchWealthFunds, type FundRow, type WealthFunds } from "../api";
 import type { Dictionary } from "../i18n";
-import { fmtMoney } from "./WealthHomeView";
+import { fmtMoney, mmdd } from "./WealthHomeView";
 
 interface Props {
   dict: Dictionary;
@@ -107,7 +107,7 @@ function FundTableRow({ dict, row }: { dict: Dictionary; row: FundRow }) {
   const stopped = row.monthlyAmount == null || row.monthlyAmount <= 0;
   return (
     <tr>
-      <td style={{ fontFamily: "var(--sans)" }}>{dict.wealthFundsClassName}</td>
+      <td style={{ fontFamily: "var(--sans)" }}>{row.name}</td>
       <td style={{ textAlign: "left", color: "var(--ink-3)" }}>{row.code || "—"}</td>
       <td style={{ fontFamily: "var(--sans)", fontSize: 12, textAlign: "left", color: "var(--ink-3)" }}>{row.platform || "—"}</td>
       <td style={stopped ? { color: "var(--ink-3)" } : undefined}>
@@ -122,7 +122,7 @@ function FundTableRow({ dict, row }: { dict: Dictionary; row: FundRow }) {
         {row.returnPct != null ? fmtPct(row.returnPct) : "—"}
       </td>
       <td style={{ color: "var(--ink-3)" }}>{row.oneYearReturnPct != null ? fmtPct(row.oneYearReturnPct) : "—"}</td>
-      <td style={{ color: "var(--ink-3)" }}>{row.nextContributionDate || "—"}</td>
+      <td style={{ color: "var(--ink-3)" }}>{row.nextContributionDate ? mmdd(row.nextContributionDate) : "—"}</td>
     </tr>
   );
 }
@@ -152,10 +152,15 @@ export function WealthFundsView({ dict }: Props) {
         <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: "var(--ink)" }}>
           {dict.navWealthFunds}
         </span>
+        {data?.lastImportDate && (
+          <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".06em", color: "var(--ink-3)" }}>
+            {dict.wealthLastImport} {data.lastImportDate} · {dict.wealthImportSourceCsv}
+          </span>
+        )}
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
-        <div className="card card--glow" style={{ flex: "1.5 1 250px" }}>
+        <div className="card card--glow" style={{ flex: "1.5 1 250px", padding: 19.2 }}>
           <div className="eyebrow">{dict.wealthFundsMvLabel}</div>
           <div className="mono" style={{ fontSize: 36, lineHeight: 1.1, marginTop: 8 }}>
             {data?.marketValue != null ? fmtMoney(data.marketValue, CURRENCY) : "—"}
@@ -199,7 +204,7 @@ export function WealthFundsView({ dict }: Props) {
                   key={i}
                   style={{ display: "flex", alignItems: "baseline", gap: 10, paddingBottom: 9, borderBottom: "1px solid var(--border)" }}
                 >
-                  <span className="mono" style={{ fontSize: 12, color: "var(--ink-3)" }}>{s.date}</span>
+                  <span className="mono" style={{ fontSize: 12, color: "var(--ink-3)" }}>{mmdd(s.date)}</span>
                   <span className="mono" style={{ fontSize: 12 }}>{s.names}</span>
                   <span className="mono" style={{ marginLeft: "auto", fontSize: 12.5, color: "var(--loss)" }}>
                     {fmtMoney(s.amount, CURRENCY)}
@@ -229,13 +234,13 @@ export function WealthFundsView({ dict }: Props) {
           <table className="mono">
             <thead>
               <tr>
-                <th>{dict.wealthFundsColClass}</th>
+                <th>{dict.wealthAllocClass}</th>
                 <th style={{ textAlign: "left" }}>{dict.wealthFundsColCode}</th>
                 <th style={{ textAlign: "left" }}>{dict.wealthFundsColPlatform}</th>
                 <th>{dict.wealthFundsColMonthly}</th>
                 <th>{dict.wealthFundsColCost}</th>
                 <th>{dict.wealthFundsColMv}</th>
-                <th>{dict.wealthFundsColPnl}</th>
+                <th>{dict.wealthFundsPnlLabel}</th>
                 <th>{dict.wealthFundsColReturn}</th>
                 <th>{dict.wealthFundsColOneYear}</th>
                 <th>{dict.wealthFundsColNext}</th>

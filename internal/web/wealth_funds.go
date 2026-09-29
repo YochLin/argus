@@ -69,6 +69,12 @@ type wealthFundsResponse struct {
 	Chart        []fundChartPoint   `json:"chart"`
 	Schedule     []fundScheduleItem `json:"schedule"`
 	Rows         []fundRow          `json:"rows"`
+	// LastImportDate is the design's 最後匯入 hint — the latest AsOf among
+	// funds whose Asset.Source is "import" (i.e. created via /w/import's CSV
+	// path), omitted entirely when no fund ever came in that way rather than
+	// fabricated from data this app doesn't track (asset_snapshots has no
+	// upload-wall-clock column, only the value's own as-of date).
+	LastImportDate string `json:"lastImportDate,omitempty"`
 }
 
 // fundsChartDates returns the 24 month-end dates (oldest first) the 累積投入
@@ -132,6 +138,9 @@ func (s *Server) handleWealthFundsGet(w http.ResponseWriter, r *http.Request) {
 	for _, a := range assetList {
 		if a.Type == "fund" {
 			funds = append(funds, a)
+			if a.Source == "import" && a.AsOf > resp.LastImportDate {
+				resp.LastImportDate = a.AsOf
+			}
 		}
 	}
 
@@ -210,8 +219,15 @@ func (s *Server) handleWealthFundsGet(w http.ResponseWriter, r *http.Request) {
 		if row.MonthlyAmount != nil && *row.MonthlyAmount > 0 {
 			resp.MonthlyTotal += *row.MonthlyAmount
 			if row.NextContributionDate != "" {
+				// The schedule panel is compact (design mock: "0050 · 00878"),
+				// so it identifies a fund by its short code, not its full
+				// name — falls back to Name for a fund with no code on file.
+				name := row.Code
+				if name == "" {
+					name = row.Name
+				}
 				resp.Schedule = append(resp.Schedule, fundScheduleItem{
-					Date: row.NextContributionDate, Names: row.Name, Amount: *row.MonthlyAmount,
+					Date: row.NextContributionDate, Names: name, Amount: *row.MonthlyAmount,
 				})
 			}
 		}
