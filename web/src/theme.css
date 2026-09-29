@@ -3179,10 +3179,19 @@ th {
   margin-left: auto;
 }
 
+.wealth-hero-block-label {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
 .wealth-hero-block-value {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 22px;
+  font-size: 20px;
+  line-height: 1.05;
 }
 
 .wealth-hero-block-value.big {
@@ -3544,7 +3553,7 @@ th {
 
 .wealth-ratios-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 14px;
 }
 
@@ -3591,6 +3600,20 @@ th {
   border-color: var(--accent-tint-border);
   background: var(--accent-tint-bg);
   color: var(--accent);
+}
+
+/* Stale badge (design mock's wSrcTag when days > 90) overrides whichever
+   manual/import color would otherwise apply — staleness is the more urgent
+   fact once it's true. */
+.wealth-src-tag.stale {
+  border-color: transparent;
+  background: rgba(245, 158, 11, 0.14);
+  color: #f59e0b;
+}
+
+.wealth-ratio-block-note {
+  font-size: 11px;
+  color: var(--ink-3);
 }
 
 .lang-dropdown-item:disabled {

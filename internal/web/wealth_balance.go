@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -25,13 +26,15 @@ const (
 )
 
 type balanceSheetItem struct {
-	AssetID  int64   `json:"assetId,omitempty"` // 0 for the equity virtual row
-	Name     string  `json:"name"`
-	Venue    string  `json:"venue,omitempty"`
-	Currency string  `json:"currency"`
-	ValueTWD float64 `json:"valueTwd"`
-	Type     string  `json:"type"`   // the asset's own Type, or "equity_us"/"equity_tw" for the virtual row
-	Source   string  `json:"source"` // "manual"/"import"/"sync" (§9.1); "sync" for the equity virtual row
+	AssetID   int64   `json:"assetId,omitempty"` // 0 for the equity virtual row
+	Name      string  `json:"name"`
+	Venue     string  `json:"venue,omitempty"`
+	Currency  string  `json:"currency"`
+	ValueTWD  float64 `json:"valueTwd"`
+	Type      string  `json:"type"`     // the asset's own Type, or "equity_us"/"equity_tw" for the virtual row
+	Category  string  `json:"category"` // assets.AllocCategories row (§8.5) — the design's per-item dot color, not the asset_group bucket this item is filed under
+	Source    string  `json:"source"`   // "manual"/"import"/"sync" (§9.1); "sync" for the equity virtual row
+	StaleDays *int    `json:"staleDays,omitempty"`
 }
 
 type assetGroupRow struct {
@@ -52,6 +55,56 @@ type liabilityDetail struct {
 	MinPayment      *float64 `json:"minPayment,omitempty"`
 	Source          string   `json:"source"` // "manual"/"import"/"sync" (§9.1)
 	Type            string   `json:"type"`   // the asset's own Type ("loan"/"credit_card"/...)
+	StaleDays       *int     `json:"staleDays,omitempty"`
+}
+
+// liabGroupRow is /w/balance's short-term/long-term liability split (design
+// mock's wbm.liabGroups) — "long" is exactly the mortgage type (the one
+// liability that's normally amortized over years, not months/a revolving
+// balance), everything else files under "short".
+type liabGroupRow struct {
+	Kind        string            `json:"kind"` // "short" | "long"
+	MarketValue float64           `json:"marketValue"`
+	PctOfLiab   *float64          `json:"pctOfLiabilities"`
+	Liabilities []liabilityDetail `json:"liabilities"`
+}
+
+// longTermRemainingMonths is buildLiabGroups' short/long cutoff. This
+// codebase has no dedicated "mortgage" asset type (assets.LoanTypes is just
+// "loan"/"credit_card" — a mortgage and a car loan file under the same
+// "loan" type, distinguished only by their remaining term), so the split
+// the design mock draws by type ("mortgage" alone is long-term) isn't
+// derivable here; 60 months instead separates mortgage-scale amortization
+// from a shorter personal/auto loan, matching the design's own two example
+// terms (216 months vs 36) with room either side.
+const longTermRemainingMonths = 60
+
+// buildLiabGroups splits the flat liabilities list into buildLiabGroups'
+// two buckets (always both, even empty, so the frontend doesn't need an
+// existence check per kind) and sorts each by value desc — the design
+// mock's "largest liability first" ordering (mirrors WealthHomeView's own
+// liabs sort). A revolving credit-card balance and a loan with no term on
+// file both default short: "long" only for a loan whose own remaining term
+// says so.
+func buildLiabGroups(liabilities []liabilityDetail, totalLiabilities float64) []liabGroupRow {
+	short := &liabGroupRow{Kind: "short", Liabilities: []liabilityDetail{}}
+	long := &liabGroupRow{Kind: "long", Liabilities: []liabilityDetail{}}
+	for _, l := range liabilities {
+		g := short
+		if l.RemainingMonths != nil && *l.RemainingMonths > longTermRemainingMonths {
+			g = long
+		}
+		g.MarketValue += l.ValueTWD
+		g.Liabilities = append(g.Liabilities, l)
+	}
+	for _, g := range []*liabGroupRow{short, long} {
+		sort.Slice(g.Liabilities, func(i, j int) bool { return g.Liabilities[i].ValueTWD > g.Liabilities[j].ValueTWD })
+		if totalLiabilities > 0 {
+			pct := g.MarketValue / totalLiabilities * 100
+			g.PctOfLiab = &pct
+		}
+	}
+	return []liabGroupRow{*short, *long}
 }
 
 type quarterPoint struct {
@@ -75,7 +128,20 @@ type balanceSheetResponse struct {
 	MonthlySalary    *float64          `json:"monthlySalary"`
 	AssetGroups      []assetGroupRow   `json:"assetGroups"`
 	Liabilities      []liabilityDetail `json:"liabilities"`
+	LiabGroups       []liabGroupRow    `json:"liabGroups"`
 	QuarterlyTrend   []quarterPoint    `json:"quarterlyTrend"`
+}
+
+// staleDaysPtr wraps staleInfo (wealth_home.go) as the *int JSON convention
+// balanceSheetItem/liabilityDetail use: nil when not stale, the day count
+// when it is — the frontend only ever needs to render the badge, not
+// re-derive the 90-day rule.
+func staleDaysPtr(source, asOf string, now time.Time) *int {
+	days, stale := staleInfo(source, asOf, now)
+	if !stale {
+		return nil
+	}
+	return &days
 }
 
 // buildAssetGroups assembles the four asset_group buckets' market values
@@ -85,7 +151,7 @@ type balanceSheetResponse struct {
 // Liabilities are the caller's own loop (only /w/balance needs them).
 // fxOK=false means at least one asset's currency couldn't be priced for
 // today — same whole-metric-degrades rule as service.WealthTotals.
-func (s *Server) buildAssetGroups(list []db.AssetWithValue, today string, usTotal float64, usOK bool, twTotal float64, twOK bool) (groups map[string]*assetGroupRow, byCurrency map[string]float64, totalAssets float64, fxOK bool) {
+func (s *Server) buildAssetGroups(list []db.AssetWithValue, today string, now time.Time, usTotal float64, usOK bool, twTotal float64, twOK bool) (groups map[string]*assetGroupRow, byCurrency map[string]float64, totalAssets float64, fxOK bool) {
 	groups = make(map[string]*assetGroupRow, len(assets.AssetGroups))
 	for _, g := range assets.AssetGroups {
 		groups[g] = &assetGroupRow{Group: g, Assets: []balanceSheetItem{}}
@@ -110,7 +176,10 @@ func (s *Server) buildAssetGroups(list []db.AssetWithValue, today string, usTota
 			continue
 		}
 		g.MarketValue += valueTWD
-		g.Assets = append(g.Assets, balanceSheetItem{AssetID: a.ID, Name: a.Name, Venue: a.Venue, Currency: a.Currency, ValueTWD: valueTWD, Type: a.Type, Source: a.Source})
+		g.Assets = append(g.Assets, balanceSheetItem{
+			AssetID: a.ID, Name: a.Name, Venue: a.Venue, Currency: a.Currency, ValueTWD: valueTWD,
+			Type: a.Type, Category: assets.CategoryOf(a.Type), Source: a.Source, StaleDays: staleDaysPtr(a.Source, a.AsOf, now),
+		})
 	}
 	for _, e := range service.EquityEntries(usTotal, usOK, twTotal, twOK) {
 		rate, rok := service.RateToTWD(e.Currency, today, true, s.quotes, s.fxDB)
@@ -127,7 +196,7 @@ func (s *Server) buildAssetGroups(list []db.AssetWithValue, today string, usTota
 			typ = "equity_us"
 		}
 		g.MarketValue += valueTWD
-		g.Assets = append(g.Assets, balanceSheetItem{Name: typ, Currency: e.Currency, ValueTWD: valueTWD, Type: typ, Source: "sync"})
+		g.Assets = append(g.Assets, balanceSheetItem{Name: typ, Currency: e.Currency, ValueTWD: valueTWD, Type: typ, Category: "equity", Source: "sync"})
 	}
 	return groups, byCurrency, totalAssets, fxOK
 }
@@ -222,7 +291,10 @@ func (s *Server) handleWealthBalance(w http.ResponseWriter, r *http.Request) {
 		}
 		valueTWD := *a.Value * rate
 		totalLiabilities += valueTWD
-		ld := liabilityDetail{AssetID: a.ID, Name: a.Name, Venue: a.Venue, Currency: a.Currency, ValueTWD: valueTWD, Source: a.Source, Type: a.Type}
+		ld := liabilityDetail{
+			AssetID: a.ID, Name: a.Name, Venue: a.Venue, Currency: a.Currency, ValueTWD: valueTWD,
+			Source: a.Source, Type: a.Type, StaleDays: staleDaysPtr(a.Source, a.AsOf, now),
+		}
 		if assets.LoanTypes[a.Type] {
 			if det, err := s.db.GetLoanDetails(a.ID); err == nil && det != nil {
 				ld.RatePct = det.RatePct
@@ -239,10 +311,10 @@ func (s *Server) handleWealthBalance(w http.ResponseWriter, r *http.Request) {
 		liabilities = append(liabilities, ld)
 	}
 
-	groups, _, totalAssets, groupsFxOK := s.buildAssetGroups(list, today, usTotal, usOK, twTotal, twOK)
+	groups, _, totalAssets, groupsFxOK := s.buildAssetGroups(list, today, now, usTotal, usOK, twTotal, twOK)
 	fxOK := liabFxOK && groupsFxOK
 
-	resp := balanceSheetResponse{AsOf: today, Liabilities: liabilities}
+	resp := balanceSheetResponse{AsOf: today, Liabilities: liabilities, LiabGroups: buildLiabGroups(liabilities, totalLiabilities)}
 	if fxOK {
 		ta, tl := totalAssets, totalLiabilities
 		resp.TotalAssets = &ta

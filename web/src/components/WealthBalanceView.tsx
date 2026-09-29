@@ -5,6 +5,7 @@ import {
   fetchWealthBalance,
   fetchWealthDebtPayoff,
   saveWealthProfile,
+  type AllocCategory,
   type BalanceSheet,
   type BalanceSheetItem,
   type DebtPayoffPlan,
@@ -14,7 +15,8 @@ import {
   type WealthAsset,
 } from "../api";
 import type { Dictionary } from "../i18n";
-import { AddAssetModal, EditValueModal, fmtMoney, groupColorClass, groupLabel } from "./WealthHomeView";
+import { AddAssetModal, EditValueModal, MONO_LABEL, fmtMoney, groupLabel, liabilityNote } from "./WealthHomeView";
+import { CATEGORY_COLOR } from "../wealthCategory";
 
 interface Props {
   dict: Dictionary;
@@ -38,6 +40,16 @@ export function srcLabel(dict: Dictionary, source: string): string {
   if (source === "import") return dict.wealthSrcImport;
   if (source === "sync") return dict.wealthSrcSync;
   return dict.wealthSrcManual;
+}
+
+// srcTag adds the design mock's "N 天未更新" suffix (wSrcTag) on top of
+// srcLabel's plain manual/import/sync pill, switching to the amber .stale
+// class — staleDays is only ever set past the 90-day threshold (§ backend
+// staleInfo), so its mere presence is the stale/not-stale flag.
+function srcTag(dict: Dictionary, source: string, staleDays?: number) {
+  const stale = staleDays != null;
+  const label = stale ? `${srcLabel(dict, source)} · ${dict.wealthStaleDaysSuffix.replace("%s", String(staleDays))}` : srcLabel(dict, source);
+  return <span className={`wealth-src-tag ${stale ? "stale" : source}`}>{label}</span>;
 }
 
 export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
@@ -124,38 +136,41 @@ export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
           above it, unlike a .card (which gets one from .content>.card+.card),
           so it needs its own top margin too, not just bottom. */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0", flexWrap: "wrap" }}>
-        <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: "var(--ink)" }}>
-          {dict.navWealthBalance}
+        <span style={{ ...MONO_LABEL, color: "var(--ink)" }}>{dict.navWealthBalance}</span>
+        <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".06em", color: "var(--ink-3)" }}>
+          {dict.wealthNetWorthFormula}
         </span>
         {writable && (
-          <button className="btn-tint" style={{ marginLeft: "auto" }} onClick={() => setShowAdd(true)}>
+          <button className="btn-tint" onClick={() => setShowAdd(true)}>
             {dict.wealthAddAsset}
           </button>
         )}
       </div>
 
-      <div className="card card--glow" style={{ marginBottom: 16 }}>
-        <div className="eyebrow">{dict.wealthNetWorth}</div>
-        <div className="wealth-hero-row" style={{ marginTop: 8 }}>
+      <div className="card card--glow" style={{ padding: 19.2, marginBottom: 16 }}>
+        <div className="wealth-hero-row">
           <div className="wealth-hero-block">
-            <div className="wealth-hero-block-value big">
+            <span className="wealth-hero-block-label">{dict.wealthNetWorth}</span>
+            <span className="wealth-hero-block-value big">
               {sheet?.netWorth != null ? fmtMoney(sheet.netWorth, CURRENCY) : "—"}
-            </div>
+            </span>
           </div>
           <div className="wealth-hero-block">
-            <span className="eyebrow">{dict.wealthTotalAssets}</span>
+            <span className="wealth-hero-block-label">{dict.wealthTotalAssets}</span>
             <span className="wealth-hero-block-value">
               {sheet?.totalAssets != null ? fmtMoney(sheet.totalAssets, CURRENCY) : "—"}
             </span>
           </div>
           <div className="wealth-hero-block">
-            <span className="eyebrow">{dict.wealthTotalLiabilities}</span>
+            <span className="wealth-hero-block-label">{dict.wealthTotalLiabilities}</span>
             <span className="wealth-hero-block-value loss">
               {sheet?.totalLiabilities != null ? fmtMoney(sheet.totalLiabilities, CURRENCY) : "—"}
             </span>
           </div>
           <div className="wealth-hero-block">
-            <span className="eyebrow">{dict.wealthNetWorth} / {dict.wealthTotalAssets}</span>
+            <span className="wealth-hero-block-label">
+              {dict.wealthNetWorth} / {dict.wealthTotalAssets}
+            </span>
             <span className="wealth-hero-block-value">{pct(netPct)}</span>
           </div>
         </div>
@@ -194,7 +209,6 @@ export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
                 .map((g) => (
                   <div key={g.group} className="wealth-group-block">
                     <div className="wealth-group-header">
-                      <span className={`wealth-dot ${groupColorClass(g.group)}`} />
                       {groupLabel(dict, g.group)}
                       <span style={{ fontSize: 10, color: "var(--ink-3)" }}>
                         {g.pctOfAssets != null ? `${g.pctOfAssets.toFixed(1)}% ${dict.wealthPctOfAssets}` : ""}
@@ -231,18 +245,31 @@ export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
             ) : sheet.liabilities.length === 0 ? (
               <div className="empty-message">{dict.wealthEmpty}</div>
             ) : (
-              <div className="wealth-col-stack" style={{ gap: 8 }}>
-                {sheet.liabilities.map((l) => {
-                  const match = writable ? findAsset(l.assetId) : undefined;
-                  return (
-                    <LiabilityItemRow
-                      key={l.assetId}
-                      dict={dict}
-                      item={l}
-                      onEdit={match ? () => setEditing(match) : undefined}
-                    />
-                  );
-                })}
+              <div className="wealth-col-stack">
+                {sheet.liabGroups
+                  .filter((g) => g.liabilities.length > 0)
+                  .map((g) => (
+                    <div key={g.kind} className="wealth-group-block">
+                      <div className="wealth-group-header">
+                        {g.kind === "long" ? dict.wealthLiabLongTerm : dict.wealthLiabShortTerm}
+                        <span style={{ fontSize: 10, color: "var(--ink-3)" }}>
+                          {g.pctOfLiabilities != null ? `${g.pctOfLiabilities.toFixed(1)}% ${dict.wealthPctOfLiabilities}` : ""}
+                        </span>
+                        <span className="wealth-group-header-value loss">{fmtMoney(g.marketValue, CURRENCY)}</span>
+                      </div>
+                      {g.liabilities.map((l) => {
+                        const match = writable ? findAsset(l.assetId) : undefined;
+                        return (
+                          <LiabilityItemRow
+                            key={l.assetId}
+                            dict={dict}
+                            item={l}
+                            onEdit={match ? () => setEditing(match) : undefined}
+                          />
+                        );
+                      })}
+                    </div>
+                  ))}
               </div>
             )}
           </div>
@@ -252,13 +279,14 @@ export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
               {dict.wealthDebtRatio} / {dict.wealthLiquidityMonths} / {dict.wealthSavingsRate} / {dict.wealthExpenseRatio}
             </div>
             <div className="wealth-ratios-grid">
-              <RatioBlock label={dict.wealthDebtRatio} value={pct(sheet?.debtRatioPct ?? null)} />
+              <RatioBlock label={dict.wealthDebtRatio} value={pct(sheet?.debtRatioPct ?? null)} note={dict.wealthDebtRatioNote} />
               <RatioBlock
                 label={dict.wealthLiquidityMonths}
                 value={sheet?.liquidityMonths != null ? sheet.liquidityMonths.toFixed(1) : "—"}
+                note={dict.wealthLiquidityNote}
               />
-              <RatioBlock label={dict.wealthSavingsRate} value={pct(sheet?.savingsRatePct ?? null)} />
-              <RatioBlock label={dict.wealthExpenseRatio} value={pct(sheet?.expenseRatioPct ?? null)} />
+              <RatioBlock label={dict.wealthSavingsRate} value={pct(sheet?.savingsRatePct ?? null)} note={dict.wealthSavingsRateNote} />
+              <RatioBlock label={dict.wealthExpenseRatio} value={pct(sheet?.expenseRatioPct ?? null)} note={dict.wealthExpenseRatioNote} />
             </div>
           </div>
         </div>
@@ -350,8 +378,9 @@ function AssetItemRow({
 }) {
   return (
     <div className="wealth-item-row">
+      <span style={{ width: 8, height: 8, borderRadius: 2, flexShrink: 0, background: CATEGORY_COLOR[item.category as AllocCategory] }} />
       <span>{item.assetId ? item.name : equityLabel(dict, item.type)}</span>
-      <span className={`wealth-src-tag ${item.source}`}>{srcLabel(dict, item.source)}</span>
+      {srcTag(dict, item.source, item.staleDays)}
       {onEdit ? (
         <span className="wealth-item-row-value wealth-value-editable" onClick={onEdit} title={dict.wealthEditValueTitle}>
           {fmtMoney(item.valueTwd, CURRENCY)}
@@ -372,14 +401,18 @@ function LiabilityItemRow({
   item: LiabilityDetail;
   onEdit?: () => void;
 }) {
+  const note = [item.ratePct != null ? `${dict.wealthRateLabel} ${item.ratePct}%` : "", liabilityNote(dict, CURRENCY, item)]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <div className="wealth-item-row">
       <span>{item.name}</span>
-      <span className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)" }}>
-        {item.ratePct != null ? `${item.ratePct}%` : ""}
-        {item.remainingMonths != null ? ` · ${item.remainingMonths} ${dict.wealthRemainingMonths}` : ""}
-      </span>
-      <span className={`wealth-src-tag ${item.source}`}>{srcLabel(dict, item.source)}</span>
+      {note && (
+        <span className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)" }}>
+          {note}
+        </span>
+      )}
+      {srcTag(dict, item.source, item.staleDays)}
       {onEdit ? (
         <span
           className="wealth-item-row-value loss wealth-value-editable"
@@ -395,11 +428,12 @@ function LiabilityItemRow({
   );
 }
 
-function RatioBlock({ label, value }: { label: string; value: string }) {
+function RatioBlock({ label, value, note }: { label: string; value: string; note: string }) {
   return (
     <div className="wealth-ratio-block">
       <span className="wealth-ratio-block-label">{label}</span>
       <span className="wealth-ratio-block-value">{value}</span>
+      <span className="wealth-ratio-block-note">{note}</span>
     </div>
   );
 }

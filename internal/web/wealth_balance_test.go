@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -94,6 +95,55 @@ func TestHandleWealthBalanceNoLiabilitiesRendersEmptySlice(t *testing.T) {
 	}
 	if got.Liabilities == nil || len(got.Liabilities) != 0 {
 		t.Errorf("Liabilities = %#v, want non-nil empty slice", got.Liabilities)
+	}
+	if len(got.LiabGroups) != 2 || got.LiabGroups[0].Kind != "short" || got.LiabGroups[1].Kind != "long" {
+		t.Errorf("LiabGroups = %+v, want [short, long] both present (even empty)", got.LiabGroups)
+	}
+}
+
+// TestBuildLiabGroups pins the short/long split (over longTermRemainingMonths
+// of term left is the only "long" case; a term-less loan and a credit card
+// both default short), the value-desc sort within each group, and the
+// %-of-total column — buildLiabGroups is pure so this exercises it directly
+// rather than through the full handler.
+func TestBuildLiabGroups(t *testing.T) {
+	months264, months36 := int64(264), int64(36)
+	liabs := []liabilityDetail{
+		{Name: "信用卡", Type: "credit_card", ValueTWD: 20000},
+		{Name: "房貸", Type: "loan", RemainingMonths: &months264, ValueTWD: 6000000},
+		{Name: "車貸", Type: "loan", RemainingMonths: &months36, ValueTWD: 300000},
+	}
+	got := buildLiabGroups(liabs, 6320000)
+	if len(got) != 2 {
+		t.Fatalf("len(groups) = %d, want 2", len(got))
+	}
+	short, long := got[0], got[1]
+	if short.Kind != "short" || long.Kind != "long" {
+		t.Fatalf("kinds = %s, %s, want short, long", short.Kind, long.Kind)
+	}
+	if len(short.Liabilities) != 2 || short.Liabilities[0].Name != "車貸" || short.Liabilities[1].Name != "信用卡" {
+		t.Errorf("short.Liabilities = %+v, want [車貸, 信用卡] (value desc)", short.Liabilities)
+	}
+	if short.MarketValue != 320000 {
+		t.Errorf("short.MarketValue = %v, want 320000", short.MarketValue)
+	}
+	if len(long.Liabilities) != 1 || long.Liabilities[0].Name != "房貸" {
+		t.Errorf("long.Liabilities = %+v, want [房貸]", long.Liabilities)
+	}
+	if long.PctOfLiab == nil || math.Abs(*long.PctOfLiab-94.9367) > 0.01 {
+		t.Errorf("long.PctOfLiab = %v, want ~94.94%%", long.PctOfLiab)
+	}
+}
+
+// TestBuildLiabGroupsAlwaysBothKinds pins the "always both, even empty"
+// contract the frontend relies on to render two headers unconditionally.
+func TestBuildLiabGroupsAlwaysBothKinds(t *testing.T) {
+	got := buildLiabGroups(nil, 0)
+	if len(got) != 2 || got[0].Liabilities == nil || got[1].Liabilities == nil {
+		t.Errorf("buildLiabGroups(nil, 0) = %+v, want two groups with non-nil empty Liabilities", got)
+	}
+	if got[0].PctOfLiab != nil || got[1].PctOfLiab != nil {
+		t.Errorf("PctOfLiab = %v, %v, want nil when totalLiabilities is 0", got[0].PctOfLiab, got[1].PctOfLiab)
 	}
 }
 

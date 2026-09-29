@@ -151,3 +151,29 @@ func TestCountStale(t *testing.T) {
 		t.Errorf("countStale = %d, want 2", got)
 	}
 }
+
+func TestStaleInfo(t *testing.T) {
+	now := time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name         string
+		source, asOf string
+		wantDays     int
+		wantStale    bool
+	}{
+		{"manual stale", "manual", "2026-01-01", 267, true},
+		{"import fresh", "import", "2026-07-01", 86, false},
+		{"sync never stale", "sync", "2025-01-01", 0, false},
+		{"empty asOf", "manual", "", 0, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			days, stale := staleInfo(c.source, c.asOf, now)
+			if stale != c.wantStale {
+				t.Errorf("stale = %v, want %v", stale, c.wantStale)
+			}
+			if stale && days != c.wantDays {
+				t.Errorf("days = %d, want %d", days, c.wantDays)
+			}
+		})
+	}
+}

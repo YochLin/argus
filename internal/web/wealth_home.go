@@ -54,17 +54,30 @@ const staleDays = 90
 // than staleDays as of now. A record with no snapshot yet isn't stale, it's
 // empty — the page already renders that as "—".
 func countStale(list []db.AssetWithValue, now time.Time) int {
-	cutoff := now.AddDate(0, 0, -staleDays).Format("2006-01-02")
 	n := 0
 	for _, a := range list {
-		if a.AsOf == "" || (a.Source != "manual" && a.Source != "import") {
-			continue
-		}
-		if a.AsOf < cutoff {
+		if _, stale := staleInfo(a.Source, a.AsOf, now); stale {
 			n++
 		}
 	}
 	return n
+}
+
+// staleInfo is countStale's per-record rule, reused by /w/balance to badge
+// an individual asset/liability row (design mock's wSrcTag "N 天未更新")
+// rather than only the home page's aggregate count. Synced sources refresh
+// themselves so they're never stale; an empty asOf is "no snapshot yet", a
+// different (already "—") state, not staleness.
+func staleInfo(source, asOf string, now time.Time) (days int, stale bool) {
+	if asOf == "" || (source != "manual" && source != "import") {
+		return 0, false
+	}
+	t, err := time.Parse("2006-01-02", asOf)
+	if err != nil {
+		return 0, false
+	}
+	days = int(now.Sub(t).Hours() / 24)
+	return days, days > staleDays
 }
 
 // handleWealthHome backs GET /api/wealth/networth?model=conserv|balanced|
