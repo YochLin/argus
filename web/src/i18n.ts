@@ -861,6 +861,13 @@ export interface Dictionary {
   wealthInsureSetupSave: string;
   wealthInsureNeedPendingNote: string;
 
+  // wealthLastImport/wealthImportSourceCsv back the design's 最後匯入 hint —
+  // shared across every wealth page with a CSV import path (funds today,
+  // bonds/tax later), same "generic label, page supplies the date" shape
+  // the design template itself reuses (t.wLastImport/t.wDataSource).
+  wealthLastImport: string;
+  wealthImportSourceCsv: string;
+
   navWealthFunds: string;
   wealthFundsMvLabel: string;
   wealthFundsCostLabel: string;
@@ -875,18 +882,15 @@ export interface Dictionary {
   wealthFundsScheduleTitle: string;
   wealthFundsScheduleEmpty: string;
   wealthFundsTableTitle: string;
-  wealthFundsColClass: string;
   wealthFundsColCode: string;
   wealthFundsColPlatform: string;
   wealthFundsColMonthly: string;
   wealthFundsColCost: string;
   wealthFundsColMv: string;
-  wealthFundsColPnl: string;
   wealthFundsColReturn: string;
   wealthFundsColOneYear: string;
   wealthFundsColNext: string;
   wealthFundsStopped: string;
-  wealthFundsClassName: string;
   wealthFundsNoFunds: string;
 }
 
@@ -1667,6 +1671,9 @@ const en: Dictionary = {
   wealthInsureSetupSave: "Save",
   wealthInsureNeedPendingNote: "Set up household details below to see life/accidental-death/disability need estimates.",
 
+  wealthLastImport: "LAST IMPORT",
+  wealthImportSourceCsv: "Platform statement (CSV)",
+
   navWealthFunds: "Funds & DCA",
   wealthFundsMvLabel: "MARKET VALUE",
   wealthFundsCostLabel: "TOTAL INVESTED",
@@ -1681,18 +1688,15 @@ const en: Dictionary = {
   wealthFundsScheduleTitle: "THIS MONTH'S SCHEDULE",
   wealthFundsScheduleEmpty: "No upcoming contributions",
   wealthFundsTableTitle: "HOLDINGS & PERFORMANCE",
-  wealthFundsColClass: "Class",
   wealthFundsColCode: "Code",
   wealthFundsColPlatform: "Platform",
   wealthFundsColMonthly: "Monthly",
   wealthFundsColCost: "Invested",
   wealthFundsColMv: "Market value",
-  wealthFundsColPnl: "P&L",
   wealthFundsColReturn: "Return",
   wealthFundsColOneYear: "1-yr",
   wealthFundsColNext: "Next",
   wealthFundsStopped: "lump sum",
-  wealthFundsClassName: "Fund",
   wealthFundsNoFunds: "No funds yet — import via CSV on the Import page.",
 };
 
@@ -2467,6 +2471,9 @@ const zh: Dictionary = {
   wealthInsureSetupSave: "儲存",
   wealthInsureNeedPendingNote: "設定下方家庭參數後，才能算出壽險／意外／失能扶助的需求保額。",
 
+  wealthLastImport: "最後匯入",
+  wealthImportSourceCsv: "平台對帳單（CSV）",
+
   navWealthFunds: "基金與定期定額",
   wealthFundsMvLabel: "投資市值",
   wealthFundsCostLabel: "累積投入",
@@ -2481,18 +2488,15 @@ const zh: Dictionary = {
   wealthFundsScheduleTitle: "本月扣款排程",
   wealthFundsScheduleEmpty: "近期沒有排定扣款",
   wealthFundsTableTitle: "扣款標的與績效",
-  wealthFundsColClass: "類別",
   wealthFundsColCode: "代號",
   wealthFundsColPlatform: "平台",
   wealthFundsColMonthly: "每月扣款",
   wealthFundsColCost: "累積投入",
   wealthFundsColMv: "市值",
-  wealthFundsColPnl: "損益",
   wealthFundsColReturn: "報酬率",
   wealthFundsColOneYear: "近一年",
   wealthFundsColNext: "下次扣款",
   wealthFundsStopped: "已停扣",
-  wealthFundsClassName: "基金",
   wealthFundsNoFunds: "尚無基金資料 — 請至匯入頁用 CSV 匯入。",
 };
 

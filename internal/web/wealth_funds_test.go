@@ -69,8 +69,8 @@ func TestHandleWealthFundsGetBasic(t *testing.T) {
 	if resp.Schedule[0].Date != "2026-10-06" || resp.Schedule[0].Amount != 20000 {
 		t.Errorf("Schedule[0] = %+v, want date=2026-10-06 amount=20000", resp.Schedule[0])
 	}
-	if resp.Schedule[0].Names != "元大台灣50 · 國泰永續高股息" {
-		t.Errorf("Schedule[0].Names = %q, want joined names", resp.Schedule[0].Names)
+	if resp.Schedule[0].Names != "0050 · 00878" {
+		t.Errorf("Schedule[0].Names = %q, want joined codes", resp.Schedule[0].Names)
 	}
 
 	if len(resp.Rows) != 2 {
@@ -157,6 +157,52 @@ func TestHandleWealthFundsGetUnpriceableCurrencyDegrades(t *testing.T) {
 	}
 	if len(resp.Rows) != 1 || resp.Rows[0].Value != nil {
 		t.Errorf("Rows[0].Value = %v, want nil (same unpriceable currency)", resp.Rows[0].Value)
+	}
+}
+
+// TestHandleWealthFundsGetLastImportDate pins the 最後匯入 hint: it's the
+// latest AsOf among funds created via /w/import (Source "import"), omitted
+// when no fund ever came in that way, and unaffected by a manually-added
+// fund with a later AsOf.
+func TestHandleWealthFundsGetLastImportDate(t *testing.T) {
+	fake := &fakeDB{
+		wealthAssets: []db.AssetWithValue{
+			{Asset: db.Asset{ID: 1, Side: "asset", Type: "fund", Name: "0050", Source: "import"}, AsOf: "2026-08-18"},
+			{Asset: db.Asset{ID: 2, Side: "asset", Type: "fund", Name: "00878", Source: "import"}, AsOf: "2026-09-01"},
+			{Asset: db.Asset{ID: 3, Side: "asset", Type: "fund", Name: "手動新增", Source: "manual"}, AsOf: "2026-09-20"},
+		},
+		fundDetails: map[int64]*db.FundDetails{},
+	}
+	s := newWealthFundsTestServer(fake)
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/funds", nil))
+	var resp wealthFundsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.LastImportDate != "2026-09-01" {
+		t.Errorf("LastImportDate = %q, want 2026-09-01 (latest import-sourced AsOf, not the later manual one)", resp.LastImportDate)
+	}
+}
+
+// TestHandleWealthFundsGetNoImportOmitsLastImportDate pins the omit-when-
+// never-imported case (no fund has Source "import").
+func TestHandleWealthFundsGetNoImportOmitsLastImportDate(t *testing.T) {
+	fake := &fakeDB{
+		wealthAssets: []db.AssetWithValue{
+			{Asset: db.Asset{ID: 1, Side: "asset", Type: "fund", Name: "手動新增", Source: "manual"}, AsOf: "2026-09-20"},
+		},
+		fundDetails: map[int64]*db.FundDetails{},
+	}
+	s := newWealthFundsTestServer(fake)
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/funds", nil))
+	var resp wealthFundsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.LastImportDate != "" {
+		t.Errorf("LastImportDate = %q, want \"\" (no fund was ever imported)", resp.LastImportDate)
 	}
 }
 

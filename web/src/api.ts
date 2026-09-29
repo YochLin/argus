@@ -2363,6 +2363,7 @@ export interface WealthFunds {
   chart: FundChartPoint[];
   schedule: FundScheduleItem[];
   rows: FundRow[];
+  lastImportDate?: string;
 }
 
 export function fetchWealthFunds(): Promise<WealthFunds> {
