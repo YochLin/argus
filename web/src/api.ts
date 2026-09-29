@@ -2048,6 +2048,14 @@ export interface CashEvent {
   direction: CashflowDirection | "event";
 }
 
+// CashForecastMonth is one bar of the 12-month forecast chart — net is
+// monthlyNet projected flat (no calendar-lump fabrication, see
+// wealth_cash.go's buildCashForecast doc comment).
+export interface CashForecastMonth {
+  month: string; // "2026-01"
+  net: number;
+}
+
 // WealthCash mirrors wealth_cash.go's cashResponse — monthlyIn/Out/Net are
 // null when an active flow's currency couldn't be priced to TWD today
 // (§8.17.1's "don't fabricate a number" rule, same as /w/alloc's totals).
@@ -2068,6 +2076,7 @@ export interface WealthCash {
   annualNet: number | null;
   eventsNet: number | null;
   events: CashEvent[];
+  forecast: CashForecastMonth[];
 }
 
 export function fetchWealthCash(): Promise<WealthCash> {

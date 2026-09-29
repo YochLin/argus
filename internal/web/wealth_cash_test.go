@@ -105,6 +105,14 @@ func TestHandleWealthCashList(t *testing.T) {
 	if got.AnnualNet == nil || *got.AnnualNet != 360000 {
 		t.Errorf("AnnualNet = %v, want 360000 (flat MonthlyNet*12)", got.AnnualNet)
 	}
+	if len(got.Forecast) != 12 {
+		t.Fatalf("len(Forecast) = %d, want 12", len(got.Forecast))
+	}
+	for _, f := range got.Forecast {
+		if f.Net != 30000 {
+			t.Errorf("Forecast[%s].Net = %v, want 30000 (flat MonthlyNet)", f.Month, f.Net)
+		}
+	}
 	// Each active item's ValueTwd is its own TWD amount; the paused item
 	// (id 4) has none since it's excluded from every total.
 	byID := map[int64]cashflowItem{}
@@ -153,6 +161,29 @@ func TestHandleWealthCashList(t *testing.T) {
 	}
 	if !sawSIPWithVenue {
 		t.Errorf("Events = %+v, want a 0050 定期定額 occurrence with venue 國泰證券", got.Events)
+	}
+}
+
+// TestBuildCashForecast pins the flat-projection shape: 12 consecutive
+// calendar months starting this month, each carrying the same net (no
+// calendar-lump fabrication — see buildCashForecast's doc comment).
+func TestBuildCashForecast(t *testing.T) {
+	today := time.Date(2026, time.October, 15, 0, 0, 0, 0, time.UTC)
+	got := buildCashForecast(today, 12345)
+	if len(got) != 12 {
+		t.Fatalf("len = %d, want 12", len(got))
+	}
+	wantMonths := []string{
+		"2026-10", "2026-11", "2026-12", "2027-01", "2027-02", "2027-03",
+		"2027-04", "2027-05", "2027-06", "2027-07", "2027-08", "2027-09",
+	}
+	for i, f := range got {
+		if f.Month != wantMonths[i] {
+			t.Errorf("Forecast[%d].Month = %q, want %q", i, f.Month, wantMonths[i])
+		}
+		if f.Net != 12345 {
+			t.Errorf("Forecast[%d].Net = %v, want 12345", i, f.Net)
+		}
 	}
 }
 

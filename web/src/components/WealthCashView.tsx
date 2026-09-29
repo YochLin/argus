@@ -7,10 +7,12 @@ import {
   fetchWealthCash,
   type CashflowDirection,
   type CashflowItem,
+  type CashForecastMonth,
   type WealthCash,
 } from "../api";
 import type { Dictionary } from "../i18n";
-import { fmtMoney } from "./WealthHomeView";
+import { fmtMoney, mmdd } from "./WealthHomeView";
+import { shortTWD } from "../currency";
 
 interface Props {
   dict: Dictionary;
@@ -247,6 +249,53 @@ function BreakdownCard({
   );
 }
 
+// ForecastChart mirrors the template's 12-month forecast bars (Argus Trading
+// WebUI.dc.html lines 991-1014, cashModel()'s wcm.forecast) — an up-area/
+// baseline/down-area column per month so a negative net renders below the
+// line instead of just a shorter positive bar. Every bar here is the same
+// height since the backend projects a flat monthlyNet (see api.ts's
+// CashForecastMonth doc comment) rather than fabricating the design mock's
+// Taiwan-calendar lumps — still the same chart mechanism, just honest data.
+function ForecastChart({ dict, forecast, annualNet }: { dict: Dictionary; forecast: CashForecastMonth[]; annualNet: number | null }) {
+  const maxAbs = Math.max(1, ...forecast.map((f) => Math.abs(f.net)));
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 6, flexWrap: "wrap" }}>
+        <span className="eyebrow">{dict.wealthCashForecastTitle}</span>
+        <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-3)" }}>
+          {dict.wealthCashAnnualNetLabel}{" "}
+          <span className={annualNet != null && annualNet < 0 ? "loss" : "profit"}>{annualNet != null ? shortTWD(annualNet) : "—"}</span>
+        </span>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 16 }}>{dict.wealthCashForecastNote}</div>
+      <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+        {forecast.map((f) => {
+          const up = f.net >= 0;
+          const barPct = (Math.abs(f.net) / maxAbs) * 100;
+          const monthIndex = Number(f.month.slice(5, 7)) - 1;
+          return (
+            <div key={f.month} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", minWidth: 0 }}>
+              <div style={{ height: 104, width: "100%", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+                {up && <span style={{ width: "62%", borderRadius: "3px 3px 0 0", height: `${barPct}%`, background: "var(--profit)", opacity: 0.5 }} />}
+              </div>
+              <div style={{ height: 1, width: "100%", background: "var(--border)" }} />
+              <div style={{ height: 56, width: "100%", display: "flex", alignItems: "flex-start", justifyContent: "center" }}>
+                {!up && <span style={{ width: "62%", borderRadius: "0 0 3px 3px", height: `${barPct}%`, background: "var(--loss)", opacity: 0.5 }} />}
+              </div>
+              <span className="mono" style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 4 }}>
+                {dict.months[monthIndex]}
+              </span>
+              <span className="mono" style={{ fontSize: 10, color: "var(--ink-2)", marginTop: 2 }}>
+                {shortTWD(f.net)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
   const [cash, setCash] = useState<WealthCash | null>(null);
   const [error, setError] = useState(false);
@@ -315,7 +364,10 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
       )}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
-        <div className="card card--glow" style={{ flex: "1.5 1 250px" }}>
+        {/* padding:19.2 matches the design's calc(var(--pad)*1.2) on this one
+            card (Argus Trading WebUI.dc.html's wCashNet block) — same 1.2x
+            hero-card padding already applied to /w/balance's net-worth card. */}
+        <div className="card card--glow" style={{ flex: "1.5 1 250px", padding: 19.2 }}>
           <div className="eyebrow">{dict.wealthCashMonthlyNet}</div>
           <div
             className={`mono ${cash?.monthlyNet != null && cash.monthlyNet < 0 ? "loss" : "profit"}`}
@@ -357,6 +409,8 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
         <BreakdownCard title={dict.wealthCashOutBreakdownTitle} items={outItems} total={cash?.monthlyOut ?? 0} maxValue={maxRow} positive={false} />
       </div>
 
+      {cash && cash.forecast.length > 0 && <ForecastChart dict={dict} forecast={cash.forecast} annualNet={cash.annualNet} />}
+
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 4, flexWrap: "wrap" }}>
           <span className="eyebrow">{dict.wealthCashEventsTitle}</span>
@@ -380,11 +434,13 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
             <tbody>
               {cash.events.map((e, i) => (
                 <tr key={`${e.date}-${e.item}-${i}`}>
-                  <td>{e.date}</td>
+                  <td>{mmdd(e.date)}</td>
                   <td style={{ fontFamily: "var(--sans)" }}>{e.item}</td>
                   <td style={{ fontFamily: "var(--sans)", fontSize: 12, color: "var(--ink-3)" }}>{e.venue || "—"}</td>
                   <td className={e.direction === "in" ? "profit" : e.direction === "out" ? "loss" : undefined}>
-                    {e.amount != null ? `${e.direction === "in" ? "+" : "-"}${fmtMoney(e.amount, e.currency || CURRENCY)}` : "—"}
+                    {e.amount != null
+                      ? `${e.direction === "in" ? "+" : "-"}${fmtMoney(e.amount, !e.currency || e.currency === "TWD" ? CURRENCY : e.currency)}`
+                      : "—"}
                   </td>
                 </tr>
               ))}

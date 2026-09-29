@@ -694,6 +694,8 @@ export interface Dictionary {
   wealthCashCatLoan: string;
   wealthCashCatInsurance: string;
   wealthCashCatTax: string;
+  wealthCashForecastTitle: string;
+  wealthCashForecastNote: string;
   // Phase 9 波次3 PR6: goal tracking page (/w/goals) — goals table +
   // goal_assets earmark. Retirement (kind "retirement") is the same table
   // (§8.8); PR7 owns computing its targetAmount, this page just renders it
@@ -1507,6 +1509,8 @@ const en: Dictionary = {
   wealthCashCatLoan: "Loan / car payment",
   wealthCashCatInsurance: "Insurance premium",
   wealthCashCatTax: "Tax reserve",
+  wealthCashForecastTitle: "12-month cash flow forecast",
+  wealthCashForecastNote: "A flat projection of this month's net across the next year — it doesn't try to guess annual premiums, tax bills, or bonus timing.",
   navWealthGoals: "Goals",
   wealthGoalsNoGoals: "No goals yet.",
   wealthGoalsSavedLabel: "Saved",
@@ -2295,6 +2299,8 @@ const zh: Dictionary = {
   wealthCashCatLoan: "信貸車貸",
   wealthCashCatInsurance: "保費",
   wealthCashCatTax: "稅務預留",
+  wealthCashForecastTitle: "12 個月現金流預測",
+  wealthCashForecastNote: "以本月結餘為基準推算未來一年，不臆測年繳保費、稅款或年終發放時間。",
   navWealthGoals: "目標追蹤",
   wealthGoalsNoGoals: "尚無目標。",
   wealthGoalsSavedLabel: "已累積",
