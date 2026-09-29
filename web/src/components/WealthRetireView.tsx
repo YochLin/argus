@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
   fetchWealthProfile,
@@ -10,7 +10,8 @@ import {
   type WealthRetire,
 } from "../api";
 import type { Dictionary } from "../i18n";
-import { fmtMoney } from "./WealthHomeView";
+import { DOTTED, fmtMoney } from "./WealthHomeView";
+import { shortTWD } from "../currency";
 
 interface Props {
   dict: Dictionary;
@@ -75,6 +76,27 @@ function QuickSwitchGroup<T extends number>({
   );
 }
 
+// SummaryChip is one read-only assumption pill next to the header's
+// quick-switch buttons (design's wrm.summary) — plain text, or a
+// dotted-underline hover tooltip when `tip` is given (only the 提領率 chip
+// carries one, matching the design's own per-entry tipStyle logic).
+function SummaryChip({ text, tip }: { text: string; tip?: string }) {
+  return (
+    <span
+      className="mono"
+      style={{ fontSize: 10.5, color: "var(--ink-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 8px", background: "var(--surface)" }}
+    >
+      {tip ? (
+        <span title={tip} style={DOTTED}>
+          {text}
+        </span>
+      ) : (
+        text
+      )}
+    </span>
+  );
+}
+
 function ScenarioRow({ dict, label, scenario }: { dict: Dictionary; label: string; scenario: RetirementScenario }) {
   return (
     <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
@@ -90,11 +112,27 @@ function ScenarioRow({ dict, label, scenario }: { dict: Dictionary; label: strin
 }
 
 // RetireChart mirrors retireModel()'s SVG (lines 1106-1116): the baseline
-// balance path, a dashed horizontal "need" reference line, and a dashed
-// vertical line at the retirement year — plain straight-segment polylines
-// rather than the template's smoothed area fill, which needs no library and
-// reads identically at this data density.
-function RetireChart({ path, need, retirementYear }: { path: { year: number; balance: number }[]; need: number; retirementYear?: number }) {
+// balance path, an area fill under it (var(--accent-tint-bg), not the
+// design's bare --tint — this app's theme.css never defines that token,
+// same substitution WealthFundsView's FundsChart already documents), a
+// dashed horizontal "need" reference line, and a dashed vertical line at
+// the retirement year — plain straight-segment polylines rather than the
+// template's smoothed curve, which needs no library and reads identically
+// at this data density. axisAges renders the three age labels the design
+// puts under the chart (current/retirement/horizon), not proportionally
+// positioned along the x-axis — same three-fixed-points layout as the
+// template's own flex justify-content:space-between row.
+function RetireChart({
+  path,
+  need,
+  retirementYear,
+  axisAges,
+}: {
+  path: { year: number; balance: number }[];
+  need: number;
+  retirementYear?: number;
+  axisAges: [number, number, number];
+}) {
   if (path.length < 2) return null;
   const width = 600;
   const height = 170;
@@ -102,17 +140,28 @@ function RetireChart({ path, need, retirementYear }: { path: { year: number; bal
   const x = (i: number) => (i / (path.length - 1)) * width;
   const y = (v: number) => height - (v / maxV) * height;
   const points = path.map((p, i) => `${x(i).toFixed(1)},${y(p.balance).toFixed(1)}`).join(" ");
+  const areaPoints = `${x(0).toFixed(1)},${height} ${points} ${x(path.length - 1).toFixed(1)},${height}`;
   const needY = y(need).toFixed(1);
   const retIdx = retirementYear != null ? path.findIndex((p) => p.year === retirementYear) : -1;
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ width: "100%", height: 200, display: "block" }}>
-      <line x1={0} x2={width} y1={needY} y2={needY} stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />
-      {retIdx >= 0 && (
-        <line x1={x(retIdx)} x2={x(retIdx)} y1={0} y2={height} stroke="var(--ink-3)" strokeWidth={1} strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
-      )}
-      <polyline points={points} fill="none" stroke="var(--accent)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
-    </svg>
+    <>
+      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ width: "100%", height: 200, display: "block" }}>
+        <polygon points={areaPoints} fill="var(--accent-tint-bg)" stroke="none" />
+        <line x1={0} x2={width} y1={needY} y2={needY} stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />
+        {retIdx >= 0 && (
+          <line x1={x(retIdx)} x2={x(retIdx)} y1={0} y2={height} stroke="var(--ink-3)" strokeWidth={1} strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+        )}
+        <polyline points={points} fill="none" stroke="var(--accent)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+      </svg>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+        {axisAges.map((age, i) => (
+          <span key={i} className="mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>
+            {age} 歲
+          </span>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -168,6 +217,7 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
   const [error, setError] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
   const [birthYearInput, setBirthYearInput] = useState("");
+  const birthYearInputRef = useRef<HTMLInputElement>(null);
   const [contribInput, setContribInput] = useState("");
   const [savingSetup, setSavingSetup] = useState(false);
   const [cfgOpen, setCfgOpen] = useState(false);
@@ -297,6 +347,19 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
     return <div className="error-message">{dict.error}</div>;
   }
 
+  // focusBirthYearInput backs the sample banner's CTA — the design's
+  // button opens its own (fully ephemeral, never-persisted) settings
+  // drawer, but this app's settings drawer really can't set a real birth
+  // year: it's the same what-if preview a page with a saved birth year
+  // uses, and typing an age into it would silently do nothing. The real
+  // birth-year setup card is already rendered right above the KPI row
+  // whenever hasBirthYear is false, so the honest equivalent is to just
+  // scroll/focus that real field instead of opening the wrong drawer.
+  function focusBirthYearInput() {
+    birthYearInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    birthYearInputRef.current?.focus();
+  }
+
   return (
     <>
       {/* Unboxed header + quick-switch buttons, matching the template's
@@ -307,22 +370,37 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
         <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: "var(--ink)" }}>
           {dict.navWealthRetire}
         </span>
-        {writable && retire?.hasBirthYear && (
+        {writable && retire && (retire.hasBirthYear || retire.isSample) && (
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <QuickSwitchGroup
-              label={dict.wealthRetireTargetAgeLabel}
-              options={retire.retirementAgeOptions}
-              value={retire.retirementAge}
-              format={(v) => `${v} 歲`}
-              onSelect={(age) => saveQuickSwitch(age, retire.monthlySpend)}
-            />
-            <QuickSwitchGroup
-              label={dict.wealthRetireSpendLabel}
-              options={retire.monthlySpendOptions}
-              value={retire.monthlySpend}
-              format={(v) => fmtMoney(v, CURRENCY)}
-              onSelect={(spend) => saveQuickSwitch(retire.retirementAge, spend)}
-            />
+            {retire.hasBirthYear && (
+              <>
+                <QuickSwitchGroup
+                  label={dict.wealthRetireTargetAgeLabel}
+                  options={retire.retirementAgeOptions}
+                  value={retire.retirementAge}
+                  format={(v) => `${v} 歲`}
+                  onSelect={(age) => saveQuickSwitch(age, retire.monthlySpend)}
+                />
+                <QuickSwitchGroup
+                  label={dict.wealthRetireSpendLabel}
+                  options={retire.monthlySpendOptions}
+                  value={retire.monthlySpend}
+                  format={(v) => fmtMoney(v, CURRENCY)}
+                  onSelect={(spend) => saveQuickSwitch(retire.retirementAge, spend)}
+                />
+              </>
+            )}
+            {display && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <SummaryChip text={dict.wealthRetireChipSpend.replace("{v}", shortTWD(display.monthlySpend))} />
+                <SummaryChip text={dict.wealthRetireChipContrib.replace("{v}", shortTWD(display.monthlyContribution))} />
+                <SummaryChip
+                  text={dict.wealthRetireChipReturn.replace("{pre}", String(display.preReturnPct)).replace("{post}", String(display.postReturnPct))}
+                />
+                <SummaryChip text={dict.wealthRetireChipSwr.replace("{v}", String(display.withdrawalRatePct))} tip={dict.wealthRetireTipSwr} />
+                <SummaryChip text={dict.wealthRetireChipLifeAge.replace("{v}", String(display.horizonAge))} />
+              </div>
+            )}
             <button
               onClick={() => setCfgOpen(true)}
               style={{
@@ -417,7 +495,7 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
             <label className="form-field" style={{ width: 140 }}>
               <span>{dict.wealthRetireBirthYearLabel}</span>
-              <input className="mono" type="number" value={birthYearInput} onChange={(e) => setBirthYearInput(e.target.value)} />
+              <input ref={birthYearInputRef} className="mono" type="number" value={birthYearInput} onChange={(e) => setBirthYearInput(e.target.value)} />
             </label>
             <label className="form-field" style={{ width: 180 }}>
               <span>{dict.wealthRetireContribInputLabel}</span>
@@ -432,8 +510,31 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
         </div>
       )}
 
+      {display?.isSample && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "12px 14px", borderRadius: 10, background: "rgba(245,158,11,.1)", border: "1px solid rgba(245,158,11,.35)", marginBottom: 16 }}>
+          <span
+            className="mono"
+            style={{ fontSize: 9.5, letterSpacing: ".06em", color: "#f59e0b", border: "1px solid #f59e0b", borderRadius: 4, padding: "2px 6px" }}
+          >
+            {dict.wealthRetireSampleTag}
+          </span>
+          <span style={{ fontSize: 12.5, color: "var(--ink)", flex: "1 1 280px" }}>
+            {dict.wealthRetireSampleMsg
+              .replace("{age}", String(display.currentAge))
+              .replace("{ret}", String(display.retirementAge))
+              .replace("{pool}", display.pool != null ? shortTWD(display.pool) : "—")}
+          </span>
+          <button
+            onClick={focusBirthYearInput}
+            style={{ fontFamily: "var(--font-sans)", fontSize: 12.5, fontWeight: 700, padding: "7px 14px", borderRadius: 8, cursor: "pointer", border: "1px solid #f59e0b", background: "none", color: "#f59e0b" }}
+          >
+            {dict.wealthRetireSampleBtn}
+          </button>
+        </div>
+      )}
+
       <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
-        <div className="card card--glow" style={{ flex: "1.5 1 250px" }}>
+        <div className="card card--glow" style={{ flex: "1.5 1 250px", padding: 19.2 }}>
           <div className="eyebrow">{dict.wealthRetireRateLabel}</div>
           <div className="mono" style={{ fontSize: 40, lineHeight: 1.1, marginTop: 8, color: display?.baseline ? rateColor(display.baseline.achievementPct, display.baseline.funded) : undefined }}>
             {display?.baseline ? `${Math.min(display.baseline.achievementPct, 999).toFixed(0)}%` : "—"}
@@ -465,7 +566,11 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
           </div>
         </div>
         <div className="card" style={{ flex: "1 1 200px" }}>
-          <div className="eyebrow">{dict.wealthRetireDepleteLabel}</div>
+          <div className="eyebrow">
+            <span title={dict.wealthRetireTipDeplete} style={DOTTED}>
+              {dict.wealthRetireDepleteLabel}
+            </span>
+          </div>
           <div className="mono" style={{ fontSize: 19, marginTop: 10, lineHeight: 1.35 }}>
             {display?.baseline == null
               ? "—"
@@ -477,9 +582,17 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
       </div>
 
       {display?.baseline && display.need != null && (
-        <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card" style={{ marginBottom: 16, padding: 17.6 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 14, flexWrap: "wrap" }}>
             <span className="eyebrow">{dict.wealthRetireChartLabelWithAge.replace("{age}", String(display.horizonAge))}</span>
+            {display.isSample && (
+              <span
+                className="mono"
+                style={{ fontSize: 9.5, letterSpacing: ".06em", color: "#f59e0b", background: "rgba(245,158,11,.14)", borderRadius: 4, padding: "2px 6px" }}
+              >
+                {dict.wealthRetireSampleTag}
+              </span>
+            )}
             <span style={{ marginLeft: "auto", display: "flex", gap: 14 }}>
               <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--ink-3)" }}>
                 <span style={{ width: 14, height: 2, background: "var(--accent)", display: "inline-block" }} />
@@ -491,7 +604,12 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
               </span>
             </span>
           </div>
-          <RetireChart path={display.path} need={display.need} retirementYear={display.retirementYear} />
+          <RetireChart
+            path={display.path}
+            need={display.need}
+            retirementYear={display.retirementYear}
+            axisAges={[display.currentAge, display.retirementAge, display.horizonAge]}
+          />
 
           {/* Three §10.2② scenarios as a compact table rather than three
               overlaid chart lines — the achievement%/depletion-age numbers
