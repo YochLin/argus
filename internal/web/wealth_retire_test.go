@@ -21,11 +21,13 @@ func newWealthRetireTestServer(password string, fake *fakeDB, wealthDB wealthWri
 	return s
 }
 
-// TestHandleWealthRetireGetNoBirthYear pins the degrade path: with no
-// profile.birth_year set yet, the page still renders (defaults for the
-// quick-switch selection) but every projection field stays nil/unset since
-// there's no way to turn "retirement age 60" into a calendar date.
-func TestHandleWealthRetireGetNoBirthYear(t *testing.T) {
+// TestHandleWealthRetireGetNoBirthYearRendersSample pins the sample-mode
+// path (design's isSample/範例): with no profile.birth_year set yet, the
+// page still renders a full projection — using defaultSampleCurrentAge
+// rather than a real age — tagged IsSample so nothing presents it as the
+// user's real numbers. Pool itself is still computable (no earmarks yet is
+// a known zero, not a pricing failure), which is what unlocks this path.
+func TestHandleWealthRetireGetNoBirthYearRendersSample(t *testing.T) {
 	s := newWealthRetireTestServer("", &fakeDB{}, &fakeWealthDB{})
 	rec := httptest.NewRecorder()
 	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/retire", nil))
@@ -39,13 +41,49 @@ func TestHandleWealthRetireGetNoBirthYear(t *testing.T) {
 	if got.HasBirthYear {
 		t.Errorf("HasBirthYear = true, want false")
 	}
-	// Pool itself is still computable (no earmarks yet is a known zero, not
-	// a pricing failure) — only the age-dependent projection degrades.
-	if got.Baseline != nil || got.Need != nil {
-		t.Errorf("expected nil projection fields with no birth year, got Baseline=%v Need=%v", got.Baseline, got.Need)
+	if !got.IsSample {
+		t.Errorf("IsSample = false, want true (no real birth year on file)")
+	}
+	if got.CurrentAge != defaultSampleCurrentAge {
+		t.Errorf("CurrentAge = %d, want %d (defaultSampleCurrentAge)", got.CurrentAge, defaultSampleCurrentAge)
+	}
+	if got.Baseline == nil || got.Need == nil {
+		t.Errorf("expected a full sample projection even without a birth year, got Baseline=%v Need=%v", got.Baseline, got.Need)
 	}
 	if got.RetirementAge != defaultRetirementAge || got.MonthlySpend != defaultRetirementMonthlySpend {
 		t.Errorf("defaults = (%d, %v), want (%d, %v)", got.RetirementAge, got.MonthlySpend, defaultRetirementAge, defaultRetirementMonthlySpend)
+	}
+}
+
+// TestHandleWealthRetireGetNoBirthYearGoalCardSkipsAgePace pins the safety
+// property the sample path must not violate: applyRetirementPace's
+// age-based fields (only ever set by that function — see its doc comment)
+// must stay unset when there's no real birth year, even though the
+// projection itself now computes fine with a sample age. The goal card can
+// still carry a generic calendar-pace status from goalStatus (created→
+// target date, independent of age) — that's pre-existing, unrelated
+// behavior this test doesn't touch.
+func TestHandleWealthRetireGetNoBirthYearGoalCardSkipsAgePace(t *testing.T) {
+	fake := &fakeDB{
+		goals: []db.Goal{{ID: 1, Name: "退休金", Kind: "retirement", TargetAmount: 20000000, TargetDate: "2060-01-01", CreatedAt: "2020-01-01"}},
+		wealthAssets: []db.AssetWithValue{
+			{Asset: db.Asset{ID: 1, Side: "asset", Type: "deposit", Name: "退休帳戶", Currency: "TWD"}, Value: floatPtr(10000000)},
+		},
+		goalAssets: []db.GoalAsset{{GoalID: 1, AssetID: 1, Ratio: 1}},
+	}
+	s := newWealthRetireTestServer("", fake, &fakeWealthDB{})
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/retire", nil))
+	var got retirementResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.Goal == nil {
+		t.Fatal("Goal = nil, want the retirement goal to still render")
+	}
+	if got.Goal.ProjectedAtRetirement != nil || got.Goal.RetirementAge != 0 {
+		t.Errorf("Goal.ProjectedAtRetirement = %v, Goal.RetirementAge = %d, want both unset (applyRetirementPace must not run off a sample age)",
+			got.Goal.ProjectedAtRetirement, got.Goal.RetirementAge)
 	}
 }
 

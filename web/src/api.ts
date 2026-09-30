@@ -2226,6 +2226,7 @@ export interface RetirementPathPoint {
 export interface WealthRetire {
   asOf: string;
   hasBirthYear: boolean;
+  isSample: boolean;
   currentAge: number;
   retirementAge: number;
   retirementAgeOptions: number[];

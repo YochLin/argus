@@ -22,6 +22,13 @@ import (
 const (
 	defaultRetirementAge          = 60
 	defaultRetirementMonthlySpend = 90000.0
+	// defaultSampleCurrentAge is the age the projection uses when no birth
+	// year is on file yet — mirrors the design's own retDefaults() age:42
+	// exactly. The response is clearly tagged IsSample so this never reads
+	// as the user's real age; it exists so the page has something to show
+	// (and the settings drawer's what-if preview has something to preview)
+	// before the one-time birth-year setup is filled in.
+	defaultSampleCurrentAge = 42
 )
 
 var (
@@ -63,8 +70,15 @@ type retirementPathPoint struct {
 // resolution failing degrades the whole projection, same whole-metric rule
 // as everywhere else in wealth (§8.17.1).
 type retirementResponse struct {
-	AsOf                 string    `json:"asOf"`
-	HasBirthYear         bool      `json:"hasBirthYear"`
+	AsOf         string `json:"asOf"`
+	HasBirthYear bool   `json:"hasBirthYear"`
+	// IsSample is true exactly when HasBirthYear is false and the
+	// projection below still rendered — using defaultSampleCurrentAge
+	// instead of a real one. Tied purely to HasBirthYear, never to whether
+	// a live what-if override is in play (same as the design's own
+	// `isSample = !hasAge`), so previewing "what if I were 35" in the
+	// settings drawer doesn't make the sample tag disappear early.
+	IsSample             bool      `json:"isSample"`
 	CurrentAge           int       `json:"currentAge"`
 	RetirementAge        int       `json:"retirementAge"`
 	RetirementAgeOptions []int     `json:"retirementAgeOptions"`
@@ -233,7 +247,7 @@ func (s *Server) buildRetirementResponse(r *http.Request) (retirementResponse, e
 		resp.Goal = &goal
 	}
 
-	if !resp.HasBirthYear || pool == nil {
+	if pool == nil {
 		return resp, nil
 	}
 
@@ -243,7 +257,11 @@ func (s *Server) buildRetirementResponse(r *http.Request) (retirementResponse, e
 	// never leak into the trustworthy "saved vs target" goal card.
 	ov := parseRetirementLiveOverrides(r)
 
-	currentAge := now.Year() - birthYear
+	resp.IsSample = !resp.HasBirthYear
+	currentAge := defaultSampleCurrentAge
+	if resp.HasBirthYear {
+		currentAge = now.Year() - birthYear
+	}
 	if ov.age != nil {
 		currentAge = *ov.age
 	}
@@ -311,9 +329,11 @@ func (s *Server) buildRetirementResponse(r *http.Request) (retirementResponse, e
 	bs, cs, ls := toScenarioSummary(baseline, resp.RetirementAge), toScenarioSummary(crash, resp.RetirementAge), toScenarioSummary(lowReturn, resp.RetirementAge)
 	resp.Baseline, resp.Crash, resp.LowReturn = &bs, &cs, &ls
 	resp.Need = &baseline.Need
-	// The goal card stays on the real (non-what-if) numbers, so the template's
-	// pace semantics apply only when no drawer override is in play.
-	if resp.Goal != nil && ov == (retirementLiveOverrides{}) {
+	// The goal card stays on the real (non-what-if, non-sample) numbers, so
+	// the template's pace semantics apply only when no drawer override is
+	// in play AND a real birth year is on file — a sample age is exactly as
+	// untrustworthy as a what-if override for a "saved vs target" pace call.
+	if resp.Goal != nil && ov == (retirementLiveOverrides{}) && resp.HasBirthYear {
 		applyRetirementPace(resp.Goal, currentAge, resp.RetirementAge, baseline.ProjectedAtRetirement, baseline.Need)
 	}
 

@@ -847,6 +847,27 @@ export interface Dictionary {
   wealthRetireNetSpendLabel: string;
   wealthRetireChartLabelWithAge: string;
   wealthRetireDepleteNeverWithAge: string;
+  // wealthRetireTipDeplete/wealthRetireTipSwr back the design's two
+  // dotted-underline tooltips (native title attr, DOTTED style) on
+  // "資產耗盡"/the settings drawer's 提領率 field's read-only summary chip.
+  // wealthRetireChip* are the read-only assumption chips next to the
+  // header's quick-switch buttons (design's wrm.summary) — short, distinct
+  // wording from the KPI/drawer labels above, each carrying a "{v}"-style
+  // token the component substitutes (same convention as
+  // wealthRetireChartLabelWithAge above).
+  wealthRetireTipDeplete: string;
+  wealthRetireTipSwr: string;
+  wealthRetireChipSpend: string;
+  wealthRetireChipContrib: string;
+  wealthRetireChipReturn: string;
+  wealthRetireChipSwr: string;
+  wealthRetireChipLifeAge: string;
+  // Sample-mode banner ("範例") shown instead of a real projection when no
+  // birth year is on file yet (design's wrm.isSample) — the projection
+  // still renders (using a sample age), tagged so it never reads as real.
+  wealthRetireSampleTag: string;
+  wealthRetireSampleMsg: string;
+  wealthRetireSampleBtn: string;
 
   // Insurance gap-analysis page (`/w/insure`, Phase 9 波次3 PR8, §8.6/
   // §8.16.1) — six-coverage-kind have/need table (a pure-function survivor-
@@ -1708,6 +1729,16 @@ const en: Dictionary = {
   wealthRetireNetSpendLabel: "NET MONTHLY WITHDRAWAL",
   wealthRetireChartLabelWithAge: "PROJECTION TO AGE {age}",
   wealthRetireDepleteNeverWithAge: "Never ({age}+)",
+  wealthRetireTipDeplete: "Age at which assets run out under these assumptions. Safe if later than life expectancy.",
+  wealthRetireTipSwr: "Share of assets withdrawn each year in retirement. 4% is a common conservative baseline.",
+  wealthRetireChipSpend: "Spend {v}",
+  wealthRetireChipContrib: "Contrib {v}",
+  wealthRetireChipReturn: "Real {pre}% / {post}%",
+  wealthRetireChipSwr: "SWR {v}%",
+  wealthRetireChipLifeAge: "To {v}",
+  wealthRetireSampleTag: "SAMPLE",
+  wealthRetireSampleMsg: "Your age isn't set yet. This is a sample projection (age {age}, retiring at {ret}, pool {pool}) — not your result.",
+  wealthRetireSampleBtn: "Enter my age",
 
   navWealthInsure: "Insurance",
   wealthInsureAdd: "Add policy",
@@ -2544,6 +2575,16 @@ const zh: Dictionary = {
   wealthRetireNetSpendLabel: "淨提領月支出",
   wealthRetireChartLabelWithAge: "資產推估（至 {age} 歲）",
   wealthRetireDepleteNeverWithAge: "{age} 歲後仍有結餘",
+  wealthRetireTipDeplete: "照目前假設，資產會在幾歲用完。晚於預期壽命才算安全。",
+  wealthRetireTipSwr: "退休後每年從資產中領出的比例。4% 是常見的保守基準。",
+  wealthRetireChipSpend: "月支出 {v}",
+  wealthRetireChipContrib: "月投入 {v}",
+  wealthRetireChipReturn: "實質報酬 {pre}% / {post}%",
+  wealthRetireChipSwr: "提領率 {v}%",
+  wealthRetireChipLifeAge: "活到 {v} 歲",
+  wealthRetireSampleTag: "範例",
+  wealthRetireSampleMsg: "還沒填你的年齡。以下是範例試算（{age} 歲、{ret} 歲退休、資產池 {pool}），不是你的結果。",
+  wealthRetireSampleBtn: "填入我的年齡",
 
   navWealthInsure: "保單健檢",
   wealthInsureAdd: "新增保單",
