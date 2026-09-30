@@ -970,7 +970,11 @@ input {
   align-self: center;
 }
 
-.btn-tint {
+/* Base for the chart header's buy/sell buttons (paired with .btn-tint-buy/-sell).
+   Deliberately not named .btn-tint: the accent-tinted .btn-tint further down is
+   the same specificity and wins by source order, which painted both trade
+   buttons indigo (#192). */
+.btn-tint-trade {
   font-family: var(--font-sans);
   font-size: 12.5px;
   font-weight: 700;

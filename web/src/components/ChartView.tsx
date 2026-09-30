@@ -613,13 +613,13 @@ export function ChartView({
         {writable && onTrade && (
           <div className="ticker-header-actions">
             <button
-              className="btn-tint btn-tint-buy"
+              className="btn-tint-trade btn-tint-buy"
               onClick={() => onTrade("buy", chart.ticker, latestPrice)}
             >
               {dict.buy}
             </button>
             <button
-              className="btn-tint btn-tint-sell"
+              className="btn-tint-trade btn-tint-sell"
               onClick={() => onTrade("sell", chart.ticker, latestPrice)}
             >
               {dict.sell}
