@@ -231,6 +231,25 @@ export interface Chart {
   rounds: RoundSummary[];
 }
 
+// Peers is /api/chart/peers' body (Phase 27 P3): the viewed ticker plus the
+// watchlist/held tickers of its sector, strongest 60-day first. A change is
+// null when the history is shorter than its window. peers is empty when there
+// is nothing to compare, and the card is then hidden.
+export interface PeerRow {
+  ticker: string;
+  self: boolean;
+  price: number;
+  chg20: number | null;
+  chg60: number | null;
+  chg120: number | null;
+  rel: number | null;
+}
+
+export interface Peers {
+  sector: string;
+  peers: PeerRow[];
+}
+
 export interface Tickers {
   tickers: string[];
 }
@@ -1322,6 +1341,10 @@ export function fetchRoundDetail(ticker: string, start: string): Promise<RoundDe
 
 export function fetchChart(ticker: string): Promise<Chart> {
   return getJSON<Chart>(`/api/chart?ticker=${encodeURIComponent(ticker)}`);
+}
+
+export function fetchPeers(ticker: string): Promise<Peers> {
+  return getJSON<Peers>(`/api/chart/peers?ticker=${encodeURIComponent(ticker)}`);
 }
 
 export function fetchResearchNotes(ticker: string): Promise<ResearchNotes> {

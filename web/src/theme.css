@@ -4048,6 +4048,29 @@ th {
   margin: 4px 0 6px;
 }
 
+.peer-card {
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+
+.peer-card .eyebrow {
+  margin-bottom: 4px;
+}
+
+.peer-row {
+  cursor: pointer;
+}
+
+.peer-row:hover {
+  background: var(--bg);
+}
+
+/* The viewed ticker: highlighted, not a link to itself. */
+.peer-row.self {
+  cursor: default;
+  background: var(--accent-tint-bg);
+}
+
 .tk-round-row {
   cursor: pointer;
 }

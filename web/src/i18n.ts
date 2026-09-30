@@ -300,6 +300,8 @@ export interface Dictionary {
   pctOfAccount: string;
   tickerRounds: string;
   noRoundsHere: string;
+  peerTitle: string;
+  peerRel: string;
   roundPicker: string;
   tradesInRound: string;
   allTrades: string;
@@ -1252,6 +1254,8 @@ const en: Dictionary = {
   pctOfAccount: "of account",
   tickerRounds: "Rounds in this name",
   noRoundsHere: "No closed rounds for this ticker.",
+  peerTitle: "PEER COMPARISON",
+  peerRel: "Rel. (60d)",
   roundPicker: "Select a round — the chart zooms to its span",
   tradesInRound: "Trades in Round",
   allTrades: "All Trades",
@@ -2109,6 +2113,8 @@ const zh: Dictionary = {
   pctOfAccount: "佔帳戶",
   tickerRounds: "此標的交易回合",
   noRoundsHere: "此標的尚無已平倉回合。",
+  peerTitle: "同產業比價",
+  peerRel: "相對本檔(60日)",
   roundPicker: "選擇回合（圖表會縮放到該區間）",
   tradesInRound: "回合內交易記錄",
   allTrades: "全部進出",

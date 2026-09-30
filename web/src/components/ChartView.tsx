@@ -13,6 +13,7 @@ import {
   deleteResearchNote,
   deleteTransaction,
   fetchChart,
+  fetchPeers,
   fetchResearchNotes,
   fetchRoundDetail,
   LEGACY_NOTE_TAGS,
@@ -25,6 +26,7 @@ import {
   type Chart,
   type ChartLevel,
   type NoteTag,
+  type Peers,
   type ResearchNote,
   type RoundDetail,
   type RoundSummary,
@@ -40,6 +42,7 @@ interface Props {
   ticker: string;
   initialRoundStart?: string;
   onBack: () => void;
+  onTickerClick?: (ticker: string) => void;
   names?: Record<string, string>;
   writable?: boolean;
   onTrade?: (mode: TradeMode, ticker: string, prefillPrice?: number) => void;
@@ -195,6 +198,10 @@ function pnlClass(v: number): string {
   return v > 0 ? "profit" : v < 0 ? "loss" : "";
 }
 
+function PeerPct({ v }: { v: number | null }) {
+  return v === null ? <td className="tk-dim">—</td> : <td className={pnlClass(v)}>{spct(v, 1)}</td>;
+}
+
 const noteShowInitial = 8;
 const noteShowStep = 20;
 
@@ -229,6 +236,7 @@ export function ChartView({
   ticker,
   initialRoundStart,
   onBack,
+  onTickerClick,
   names = {},
   writable = false,
   onTrade,
@@ -236,6 +244,7 @@ export function ChartView({
 }: Props) {
   const [chart, setChart] = useState<Chart | null>(null);
   const [error, setError] = useState(false);
+  const [peers, setPeers] = useState<Peers | null>(null);
   const [selectedRoundStart, setSelectedRoundStart] = useState<string | null>(initialRoundStart ?? null);
   const [roundMenuOpen, setRoundMenuOpen] = useState(false);
   // railTab is only set by an explicit click / round pick; until then the tab
@@ -286,6 +295,16 @@ export function ChartView({
       .then(setChart)
       .catch(() => setError(true));
   }, [ticker, initialRoundStart]);
+
+  // Peers load on their own: they fan out one history fetch per same-sector
+  // ticker, which must not hold up the chart. A failure just leaves the card out.
+  useEffect(() => {
+    setPeers(null);
+    if (!ticker) return;
+    fetchPeers(ticker)
+      .then(setPeers)
+      .catch(() => setPeers(null));
+  }, [ticker]);
 
   useEffect(() => {
     setThesisDraft("");
@@ -1264,6 +1283,46 @@ export function ChartView({
               <span className="pv-readout" ref={readoutRef} />
             </div>
           </div>
+
+          {peers && Array.isArray(peers.peers) && peers.peers.length >= 2 && (
+            <div className="card peer-card">
+              <div className="eyebrow">
+                {dict.peerTitle} · {peers.sector}
+              </div>
+              <table className="mono">
+                <thead>
+                  <tr>
+                    <th>{dict.ticker}</th>
+                    <th>{dict.price}</th>
+                    <th>20d</th>
+                    <th>60d</th>
+                    <th>120d</th>
+                    <th>{dict.peerRel}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {peers.peers.map((p) => (
+                    <tr
+                      key={p.ticker}
+                      className={p.self ? "peer-row self" : "peer-row"}
+                      title={names[p.ticker]}
+                      onClick={p.self ? undefined : () => onTickerClick?.(p.ticker)}
+                    >
+                      <td>{p.ticker}</td>
+                      <td>
+                        {currency}
+                        {p.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <PeerPct v={p.chg20} />
+                      <PeerPct v={p.chg60} />
+                      <PeerPct v={p.chg120} />
+                      {p.self ? <td className="tk-dim">—</td> : <PeerPct v={p.rel} />}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           <div className="card" style={{ marginBottom: 16 }}>
             <div className="thesis-header">

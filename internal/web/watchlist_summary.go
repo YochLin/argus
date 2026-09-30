@@ -40,7 +40,7 @@ func buildWatchlistSummary(database dbReader, quotes quoteGetter, history data.H
 	}
 
 	quoteMap := fetchQuotes(quotes, tickersResp.Tickers, "watchlist-summary")
-	historyMap := fetchHistories(history, tickersResp.Tickers)
+	historyMap := fetchHistories(history, tickersResp.Tickers, "3mo")
 
 	items := make([]watchlistSummaryItem, 0, len(tickersResp.Tickers))
 	for _, ticker := range tickersResp.Tickers {
@@ -98,7 +98,7 @@ func buildWatchlistSummary(database dbReader, quotes quoteGetter, history data.H
 // rationale as fetchQuotes in quotes.go (N sequential API round trips
 // collapsed to ~1), kept separate because data.HistoryProvider's
 // GetHistory(ticker, range) shape doesn't fit the quoteGetter interface.
-func fetchHistories(history data.HistoryProvider, tickers []string) map[string][]data.Candle {
+func fetchHistories(history data.HistoryProvider, tickers []string, rangeParam string) map[string][]data.Candle {
 	result := make(map[string][]data.Candle, len(tickers))
 	if history == nil || len(tickers) == 0 {
 		return result
@@ -110,9 +110,9 @@ func fetchHistories(history data.HistoryProvider, tickers []string) map[string][
 		wg.Add(1)
 		go func(ticker string) {
 			defer wg.Done()
-			candles, err := history.GetHistory(ticker, "3mo")
+			candles, err := history.GetHistory(ticker, rangeParam)
 			if err != nil {
-				logger.Errorf("web: watchlist-summary: get history for %s: %v", ticker, err)
+				logger.Errorf("web: get history (%s) for %s: %v", rangeParam, ticker, err)
 				return
 			}
 			mu.Lock()

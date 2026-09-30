@@ -411,6 +411,7 @@ export default function App() {
         onTrade={status?.writable ? openTrade : undefined}
         onUnauthorized={(retry) => setAuthRetry(() => retry)}
         onBack={() => navigate("/chart")}
+        onTickerClick={(t) => navigate(`/chart?ticker=${encodeURIComponent(t)}`)}
       />
     ) : (
       <ChartListView

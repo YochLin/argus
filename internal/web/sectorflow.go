@@ -136,15 +136,22 @@ func (c *sectorFlowCache) set(m market.MarketID, byTF map[string]SectorFlowRespo
 // net either sign), so this is computed separately off the same candles for
 // the treemap's per-tf color scale (docs/phase-18-sector-money-flow.md §4.5).
 func periodChangePct(candles []data.Candle, period int) float64 {
+	v, _ := trailingChangePct(candles, period)
+	return v
+}
+
+// trailingChangePct is periodChangePct with "not enough history" told apart
+// from a real 0% move — peers.go shows the former as "—".
+func trailingChangePct(candles []data.Candle, period int) (float64, bool) {
 	if period <= 0 || len(candles) < period+1 {
-		return 0
+		return 0, false
 	}
 	start := candles[len(candles)-period-1].Close
 	end := candles[len(candles)-1].Close
 	if start == 0 {
-		return 0
+		return 0, false
 	}
-	return (end - start) / start * 100
+	return (end - start) / start * 100, true
 }
 
 // sectorFlowBuilder accumulates one sector's aggregate across constituents
