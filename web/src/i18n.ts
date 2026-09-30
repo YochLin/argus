@@ -220,6 +220,16 @@ export interface Dictionary {
   thesisSaveFailedNote: string;
   thesisEmptyOpen: string;
   thesisEmptyClosed: string;
+  patTitle: string;
+  pvChip: string;
+  pvChipTip: string;
+  pvLegend: string;
+  pvUpVu: string;
+  pvUpVd: string;
+  pvDnVu: string;
+  pvDnVd: string;
+  pvReadPrice: string;
+  pvReadVol: string;
   lessonsLabel: string;
   rMultipleHistogram: string;
   rMultipleNote: string;
@@ -1167,6 +1177,16 @@ const en: Dictionary = {
   thesisEmptyOpen:
     "No thesis was recorded when this round was opened. Write down the entry reason, the hold condition, and what would invalidate it.",
   thesisEmptyClosed: "No thesis was recorded for this round.",
+  patTitle: "PATTERNS",
+  pvChip: "Price · volume",
+  pvChipTip: "Colours every volume bar by price and volume direction",
+  pvLegend: "Volume",
+  pvUpVu: "Price up · vol up",
+  pvUpVd: "Price up · vol down",
+  pvDnVu: "Price down · vol up",
+  pvDnVd: "Price down · vol down",
+  pvReadPrice: "px ",
+  pvReadVol: "vol ",
   lessonsLabel: "TRADE LESSONS",
   rMultipleHistogram: "R-MULTIPLE DISTRIBUTION",
   rMultipleNote: "R data accumulating since",
@@ -2017,6 +2037,16 @@ const zh: Dictionary = {
   thesisSaveFailedNote: "買單已成立，但論點寫入失敗",
   thesisEmptyOpen: "此回合下單時未記錄論點。寫下進場理由、續抱條件與失效條件，之後覆盤才有東西可比對。",
   thesisEmptyClosed: "此回合沒有留下論點紀錄。",
+  patTitle: "K 線型態",
+  pvChip: "量價",
+  pvChipTip: "每根量柱依「價漲跌 × 量增縮」著色",
+  pvLegend: "量柱",
+  pvUpVu: "價漲量增",
+  pvUpVd: "價漲量縮",
+  pvDnVu: "價跌量增",
+  pvDnVd: "價跌量縮",
+  pvReadPrice: "價 ",
+  pvReadVol: "量 ",
   lessonsLabel: "交易教訓",
   rMultipleHistogram: "R-MULTIPLE 分布",
   rMultipleNote: "R 資料自",

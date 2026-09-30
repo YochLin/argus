@@ -4069,6 +4069,73 @@ th {
   margin-bottom: 10px;
 }
 
+.rp-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 8px;
+}
+
+.pv-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, #10b981 50%, #ef4444 50%);
+}
+
+.round-chip:not(.active) .pv-dot {
+  opacity: 0.4;
+}
+
+/* Under the chart: the volume-colour legend on the left, the crosshair readout
+   pushed to the right. */
+.pv-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 8px 6px 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.pv-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pv-legend-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.pv-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pv-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.pv-readout {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
 .rp-label {
   font-family: var(--font-mono);
   font-size: 11px;

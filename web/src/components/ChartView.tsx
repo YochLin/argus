@@ -31,6 +31,7 @@ import {
   type Transaction,
 } from "../api";
 import type { Dictionary } from "../i18n";
+import { PV_COLORS, PV_STATES, pvReadout, pvState, type PvLabels } from "../pricevolume";
 import { TradesTable } from "./TradesTable";
 import type { TradeMode } from "./TradeModal";
 
@@ -241,6 +242,8 @@ export function ChartView({
   // follows the selection (a picked round opens 回合, otherwise 支撐壓力).
   const [railTab, setRailTab] = useState<"lvl" | "round" | null>(null);
   const [wide, setWide] = useState(false);
+  // The design's "量價" chip: colour volume bars by price × volume direction.
+  const [pvOn, setPvOn] = useState(true);
   const [roundDetail, setRoundDetail] = useState<RoundDetail | null>(null);
   const [thesisDraft, setThesisDraft] = useState("");
   const [thesisEditing, setThesisEditing] = useState(false);
@@ -263,6 +266,10 @@ export function ChartView({
   const roundBgRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const priceLinesRef = useRef<IPriceLine[]>([]);
   const wrapObserverRef = useRef<ResizeObserver | null>(null);
+  // The crosshair readout is written straight to the DOM (a React state per
+  // mouse move would re-render this whole page); pvRef is what its handler reads.
+  const readoutRef = useRef<HTMLSpanElement | null>(null);
+  const pvRef = useRef<{ candles: Candle[]; index: Map<string, number>; labels: PvLabels } | null>(null);
 
   useEffect(() => {
     setChart(null);
@@ -465,6 +472,14 @@ export function ChartView({
       visible: false,
     });
 
+    c.subscribeCrosshairMove((p) => {
+      const el = readoutRef.current;
+      if (!el) return;
+      const pv = pvRef.current;
+      const i = pv && p.time != null ? pv.index.get(String(p.time)) : undefined;
+      el.textContent = pv && i != null ? pvReadout(pv.candles, i, pv.labels) : "";
+    });
+
     chartRef.current = c;
     seriesRef.current = series;
     volumeSeriesRef.current = vol;
@@ -555,7 +570,6 @@ export function ChartView({
 
   useEffect(() => {
     const series = seriesRef.current;
-    const vol = volumeSeriesRef.current;
     if (!series || !chart) return;
 
     series.setData(
@@ -567,16 +581,6 @@ export function ChartView({
         close: c.close,
       })),
     );
-
-    if (vol) {
-      vol.setData(
-        chart.candles.map((c) => ({
-          time: c.date as Time,
-          value: c.volume,
-          color: c.close >= c.open ? "rgba(16,185,129,0.4)" : "rgba(239,68,68,0.4)",
-        })),
-      );
-    }
 
     for (const line of priceLinesRef.current) {
       series.removePriceLine(line);
@@ -635,6 +639,38 @@ export function ChartView({
       chartRef.current?.timeScale().fitContent();
     }
   }, [chart, roundDetail, classified, dict.avgCost]);
+
+  // Volume bars live in their own effect so flipping the 量價 chip recolours
+  // them without the main effect's fitContent() resetting the user's zoom.
+  useEffect(() => {
+    const vol = volumeSeriesRef.current;
+    if (!vol || !chart) return;
+    vol.setData(
+      chart.candles.map((c, i) => {
+        const st = pvOn ? pvState(chart.candles, i) : null;
+        return {
+          time: c.date as Time,
+          value: c.volume,
+          color: st ? PV_COLORS[st] : c.close >= c.open ? "rgba(16,185,129,0.4)" : "rgba(239,68,68,0.4)",
+        };
+      }),
+    );
+  }, [chart, pvOn]);
+
+  const pvLabels: PvLabels = useMemo(
+    () => ({
+      states: { upVu: dict.pvUpVu, upVd: dict.pvUpVd, dnVu: dict.pvDnVu, dnVd: dict.pvDnVd },
+      price: dict.pvReadPrice,
+      vol: dict.pvReadVol,
+    }),
+    [dict],
+  );
+
+  useEffect(() => {
+    pvRef.current = chart
+      ? { candles: chart.candles, index: new Map(chart.candles.map((c, i) => [c.date, i])), labels: pvLabels }
+      : null;
+  }, [chart, pvLabels]);
 
   // Round-span background: each round tints its own candles green (won), red
   // (lost) or indigo (still open); the selected round is a shade stronger.
@@ -1125,80 +1161,108 @@ export function ChartView({
         </aside>
 
         <div className="tk-main">
-          {chart.rounds.length === 0 ? (
+          {chart.rounds.length === 0 && (
             <div className="empty-message" style={{ marginBottom: 16 }}>
               {dict.noRoundsHere}
             </div>
-          ) : (
-            <div className="rp-row">
-              <span className="rp-label" title={dict.roundPicker}>
-                {dict.tkRoundLabel}
-              </span>
-              <button
-                type="button"
-                className={`round-chip${selectedRound ? "" : " active"}`}
-                onClick={() => pickRound(null)}
-              >
-                {dict.allTrades}
-                <span className="rp-count">{chart.rounds.length}</span>
-              </button>
-              <div className="rp-picker">
-                <button
-                  type="button"
-                  className="rp-step"
-                  title={dict.roundOlderTip}
-                  disabled={!olderRound}
-                  onClick={() => olderRound && pickRound(olderRound)}
-                >
-                  ‹
-                </button>
-                <button
-                  type="button"
-                  className={`round-chip${selectedRound ? " active" : ""}`}
-                  onClick={() => setRoundMenuOpen((o) => !o)}
-                >
-                  {selectedRound ? `#${roundNo(selectedRound)} · ${roundRange(selectedRound)}` : dict.tkPickRound}
-                  {selectedRound && <span className={roundPnlCls(selectedRound)}>{roundPnl(selectedRound)}</span>}
-                  <span className="rp-caret">▾</span>
-                </button>
-                <button
-                  type="button"
-                  className="rp-step"
-                  title={dict.roundNewerTip}
-                  disabled={!newerRound}
-                  onClick={() => newerRound && pickRound(newerRound)}
-                >
-                  ›
-                </button>
-                {roundMenuOpen && (
-                  <>
-                    <div className="rp-backdrop" onClick={() => setRoundMenuOpen(false)} />
-                    <div className="rp-menu">
-                      <div className="rp-menu-summary">{roundsSummaryText}</div>
-                      {chart.rounds.map((r) => (
-                        <div
-                          key={r.start}
-                          className={`rp-menu-row${r.start === selectedRoundStart ? " selected" : ""}`}
-                          onClick={() => pickRound(r)}
-                        >
-                          <span className="rp-menu-n">#{roundNo(r)}</span>
-                          <span>{roundRange(r)}</span>
-                          <span className="rp-menu-days">
-                            {roundDays(r)}
-                            {dict.roundDaysUnit}
-                          </span>
-                          <span className={`rp-menu-pnl ${roundPnlCls(r)}`}>{roundPnl(r)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
           )}
+          <div className="rp-row">
+            {chart.rounds.length > 0 && (
+              <>
+                  <span className="rp-label" title={dict.roundPicker}>
+                    {dict.tkRoundLabel}
+                  </span>
+                  <button
+                    type="button"
+                    className={`round-chip${selectedRound ? "" : " active"}`}
+                    onClick={() => pickRound(null)}
+                  >
+                    {dict.allTrades}
+                    <span className="rp-count">{chart.rounds.length}</span>
+                  </button>
+                  <div className="rp-picker">
+                    <button
+                      type="button"
+                      className="rp-step"
+                      title={dict.roundOlderTip}
+                      disabled={!olderRound}
+                      onClick={() => olderRound && pickRound(olderRound)}
+                    >
+                      ‹
+                    </button>
+                    <button
+                      type="button"
+                      className={`round-chip${selectedRound ? " active" : ""}`}
+                      onClick={() => setRoundMenuOpen((o) => !o)}
+                    >
+                      {selectedRound ? `#${roundNo(selectedRound)} · ${roundRange(selectedRound)}` : dict.tkPickRound}
+                      {selectedRound && <span className={roundPnlCls(selectedRound)}>{roundPnl(selectedRound)}</span>}
+                      <span className="rp-caret">▾</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="rp-step"
+                      title={dict.roundNewerTip}
+                      disabled={!newerRound}
+                      onClick={() => newerRound && pickRound(newerRound)}
+                    >
+                      ›
+                    </button>
+                    {roundMenuOpen && (
+                      <>
+                        <div className="rp-backdrop" onClick={() => setRoundMenuOpen(false)} />
+                        <div className="rp-menu">
+                          <div className="rp-menu-summary">{roundsSummaryText}</div>
+                          {chart.rounds.map((r) => (
+                            <div
+                              key={r.start}
+                              className={`rp-menu-row${r.start === selectedRoundStart ? " selected" : ""}`}
+                              onClick={() => pickRound(r)}
+                            >
+                              <span className="rp-menu-n">#{roundNo(r)}</span>
+                              <span>{roundRange(r)}</span>
+                              <span className="rp-menu-days">
+                                {roundDays(r)}
+                                {dict.roundDaysUnit}
+                              </span>
+                              <span className={`rp-menu-pnl ${roundPnlCls(r)}`}>{roundPnl(r)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                <span className="rp-sep" />
+              </>
+            )}
+            <span className="rp-label">{dict.patTitle}</span>
+            <button
+              type="button"
+              className={`round-chip${pvOn ? " active" : ""}`}
+              title={dict.pvChipTip}
+              onClick={() => setPvOn((v) => !v)}
+            >
+              <span className="pv-dot" />
+              {dict.pvChip}
+            </button>
+          </div>
 
           <div className="card card--glow chart-card">
             <div className="tk-chart" ref={containerRef} />
+            <div className="pv-bar">
+              {pvOn && (
+                <span className="pv-legend">
+                  <span className="pv-legend-title">{dict.pvLegend}</span>
+                  {PV_STATES.map((k) => (
+                    <span key={k} className="pv-legend-item">
+                      <span className="pv-swatch" style={{ background: PV_COLORS[k] }} />
+                      {pvLabels.states[k]}
+                    </span>
+                  ))}
+                </span>
+              )}
+              <span className="pv-readout" ref={readoutRef} />
+            </div>
           </div>
 
           <div className="card" style={{ marginBottom: 16 }}>
