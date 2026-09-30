@@ -166,6 +166,21 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   `internal/bot`'s `sell_followup.go` entry below for why that's deliberate, not an oversight).
   Full table/method rationale: **[docs/architecture/db.md](docs/architecture/db.md)**.
 
+- `internal/histcache` — a persistent read-through cache in front of `data.HistoryProvider`
+  (`Boot` wraps `core.Yahoo` once and hands it to the bot, the scan service and the dashboard; the MCP
+  subprocess stays on bare Yahoo). Daily candles live in their own rebuildable SQLite file
+  (`PRICE_DB_PATH`, default `prices.db` beside `DB_PATH`) — **never in `argus.db`**, whose nightly
+  `VACUUM INTO` backup shouldn't carry re-fetchable data and whose single writer a bulk fill would
+  contend with. A cold ticker gets one `10y` pull; after a 5-minute TTL a `1mo` tail is upserted, and any
+  disagreement between that tail and the stored bars on days both have — or no overlap at all — re-pulls
+  the whole ticker, because bars are stored as the provider returned them and a later split would
+  otherwise leave a fake cliff in the chart (the overlap check skips the previous fetch's own day, since
+  that stored bar may have been mid-session). A provider failure on a tail refresh serves stored bars; a
+  broken store falls back to the provider. **Not a backtest source**: it only holds tickers somebody has
+  looked at, i.e. today's survivors — TW backtests stay on Sinopac `daily_quotes` (point-in-time, see
+  `internal/sinopac`). Ranges it can't answer from ten years of daily bars (`5d`, `20y`, ...) pass
+  straight through.
+
 - `internal/i18n` — every user/LLM-facing string, split into `zh.go` (default) and `en.go`, keyed by
   `Key` constants in `i18n.go`. `T(lang, key, args...)` does lookup + `fmt.Sprintf`; `TestTablesMatch`
   enforces both tables stay in sync (same keys, same verb count). Covers both bot UI copy and LLM
