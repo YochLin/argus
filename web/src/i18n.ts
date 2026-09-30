@@ -210,10 +210,16 @@ export interface Dictionary {
   recNarrativeFollowBetterSuffix: string;
   thesisLabel: string;
   thesisAddToggle: string;
-  thesisEditToggle: string;
+  thesisAdd: string;
+  thesisEdit: string;
+  thesisEdited: string;
+  thesisSave: string;
+  thesisPlaceholder: string;
+  currentThesisNote: string;
   thesisFieldPlaceholder: string;
   thesisSaveFailedNote: string;
-  thesisEmptyNote: string;
+  thesisEmptyOpen: string;
+  thesisEmptyClosed: string;
   lessonsLabel: string;
   rMultipleHistogram: string;
   rMultipleNote: string;
@@ -1129,10 +1135,17 @@ const en: Dictionary = {
     " more than the names it said to HOLD — the calls are adding value.",
   thesisLabel: "THESIS",
   thesisAddToggle: "Record entry thesis (optional)",
-  thesisEditToggle: "Add thesis entry",
+  thesisAdd: "Add thesis",
+  thesisEdit: "Edit",
+  thesisEdited: "edited",
+  thesisSave: "Save",
+  thesisPlaceholder: "Entry reason / hold condition / invalidation",
+  currentThesisNote: "current thesis on record — may have changed since this round closed",
   thesisFieldPlaceholder: "Your reasoning right now",
   thesisSaveFailedNote: "Trade went through, but the thesis note failed to save",
-  thesisEmptyNote: "No thesis recorded for this round yet.",
+  thesisEmptyOpen:
+    "No thesis was recorded when this round was opened. Write down the entry reason, the hold condition, and what would invalidate it.",
+  thesisEmptyClosed: "No thesis was recorded for this round.",
   lessonsLabel: "TRADE LESSONS",
   rMultipleHistogram: "R-MULTIPLE DISTRIBUTION",
   rMultipleNote: "R data accumulating since",
@@ -1963,10 +1976,16 @@ const zh: Dictionary = {
   recNarrativeFollowBetterSuffix: " ——BUY/SELL 訊號有加分。",
   thesisLabel: "持有論點",
   thesisAddToggle: "記錄進場論點（選填）",
-  thesisEditToggle: "新增論點",
+  thesisAdd: "新增論點",
+  thesisEdit: "編輯",
+  thesisEdited: "已編輯",
+  thesisSave: "儲存",
+  thesisPlaceholder: "進場理由 / 續抱條件 / 論點失效條件",
+  currentThesisNote: "目前記錄的論點——回合平倉後論點可能已改寫",
   thesisFieldPlaceholder: "現在的判斷是什麼",
   thesisSaveFailedNote: "買單已成立，但論點寫入失敗",
-  thesisEmptyNote: "此回合尚未記錄任何論點。",
+  thesisEmptyOpen: "此回合下單時未記錄論點。寫下進場理由、續抱條件與失效條件，之後覆盤才有東西可比對。",
+  thesisEmptyClosed: "此回合沒有留下論點紀錄。",
   lessonsLabel: "交易教訓",
   rMultipleHistogram: "R-MULTIPLE 分布",
   rMultipleNote: "R 資料自",

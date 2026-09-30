@@ -2190,6 +2190,30 @@ th {
   background: var(--accent-tint-bg);
 }
 
+.thesis-edited-tag {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+.thesis-note {
+  color: var(--ink-3);
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.thesis-text {
+  margin-top: 10px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
 .thesis-empty-box {
   margin-top: 10px;
   padding: 14px;

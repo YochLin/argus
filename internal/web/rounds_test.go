@@ -224,12 +224,11 @@ func TestBuildRoundDetail(t *testing.T) {
 }
 
 // TestBuildRoundDetail_ThesisAndLessons pins Phase 8 PR4's attachment
-// (docs/phase-8-trader-analytics.md §6.2), expanded by Phase 21 to a
-// per-round thesis history: entries inside the round's date range attach,
-// one written after the round closed does not, and both degrade to empty
-// (not an error) when nothing is on record. The round here is closed
-// (Editable should be false); a still-open round is covered by
-// TestBuildRoundDetail_OpenRoundIsEditable below.
+// (docs/phase-8-trader-analytics.md §6.2) under Phase 27 P1b's one-text-per-
+// round model: with no saved row the round shows the last legacy journal entry
+// inside its own span (not one written after it closed) as an un-edited
+// default; a saved row wins and reads as edited; and both degrade to empty
+// (not an error) when nothing is on record.
 func TestBuildRoundDetail_ThesisAndLessons(t *testing.T) {
 	fdb := &fakeDB{
 		txs: []db.Transaction{
@@ -252,14 +251,20 @@ func TestBuildRoundDetail_ThesisAndLessons(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildRoundDetail() error = %v", err)
 	}
-	if got.Editable {
-		t.Error("Editable = true, want false (round is closed)")
-	}
-	if len(got.Theses) != 1 || got.Theses[0].Text != "long-term AI capex beneficiary" {
-		t.Errorf("Theses = %+v, want only the in-range entry", got.Theses)
+	if got.Thesis != "long-term AI capex beneficiary" || got.ThesisEdited {
+		t.Errorf("Thesis = %q (edited=%v), want the in-span journal entry as an un-edited default", got.Thesis, got.ThesisEdited)
 	}
 	if len(got.Lessons) != 1 || got.Lessons[0].Lesson != "should have sized in more slowly" {
 		t.Errorf("Lessons = %+v, want the one recorded lesson", got.Lessons)
+	}
+
+	fdb.roundTheses = map[string]string{"AAPL|2026-06-01": "rewritten in hindsight"}
+	got, err = buildRoundDetail(fdb, hist, "AAPL", "2026-06-01")
+	if err != nil {
+		t.Fatalf("buildRoundDetail() error = %v", err)
+	}
+	if got.Thesis != "rewritten in hindsight" || !got.ThesisEdited {
+		t.Errorf("Thesis = %q (edited=%v), want the saved row", got.Thesis, got.ThesisEdited)
 	}
 
 	fdbEmpty := &fakeDB{txs: fdb.txs}
@@ -267,31 +272,11 @@ func TestBuildRoundDetail_ThesisAndLessons(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildRoundDetail() error = %v", err)
 	}
-	if len(got2.Theses) != 0 {
-		t.Errorf("Theses = %+v, want empty (none on record)", got2.Theses)
+	if got2.Thesis != "" || got2.ThesisEdited {
+		t.Errorf("Thesis = %q (edited=%v), want empty (none on record)", got2.Thesis, got2.ThesisEdited)
 	}
 	if len(got2.Lessons) != 0 {
 		t.Errorf("Lessons = %+v, want empty", got2.Lessons)
-	}
-}
-
-// TestBuildRoundDetail_OpenRoundIsEditable pins Editable=true for a
-// still-open round (no SELL leg yet) — the frontend's thesis edit form only
-// ever appears when this is true.
-func TestBuildRoundDetail_OpenRoundIsEditable(t *testing.T) {
-	fdb := &fakeDB{
-		txs: []db.Transaction{
-			tx("AAPL", "BUY", 10, 100, "2026-06-01"),
-		},
-	}
-	hist := &fakeHistory{candles: map[string][]data.Candle{"AAPL": {candle("2026-06-01", 100)}}}
-
-	got, err := buildRoundDetail(fdb, hist, "AAPL", "2026-06-01")
-	if err != nil {
-		t.Fatalf("buildRoundDetail() error = %v", err)
-	}
-	if !got.Editable {
-		t.Error("Editable = false, want true (round is still open)")
 	}
 }
 

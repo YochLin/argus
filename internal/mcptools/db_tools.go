@@ -352,15 +352,15 @@ func (ts *toolset) getRecentRecommendations(ctx context.Context, _ *mcp.CallTool
 	return result, nil, err
 }
 
-// getThesis wraps db.GetThesis (also /thesis's read path) — the ticker's
-// most recently recorded holding rationale, if any. Not localized with a
+// getThesis wraps service.CurrentThesis (also /thesis's read path) — the
+// holding rationale of the ticker's current round, if any. Not localized with a
 // tickerLabel (internal/bot's b.tickerLabel needs a company-name lookup
 // this package doesn't have) — a bare ticker matches how every other MCP
 // tool identifies its subject.
 func (ts *toolset) getThesis(ctx context.Context, _ *mcp.CallToolRequest, in tickerInput) (*mcp.CallToolResult, any, error) {
 	ticker := normalizeTicker(in.Ticker)
 	result, err := ts.withCache(ctx, "get_thesis:"+ticker, longCacheTTL, func() (*mcp.CallToolResult, error) {
-		thesis, ok, err := ts.db.GetThesis(ticker)
+		thesis, ok, err := service.CurrentThesis(ts.db, ticker)
 		if err != nil {
 			return nil, ts.mcpErr(i18n.KeyQueryFailed, err)
 		}

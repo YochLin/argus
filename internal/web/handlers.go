@@ -193,25 +193,18 @@ type roundDetailResponse struct {
 	MAEPct    float64               `json:"maePct"`
 	MFEPct    float64               `json:"mfePct"`
 	HasMAEMFE bool                  `json:"hasMaeMfe"`
-	// Theses/Lessons (Phase 8 PR4, docs/phase-8-trader-analytics.md §6.2) are
-	// attachments from db.GetThesisEntriesInRange/GetLessonsForTickers, each
+	// Thesis/Lessons (Phase 8 PR4, docs/phase-8-trader-analytics.md §6.2) are
+	// attachments from service.RoundThesis/db.GetLessonsForTickers, each
 	// degrading independently (a query failure logs and leaves the field at
-	// its zero value, []) rather than failing the whole response, same
-	// attach-what's-available convention as buildClosedTradeReview. Theses is
-	// every thesis_entries row written while this round was open (Phase 21 —
-	// thesis journal expanded from a single overwritable field to a full
-	// history), oldest first. Editable is true only for a still-open round —
-	// the frontend's edit form only appears there; an edit on a closed round
-	// would write a today-dated entry that falls outside that round's date
-	// range and simply wouldn't show up.
-	Theses   []thesisEntryResponse `json:"theses"`
-	Editable bool                  `json:"editable"`
-	Lessons  []lessonResponse      `json:"lessons"`
-}
-
-type thesisEntryResponse struct {
-	Date string `json:"date"`
-	Text string `json:"text"`
+	// its zero value) rather than failing the whole response, same
+	// attach-what's-available convention as buildClosedTradeReview. Thesis is
+	// the round's single overwritable text (Phase 27 P1b; "" = none written) —
+	// editable for open and closed rounds alike. ThesisEdited is false when the
+	// text is only the legacy journal's last entry for the round, shown as a
+	// default until the first save.
+	Thesis       string           `json:"thesis"`
+	ThesisEdited bool             `json:"thesisEdited"`
+	Lessons      []lessonResponse `json:"lessons"`
 }
 
 type lessonResponse struct {

@@ -134,9 +134,12 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   original nine tables (`watchlist`, `daily_snapshots`, `recommendations`, `signal_states`, `positions`,
   `transactions`, `net_worth_snapshots`, `universe`, `scan_hits`) plus `pending_actions` (Phase 4
   write-gating) have since grown well past that count across 27 migrations, not all narrated below
-  (`thesis`/`thesis_entries`, `trade_lessons`, `price_events`, `buy_alerts`, `notifications`, `llm_runs`,
+  (`thesis_entries`/`round_theses`, `trade_lessons`, `price_events`, `buy_alerts`, `notifications`, `llm_runs`,
   `iv_history`, `settings`, `blocked_news_sources` among them) — grep `CREATE TABLE` in `migrations.go`
-  for the current full list rather than trusting a count here. Migrations are versioned via
+  for the current full list rather than trusting a count here. A thesis is one overwritable text per
+  (ticker, round start) in `round_theses` (Phase 27), read through `service.CurrentThesis`/`RoundThesis`
+  with the legacy `thesis_entries` journal only as a fallback; `RecordBuy` re-keys a pre-buy draft to the
+  round it opens. Migrations are versioned via
   `PRAGMA user_version`, append-only in `db.migrations`,
   never edited/reordered once shipped. `RecordBuy`/`RecordSell` own all `positions`/`transactions`
   writes with weighted-average cost and realized P&L math. TW support added a `market` column to four

@@ -377,7 +377,7 @@ export function ChartView({
     setThesisSubmitting(true);
     setThesisError(null);
     try {
-      await setThesis(ticker, thesisDraft.trim());
+      await setThesis(ticker, thesisDraft.trim(), selectedRoundStart);
       setThesisDraft("");
       setThesisEditing(false);
       setRoundDetail(await fetchRoundDetail(ticker, selectedRoundStart));
@@ -392,9 +392,8 @@ export function ChartView({
     }
   }
 
-  // "→ 帶入回合論點": drop a note's text into the round's thesis editor. The
-  // editor only exists for a still-open round (roundDetail.editable), so the
-  // button is only offered then.
+  // "→ 帶入回合論點": drop a note's text into the selected round's thesis editor
+  // (which exists for open and closed rounds alike since P1b).
   function quoteNote(note: ResearchNote) {
     setRailTab("round");
     setThesisDraft(note.text);
@@ -508,7 +507,7 @@ export function ChartView({
     ...NOTE_TAGS,
     ...LEGACY_NOTE_TAGS.filter((tg) => notes.some((n) => n.tag === tg)),
   ];
-  const canQuoteNote = writable && !!roundDetail?.editable && roundDetail.start === selectedRoundStart;
+  const canQuoteNote = writable && !!roundDetail && roundDetail.start === selectedRoundStart;
 
   function renderNoteRow(n: ResearchNote, monthLabel?: string) {
     return (
@@ -977,78 +976,76 @@ export function ChartView({
                       onDelete={writable ? handleDeleteTx : undefined}
                     />
 
-                    {(detail.theses.length > 0 || (writable && detail.editable)) && (
-                      <div className="tk-section-title">
-                        <div className="thesis-header">
-                          <div className="eyebrow">{dict.thesisLabel}</div>
-                          {writable && detail.editable && !thesisEditing && (
-                            <button
-                              type="button"
-                              className="thesis-edit-btn"
-                              onClick={() => setThesisEditing(true)}
+                    <div className="tk-section-title">
+                      <div className="thesis-header">
+                        <div className="eyebrow">{dict.thesisLabel}</div>
+                        {detail.thesisEdited && !thesisEditing && <span className="thesis-edited-tag">{dict.thesisEdited}</span>}
+                        {writable && !thesisEditing && (
+                          <button
+                            type="button"
+                            className="thesis-edit-btn"
+                            onClick={() => {
+                              setThesisDraft(detail.thesis);
+                              setThesisEditing(true);
+                            }}
+                          >
+                            <svg
+                              width="11"
+                              height="11"
+                              viewBox="0 0 16 16"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              aria-hidden="true"
                             >
-                              <svg
-                                width="11"
-                                height="11"
-                                viewBox="0 0 16 16"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="1.6"
-                                aria-hidden="true"
-                              >
-                                <path d="M11.5 2.5 L13.5 4.5 L5.5 12.5 L2.5 13.5 L3.5 10.5 Z" />
-                              </svg>
-                              <span>{dict.thesisEditToggle}</span>
-                            </button>
-                          )}
-                        </div>
-                        {detail.theses.length > 0 ? (
-                          <ul className="lessons-list">
-                            {detail.theses.map((t, i) => (
-                              <li key={i}>
-                                <span className="stat-note">{t.date}</span> {t.text}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          !thesisEditing && <div className="thesis-empty-box">{dict.thesisEmptyNote}</div>
-                        )}
-                        {thesisEditing && (
-                          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                            <label className="form-field">
-                              <textarea
-                                rows={4}
-                                autoFocus
-                                value={thesisDraft}
-                                placeholder={dict.thesisFieldPlaceholder}
-                                onChange={(e) => setThesisDraft(e.target.value)}
-                              />
-                            </label>
-                            {thesisError && <div className="error-message">{thesisError}</div>}
-                            <div className="modal-actions">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setThesisEditing(false);
-                                  setThesisDraft("");
-                                  setThesisError(null);
-                                }}
-                              >
-                                {dict.cancel}
-                              </button>
-                              <button
-                                type="button"
-                                className="btn-primary"
-                                disabled={!thesisDraft.trim() || thesisSubmitting}
-                                onClick={submitThesis}
-                              >
-                                {dict.submit}
-                              </button>
-                            </div>
-                          </div>
+                              <path d="M11.5 2.5 L13.5 4.5 L5.5 12.5 L2.5 13.5 L3.5 10.5 Z" />
+                            </svg>
+                            <span>{detail.thesis ? dict.thesisEdit : dict.thesisAdd}</span>
+                          </button>
                         )}
                       </div>
-                    )}
+                      {!selectedRound?.open && <div className="thesis-note">{dict.currentThesisNote}</div>}
+                      {detail.thesis && !thesisEditing && <div className="thesis-text">{detail.thesis}</div>}
+                      {!detail.thesis && !thesisEditing && (
+                        <div className="thesis-empty-box">
+                          {selectedRound?.open ? dict.thesisEmptyOpen : dict.thesisEmptyClosed}
+                        </div>
+                      )}
+                      {thesisEditing && (
+                        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                          <label className="form-field">
+                            <textarea
+                              rows={4}
+                              autoFocus
+                              value={thesisDraft}
+                              placeholder={dict.thesisPlaceholder}
+                              onChange={(e) => setThesisDraft(e.target.value)}
+                            />
+                          </label>
+                          {thesisError && <div className="error-message">{thesisError}</div>}
+                          <div className="modal-actions">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setThesisEditing(false);
+                                setThesisDraft("");
+                                setThesisError(null);
+                              }}
+                            >
+                              {dict.cancel}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-primary"
+                              disabled={!thesisDraft.trim() || thesisSubmitting}
+                              onClick={submitThesis}
+                            >
+                              {dict.thesisSave}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     {detail.lessons.length > 0 && (
                       <div className="tk-section-title">
                         <div className="eyebrow">{dict.lessonsLabel}</div>

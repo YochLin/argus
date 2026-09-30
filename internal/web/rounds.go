@@ -110,7 +110,8 @@ func buildRoundDetail(database dbReader, history data.HistoryProvider, ticker, s
 	}
 
 	var found *round
-	for _, r := range segmentRounds(tickerTxs) {
+	tickerRounds := segmentRounds(tickerTxs)
+	for _, r := range tickerRounds {
 		if r.StartDate == start {
 			r := r
 			found = &r
@@ -183,14 +184,10 @@ func buildRoundDetail(database dbReader, history data.HistoryProvider, ticker, s
 		})
 	}
 
-	resp.Editable = found.EndDate == ""
-	resp.Theses = []thesisEntryResponse{}
-	if entries, err := database.GetThesisEntriesInRange(ticker, found.StartDate, found.EndDate); err != nil {
-		logger.Errorf("web: round detail: get thesis entries for %s: %v", ticker, err)
-	} else {
-		for _, e := range entries {
-			resp.Theses = append(resp.Theses, thesisEntryResponse{Date: e.CreatedAt, Text: e.Text})
-		}
+	if th, ok, err := service.RoundThesis(database, ticker, tickerRounds, found.StartDate); err != nil {
+		logger.Errorf("web: round detail: get thesis for %s: %v", ticker, err)
+	} else if ok {
+		resp.Thesis, resp.ThesisEdited = th.Text, th.Edited
 	}
 
 	resp.Lessons = []lessonResponse{}

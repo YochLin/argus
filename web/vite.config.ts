@@ -245,13 +245,12 @@ function getMockData(urlStr: string): any {
       maePct: -3.4,
       mfePct: 14.2,
       hasMaeMfe: true,
-      theses: [
-        {
-          date: start,
-          text: "Base breakout on rising volume; holding while the 20d holds and the earnings guide stays intact. Trim half into the prior high.",
-        },
-      ],
-      editable: true,
+      // the earliest round has no saved thesis (exercises the empty state)
+      thesis:
+        start === "2025-01-06"
+          ? ""
+          : "量增突破整理平台，20 日線不破就續抱；獲利到前波高點先減半，論點失效條件是跌破停損或財測轉弱。",
+      thesisEdited: start !== "2026-05-04" && start !== "2025-01-06",
       lessons: [
         { date: "2026-06-02", lesson: "Stop was too tight relative to ATR — shaken out before the real move." },
         { date: "2026-06-19", lesson: "Adding on strength worked; adding on weakness did not." },
