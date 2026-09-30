@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createChart,
   type IChartApi,
@@ -15,12 +15,12 @@ import {
   fetchChart,
   fetchResearchNotes,
   fetchRoundDetail,
+  LEGACY_NOTE_TAGS,
   marketOf,
   NOTE_TAGS,
   saveResearchNote,
   setResearchNotePinned,
   setThesis,
-  tickerLabel,
   type Candle,
   type Chart,
   type ChartLevel,
@@ -124,7 +124,11 @@ function computeQuickStats(candles: Candle[]) {
     latestClose: latest.close,
     ma20,
     ma60,
+    ma20Pct: ((latest.close - ma20) / ma20) * 100,
+    ma60Pct: ((latest.close - ma60) / ma60) * 100,
     atr14,
+    atrPct: (atr14 / latest.close) * 100,
+    lastVolume: latest.volume,
     ret20,
     fromHigh,
     vsAvg20,
@@ -136,6 +140,14 @@ function computeQuickStats(candles: Candle[]) {
 
 function noteTagLabel(dict: Dictionary, tag: string): string {
   switch (tag) {
+    case "OBSERVATION":
+      return dict.notesTagObservation;
+    case "VALUATION":
+      return dict.notesTagValuation;
+    case "RISK":
+      return dict.notesTagRisk;
+    case "CATALYST":
+      return dict.notesTagCatalyst;
     case "TECHNICAL":
       return dict.notesTagTechnical;
     case "CHIPS":
@@ -147,7 +159,43 @@ function noteTagLabel(dict: Dictionary, tag: string): string {
   }
 }
 
-const noteLoadMoreStep = 20;
+// Only the four current tags carry a colour; a legacy tag gets no class and
+// the CSS falls back to neutral ink-3.
+function noteTagClass(tag: string): string {
+  return (NOTE_TAGS as readonly string[]).includes(tag) ? `note-tag-${tag.toLowerCase()}` : "";
+}
+
+// {y} year, {n} month number, {m} the dictionary's short month name — each
+// language's template picks the pieces and order it needs.
+function noteMonthLabel(dict: Dictionary, ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  return dict.notesMonthFmt
+    .replace("{y}", String(y))
+    .replace("{n}", String(m))
+    .replace("{m}", dict.months[m - 1]);
+}
+
+// Dictionary templates use %s placeholders; a function replacer keeps a "$"
+// inside an argument (e.g. "+$1,234") from being read as a replace pattern.
+function fmt(template: string, ...args: string[]): string {
+  return args.reduce((t, a) => t.replace("%s", () => a), template);
+}
+
+function fmtSigned(v: number, currency: string): string {
+  const sign = v > 0 ? "+" : v < 0 ? "-" : "";
+  return `${sign}${currency}${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+function spct(v: number, digits: number): string {
+  return `${v >= 0 ? "+" : ""}${v.toFixed(digits)}%`;
+}
+
+function pnlClass(v: number): string {
+  return v > 0 ? "profit" : v < 0 ? "loss" : "";
+}
+
+const noteShowInitial = 8;
+const noteShowStep = 20;
 
 function MAEMFEBar({ dict, maePct, mfePct }: { dict: Dictionary; maePct: number; mfePct: number }) {
   const range = Math.max(Math.abs(maePct), Math.abs(mfePct), 1) * 1.15;
@@ -188,6 +236,11 @@ export function ChartView({
   const [chart, setChart] = useState<Chart | null>(null);
   const [error, setError] = useState(false);
   const [selectedRoundStart, setSelectedRoundStart] = useState<string | null>(initialRoundStart ?? null);
+  const [roundMenuOpen, setRoundMenuOpen] = useState(false);
+  // railTab is only set by an explicit click / round pick; until then the tab
+  // follows the selection (a picked round opens 回合, otherwise 支撐壓力).
+  const [railTab, setRailTab] = useState<"lvl" | "round" | null>(null);
+  const [wide, setWide] = useState(false);
   const [roundDetail, setRoundDetail] = useState<RoundDetail | null>(null);
   const [thesisDraft, setThesisDraft] = useState("");
   const [thesisEditing, setThesisEditing] = useState(false);
@@ -197,22 +250,26 @@ export function ChartView({
   const [notes, setNotes] = useState<ResearchNote[]>([]);
   const [noteComposing, setNoteComposing] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
-  const [noteTag, setNoteTag] = useState<NoteTag>("TECHNICAL");
+  const [noteTag, setNoteTag] = useState<NoteTag>("OBSERVATION");
   const [noteSubmitting, setNoteSubmitting] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [noteQuery, setNoteQuery] = useState("");
-  const [noteTagFilter, setNoteTagFilter] = useState<NoteTag | null>(null);
-  const [noteVisibleCount, setNoteVisibleCount] = useState(noteLoadMoreStep);
+  const [noteTagFilter, setNoteTagFilter] = useState<string | null>(null);
+  const [noteShow, setNoteShow] = useState(noteShowInitial);
 
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const roundBgRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const priceLinesRef = useRef<IPriceLine[]>([]);
+  const wrapObserverRef = useRef<ResizeObserver | null>(null);
 
   useEffect(() => {
     setChart(null);
     setError(false);
     setSelectedRoundStart(initialRoundStart ?? null);
+    setRoundMenuOpen(false);
+    setRailTab(null);
     setRoundDetail(null);
     if (!ticker) {
       setError(true);
@@ -243,7 +300,7 @@ export function ChartView({
     setNoteError(null);
     setNoteQuery("");
     setNoteTagFilter(null);
-    setNoteVisibleCount(noteLoadMoreStep);
+    setNoteShow(noteShowInitial);
     if (!ticker) return;
     fetchResearchNotes(ticker)
       .then((r) => setNotes(r.notes))
@@ -255,7 +312,13 @@ export function ChartView({
 
   function openNoteCompose() {
     setNoteDraft(todayNote?.text ?? "");
-    setNoteTag((todayNote?.tag as NoteTag) ?? "TECHNICAL");
+    // A legacy-tagged note being re-edited has no chip to stay selected on
+    // (the compose form only offers the current four), so it starts on 觀察.
+    setNoteTag(
+      todayNote && (NOTE_TAGS as readonly string[]).includes(todayNote.tag)
+        ? (todayNote.tag as NoteTag)
+        : "OBSERVATION",
+    );
     setNoteError(null);
     setNoteComposing(true);
   }
@@ -329,6 +392,16 @@ export function ChartView({
     }
   }
 
+  // "→ 帶入回合論點": drop a note's text into the round's thesis editor. The
+  // editor only exists for a still-open round (roundDetail.editable), so the
+  // button is only offered then.
+  function quoteNote(note: ResearchNote) {
+    setRailTab("round");
+    setThesisDraft(note.text);
+    setThesisError(null);
+    setThesisEditing(true);
+  }
+
   async function handleDeleteTx(tx: Transaction) {
     if (!ticker || !selectedRoundStart) return;
     if (!window.confirm(dict.confirmDeleteTransaction)) return;
@@ -351,6 +424,7 @@ export function ChartView({
       chartRef.current = null;
       seriesRef.current = null;
       volumeSeriesRef.current = null;
+      roundBgRef.current = null;
       priceLinesRef.current = [];
     }
     if (!node) return;
@@ -361,6 +435,17 @@ export function ChartView({
       timeScale: { borderColor: "#334155" },
       autoSize: true,
     });
+
+    // Created first so the round-span tint paints behind the candles. Every
+    // bar is value 1 on its own hidden scale pinned to 0..1, so it fills the
+    // pane's full height whatever the price range is.
+    const roundBg = c.addHistogramSeries({
+      priceScaleId: "rounds",
+      priceLineVisible: false,
+      lastValueVisible: false,
+      autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 1 } }),
+    });
+    c.priceScale("rounds").applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
 
     const series = c.addCandlestickSeries({
       upColor: "#10B981",
@@ -384,39 +469,75 @@ export function ChartView({
     chartRef.current = c;
     seriesRef.current = series;
     volumeSeriesRef.current = vol;
+    roundBgRef.current = roundBg;
   }, []);
 
-  const classified =
-    chart && chart.candles.length > 0
-      ? classifyLevels(chart.levels, chart.candles[chart.candles.length - 1].close)
-      : [];
+  // The rail goes sticky only when the two-column row is at least 1000px wide;
+  // below that it wraps above the main column and must scroll with the page.
+  const wrapRef = useCallback((el: HTMLDivElement | null) => {
+    wrapObserverRef.current?.disconnect();
+    wrapObserverRef.current = null;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setWide(el.offsetWidth >= 1000));
+    ro.observe(el);
+    wrapObserverRef.current = ro;
+  }, []);
+
+  // Memoised on chart: the series effect below lists it as a dependency, and a
+  // fresh array every render would re-run it (resetting the chart's zoom)
+  // on every unrelated state change such as typing in the note box.
+  const classified = useMemo(
+    () =>
+      chart && chart.candles.length > 0
+        ? classifyLevels(chart.levels, chart.candles[chart.candles.length - 1].close)
+        : [],
+    [chart],
+  );
 
   const noteQueryLower = noteQuery.trim().toLowerCase();
   const filteredNotes = notes.filter(
     (n) =>
       (!noteTagFilter || n.tag === noteTagFilter) &&
-      (!noteQueryLower || n.text.toLowerCase().includes(noteQueryLower)),
+      (!noteQueryLower || n.text.toLowerCase().includes(noteQueryLower) || n.date.includes(noteQueryLower)),
   );
   const pinnedNotes = filteredNotes.filter((n) => n.pinned);
   const unpinnedNotes = filteredNotes.filter((n) => !n.pinned);
-  const visibleNotes = unpinnedNotes.slice(0, noteVisibleCount);
-  const hasMoreNotes = unpinnedNotes.length > noteVisibleCount;
+  const visibleNotes = unpinnedNotes.slice(0, noteShow);
+  const noteFiltering = noteQueryLower !== "" || noteTagFilter !== null;
+  const noteFilterTags: string[] = [
+    ...NOTE_TAGS,
+    ...LEGACY_NOTE_TAGS.filter((tg) => notes.some((n) => n.tag === tg)),
+  ];
+  const canQuoteNote = writable && !!roundDetail?.editable && roundDetail.start === selectedRoundStart;
 
   function renderNoteRow(n: ResearchNote, monthLabel?: string) {
     return (
-      <div key={n.id}>
+      <Fragment key={n.id}>
         {monthLabel && <div className="note-month-label">{monthLabel}</div>}
         <div className="note-row">
           <div className="note-row-meta">
-            <span className="stat-note">{n.date}</span>
-            <span className="note-tag-pill">{noteTagLabel(dict, n.tag)}</span>
+            <span className="note-row-date">{n.date}</span>
+            <span className={`note-tag-pill ${noteTagClass(n.tag)}`}>{noteTagLabel(dict, n.tag)}</span>
           </div>
           <div className="note-row-text">{n.text}</div>
           {writable && (
             <div className="note-row-actions">
-              <button type="button" className="note-row-action" onClick={() => toggleNotePin(n)}>
+              <button
+                type="button"
+                className={`note-row-action${n.pinned ? " active" : ""}`}
+                onClick={() => toggleNotePin(n)}
+              >
                 {n.pinned ? dict.notesUnpinLabel : dict.notesPinLabel}
               </button>
+              {canQuoteNote && (
+                <button
+                  type="button"
+                  className="note-row-action note-row-action-quote"
+                  onClick={() => quoteNote(n)}
+                >
+                  {dict.notesToThesis}
+                </button>
+              )}
               <button
                 type="button"
                 className="note-row-action note-row-action-danger"
@@ -427,7 +548,7 @@ export function ChartView({
             </div>
           )}
         </div>
-      </div>
+      </Fragment>
     );
   }
 
@@ -516,6 +637,23 @@ export function ChartView({
     }
   }, [chart, roundDetail, classified, dict.avgCost]);
 
+  // Round-span background: each round tints its own candles green (won), red
+  // (lost) or indigo (still open); the selected round is a shade stronger.
+  // Separate from the effect above so picking a round recolours immediately,
+  // without waiting for its detail fetch or re-zooming the chart.
+  useEffect(() => {
+    const bg = roundBgRef.current;
+    if (!bg || !chart) return;
+    bg.setData(
+      chart.candles.map((c) => {
+        const r = chart.rounds.find((rd) => c.date >= rd.start && (rd.open || c.date <= rd.end));
+        if (!r) return { time: c.date as Time, value: 1, color: "rgba(0,0,0,0)" };
+        const rgb = r.open ? "129,140,248" : r.realizedPnL >= 0 ? "16,185,129" : "239,68,68";
+        return { time: c.date as Time, value: 1, color: `rgba(${rgb},${r.start === selectedRoundStart ? 0.09 : 0.05})` };
+      }),
+    );
+  }, [chart, selectedRoundStart]);
+
   if (error) {
     return (
       <>
@@ -536,14 +674,77 @@ export function ChartView({
   const prevClose =
     chart.candles.length > 1 ? chart.candles[chart.candles.length - 2].close : latestPrice;
   const dayChangePct = prevClose ? ((latestPrice - prevClose) / prevClose) * 100 : 0;
+  const tickerName = names[chart.ticker];
 
-  const handleChipClick = (round: RoundSummary) => {
-    if (selectedRoundStart === round.start) {
-      setSelectedRoundStart(null);
-    } else {
-      setSelectedRoundStart(round.start);
-    }
-  };
+  const statCells = stats
+    ? [
+        {
+          label: dict.ma20,
+          value: `${currency}${stats.ma20.toFixed(2)}`,
+          note: `${stats.ma20Pct >= 0 ? dict.above : dict.below} ${spct(stats.ma20Pct, 1)}`,
+          noteCls: stats.ma20Pct >= 0 ? "profit" : "loss",
+        },
+        {
+          label: dict.ma60,
+          value: `${currency}${stats.ma60.toFixed(2)}`,
+          note: `${stats.ma60Pct >= 0 ? dict.above : dict.below} ${spct(stats.ma60Pct, 1)}`,
+          noteCls: stats.ma60Pct >= 0 ? "profit" : "loss",
+        },
+        {
+          label: dict.atr14,
+          value: `${currency}${stats.atr14.toFixed(2)}`,
+          note: `${stats.atrPct.toFixed(2)}%`,
+          noteCls: "",
+        },
+        { label: dict.ret20, value: spct(stats.ret20, 1), note: "", noteCls: "" },
+        {
+          label: dict.fromHigh,
+          value: spct(stats.fromHigh, 1),
+          note: `${dict.rangeHigh} ${currency}${stats.high120.toFixed(2)}`,
+          noteCls: "loss",
+        },
+        {
+          label: dict.volume,
+          value: `${(stats.lastVolume / 1e6).toFixed(2)}M`,
+          note: `${dict.vsAvg20} ${spct(stats.vsAvg20, 0)}`,
+          noteCls: stats.vsAvg20 >= 0 ? "profit" : "",
+        },
+      ]
+    : [];
+
+  // chart.rounds arrives newest-first; #1 is the oldest round.
+  const chrono = [...chart.rounds].reverse();
+  const roundNo = (r: RoundSummary) => chrono.indexOf(r) + 1;
+  const roundDays = (r: RoundSummary) =>
+    chart.candles.filter((c) => c.date >= r.start && (r.open || c.date <= r.end)).length;
+  const roundRange = (r: RoundSummary) => `${r.start} → ${r.end ? r.end.slice(5) : dict.open}`;
+  const roundPnl = (r: RoundSummary) => (r.open ? dict.roundHolding : fmtSigned(r.realizedPnL, currency));
+  const roundPnlCls = (r: RoundSummary) => (r.open ? "tk-accent" : pnlClass(r.realizedPnL));
+  const closedRounds = chart.rounds.filter((r) => !r.open);
+  const roundsSummaryText = fmt(
+    dict.roundsSummary,
+    String(chart.rounds.length),
+    String(closedRounds.filter((r) => r.realizedPnL >= 0).length),
+    String(closedRounds.length),
+    fmtSigned(
+      closedRounds.reduce((a, r) => a + r.realizedPnL, 0),
+      currency,
+    ),
+  );
+  const selectedRound = chrono.find((r) => r.start === selectedRoundStart) ?? null;
+  const selPos = selectedRound ? chrono.indexOf(selectedRound) : -1;
+  const olderRound = selPos < 0 ? chrono[chrono.length - 1] : chrono[selPos - 1];
+  const newerRound = selPos < 0 ? undefined : chrono[selPos + 1];
+
+  function pickRound(r: RoundSummary | null) {
+    setSelectedRoundStart(r ? r.start : null);
+    if (r) setRailTab("round");
+    setRoundMenuOpen(false);
+  }
+
+  const tab = railTab ?? (selectedRoundStart ? "round" : "lvl");
+  const detail = roundDetail && roundDetail.start === selectedRoundStart ? roundDetail : null;
+  const pos = chart.position;
 
   return (
     <>
@@ -553,7 +754,10 @@ export function ChartView({
 
       <div className="ticker-header-row">
         <div>
-          <div className="ticker-header-id mono">{tickerLabel(chart.ticker, names)}</div>
+          <div className="ticker-header-idrow">
+            <span className="ticker-header-id mono">{chart.ticker}</span>
+            {tickerName && <span className="ticker-header-name">{tickerName}</span>}
+          </div>
           <div className="ticker-price-row">
             <span className="ticker-price-val mono">
               {currency}
@@ -568,45 +772,13 @@ export function ChartView({
 
         {stats && (
           <div className="ticker-stats-inline">
-            <div>
-              <div className="eyebrow">{dict.ma20}</div>
-              <div className="ticker-stat-val mono">{currency}{stats.ma20.toFixed(2)}</div>
-            </div>
-            <div>
-              <div className="eyebrow">{dict.ma60}</div>
-              <div className="ticker-stat-val mono">{currency}{stats.ma60.toFixed(2)}</div>
-            </div>
-            <div>
-              <div className="eyebrow">{dict.atr14}</div>
-              <div className="ticker-stat-val mono">{currency}{stats.atr14.toFixed(2)}</div>
-            </div>
-            <div>
-              <div className="eyebrow">{dict.ret20}</div>
-              <div className="ticker-stat-val mono">
-                {stats.ret20 >= 0 ? "+" : ""}
-                {stats.ret20.toFixed(1)}%
+            {statCells.map((c) => (
+              <div key={c.label}>
+                <div className="ticker-stat-label">{c.label}</div>
+                <div className="ticker-stat-val mono">{c.value}</div>
+                <div className={`ticker-stat-note ${c.noteCls}`}>{c.note}</div>
               </div>
-              <div className={`ticker-stat-note ${stats.ret20 >= 0 ? "profit" : "loss"}`}>
-                {stats.ret20 >= 0 ? dict.above : dict.below}
-              </div>
-            </div>
-            <div>
-              <div className="eyebrow">{dict.fromHigh}</div>
-              <div className="ticker-stat-val mono">{stats.fromHigh.toFixed(1)}%</div>
-              <div className={`ticker-stat-note ${stats.fromHigh >= 0 ? "profit" : "loss"}`}>
-                {stats.fromHigh >= 0 ? dict.above : dict.below}
-              </div>
-            </div>
-            <div>
-              <div className="eyebrow">{dict.vsAvg20}</div>
-              <div className="ticker-stat-val mono">
-                {stats.vsAvg20 >= 0 ? "+" : ""}
-                {stats.vsAvg20.toFixed(1)}%
-              </div>
-              <div className={`ticker-stat-note ${stats.vsAvg20 >= 0 ? "profit" : "loss"}`}>
-                {stats.vsAvg20 >= 0 ? dict.above : dict.below}
-              </div>
-            </div>
+            ))}
           </div>
         )}
 
@@ -625,14 +797,17 @@ export function ChartView({
               {dict.sell}
             </button>
             <button
-              className="btn-sm"
+              className="btn-tint-trade btn-tint-plain"
               onClick={() =>
                 onTrade("stop", chart.ticker, chart.position?.stopPrice || latestPrice)
               }
             >
               {dict.stopPriceCol}
             </button>
-            <button className="btn-sm" onClick={() => onTrade("buyalert", chart.ticker, latestPrice)}>
+            <button
+              className="btn-tint-trade btn-tint-plain"
+              onClick={() => onTrade("buyalert", chart.ticker, latestPrice)}
+            >
               {dict.addBuyAlert}
             </button>
           </div>
@@ -642,149 +817,502 @@ export function ChartView({
       {stats && (
         <div className="range-bar-wrap">
           <div className="range-bar-track">
-            <div className="range-bar-fill" style={{ width: `${stats.rangePct}%` }} />
-            <div className="range-bar-marker" style={{ left: `${stats.rangePct}%` }} />
+            <span className="range-bar-marker" style={{ left: `${stats.rangePct.toFixed(0)}%` }} />
           </div>
           <div className="range-bar-labels">
             <span>
-              {dict.rangeLow}: {currency}{stats.low120.toFixed(2)}
+              {dict.rangeLow} {currency}
+              {stats.low120.toFixed(2)}
             </span>
             <span>
-              {dict.rangeNote} ({stats.rangePct.toFixed(0)}%)
+              {dict.rangeNote} · {dict.pctOfRange} {stats.rangePct.toFixed(0)}%
             </span>
             <span>
-              {dict.rangeHigh}: {currency}{stats.high120.toFixed(2)}
+              {dict.rangeHigh} {currency}
+              {stats.high120.toFixed(2)}
             </span>
           </div>
         </div>
       )}
 
-      {chart.rounds.length === 0 ? (
-        <div className="empty-message" style={{ marginBottom: 16 }}>
-          {dict.noRoundsHere}
-        </div>
-      ) : (
-        <div className="round-chips">
-          <span className="stat-note">{dict.roundPicker}</span>
-          <button
-            className={`round-chip ${selectedRoundStart === null ? "active" : ""}`}
-            onClick={() => setSelectedRoundStart(null)}
-          >
-            {dict.allTrades}
-          </button>
-          {chart.rounds.map((r) => {
-            const isActiveChip = selectedRoundStart === r.start;
-            return (
+      <div className="tk-wrap" ref={wrapRef}>
+        <aside className={`tk-rail${wide ? " sticky" : ""}`}>
+          <div className="card">
+            <div className="eyebrow">{dict.thisPosition}</div>
+            {!pos ? (
+              <div className="empty-message">{dict.noPositionHere}</div>
+            ) : (
+              <div className="position-rows">
+                <div className="position-row">
+                  <span className="stat-note">{dict.shares}</span>
+                  <span className="position-row-val">{pos.shares.toLocaleString()}</span>
+                </div>
+                <div className="position-row">
+                  <span className="stat-note">{dict.avgCost}</span>
+                  <span className="position-row-val">
+                    {currency}
+                    {pos.avgCost.toFixed(2)}
+                  </span>
+                </div>
+                <div className="position-row">
+                  <span className="stat-note">{dict.marketValue}</span>
+                  <span className="position-row-val">
+                    {currency}
+                    {pos.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </span>
+                </div>
+                <div className="position-row">
+                  <span className="stat-note">{dict.weight}</span>
+                  <span className="position-row-val">{pos.weightPct.toFixed(1)}%</span>
+                </div>
+                <div className="position-row">
+                  <span className="stat-note">{dict.unrealizedPnL}</span>
+                  <span className={`position-row-val ${pnlClass(pos.unrealizedPnLPct)}`}>
+                    {fmtSigned((pos.price - pos.avgCost) * pos.shares, currency)} ({spct(pos.unrealizedPnLPct, 2)})
+                  </span>
+                </div>
+                <div className="position-row">
+                  <span className="stat-note">{dict.stopPriceCol}</span>
+                  <span className="position-row-val">
+                    {pos.stopPrice > 0
+                      ? `${currency}${pos.stopPrice.toFixed(2)} (${spct(-((pos.price - pos.stopPrice) / pos.price) * 100, 1)})`
+                      : dict.noStopSet}
+                  </span>
+                </div>
+                <div className="position-row">
+                  <span className="stat-note">{dict.riskIfStopped}</span>
+                  <span className={`position-row-val ${pos.openRisk !== null ? "loss" : ""}`}>
+                    {pos.openRisk !== null
+                      ? `-${currency}${Math.abs(pos.openRisk).toLocaleString(undefined, {
+                          maximumFractionDigits: 0,
+                        })} · ${dict.pctOfAccount} ${pos.openRiskPct?.toFixed(1)}%`
+                      : "—"}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="card">
+            <div className="tk-tabs">
               <button
-                key={r.start}
-                className={`round-chip ${isActiveChip ? "active" : ""}`}
-                onClick={() => handleChipClick(r)}
+                type="button"
+                className={`tk-tab${tab === "lvl" ? " active" : ""}`}
+                onClick={() => setRailTab("lvl")}
               >
-                {r.start} → {r.end || dict.open} ({r.shares} sh ·{" "}
-                <span className={r.realizedPnL > 0 ? "profit" : r.realizedPnL < 0 ? "loss" : ""}>
-                  {r.realizedPnL > 0 ? "+" : ""}
-                  {currency}
-                  {Math.abs(r.realizedPnL).toFixed(0)}
-                </span>
-                )
+                {dict.tkTabLvl}
+                <span className="tk-tab-count">{classified.length}</span>
               </button>
-            );
-          })}
-        </div>
-      )}
+              <button
+                type="button"
+                className={`tk-tab${tab === "round" ? " active" : ""}`}
+                onClick={() => setRailTab("round")}
+              >
+                {dict.tkTabRound}
+                <span className="tk-tab-count">{chart.rounds.length}</span>
+              </button>
+            </div>
 
-      <div className="card chart-card" ref={containerRef} />
+            {tab === "lvl" && (
+              <div style={{ overflowX: "auto" }}>
+                <div className="eyebrow">
+                  {dict.support} / {dict.resistance}
+                </div>
+                {classified.length === 0 ? (
+                  <div className="empty-message">{dict.noLevels}</div>
+                ) : (
+                  <>
+                    <table className="mono">
+                      <thead>
+                        <tr>
+                          <th>{dict.levelType}</th>
+                          <th>{dict.price}</th>
+                          <th>{dict.touches}</th>
+                          <th>{dict.lastTouch}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {classified.map((l) => (
+                          <tr key={l.price}>
+                            <td className={l.isSupport ? "profit" : "loss"}>
+                              {l.plotted ? "● " : ""}
+                              {l.isSupport ? dict.support : dict.resistance}
+                            </td>
+                            <td>
+                              {currency}
+                              {l.price.toFixed(2)}
+                            </td>
+                            <td>{l.touches}</td>
+                            <td>{l.lastDate}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="tk-rail-note">{dict.levelsNote}</div>
+                  </>
+                )}
+              </div>
+            )}
 
-      <div className="card">
-        <div className="thesis-header">
-          <div className="eyebrow">{dict.notesLabel}</div>
-          <span className="stat-note">{notes.length}</span>
-          {writable && !noteComposing && (
-            <button type="button" className="thesis-edit-btn" onClick={openNoteCompose}>
-              <span>{todayNote ? dict.notesEditToggle : dict.notesAddToggle}</span>
-            </button>
-          )}
-        </div>
+            {tab === "round" && (
+              <div style={{ overflowX: "auto" }}>
+                {selectedRound && detail && (
+                  <>
+                    <div className="tk-rail-title">
+                      <span className="tk-rail-title-text">
+                        {dict.roundSpan} {selectedRound.start} → {selectedRound.end || dict.open}
+                      </span>
+                      <span className={`tk-rail-title-pnl ${roundPnlCls(selectedRound)}`}>
+                        {selectedRound.open ? "—" : fmtSigned(selectedRound.realizedPnL, currency)}
+                      </span>
+                    </div>
+                    {detail.hasMaeMfe && <MAEMFEBar dict={dict} maePct={detail.maePct} mfePct={detail.mfePct} />}
+                    <div className="eyebrow tk-section-title">{dict.tradesInRound}</div>
+                    <TradesTable
+                      compact
+                      dict={dict}
+                      transactions={detail.trades}
+                      currency={currency}
+                      names={names}
+                      onDelete={writable ? handleDeleteTx : undefined}
+                    />
 
-        {noteComposing && (
-          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-            <div className="round-chips" style={{ marginBottom: 0 }}>
-              {NOTE_TAGS.map((tg) => (
+                    {(detail.theses.length > 0 || (writable && detail.editable)) && (
+                      <div className="tk-section-title">
+                        <div className="thesis-header">
+                          <div className="eyebrow">{dict.thesisLabel}</div>
+                          {writable && detail.editable && !thesisEditing && (
+                            <button
+                              type="button"
+                              className="thesis-edit-btn"
+                              onClick={() => setThesisEditing(true)}
+                            >
+                              <svg
+                                width="11"
+                                height="11"
+                                viewBox="0 0 16 16"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.6"
+                                aria-hidden="true"
+                              >
+                                <path d="M11.5 2.5 L13.5 4.5 L5.5 12.5 L2.5 13.5 L3.5 10.5 Z" />
+                              </svg>
+                              <span>{dict.thesisEditToggle}</span>
+                            </button>
+                          )}
+                        </div>
+                        {detail.theses.length > 0 ? (
+                          <ul className="lessons-list">
+                            {detail.theses.map((t, i) => (
+                              <li key={i}>
+                                <span className="stat-note">{t.date}</span> {t.text}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          !thesisEditing && <div className="thesis-empty-box">{dict.thesisEmptyNote}</div>
+                        )}
+                        {thesisEditing && (
+                          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                            <label className="form-field">
+                              <textarea
+                                rows={4}
+                                autoFocus
+                                value={thesisDraft}
+                                placeholder={dict.thesisFieldPlaceholder}
+                                onChange={(e) => setThesisDraft(e.target.value)}
+                              />
+                            </label>
+                            {thesisError && <div className="error-message">{thesisError}</div>}
+                            <div className="modal-actions">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setThesisEditing(false);
+                                  setThesisDraft("");
+                                  setThesisError(null);
+                                }}
+                              >
+                                {dict.cancel}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-primary"
+                                disabled={!thesisDraft.trim() || thesisSubmitting}
+                                onClick={submitThesis}
+                              >
+                                {dict.submit}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {detail.lessons.length > 0 && (
+                      <div className="tk-section-title">
+                        <div className="eyebrow">{dict.lessonsLabel}</div>
+                        <ul className="lessons-list">
+                          {detail.lessons.map((l, i) => (
+                            <li key={i}>
+                              <span className="stat-note">{l.date}</span> {l.lesson}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                <div className={selectedRound && detail ? "tk-section-title" : ""}>
+                  <div className="eyebrow">{dict.tickerRounds}</div>
+                  {chart.rounds.length === 0 ? (
+                    <div className="empty-message">{dict.noRoundsHere}</div>
+                  ) : (
+                    <>
+                      <div className="tk-round-summary">{roundsSummaryText}</div>
+                      <table className="mono">
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>{dict.startDate}</th>
+                            <th>{dict.endDate}</th>
+                            <th>MAE</th>
+                            <th>MFE</th>
+                            <th>{dict.realizedPnL}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {chart.rounds.map((r) => (
+                            <tr
+                              key={r.start}
+                              className={`tk-round-row${r.start === selectedRoundStart ? " selected" : ""}`}
+                              tabIndex={0}
+                              onClick={() => pickRound(r)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  pickRound(r);
+                                }
+                              }}
+                            >
+                              <td className="tk-dim">#{roundNo(r)}</td>
+                              <td>{r.start}</td>
+                              <td className={r.open ? "tk-accent" : ""}>{r.end || dict.open}</td>
+                              {/* MAE/MFE per round arrive with /api/chart's rounds (Phase 27 P2). */}
+                              <td className="tk-dim">—</td>
+                              <td className="tk-dim">—</td>
+                              <td className={r.open ? "" : pnlClass(r.realizedPnL)}>
+                                {r.open ? "—" : fmtSigned(r.realizedPnL, currency)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </aside>
+
+        <div className="tk-main">
+          {chart.rounds.length === 0 ? (
+            <div className="empty-message" style={{ marginBottom: 16 }}>
+              {dict.noRoundsHere}
+            </div>
+          ) : (
+            <div className="rp-row">
+              <span className="rp-label" title={dict.roundPicker}>
+                {dict.tkRoundLabel}
+              </span>
+              <button
+                type="button"
+                className={`round-chip${selectedRound ? "" : " active"}`}
+                onClick={() => pickRound(null)}
+              >
+                {dict.allTrades}
+                <span className="rp-count">{chart.rounds.length}</span>
+              </button>
+              <div className="rp-picker">
                 <button
-                  key={tg}
                   type="button"
-                  className={`round-chip ${noteTag === tg ? "active" : ""}`}
-                  onClick={() => setNoteTag(tg)}
+                  className="rp-step"
+                  title={dict.roundOlderTip}
+                  disabled={!olderRound}
+                  onClick={() => olderRound && pickRound(olderRound)}
                 >
-                  {noteTagLabel(dict, tg)}
+                  ‹
                 </button>
-              ))}
+                <button
+                  type="button"
+                  className={`round-chip${selectedRound ? " active" : ""}`}
+                  onClick={() => setRoundMenuOpen((o) => !o)}
+                >
+                  {selectedRound ? `#${roundNo(selectedRound)} · ${roundRange(selectedRound)}` : dict.tkPickRound}
+                  {selectedRound && <span className={roundPnlCls(selectedRound)}>{roundPnl(selectedRound)}</span>}
+                  <span className="rp-caret">▾</span>
+                </button>
+                <button
+                  type="button"
+                  className="rp-step"
+                  title={dict.roundNewerTip}
+                  disabled={!newerRound}
+                  onClick={() => newerRound && pickRound(newerRound)}
+                >
+                  ›
+                </button>
+                {roundMenuOpen && (
+                  <>
+                    <div className="rp-backdrop" onClick={() => setRoundMenuOpen(false)} />
+                    <div className="rp-menu">
+                      <div className="rp-menu-summary">{roundsSummaryText}</div>
+                      {chart.rounds.map((r) => (
+                        <div
+                          key={r.start}
+                          className={`rp-menu-row${r.start === selectedRoundStart ? " selected" : ""}`}
+                          onClick={() => pickRound(r)}
+                        >
+                          <span className="rp-menu-n">#{roundNo(r)}</span>
+                          <span>{roundRange(r)}</span>
+                          <span className="rp-menu-days">
+                            {roundDays(r)}
+                            {dict.roundDaysUnit}
+                          </span>
+                          <span className={`rp-menu-pnl ${roundPnlCls(r)}`}>{roundPnl(r)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
-            <label className="form-field">
-              <textarea
-                rows={4}
-                autoFocus
-                value={noteDraft}
-                placeholder={dict.notesFieldPlaceholder}
-                onChange={(e) => setNoteDraft(e.target.value)}
-              />
-            </label>
-            {noteError && <div className="error-message">{noteError}</div>}
-            <div className="modal-actions">
-              <button
-                type="button"
-                onClick={() => {
-                  setNoteComposing(false);
-                  setNoteDraft("");
-                  setNoteError(null);
-                }}
-              >
-                {dict.cancel}
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={!noteDraft.trim() || noteSubmitting}
-                onClick={submitNote}
-              >
-                {dict.submit}
-              </button>
-            </div>
-          </div>
-        )}
+          )}
 
-        {notes.length === 0 ? (
-          <div className="thesis-empty-box">{dict.notesEmptyNote}</div>
-        ) : (
-          <>
-            <div className="note-toolbar">
-              <input
-                className="note-search-input"
-                value={noteQuery}
-                placeholder={dict.notesSearchPlaceholder}
-                onChange={(e) => setNoteQuery(e.target.value)}
-              />
-              {noteQuery && (
-                <button type="button" className="note-row-action" onClick={() => setNoteQuery("")}>
-                  {dict.notesClearSearch}
+          <div className="card card--glow chart-card">
+            <div className="tk-chart" ref={containerRef} />
+          </div>
+
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="thesis-header">
+              <div className="eyebrow">{dict.notesLabel}</div>
+              <span className="note-title-meta">
+                {notes.length} {dict.notesCount}
+              </span>
+              {noteFiltering && (
+                <span className="note-title-meta match">
+                  {dict.notesMatched} {filteredNotes.length} {dict.notesCount}
+                </span>
+              )}
+              {writable && !noteComposing && (
+                <button type="button" className="thesis-edit-btn" onClick={openNoteCompose}>
+                  <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+                    <path d="M8 3v10M3 8h10" />
+                  </svg>
+                  <span>{todayNote ? dict.notesEditToggle : dict.notesAddToggle}</span>
                 </button>
               )}
-              <div className="round-chips" style={{ marginBottom: 0 }}>
+            </div>
+            <div className="note-sub">{dict.notesNote}</div>
+
+            {noteComposing && (
+              <div className="note-compose">
+                <div className="note-chips">
+                  {NOTE_TAGS.map((tg) => (
+                    <button
+                      key={tg}
+                      type="button"
+                      className={`note-chip ${noteTagClass(tg)}${noteTag === tg ? " active" : ""}`}
+                      onClick={() => setNoteTag(tg)}
+                    >
+                      {noteTagLabel(dict, tg)}
+                    </button>
+                  ))}
+                </div>
+                <label className="form-field">
+                  <textarea
+                    rows={4}
+                    autoFocus
+                    value={noteDraft}
+                    placeholder={dict.notesFieldPlaceholder}
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                  />
+                </label>
+                {noteError && <div className="error-message">{noteError}</div>}
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNoteComposing(false);
+                      setNoteDraft("");
+                      setNoteError(null);
+                    }}
+                  >
+                    {dict.cancel}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={!noteDraft.trim() || noteSubmitting}
+                    onClick={submitNote}
+                  >
+                    {dict.submit}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="note-toolbar">
+              <div className="note-search">
+                <svg className="note-search-icon" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                  <circle cx="7" cy="7" r="4.2" />
+                  <path d="M10.2 10.2 13.5 13.5" />
+                </svg>
+                <input
+                  className="note-search-input"
+                  value={noteQuery}
+                  placeholder={dict.notesSearchPlaceholder}
+                  onChange={(e) => {
+                    setNoteQuery(e.target.value);
+                    setNoteShow(noteShowInitial);
+                  }}
+                />
+                {noteQuery && (
+                  <button
+                    type="button"
+                    className="note-search-clear"
+                    onClick={() => {
+                      setNoteQuery("");
+                      setNoteShow(noteShowInitial);
+                    }}
+                  >
+                    {dict.notesClearSearch}
+                  </button>
+                )}
+              </div>
+              <div className="note-chips">
                 <button
                   type="button"
-                  className={`round-chip ${noteTagFilter === null ? "active" : ""}`}
-                  onClick={() => setNoteTagFilter(null)}
+                  className={`note-chip${noteTagFilter === null ? " active" : ""}`}
+                  onClick={() => {
+                    setNoteTagFilter(null);
+                    setNoteShow(noteShowInitial);
+                  }}
                 >
-                  {dict.notesFilterAllLabel}
+                  {dict.notesFilterAllLabel} {notes.length}
                 </button>
-                {NOTE_TAGS.map((tg) => (
+                {noteFilterTags.map((tg) => (
                   <button
                     key={tg}
                     type="button"
-                    className={`round-chip ${noteTagFilter === tg ? "active" : ""}`}
-                    onClick={() => setNoteTagFilter(tg)}
+                    className={`note-chip ${noteTagClass(tg)}${noteTagFilter === tg ? " active" : ""}`}
+                    onClick={() => {
+                      setNoteTagFilter(tg);
+                      setNoteShow(noteShowInitial);
+                    }}
                   >
-                    {noteTagLabel(dict, tg)}
+                    {noteTagLabel(dict, tg)} {notes.filter((n) => n.tag === tg).length}
                   </button>
                 ))}
               </div>
@@ -792,240 +1320,61 @@ export function ChartView({
 
             {pinnedNotes.length > 0 && (
               <div className="note-pinned-block">
-                <div className="eyebrow">{dict.notesPinnedLabel}</div>
-                <div className="lessons-list">{pinnedNotes.map((n) => renderNoteRow(n))}</div>
+                <div className="note-pinned-head">
+                  <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                    <path d="M8 10v4M4.5 3.5h7l-1 5h-5z" />
+                  </svg>
+                  <span className="note-pinned-title">{dict.notesPinnedLabel}</span>
+                  <span className="note-pinned-count">
+                    {pinnedNotes.length} {dict.notesCount}
+                  </span>
+                </div>
+                <div className="note-list">{pinnedNotes.map((n) => renderNoteRow(n))}</div>
               </div>
             )}
 
-            <div className="lessons-list" style={{ marginTop: 12 }}>
-              {(() => {
-                lastNoteMonth = "";
-                return visibleNotes.map((n) => {
-                  const month = n.date.slice(0, 7);
-                  const monthLabel = month !== lastNoteMonth ? month : undefined;
-                  lastNoteMonth = month;
-                  return renderNoteRow(n, monthLabel);
-                });
-              })()}
-            </div>
-            {hasMoreNotes && (
-              <div className="modal-actions" style={{ justifyContent: "flex-start", marginTop: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => setNoteVisibleCount((c) => c + noteLoadMoreStep)}
-                >
-                  {dict.notesLoadMore} · +{unpinnedNotes.length - noteVisibleCount}
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {roundDetail && (
-        <div className="detail-grid-2col">
-          <div className="card">
-            {roundDetail.hasMaeMfe && (
-              <MAEMFEBar dict={dict} maePct={roundDetail.maePct} mfePct={roundDetail.mfePct} />
-            )}
-            <div className="eyebrow" style={{ marginTop: roundDetail.hasMaeMfe ? 16 : 0 }}>
-              {dict.tradesInRound}
-            </div>
-            <TradesTable
-              dict={dict}
-              transactions={roundDetail.trades}
-              currency={currency}
-              names={names}
-              onDelete={writable ? handleDeleteTx : undefined}
-            />
-          </div>
-          <div className="card">
-            {(roundDetail.theses.length > 0 || (writable && roundDetail.editable)) && (
+            {visibleNotes.length > 0 && (
               <>
-                <div className="thesis-header">
-                  <div className="eyebrow">{dict.thesisLabel}</div>
-                  {writable && roundDetail.editable && !thesisEditing && (
-                    <button
-                      type="button"
-                      className="thesis-edit-btn"
-                      onClick={() => setThesisEditing(true)}
-                    >
-                      <svg
-                        width="11"
-                        height="11"
-                        viewBox="0 0 16 16"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        aria-hidden="true"
-                      >
-                        <path d="M11.5 2.5 L13.5 4.5 L5.5 12.5 L2.5 13.5 L3.5 10.5 Z" />
-                      </svg>
-                      <span>{dict.thesisEditToggle}</span>
+                <div className="note-list">
+                  {(() => {
+                    lastNoteMonth = "";
+                    return visibleNotes.map((n) => {
+                      const month = n.date.slice(0, 7);
+                      const monthLabel = month !== lastNoteMonth ? noteMonthLabel(dict, month) : undefined;
+                      lastNoteMonth = month;
+                      return renderNoteRow(n, monthLabel);
+                    });
+                  })()}
+                </div>
+                <div className="note-foot">
+                  <span>
+                    {dict.notesShowing} {visibleNotes.length} / {unpinnedNotes.length}
+                  </span>
+                  {noteShow > noteShowInitial && (
+                    <button type="button" className="note-foot-btn" onClick={() => setNoteShow(noteShowInitial)}>
+                      {dict.notesCollapse}
                     </button>
                   )}
+                  {unpinnedNotes.length > visibleNotes.length && (
+                    <button
+                      type="button"
+                      className="note-foot-more"
+                      onClick={() => setNoteShow((c) => c + noteShowStep)}
+                    >
+                      {dict.notesLoadMore} · +{unpinnedNotes.length - visibleNotes.length}
+                    </button>
+                  )}
+                  {unpinnedNotes.length > noteShowInitial && unpinnedNotes.length === visibleNotes.length && (
+                    <span style={{ marginLeft: "auto" }}>{dict.notesAllShown}</span>
+                  )}
                 </div>
-                {roundDetail.theses.length > 0 ? (
-                  <ul className="lessons-list">
-                    {roundDetail.theses.map((t, i) => (
-                      <li key={i}>
-                        <span className="stat-note">{t.date}</span> {t.text}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  !thesisEditing && <div className="thesis-empty-box">{dict.thesisEmptyNote}</div>
-                )}
-                {thesisEditing && (
-                  <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                    <label className="form-field">
-                      <textarea
-                        rows={4}
-                        autoFocus
-                        value={thesisDraft}
-                        placeholder={dict.thesisFieldPlaceholder}
-                        onChange={(e) => setThesisDraft(e.target.value)}
-                      />
-                    </label>
-                    {thesisError && <div className="error-message">{thesisError}</div>}
-                    <div className="modal-actions">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setThesisEditing(false);
-                          setThesisDraft("");
-                          setThesisError(null);
-                        }}
-                      >
-                        {dict.cancel}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-primary"
-                        disabled={!thesisDraft.trim() || thesisSubmitting}
-                        onClick={submitThesis}
-                      >
-                        {dict.submit}
-                      </button>
-                    </div>
-                  </div>
-                )}
               </>
             )}
-            {roundDetail.lessons.length > 0 && (
-              <>
-                <div className="eyebrow" style={{ marginTop: roundDetail.theses.length > 0 || roundDetail.editable ? 16 : 0 }}>
-                  {dict.lessonsLabel}
-                </div>
-                <ul className="lessons-list">
-                  {roundDetail.lessons.map((l, i) => (
-                    <li key={i}>
-                      <span className="stat-note">{l.date}</span> {l.lesson}
-                    </li>
-                  ))}
-                </ul>
-              </>
+
+            {filteredNotes.length === 0 && (
+              <div className="note-empty">{notes.length === 0 ? dict.notesEmptyNote : dict.notesNoMatch}</div>
             )}
           </div>
-        </div>
-      )}
-
-      <div className="detail-grid-2col">
-        <div className="card">
-          <div className="eyebrow">
-            {dict.support} / {dict.resistance}
-          </div>
-          {classified.length === 0 ? (
-            <div className="empty-message">{dict.noLevels}</div>
-          ) : (
-            <table className="mono">
-              <thead>
-                <tr>
-                  <th>{dict.levelType}</th>
-                  <th>{dict.price}</th>
-                  <th>{dict.touches}</th>
-                  <th>{dict.lastTouch}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {classified.map((l) => (
-                  <tr key={l.price}>
-                    <td className={l.isSupport ? "profit" : "loss"}>
-                      {l.plotted ? "● " : ""}
-                      {l.isSupport ? dict.support : dict.resistance}
-                    </td>
-                    <td>
-                      {currency}
-                      {l.price.toFixed(2)}
-                    </td>
-                    <td>{l.touches}</td>
-                    <td>{l.lastDate}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        <div className="card">
-          <div className="eyebrow">{dict.thisPosition}</div>
-          {!chart.position ? (
-            <div className="empty-message">{dict.noPositionHere}</div>
-          ) : (
-            <div className="position-rows">
-              <div className="position-row">
-                <span className="stat-note">{dict.shares}</span>
-                <span className="position-row-val">{chart.position.shares}</span>
-              </div>
-              <div className="position-row">
-                <span className="stat-note">{dict.avgCost}</span>
-                <span className="position-row-val">
-                  {currency}
-                  {chart.position.avgCost.toFixed(2)}
-                </span>
-              </div>
-              <div className="position-row">
-                <span className="stat-note">{dict.marketValue}</span>
-                <span className="position-row-val">
-                  {currency}
-                  {chart.position.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </span>
-              </div>
-              <div className="position-row">
-                <span className="stat-note">{dict.weight}</span>
-                <span className="position-row-val">{chart.position.weightPct.toFixed(1)}%</span>
-              </div>
-              <div className="position-row">
-                <span className="stat-note">{dict.unrealizedPnL}</span>
-                <span
-                  className={`position-row-val ${
-                    chart.position.unrealizedPnLPct >= 0 ? "profit" : "loss"
-                  }`}
-                >
-                  {chart.position.unrealizedPnLPct >= 0 ? "+" : ""}
-                  {chart.position.unrealizedPnLPct.toFixed(1)}%
-                </span>
-              </div>
-              <div className="position-row">
-                <span className="stat-note">{dict.stopPriceCol}</span>
-                <span className="position-row-val">
-                  {chart.position.stopPrice > 0
-                    ? `${currency}${chart.position.stopPrice.toFixed(2)}`
-                    : "—"}
-                </span>
-              </div>
-              <div className="position-row">
-                <span className="stat-note">{dict.riskIfStopped}</span>
-                <span className="position-row-val">
-                  {chart.position.openRisk !== null
-                    ? `${currency}${chart.position.openRisk.toLocaleString(undefined, {
-                        maximumFractionDigits: 0,
-                      })} (${chart.position.openRiskPct?.toFixed(1)}%)`
-                    : "—"}
-                </span>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </>

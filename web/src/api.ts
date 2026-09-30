@@ -190,8 +190,12 @@ export interface ResearchNotes {
 
 // NOTE_TAGS is the fixed set of tag chips the compose form offers — must
 // stay in sync with internal/web/research_notes.go's researchNoteTags map.
-export const NOTE_TAGS = ["TECHNICAL", "CHIPS", "NEWS", "OTHER"] as const;
+// LEGACY_NOTE_TAGS are the pre-redesign taxonomy (技術面/籌碼面/消息面/其他): the
+// server still accepts them and old rows still carry them, so the card keeps
+// displaying them, but the compose form no longer offers them.
+export const NOTE_TAGS = ["OBSERVATION", "VALUATION", "RISK", "CATALYST"] as const;
 export type NoteTag = (typeof NOTE_TAGS)[number];
+export const LEGACY_NOTE_TAGS = ["TECHNICAL", "CHIPS", "NEWS", "OTHER"] as const;
 
 export interface RoundDetail {
   ticker: string;
