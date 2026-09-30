@@ -766,7 +766,7 @@ func (b *Bot) Notify(msg string) {
 // over). Called only from handleBuy, never blocking the trade itself — see
 // PLAN.md's Phase 3.6 expansion "論點日誌" item.
 func (b *Bot) thesisNudge(ticker string) string {
-	_, ok, err := b.db.GetThesis(ticker)
+	_, ok, err := service.CurrentThesis(b.db, ticker)
 	if err != nil {
 		logger.Errorf("buy: check thesis %s: %v", ticker, err)
 		return ""
@@ -1045,10 +1045,12 @@ func (b *Bot) buildClosedTradeReview(ticker string, stopPrice float64) (llm.Clos
 		}
 	}
 
-	if thesis, ok, err := b.db.GetThesis(ticker); err != nil {
+	// The reviewed round's own thesis (Phase 27 P1b) — not the ticker's latest,
+	// which for an older round would be a later round's.
+	if thesis, ok, err := service.RoundThesis(b.db, ticker, service.SegmentRounds(txs), round.StartDate); err != nil {
 		logger.Errorf("review %s: thesis: %v", ticker, err)
 	} else if ok {
-		trade.Thesis = &thesis
+		trade.Thesis = &thesis.Text
 	}
 
 	if recs, err := b.db.GetRecommendationsForTicker(ticker, round.StartDate, round.EndDate); err != nil {
@@ -1699,10 +1701,11 @@ func (b *Bot) SyncUniverse() {
 	b.Send(sb.String())
 }
 
-// handleThesis manages the Phase 3.6 expansion's holding-thesis journal:
-// "/thesis TICKER" alone queries the currently recorded rationale, "/thesis
-// TICKER free text" sets/overwrites it wholesale (see db.SetThesis's doc
-// comment for why there's no history). Deliberately fed only into /insight
+// handleThesis manages the holding thesis: "/thesis TICKER" alone queries
+// the current round's recorded rationale, "/thesis TICKER free text"
+// overwrites it wholesale (Phase 27 P1b: one text per round — the open
+// round's, or a pre-buy draft when the ticker isn't held; see
+// service.CurrentThesis). Deliberately fed only into /insight
 // (see handleInsight's loadTheses call) — never /recommend, so the model
 // challenges the user's stated thesis instead of confirming it.
 func (b *Bot) handleThesis(args string) {
@@ -1720,7 +1723,7 @@ func (b *Bot) handleThesis(args string) {
 	}
 
 	if len(parts) < 2 || strings.TrimSpace(parts[1]) == "" {
-		thesis, ok, err := b.db.GetThesis(ticker)
+		thesis, ok, err := service.CurrentThesis(b.db, ticker)
 		if err != nil {
 			b.Send(i18n.T(b.lang, i18n.KeyQueryFailed, err))
 			return
@@ -1734,7 +1737,7 @@ func (b *Bot) handleThesis(args string) {
 	}
 
 	thesis := strings.TrimSpace(parts[1])
-	if err := b.db.SetThesis(ticker, thesis); err != nil {
+	if err := service.SetCurrentThesis(b.db, ticker, thesis); err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyThesisSetFailed, b.tickerLabel(ticker), err))
 		return
 	}

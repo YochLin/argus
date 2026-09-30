@@ -36,9 +36,11 @@ type fakeDB struct {
 
 	// recs backs GetRecommendationsSince for recperf_test.go.
 	recs []db.Recommendation
-	// thesisEntries/lessons back GetThesisEntriesInRange/GetLessonsForTickers
-	// for rounds_test.go's thesis/lessons attachment tests (Phase 8 PR4,
-	// thesis expanded to a full history in Phase 21).
+	// roundTheses (key "TICKER|roundStart"), thesisEntries and lessons back
+	// GetRoundThesis/GetThesisEntriesInRange/GetLessonsForTickers for
+	// rounds_test.go's thesis/lessons attachment tests (Phase 8 PR4; one text
+	// per round since Phase 27 P1b, the journal entries are the fallback).
+	roundTheses   map[string]string
 	thesisEntries map[string][]db.ThesisEntry
 	lessons       map[string][]db.Lesson
 
@@ -127,6 +129,10 @@ func (f *fakeDB) GetSetting(key string) (string, bool, error) {
 }
 func (f *fakeDB) GetRecommendationsSince(fromDate string) ([]db.Recommendation, error) {
 	return f.recs, nil
+}
+func (f *fakeDB) GetRoundThesis(ticker, roundStart string) (string, bool, error) {
+	text, ok := f.roundTheses[ticker+"|"+roundStart]
+	return text, ok, nil
 }
 func (f *fakeDB) GetThesisEntriesInRange(ticker, from, to string) ([]db.ThesisEntry, error) {
 	var out []db.ThesisEntry

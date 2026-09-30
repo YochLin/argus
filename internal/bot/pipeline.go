@@ -961,7 +961,7 @@ func (b *Bot) loadEarnings(tickers []string) map[string]data.EarningsEvent {
 func (b *Bot) loadTheses(tickers []string) map[string]string {
 	out := make(map[string]string, len(tickers))
 	for _, t := range tickers {
-		thesis, ok, err := b.db.GetThesis(t)
+		thesis, ok, err := service.CurrentThesis(b.db, t)
 		if err != nil {
 			logger.Errorf("load thesis %s: %v", t, err)
 			continue

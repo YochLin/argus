@@ -1018,8 +1018,12 @@ func TestBuildClosedTradeReviewFull(t *testing.T) {
 		}
 	}
 
-	if err := d.SetThesis("AAPL", "long-term compounder"); err != nil {
-		t.Fatalf("SetThesis() error = %v", err)
+	if err := d.SetRoundThesis("AAPL", "2026-06-01", "long-term compounder"); err != nil {
+		t.Fatalf("SetRoundThesis() error = %v", err)
+	}
+	// A later round's thesis must not leak into this round's review.
+	if err := d.SetRoundThesis("AAPL", "2026-08-03", "a different, later round"); err != nil {
+		t.Fatalf("SetRoundThesis() error = %v", err)
 	}
 
 	if err := d.SaveRecommendations("2026-06-10", []db.Recommendation{

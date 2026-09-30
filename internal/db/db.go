@@ -556,12 +556,30 @@ func (d *DB) RecordBuyExt(ticker string, shares, price, fee float64, date, extID
 
 	m := string(market.Of(ticker))
 
+	// A buy from flat opens a new round; a thesis drafted before it (round_start
+	// '') becomes that round's. Done here, not lazily on read, so the draft can't
+	// be shown for one round and then overwritten by the next.
+	var held float64
+	err = tx.QueryRow(`SELECT shares FROM positions WHERE ticker = ?`, ticker).Scan(&held)
+	if err != nil && err != sql.ErrNoRows {
+		return Position{}, err
+	}
+	opensRound := err == sql.ErrNoRows || held < 1e-9
+
 	if _, err := tx.Exec(`
 		INSERT INTO transactions (ticker, side, shares, price, fee, date, remaining_shares, market, ext_id)
 		VALUES (?, 'BUY', ?, ?, ?, ?, ?, ?, ?)`,
 		ticker, shares, price, fee, date, shares, m, extID,
 	); err != nil {
 		return Position{}, err
+	}
+	if opensRound {
+		if _, err := tx.Exec(
+			`UPDATE OR IGNORE round_theses SET round_start = ? WHERE ticker = ? AND round_start = ''`,
+			date, ticker,
+		); err != nil {
+			return Position{}, err
+		}
 	}
 
 	totalShares, avgCost, err := lotAvgCost(tx, ticker)

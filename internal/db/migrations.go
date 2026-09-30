@@ -764,4 +764,19 @@ var migrations = []string{
 	ALTER TABLE goals ADD COLUMN monthly_contribution REAL;
 	ALTER TABLE goals ADD COLUMN start_year INTEGER;
 	`,
+	// 35: Phase 27 P1b — the stock chart redesign's thesis is one overwritable
+	// text per round, not migration 18's per-ticker journal. round_start is the
+	// round's first-BUY date ('' = a draft written while the ticker has no open
+	// round; RecordBuy re-keys it to the new round's start). thesis_entries is
+	// left in place, no longer written, as a read-only fallback for rounds
+	// nobody has re-saved (service.RoundThesis).
+	`
+	CREATE TABLE IF NOT EXISTS round_theses (
+		ticker      TEXT NOT NULL,
+		round_start TEXT NOT NULL,
+		text        TEXT NOT NULL,
+		updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (ticker, round_start)
+	);
+	`,
 }

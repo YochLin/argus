@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"argus/internal/db"
 	"argus/internal/market"
 	"argus/internal/service"
 )
@@ -81,9 +82,9 @@ type buyAlertWriter interface {
 }
 
 // thesisWriter backs POST /api/thesis (Phase 21) — like watchlistWriter, a
-// direct DB write with no bot-layer behavior beyond db.SetThesis itself.
+// direct DB write with no bot-layer behavior beyond db.SetRoundThesis itself.
 type thesisWriter interface {
-	SetThesis(ticker, text string) error
+	SetRoundThesis(ticker, roundStart, text string) error
 }
 
 // researchNotesWriter backs the chart page's research-notes card writes —
@@ -129,9 +130,13 @@ type buyAlertRemoveRequest struct {
 	ID int64 `json:"id"`
 }
 
+// RoundStart names the round being edited (its first-BUY date, as
+// /api/chart's rounds report it); "" means the ticker's current round — what
+// TradeModal's buy-form thesis field sends right after the buy.
 type thesisRequest struct {
-	Ticker string `json:"ticker"`
-	Text   string `json:"text"`
+	Ticker     string `json:"ticker"`
+	Text       string `json:"text"`
+	RoundStart string `json:"roundStart"`
 }
 
 // tradeResponse's Message is the exact same i18n-rendered confirmation (or
@@ -297,7 +302,23 @@ func (s *Server) handleThesisSet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "ticker and text are required")
 		return
 	}
-	if err := s.thesisDB.SetThesis(ticker, text); err != nil {
+	allTxs, err := s.db.GetAllTransactions()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save thesis")
+		return
+	}
+	var txs []db.Transaction
+	for _, t := range allTxs {
+		if t.Ticker == ticker {
+			txs = append(txs, t)
+		}
+	}
+	start, err := service.ThesisRoundKey(segmentRounds(txs), strings.TrimSpace(req.RoundStart))
+	if errors.Is(err, service.ErrThesisRoundNotFound) {
+		writeError(w, http.StatusBadRequest, "unknown round for this ticker")
+		return
+	}
+	if err := s.thesisDB.SetRoundThesis(ticker, start, text); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to save thesis")
 		return
 	}

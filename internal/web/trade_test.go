@@ -98,12 +98,12 @@ func (f *fakeBuyAlertDB) RemoveBuyAlert(id int64) error {
 
 // fakeThesisDB is a thesisWriter stub.
 type fakeThesisDB struct {
-	lastTicker, lastText string
-	err                  error
+	lastTicker, lastStart, lastText string
+	err                             error
 }
 
-func (f *fakeThesisDB) SetThesis(ticker, text string) error {
-	f.lastTicker, f.lastText = ticker, text
+func (f *fakeThesisDB) SetRoundThesis(ticker, roundStart, text string) error {
+	f.lastTicker, f.lastStart, f.lastText = ticker, roundStart, text
 	return f.err
 }
 
@@ -462,7 +462,46 @@ func TestHandleThesisSet(t *testing.T) {
 			t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
 		}
 		if ftd.lastTicker != "AAPL" || ftd.lastText != "entering on the breakout" {
-			t.Errorf("SetThesis(%q, %q), want (AAPL, trimmed text)", ftd.lastTicker, ftd.lastText)
+			t.Errorf("SetRoundThesis(%q, %q), want (AAPL, trimmed text)", ftd.lastTicker, ftd.lastText)
+		}
+		if ftd.lastStart != "" {
+			t.Errorf("round start = %q, want \"\" (no rounds: the pre-buy draft)", ftd.lastStart)
+		}
+	})
+
+	// Phase 27 P1b: one text per round. Round one closed (2026-01-05), round
+	// two open (2026-03-02).
+	s.db = &fakeDB{txs: []db.Transaction{
+		tx("AAPL", "BUY", 10, 100, "2026-01-05"),
+		tx("AAPL", "SELL", 10, 110, "2026-02-02"),
+		tx("AAPL", "BUY", 10, 100, "2026-03-02"),
+	}}
+
+	t.Run("defaults to the open round", func(t *testing.T) {
+		if rec := post(thesisRequest{Ticker: "AAPL", Text: "now"}); rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+		}
+		if ftd.lastStart != "2026-03-02" {
+			t.Errorf("round start = %q, want the open round 2026-03-02", ftd.lastStart)
+		}
+	})
+
+	t.Run("edits a closed round", func(t *testing.T) {
+		if rec := post(thesisRequest{Ticker: "AAPL", Text: "in hindsight", RoundStart: "2026-01-05"}); rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+		}
+		if ftd.lastStart != "2026-01-05" || ftd.lastText != "in hindsight" {
+			t.Errorf("SetRoundThesis start/text = %q/%q, want the closed round's", ftd.lastStart, ftd.lastText)
+		}
+	})
+
+	t.Run("rejects a round the ticker never had", func(t *testing.T) {
+		ftd.lastText = ""
+		if rec := post(thesisRequest{Ticker: "AAPL", Text: "x", RoundStart: "2025-12-31"}); rec.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400", rec.Code)
+		}
+		if ftd.lastText != "" {
+			t.Error("nothing should be written for an unknown round")
 		}
 	})
 

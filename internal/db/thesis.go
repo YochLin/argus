@@ -3,7 +3,9 @@ package db
 import "database/sql"
 
 // ThesisEntry is one row of Phase 21's append-only holding-rationale journal
-// (see migration 18's doc comment in db.go). CreatedAt is a plain
+// (migration 18). Since Phase 27 P1b nothing writes it any more — it is only
+// read, as service.RoundThesis's fallback for rounds with no saved
+// round_theses row. CreatedAt is a plain
 // "YYYY-MM-DD" date (via GetThesisEntriesInRange's date(created_at)
 // projection), not a full timestamp — entries are written at most once per
 // calendar day, so the day is all a caller ever needs to display.
@@ -14,15 +16,15 @@ type ThesisEntry struct {
 	CreatedAt string
 }
 
-// GetThesis returns ticker's most recently recorded thesis, or ok=false if
-// none exists — the single read path /thesis, the buy nudge, /review, and
-// the web dashboard all call, now backed by thesis_entries instead of the
-// old one-row-per-ticker thesis table.
-func (d *DB) GetThesis(ticker string) (string, bool, error) {
+// GetRoundThesis returns the saved thesis of ticker's round starting at
+// roundStart ("" = the pre-buy draft), or ok=false if none is saved. Phase 27
+// P1b's per-round replacement for the journal's per-ticker "latest entry"
+// read; callers wanting the journal fallback go through service.RoundThesis.
+func (d *DB) GetRoundThesis(ticker, roundStart string) (string, bool, error) {
 	var text string
 	err := d.conn.QueryRow(
-		`SELECT text FROM thesis_entries WHERE ticker = ? ORDER BY created_at DESC, id DESC LIMIT 1`,
-		ticker,
+		`SELECT text FROM round_theses WHERE ticker = ? AND round_start = ?`,
+		ticker, roundStart,
 	).Scan(&text)
 	if err == sql.ErrNoRows {
 		return "", false, nil
@@ -33,23 +35,17 @@ func (d *DB) GetThesis(ticker string) (string, bool, error) {
 	return text, true, nil
 }
 
-// SetThesis appends ticker's thesis for today, upserting same-day entries
-// (via the migration-18 unique index on (ticker, date(created_at))) so a
-// same-day typo fix stays one row while a change of mind on a later day
-// starts a new one — the single write path /thesis and the web buy form's
-// optional thesis field both call.
-//
-// ponytail: two genuinely different thoughts recorded on the same calendar
-// day still collapse into one row. Upgrade to "only the latest row is
-// editable in place" if that ever actually happens.
-func (d *DB) SetThesis(ticker, text string) error {
+// SetRoundThesis overwrites ticker's thesis for the round starting at
+// roundStart ("" = the pre-buy draft) — the single write path /thesis, the
+// web chart page and the buy form's thesis field all end up at.
+func (d *DB) SetRoundThesis(ticker, roundStart, text string) error {
 	_, err := d.conn.Exec(`
-		INSERT INTO thesis_entries (ticker, text, created_at)
-		VALUES (?, ?, CURRENT_TIMESTAMP)
-		ON CONFLICT(ticker, date(created_at)) DO UPDATE SET
+		INSERT INTO round_theses (ticker, round_start, text, updated_at)
+		VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(ticker, round_start) DO UPDATE SET
 			text = excluded.text,
-			created_at = excluded.created_at`,
-		ticker, text,
+			updated_at = excluded.updated_at`,
+		ticker, roundStart, text,
 	)
 	return err
 }

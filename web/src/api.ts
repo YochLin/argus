@@ -171,11 +171,6 @@ export interface Lesson {
   lesson: string;
 }
 
-export interface ThesisEntry {
-  date: string;
-  text: string;
-}
-
 // ResearchNote is one row of the chart page's notebook card — one upserted
 // note per ticker per calendar day (see internal/db/research_notes.go),
 // with a fixed-taxonomy Tag and a Pinned flag the card surfaces above the
@@ -211,13 +206,13 @@ export interface RoundDetail {
   maePct: number;
   mfePct: number;
   hasMaeMfe: boolean;
-  // theses/lessons (Phase 8 PR4, thesis expanded to a full history in Phase
-  // 21) are attachments — theses is every thesis entry recorded while this
-  // round was open, oldest first (empty when none). editable is true only
-  // for a still-open round; that's the only case the frontend shows an edit
-  // form for (see internal/web/handlers.go's roundDetailResponse doc).
-  theses: ThesisEntry[];
-  editable: boolean;
+  // thesis/lessons (Phase 8 PR4) are attachments. Since Phase 27 P1b the
+  // thesis is one overwritable text per round, editable whether the round is
+  // open or closed ("" = none written); thesisEdited is false when the text is
+  // only the legacy journal's last entry, shown as a default until first save
+  // (see internal/web/handlers.go's roundDetailResponse doc).
+  thesis: string;
+  thesisEdited: boolean;
   lessons: Lesson[];
 }
 
@@ -946,10 +941,8 @@ function getMockData(url: string): any {
       maePct: -3.4,
       mfePct: 14.2,
       hasMaeMfe: true,
-      theses: [
-        { date: start, text: "Base breakout on rising volume; holding while the 20d holds and the earnings guide stays intact. Trim half into the prior high." },
-      ],
-      editable: false,
+      thesis: "Base breakout on rising volume; holding while the 20d holds and the earnings guide stays intact. Trim half into the prior high.",
+      thesisEdited: true,
       lessons: [
         { date: "2026-06-02", lesson: "Stop was too tight relative to ATR — shaken out before the real move." },
         { date: "2026-06-19", lesson: "Adding on strength worked; adding on weakness did not." },
@@ -1477,10 +1470,11 @@ export function removeBuyAlert(id: number): Promise<TradeResponse> {
   return postJSON("/api/buy-alerts/remove", { id });
 }
 
-// setThesis backs Phase 21's two thesis-writing entry points: TradeModal's
-// buy-form textarea and ChartView's round-detail edit (open rounds only).
-export function setThesis(ticker: string, text: string): Promise<TradeResponse> {
-  return postJSON("/api/thesis", { ticker, text });
+// setThesis backs the two thesis-writing entry points: TradeModal's buy-form
+// textarea (no roundStart — the server takes the just-opened round) and
+// ChartView's round editor, which names the round by its start date.
+export function setThesis(ticker: string, text: string, roundStart?: string): Promise<TradeResponse> {
+  return postJSON("/api/thesis", { ticker, text, roundStart });
 }
 
 // saveResearchNote upserts ticker's research note for today — the server

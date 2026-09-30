@@ -261,7 +261,7 @@ func TestGetPortfolioOptionsSectionSkippedWithoutChainProvider(t *testing.T) {
 
 func TestGetThesis(t *testing.T) {
 	d := newTestDB(t)
-	if err := d.SetThesis("AAPL", "long-term compounder, hold through volatility"); err != nil {
+	if err := d.SetRoundThesis("AAPL", "", "long-term compounder, hold through volatility"); err != nil {
 		t.Fatal(err)
 	}
 

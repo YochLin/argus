@@ -98,7 +98,7 @@ type StockData struct {
 	// an earlier call with no acknowledgment. Nil for a ticker recommended
 	// for the first time.
 	PrevRec *PrevRecommendation
-	// Thesis is the user's own holding rationale (see db.GetThesis/SetThesis,
+	// Thesis is the user's own holding rationale (see service.CurrentThesis,
 	// bot's /thesis command), attached only by handleInsight — deliberately
 	// never by fetchStockData's other callers (/recommend, RunDailyReport),
 	// per the Phase 3.6 expansion design: feeding the user's own bull case
