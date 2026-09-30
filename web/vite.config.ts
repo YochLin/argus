@@ -676,6 +676,28 @@ function getMockData(urlStr: string): any {
   if (path === "/api/login") {
     return { ok: true };
   }
+  if (path === "/api/chart/peers") {
+    const rows: [string, number, number | null, number | null, number | null][] = [
+      ["NVDA", 912.4, 6.8, 24.1, 61.5],
+      ["AMD", 158.9, 2.2, 18.6, 40.2],
+      ["TSM", 176.3, -1.4, 9.7, 33.0],
+      ["AVGO", 1421.7, -3.1, 2.4, null], // recent listing: no 120-day figure
+    ];
+    if (!rows.some((r) => r[0] === ticker)) rows[2][0] = ticker;
+    const self = rows.find((r) => r[0] === ticker)!;
+    return {
+      sector: "Semiconductors",
+      peers: rows.map(([t, price, c20, c60, c120]) => ({
+        ticker: t,
+        self: t === ticker,
+        price,
+        chg20: c20,
+        chg60: c60,
+        chg120: c120,
+        rel: t === ticker || c60 === null || self[3] === null ? null : c60 - self[3],
+      })),
+    };
+  }
   if (path === "/api/research-notes") {
     return {
       notes: [
