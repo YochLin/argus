@@ -2,6 +2,7 @@ package web
 
 import (
 	"sort"
+	"time"
 
 	"argus/internal/data"
 	"argus/internal/db"
@@ -96,15 +97,25 @@ func buildChart(database dbReader, quotes quoteGetter, history data.HistoryProvi
 			}
 			segmented := segmentRounds(tickerTxs)
 			resp.Rounds = make([]roundSummary, 0, len(segmented))
+			now := time.Now()
 			for _, r := range segmented {
-				resp.Rounds = append(resp.Rounds, roundSummary{
+				rs := roundSummary{
 					Ticker:      ticker,
 					Start:       r.StartDate,
 					End:         r.EndDate,
 					Open:        r.EndDate == "",
 					Shares:      roundBuyShares(r.Legs),
 					RealizedPnL: roundRealizedPnL(r.Legs),
-				})
+				}
+				// Only when the candles reach back to the round's start: a
+				// round older than the 1y window would otherwise report the
+				// excursion of just its covered tail, silently understated.
+				if len(candles) > 0 && candles[0].Date.Format("2006-01-02") <= r.StartDate {
+					if mm := roundMAEMFE(candles, r.Legs, r.StartDate, r.EndDate, now); mm.OK {
+						rs.MAEPct, rs.MFEPct, rs.HasMAEMFE = mm.MAEPct, mm.MFEPct, true
+					}
+				}
+				resp.Rounds = append(resp.Rounds, rs)
 			}
 			sort.Slice(resp.Rounds, func(i, j int) bool {
 				return resp.Rounds[i].Start > resp.Rounds[j].Start

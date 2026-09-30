@@ -1071,44 +1071,54 @@ export function ChartView({
                   ) : (
                     <>
                       <div className="tk-round-summary">{roundsSummaryText}</div>
-                      <table className="mono">
-                        <thead>
-                          <tr>
-                            <th>#</th>
-                            <th>{dict.startDate}</th>
-                            <th>{dict.endDate}</th>
-                            <th>MAE</th>
-                            <th>MFE</th>
-                            <th>{dict.realizedPnL}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {chart.rounds.map((r) => (
-                            <tr
-                              key={r.start}
-                              className={`tk-round-row${r.start === selectedRoundStart ? " selected" : ""}`}
-                              tabIndex={0}
-                              onClick={() => pickRound(r)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                  e.preventDefault();
-                                  pickRound(r);
-                                }
-                              }}
-                            >
-                              <td className="tk-dim">#{roundNo(r)}</td>
-                              <td>{r.start}</td>
-                              <td className={r.open ? "tk-accent" : ""}>{r.end || dict.open}</td>
-                              {/* MAE/MFE per round arrive with /api/chart's rounds (Phase 27 P2). */}
-                              <td className="tk-dim">—</td>
-                              <td className="tk-dim">—</td>
-                              <td className={r.open ? "" : pnlClass(r.realizedPnL)}>
-                                {r.open ? "—" : fmtSigned(r.realizedPnL, currency)}
-                              </td>
+                      <div className="tk-rail-scroll">
+                        <table className="mono">
+                          <thead>
+                            <tr>
+                              <th>#</th>
+                              <th>{dict.startDate}</th>
+                              <th>{dict.endDate}</th>
+                              <th>MAE</th>
+                              <th>MFE</th>
+                              <th>{dict.realizedPnL}</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {chart.rounds.map((r) => (
+                              <tr
+                                key={r.start}
+                                className={`tk-round-row${r.start === selectedRoundStart ? " selected" : ""}`}
+                                tabIndex={0}
+                                onClick={() => pickRound(r)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    pickRound(r);
+                                  }
+                                }}
+                              >
+                                <td className="tk-dim">#{roundNo(r)}</td>
+                                <td>{r.start}</td>
+                                <td className={r.open ? "tk-accent" : ""}>{r.end || dict.open}</td>
+                                {r.hasMaeMfe ? (
+                                  <>
+                                    <td className="loss">{r.maePct.toFixed(1)}%</td>
+                                    <td className="profit">+{r.mfePct.toFixed(1)}%</td>
+                                  </>
+                                ) : (
+                                  <>
+                                    <td className="tk-dim">—</td>
+                                    <td className="tk-dim">—</td>
+                                  </>
+                                )}
+                                <td className={r.open ? "" : pnlClass(r.realizedPnL)}>
+                                  {r.open ? "—" : fmtSigned(r.realizedPnL, currency)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </>
                   )}
                 </div>
