@@ -717,6 +717,7 @@ func (b *Bot) recordBuy(ticker string, shares, price, fee float64, feeAuto bool,
 		return i18n.T(b.lang, i18n.KeyBuyFailed, err), err
 	}
 	b.adjustCash(result.Ticker, -(shares*price + result.Fee))
+	go b.captureFillNews(result.Ticker, date)
 	msg := i18n.T(b.lang, i18n.KeyBuySuccess, result.Ticker, shares, b.money(result.Ticker, price), b.money(result.Ticker, result.Fee), result.Position.Shares, b.money(result.Ticker, result.Position.AvgCost))
 	if feeAuto {
 		msg += i18n.T(b.lang, i18n.KeyFeeAutoNote)
@@ -851,6 +852,7 @@ func (b *Bot) recordSell(ticker string, shares, price, fee float64, feeAuto bool
 		}
 	}
 	b.adjustCash(result.Ticker, shares*price-result.Fee)
+	go b.captureFillNews(result.Ticker, date)
 	msg = i18n.T(b.lang, i18n.KeySellSuccess, result.Ticker, shares, b.money(result.Ticker, price), b.money(result.Ticker, result.Fee), result.RealizedPnL, result.Position.Shares)
 	if feeAuto {
 		msg += i18n.T(b.lang, i18n.KeyFeeAutoNote)

@@ -949,4 +949,11 @@ const (
 	KeyWealthHealthPromptExpenseRatioLine Key = "wealth_health_prompt_expense_ratio_line"
 	KeyWealthHealthPromptRetirementLine   Key = "wealth_health_prompt_retirement_line"
 	KeyWealthHealthPromptTask             Key = "wealth_health_prompt_task"
+
+	// KeyNewsClassifyIntro/KeyNewsClassifyTask are the prompt that labels the
+	// headlines stored with a fill (internal/llm.ClassifyNews). The Task's
+	// single %s is the fixed machine-readable line format, injected from Go so
+	// prompt and parser cannot drift (same rule as KeyMarketSummaryMarker).
+	KeyNewsClassifyIntro Key = "news_classify_intro"
+	KeyNewsClassifyTask  Key = "news_classify_task"
 )

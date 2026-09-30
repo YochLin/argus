@@ -779,4 +779,29 @@ var migrations = []string{
 		PRIMARY KEY (ticker, round_start)
 	);
 	`,
+	// 36: Phase 27 P7 — the headlines around a fill, kept because news is the
+	// one part of the stock chart's fill snapshot that can't be rebuilt later
+	// (GetNews has no date parameter, so a past day's news is gone). Keyed by
+	// (ticker, fill_date), not by transaction: a buy and a sell on one day
+	// share the day's news, and a re-record of the same fill adds nothing new.
+	// sentiment/tag/major are the LLM's reading (internal/llm.ClassifyNews);
+	// sentiment '' = not classified yet (the LLM call failed or hasn't run),
+	// and the next fill capture for that ticker/day retries it. url is kept so
+	// the source article can be reopened later.
+	`
+	CREATE TABLE IF NOT EXISTS fill_news (
+		id           INTEGER PRIMARY KEY AUTOINCREMENT,
+		ticker       TEXT NOT NULL,
+		fill_date    TEXT NOT NULL,
+		headline     TEXT NOT NULL,
+		source       TEXT NOT NULL DEFAULT '',
+		url          TEXT NOT NULL DEFAULT '',
+		published_at TEXT NOT NULL DEFAULT '',
+		sentiment    TEXT NOT NULL DEFAULT '',
+		tag          TEXT NOT NULL DEFAULT '',
+		major        INTEGER NOT NULL DEFAULT 0,
+		created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE (ticker, fill_date, headline)
+	);
+	`,
 }
