@@ -221,16 +221,45 @@ type candleResponse struct {
 	Volume int64   `json:"volume"`
 }
 
-// chartResponse is /api/chart's body: ticker's ~1y of daily candles plus the
-// support/resistance levels computed from that same window (chart.go's
-// buildChart). Candles/Levels are "[]" not "null" when empty, same
+// chartResponse is /api/chart's body: ticker's ~2y of daily candles, the
+// support/resistance levels computed from the latest year of them, and the
+// candlestick/volume/gap patterns found across all of them (chart.go's
+// buildChart). Candles/Levels/Patterns are "[]" not "null" when empty, same
 // dashboard.go convention.
 type chartResponse struct {
 	Ticker   string                `json:"ticker"`
 	Candles  []candleResponse      `json:"candles"`
 	Levels   []levelResponse       `json:"levels"`
+	Patterns []patternResponse     `json:"patterns"`
 	Position *riskPositionResponse `json:"position"`
 	Rounds   []roundSummary        `json:"rounds"`
+}
+
+// patternResponse is one signals.DetectPatterns hit, dates instead of candle
+// indices. Only numbers, no display text — the frontend builds names,
+// definitions and the "why" rows from Type and these fields through its own
+// dictionary, same rule as calendarEvent above. Type-specific meaning of Extra
+// is documented on signals.Pattern.
+type patternResponse struct {
+	Type      string       `json:"type"`
+	Cat       string       `json:"cat"`
+	Dir       string       `json:"dir"`
+	Start     string       `json:"start"`
+	End       string       `json:"end"`
+	Conf      string       `json:"conf"` // "high"/"mid"/"low"; "" for gaps
+	BodyRatio float64      `json:"bodyRatio"`
+	VolRatio  float64      `json:"volRatio"`
+	Prior5Pct float64      `json:"prior5Pct"`
+	Extra     float64      `json:"extra"`
+	RefDate   string       `json:"refDate,omitempty"` // volume divergence: the prior high's date
+	Gap       *gapResponse `json:"gap,omitempty"`
+	Fwd5      *float64     `json:"fwd5"` // % move 5 bars after End; null near the end of the data
+}
+
+type gapResponse struct {
+	Lo       float64 `json:"lo"`
+	Hi       float64 `json:"hi"`
+	FillDate string  `json:"fillDate"` // "" while the gap is still open
 }
 
 type levelResponse struct {

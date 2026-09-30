@@ -64,8 +64,62 @@ func TestBuildChart(t *testing.T) {
 		t.Errorf("Levels[0].Touches = %d, want 2", got.Levels[0].Touches)
 	}
 
-	if hist.lastTicker != "AAPL" || hist.lastRange != "1y" {
-		t.Errorf("GetHistory called with (%q, %q), want (AAPL, 1y)", hist.lastTicker, hist.lastRange)
+	if hist.lastTicker != "AAPL" || hist.lastRange != "2y" {
+		t.Errorf("GetHistory called with (%q, %q), want (AAPL, 2y)", hist.lastTicker, hist.lastRange)
+	}
+}
+
+// Candles span two years but support/resistance still comes from the latest
+// year only: a swing point older than that must not produce a level.
+func TestBuildChart_LevelsUseLatestYear(t *testing.T) {
+	candles := levelBaseCandlesForTest(600)
+	// A double top 500 days ago (outside the last year) and one 100 days ago.
+	candles[100].High, candles[110].High = 110.3, 110.5
+	candles[500].High, candles[510].High = 120.3, 120.5
+	hist := &fakeHistory{candles: map[string][]data.Candle{"AAPL": candles}}
+
+	got, err := buildChart(nil, nil, hist, "AAPL")
+	if err != nil {
+		t.Fatalf("buildChart() error = %v", err)
+	}
+	if len(got.Candles) != 600 {
+		t.Errorf("Candles len = %d, want all 600", len(got.Candles))
+	}
+	if len(got.Levels) != 1 || got.Levels[0].Price != (120.3+120.5)/2 {
+		t.Errorf("Levels = %+v, want only the recent double top", got.Levels)
+	}
+}
+
+func TestBuildChart_Patterns(t *testing.T) {
+	candles := levelBaseCandlesForTest(40)
+	// A gap up on bar 30 (prev high 101), never filled; and no other pattern.
+	for i := 30; i < 40; i++ {
+		candles[i].Open, candles[i].High, candles[i].Low, candles[i].Close = 105, 106, 104, 105
+	}
+	hist := &fakeHistory{candles: map[string][]data.Candle{"AAPL": candles}}
+
+	got, err := buildChart(nil, nil, hist, "AAPL")
+	if err != nil {
+		t.Fatalf("buildChart() error = %v", err)
+	}
+	var gap *patternResponse
+	for i := range got.Patterns {
+		if got.Patterns[i].Type == "gapUp" {
+			gap = &got.Patterns[i]
+		}
+	}
+	if gap == nil {
+		t.Fatalf("Patterns = %+v, want a gapUp", got.Patterns)
+	}
+	wantDate := candles[30].Date.Format("2006-01-02")
+	if gap.Start != wantDate || gap.End != wantDate || gap.Cat != "gap" || gap.Conf != "" {
+		t.Errorf("gap = %+v, want start=end=%s, cat gap, no conf", gap, wantDate)
+	}
+	if gap.Gap == nil || gap.Gap.Lo != 101 || gap.Gap.Hi != 104 || gap.Gap.FillDate != "" {
+		t.Errorf("gap band = %+v, want 101..104 still open", gap.Gap)
+	}
+	if gap.Fwd5 == nil {
+		t.Error("Fwd5 = nil, want a 5-bar forward return (bar 35 exists)")
 	}
 }
 
@@ -75,6 +129,9 @@ func TestBuildChart_NoLevels(t *testing.T) {
 	got, err := buildChart(nil, nil, hist, "AAPL")
 	if err != nil {
 		t.Fatalf("buildChart() error = %v", err)
+	}
+	if got.Patterns == nil {
+		t.Error("Patterns = nil, want an empty non-nil slice")
 	}
 	if got.Levels == nil || len(got.Levels) != 0 {
 		t.Errorf("Levels = %v, want empty non-nil slice", got.Levels)
