@@ -230,6 +230,128 @@ export interface Dictionary {
   pvDnVd: string;
   pvReadPrice: string;
   pvReadVol: string;
+  patHighOnly: string;
+  patHighTip: string;
+  patEvents: string;
+  patEventsNote: string;
+  patNone: string;
+  patPick: string;
+  patConf: string;
+  patWhy: string;
+  patWhyGap: string;
+  patHist: string;
+  patHistN: string;
+  patHistAvg: string;
+  patHistHit: string;
+  patHistUp: string;
+  patThisFwd: string;
+  patFwdPending: string;
+  patLowSample: string;
+  patDisclaimer: string;
+  patGapOpen: string;
+  patGapFilled: string;
+  patBars: string;
+  patLegBull: string;
+  patLegBear: string;
+  patLegNeu: string;
+  patLegGap: string;
+  tkTabPat: string;
+  condBody: string;
+  condVol: string;
+  condPrior5: string;
+  condBodyPrev: string;
+  condCloseInto: string;
+  condLowerShadow: string;
+  condUpperShadow: string;
+  condPrior20High: string;
+  condPrior20Low: string;
+  condPriorHighDate: string;
+  condVolVsHigh: string;
+  condRange10: string;
+  condGapRange: string;
+  condGapSize: string;
+  condGapStatus: string;
+  gapStatusOpen: string;
+  gapStatusFilled: string;
+  patCode_bullEngulf: string;
+  patName_bullEngulf: string;
+  patDef_bullEngulf: string;
+  patCode_bearEngulf: string;
+  patName_bearEngulf: string;
+  patDef_bearEngulf: string;
+  patCode_hammer: string;
+  patName_hammer: string;
+  patDef_hammer: string;
+  patCode_shooting: string;
+  patName_shooting: string;
+  patDef_shooting: string;
+  patCode_morning: string;
+  patName_morning: string;
+  patDef_morning: string;
+  patCode_evening: string;
+  patName_evening: string;
+  patDef_evening: string;
+  patCode_soldiers: string;
+  patName_soldiers: string;
+  patDef_soldiers: string;
+  patCode_crows: string;
+  patName_crows: string;
+  patDef_crows: string;
+  patCode_doji: string;
+  patName_doji: string;
+  patDef_doji: string;
+  patCode_volBreak: string;
+  patName_volBreak: string;
+  patDef_volBreak: string;
+  patCode_hangingMan: string;
+  patName_hangingMan: string;
+  patDef_hangingMan: string;
+  patCode_invHammer: string;
+  patName_invHammer: string;
+  patDef_invHammer: string;
+  patCode_bullHarami: string;
+  patName_bullHarami: string;
+  patDef_bullHarami: string;
+  patCode_bearHarami: string;
+  patName_bearHarami: string;
+  patDef_bearHarami: string;
+  patCode_piercing: string;
+  patName_piercing: string;
+  patDef_piercing: string;
+  patCode_darkCloud: string;
+  patName_darkCloud: string;
+  patDef_darkCloud: string;
+  patCode_volDry: string;
+  patName_volDry: string;
+  patDef_volDry: string;
+  patCode_volDiverge: string;
+  patName_volDiverge: string;
+  patDef_volDiverge: string;
+  patCode_gapUp: string;
+  patName_gapUp: string;
+  patDef_gapUp: string;
+  patCode_gapDown: string;
+  patName_gapDown: string;
+  patDef_gapDown: string;
+  patCode_volDump: string;
+  patName_volDump: string;
+  patDef_volDump: string;
+  patCat_rev: string;
+  patCat_cont: string;
+  patCat_gap: string;
+  patCat_vol: string;
+  patCat_indec: string;
+  patDir_bull: string;
+  patDir_bear: string;
+  patDir_neu: string;
+  patConfLabel_high: string;
+  patConfLabel_mid: string;
+  patConfLabel_low: string;
+  patCatTip_rev: string;
+  patCatTip_cont: string;
+  patCatTip_gap: string;
+  patCatTip_vol: string;
+  patCatTip_indec: string;
   lessonsLabel: string;
   rMultipleHistogram: string;
   rMultipleNote: string;
@@ -1189,6 +1311,129 @@ const en: Dictionary = {
   pvDnVd: "Price down · vol down",
   pvReadPrice: "px ",
   pvReadVol: "vol ",
+  patHighOnly: "High confidence only",
+  patHighTip:
+    "Confidence scores three checks: volume above 1.4× the 20-day average, body above 1.5× the 20-day average body, and the right context (reversals must follow the opposite trend). All three = high. On: only high-confidence patterns. Off: medium and low appear as small unlabelled dots.",
+  patEvents: "PATTERN EVENTS",
+  patEventsNote: "newest first — click to locate on chart",
+  patNone: "No patterns detected under the current filters.",
+  patPick: "Click a pattern dot on the chart, or an event below, to see why it fired and how it has played out on this ticker.",
+  patConf: "confidence",
+  patWhy: "WHY IT FIRED",
+  patWhyGap: "GAP DETAILS",
+  patHist: "SAME PATTERN ON THIS TICKER",
+  patHistN: "Occurrences",
+  patHistAvg: "Avg 5-day move",
+  patHistHit: "Went its way",
+  patHistUp: "Up after 5 days",
+  patThisFwd: "This one, 5 days on",
+  patFwdPending: "under 5 days old",
+  patLowSample: "small sample — indicative only",
+  patDisclaimer: "Patterns are detected from bar shapes and describe price/volume behaviour only. Not a trade signal.",
+  patGapOpen: "unfilled",
+  patGapFilled: "filled",
+  patBars: "%s-bar",
+  patLegBull: "Bullish (below bar)",
+  patLegBear: "Bearish (above bar)",
+  patLegNeu: "Neutral",
+  patLegGap: "Gap (dashed = unfilled)",
+  tkTabPat: "Patterns",
+  condBody: "Body vs 20-day avg",
+  condVol: "Volume vs 20-day avg",
+  condPrior5: "Prior 5-day move",
+  condBodyPrev: "Body vs prior bar",
+  condCloseInto: "Close into prior body",
+  condLowerShadow: "Lower shadow / body",
+  condUpperShadow: "Upper shadow / body",
+  condPrior20High: "Prior 20-day high",
+  condPrior20Low: "Prior 20-day low",
+  condPriorHighDate: "Prior high (date)",
+  condVolVsHigh: "Volume vs prior high",
+  condRange10: "10-day range",
+  condGapRange: "Gap range",
+  condGapSize: "Gap size",
+  condGapStatus: "Status",
+  gapStatusOpen: "Unfilled · %s sessions open",
+  gapStatusFilled: "Filled on day %s (%s)",
+  patCode_bullEngulf: "E",
+  patName_bullEngulf: "Bullish engulfing",
+  patDef_bullEngulf: "A red bar followed by a long green bar whose body fully covers it. After a decline, read as buyers taking over.",
+  patCode_bearEngulf: "E",
+  patName_bearEngulf: "Bearish engulfing",
+  patDef_bearEngulf: "A green bar followed by a long red bar whose body fully covers it. After a rally, read as sellers stepping in.",
+  patCode_hammer: "H",
+  patName_hammer: "Hammer",
+  patDef_hammer: "Lower shadow at least 2× the body, little upper shadow, after a decline. Sold off intraday, then bought back.",
+  patCode_shooting: "S",
+  patName_shooting: "Shooting star",
+  patDef_shooting: "Upper shadow at least 2× the body, little lower shadow, after a rally. Pushed up intraday, then sold back.",
+  patCode_morning: "M",
+  patName_morning: "Morning star",
+  patDef_morning: "Long red → small body → long green closing above the first body's midpoint. A three-bar bottom reversal.",
+  patCode_evening: "V",
+  patName_evening: "Evening star",
+  patDef_evening: "Long green → small body → long red closing below the first body's midpoint. A three-bar top reversal.",
+  patCode_soldiers: "3W",
+  patName_soldiers: "Three white soldiers",
+  patDef_soldiers: "Three green bars in a row, each closing higher with a solid body. Buyers keep pressing.",
+  patCode_crows: "3C",
+  patName_crows: "Three black crows",
+  patDef_crows: "Three red bars in a row, each closing lower with a solid body. Sellers keep pressing.",
+  patCode_doji: "D",
+  patName_doji: "Doji",
+  patDef_doji: "Open and close almost equal with visible shadows. A standoff — wait for the next bar to confirm.",
+  patCode_volBreak: "BO",
+  patName_volBreak: "Volume breakout",
+  patDef_volBreak: "Close at a 20-day high on volume above 1.8× the 20-day average.",
+  patCode_hangingMan: "HM",
+  patName_hangingMan: "Hanging man",
+  patDef_hangingMan: "Same shape as a hammer (long lower shadow, short upper) but after a rally. Heavy intraday selling — buyers are loosening their grip.",
+  patCode_invHammer: "IH",
+  patName_invHammer: "Inverted hammer",
+  patDef_invHammer: "Same shape as a shooting star (long upper shadow, short lower) but after a decline. Buyers start probing higher.",
+  patCode_bullHarami: "Hr",
+  patName_bullHarami: "Bullish harami",
+  patDef_bullHarami: "A long red bar followed by a small green bar whose body sits inside the prior body. The decline pauses; needs confirmation.",
+  patCode_bearHarami: "Hr",
+  patName_bearHarami: "Bearish harami",
+  patDef_bearHarami: "A long green bar followed by a small red bar whose body sits inside the prior body. The rally pauses; needs confirmation.",
+  patCode_piercing: "PL",
+  patName_piercing: "Piercing line",
+  patDef_piercing: "After a long red bar, a green bar opens at or below the prior close and closes above its midpoint without fully engulfing it. A weaker bullish engulfing.",
+  patCode_darkCloud: "DC",
+  patName_darkCloud: "Dark cloud cover",
+  patDef_darkCloud: "After a long green bar, a red bar opens at or above the prior close and closes below its midpoint without fully engulfing it. A weaker bearish engulfing.",
+  patCode_volDry: "DV",
+  patName_volDry: "Volume dry-up",
+  patDef_volDry: "Volume under half the 20-day average during a tight 10-day range. Common near the end of a consolidation, before a directional move.",
+  patCode_volDiverge: "DIV",
+  patName_volDiverge: "Price-volume divergence",
+  patDef_volDiverge: "Close at a 20-day high on less volume than at the previous high. The new high lacks volume support.",
+  patCode_gapUp: "GU",
+  patName_gapUp: "Gap up",
+  patDef_gapUp: "Today's low is above yesterday's high, leaving a price range with no trades. Filled once price trades back into it.",
+  patCode_gapDown: "GD",
+  patName_gapDown: "Gap down",
+  patDef_gapDown: "Today's high is below yesterday's low, leaving a price range with no trades. Filled once price trades back into it.",
+  patCode_volDump: "BD",
+  patName_volDump: "Volume breakdown",
+  patDef_volDump: "Close at a 20-day low on volume above 1.8× the 20-day average.",
+  patCat_rev: "Reversal",
+  patCat_cont: "Continuation",
+  patCat_gap: "Gaps",
+  patCat_vol: "Volume event",
+  patCat_indec: "Indecision",
+  patDir_bull: "Bullish",
+  patDir_bear: "Bearish",
+  patDir_neu: "Neutral",
+  patConfLabel_high: "high",
+  patConfLabel_mid: "med",
+  patConfLabel_low: "low",
+  patCatTip_rev: "Engulfing, piercing / dark cloud, harami, hammer / hanging man, shooting star / inverted hammer, morning / evening star",
+  patCatTip_cont: "Three soldiers, three crows",
+  patCatTip_gap: "Gap up / down, drawn as a price band; unfilled gaps extend to today",
+  patCatTip_vol: "Volume breakout / breakdown, dry-up, price-volume divergence",
+  patCatTip_indec: "Doji — frequent, off by default",
   lessonsLabel: "TRADE LESSONS",
   rMultipleHistogram: "R-MULTIPLE DISTRIBUTION",
   rMultipleNote: "R data accumulating since",
@@ -2051,6 +2296,129 @@ const zh: Dictionary = {
   pvDnVd: "價跌量縮",
   pvReadPrice: "價 ",
   pvReadVol: "量 ",
+  patHighOnly: "只看高信心",
+  patHighTip:
+    "信心依三項條件計分：量 > 1.4 倍 20 日均量、實體 > 1.5 倍 20 日平均實體、出現位置符合型態（反轉型要在相反趨勢之後）。三項都符合才算「高」。開啟時只顯示高信心型態；關閉後中、低信心也會以小圓點出現，不帶文字。",
+  patEvents: "型態事件",
+  patEventsNote: "由新到舊，點一下在圖上定位",
+  patNone: "目前篩選下沒有偵測到型態。",
+  patPick: "點圖上的型態圓點，或下方事件，查看判斷依據與這檔的歷史表現。",
+  patConf: "信心",
+  patWhy: "判斷依據",
+  patWhyGap: "缺口資料",
+  patHist: "這檔過去同型態",
+  patHistN: "次數",
+  patHistAvg: "5 日後平均",
+  patHistHit: "依方向走",
+  patHistUp: "5 日後上漲",
+  patThisFwd: "這次 5 日後",
+  patFwdPending: "尚未滿 5 日",
+  patLowSample: "樣本少，僅供參考",
+  patDisclaimer: "型態由系統依 K 線形狀判讀，只描述價量現象，不構成買賣建議。",
+  patGapOpen: "未回補",
+  patGapFilled: "已回補",
+  patBars: "%s 根",
+  patLegBull: "看漲（K 棒下方）",
+  patLegBear: "看跌（K 棒上方）",
+  patLegNeu: "中性",
+  patLegGap: "缺口（虛線＝未回補）",
+  tkTabPat: "型態",
+  condBody: "實體 / 20 日平均實體",
+  condVol: "量 / 20 日均量",
+  condPrior5: "型態前 5 日",
+  condBodyPrev: "實體 / 前一根",
+  condCloseInto: "收盤深入前一根實體",
+  condLowerShadow: "下影線 / 實體",
+  condUpperShadow: "上影線 / 實體",
+  condPrior20High: "前 20 日高點",
+  condPrior20Low: "前 20 日低點",
+  condPriorHighDate: "前高日期",
+  condVolVsHigh: "量 / 前高當日量",
+  condRange10: "近 10 日振幅",
+  condGapRange: "缺口區間",
+  condGapSize: "缺口大小",
+  condGapStatus: "回補狀態",
+  gapStatusOpen: "尚未回補 · 已 %s 個交易日",
+  gapStatusFilled: "第 %s 天回補（%s）",
+  patCode_bullEngulf: "吞",
+  patName_bullEngulf: "長紅吞噬",
+  patDef_bullEngulf: "前一根收黑，這根長紅的實體把前一根實體完全包住。出現在下跌段時，常解讀為買盤接手。",
+  patCode_bearEngulf: "吞",
+  patName_bearEngulf: "長黑吞噬",
+  patDef_bearEngulf: "前一根收紅，這根長黑的實體把前一根實體完全包住。出現在上漲段時，常解讀為賣壓湧現。",
+  patCode_hammer: "錘",
+  patName_hammer: "錘子線",
+  patDef_hammer: "下影線至少是實體的 2 倍、上影線很短，出現在下跌段。盤中殺低後被買回。",
+  patCode_shooting: "射",
+  patName_shooting: "射擊之星",
+  patDef_shooting: "上影線至少是實體的 2 倍、下影線很短，出現在上漲段。盤中衝高後被賣回。",
+  patCode_morning: "晨",
+  patName_morning: "晨星",
+  patDef_morning: "長黑 → 小實體 → 長紅，且收盤過第一根實體中點。三根組成的底部反轉。",
+  patCode_evening: "夜",
+  patName_evening: "夜星",
+  patDef_evening: "長紅 → 小實體 → 長黑，且收盤跌破第一根實體中點。三根組成的頭部反轉。",
+  patCode_soldiers: "兵",
+  patName_soldiers: "紅三兵",
+  patDef_soldiers: "連續三根紅 K，每根收盤都比前一根高，實體不小。多方持續推進。",
+  patCode_crows: "鴉",
+  patName_crows: "三黑鴉",
+  patDef_crows: "連續三根黑 K，每根收盤都比前一根低，實體不小。空方持續施壓。",
+  patCode_doji: "十",
+  patName_doji: "十字星",
+  patDef_doji: "開盤與收盤幾乎相同、上下影線明顯。多空暫時平衡，要看下一根確認方向。",
+  patCode_volBreak: "突",
+  patName_volBreak: "爆量突破",
+  patDef_volBreak: "收盤創 20 日新高，成交量超過 20 日均量 1.8 倍。",
+  patCode_hangingMan: "吊",
+  patName_hangingMan: "吊人線",
+  patDef_hangingMan: "和錘子線同樣的形狀（長下影、短上影），但出現在上漲段。盤中曾被大量賣出，多方力道開始鬆動。",
+  patCode_invHammer: "倒",
+  patName_invHammer: "倒錘線",
+  patDef_invHammer: "和射擊之星同樣的形狀（長上影、短下影），但出現在下跌段。買方開始試探向上。",
+  patCode_bullHarami: "孕",
+  patName_bullHarami: "看漲孕線",
+  patDef_bullHarami: "長黑之後出現一根小紅 K，實體完全落在前一根實體之內。跌勢暫停，等待確認。",
+  patCode_bearHarami: "孕",
+  patName_bearHarami: "看跌孕線",
+  patDef_bearHarami: "長紅之後出現一根小黑 K，實體完全落在前一根實體之內。漲勢暫停，等待確認。",
+  patCode_piercing: "貫",
+  patName_piercing: "貫穿線",
+  patDef_piercing: "長黑之後的紅 K 開在前收附近或以下，收盤超過前一根實體中點，但未完全吞噬。長紅吞噬的弱化版。",
+  patCode_darkCloud: "烏",
+  patName_darkCloud: "烏雲罩頂",
+  patDef_darkCloud: "長紅之後的黑 K 開在前收附近或以上，收盤跌破前一根實體中點，但未完全吞噬。長黑吞噬的弱化版。",
+  patCode_volDry: "窒",
+  patName_volDry: "窒息量",
+  patDef_volDry: "成交量低於 20 日均量的一半，且近 10 日在窄幅整理。常見於整理末端，之後容易出現方向選擇。",
+  patCode_volDiverge: "背",
+  patName_volDiverge: "價量背離",
+  patDef_volDiverge: "收盤創 20 日新高，但成交量比前一次高點時少。新高缺少量能支撐。",
+  patCode_gapUp: "缺",
+  patName_gapUp: "向上跳空",
+  patDef_gapUp: "今日最低價高於前一日最高價，中間留下沒有成交的價格區間。回補＝之後價格回到區間內。",
+  patCode_gapDown: "缺",
+  patName_gapDown: "向下跳空",
+  patDef_gapDown: "今日最高價低於前一日最低價，中間留下沒有成交的價格區間。回補＝之後價格回到區間內。",
+  patCode_volDump: "破",
+  patName_volDump: "爆量跌破",
+  patDef_volDump: "收盤創 20 日新低，成交量超過 20 日均量 1.8 倍。",
+  patCat_rev: "反轉",
+  patCat_cont: "延續",
+  patCat_gap: "缺口",
+  patCat_vol: "量能",
+  patCat_indec: "猶豫",
+  patDir_bull: "看漲",
+  patDir_bear: "看跌",
+  patDir_neu: "中性",
+  patConfLabel_high: "高",
+  patConfLabel_mid: "中",
+  patConfLabel_low: "低",
+  patCatTip_rev: "吞噬、貫穿線／烏雲罩頂、孕線、錘子線／吊人線、射擊之星／倒錘線、晨星、夜星",
+  patCatTip_cont: "紅三兵、三黑鴉",
+  patCatTip_gap: "向上／向下跳空，以價格帶標示；未回補的缺口延伸到今天",
+  patCatTip_vol: "爆量突破、爆量跌破、窒息量、價量背離",
+  patCatTip_indec: "十字星，出現頻繁，預設關閉",
   lessonsLabel: "交易教訓",
   rMultipleHistogram: "R-MULTIPLE 分布",
   rMultipleNote: "R 資料自",

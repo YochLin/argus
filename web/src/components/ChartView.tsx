@@ -34,6 +34,9 @@ import {
 } from "../api";
 import type { Dictionary } from "../i18n";
 import { PV_COLORS, PV_STATES, pvReadout, pvState, type PvLabels } from "../pricevolume";
+import { GapBands, type GapBand } from "../gapBands";
+import { DEFAULT_PAT_ON, PAT_CATS, PAT_COLORS, patKey, patText, visiblePatterns, type PatOn } from "../patterns";
+import { PatternPanel } from "./PatternPanel";
 import { TradesTable } from "./TradesTable";
 import type { TradeMode } from "./TradeModal";
 
@@ -251,10 +254,13 @@ export function ChartView({
   const [roundMenuOpen, setRoundMenuOpen] = useState(false);
   // railTab is only set by an explicit click / round pick; until then the tab
   // follows the selection (a picked round opens 回合, otherwise 支撐壓力).
-  const [railTab, setRailTab] = useState<"lvl" | "round" | null>(null);
+  const [railTab, setRailTab] = useState<"pat" | "lvl" | "round" | null>(null);
   const [wide, setWide] = useState(false);
   // The design's "量價" chip: colour volume bars by price × volume direction.
   const [pvOn, setPvOn] = useState(true);
+  const [patOn, setPatOn] = useState<PatOn>(DEFAULT_PAT_ON);
+  const [patHigh, setPatHigh] = useState(true);
+  const [selPat, setSelPat] = useState<string | null>(null);
   const [roundDetail, setRoundDetail] = useState<RoundDetail | null>(null);
   const [thesisDraft, setThesisDraft] = useState("");
   const [thesisEditing, setThesisEditing] = useState(false);
@@ -275,6 +281,8 @@ export function ChartView({
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const roundBgRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const patShadeRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const gapsRef = useRef<GapBands | null>(null);
   const priceLinesRef = useRef<IPriceLine[]>([]);
   const wrapObserverRef = useRef<ResizeObserver | null>(null);
   // The crosshair readout is written straight to the DOM (a React state per
@@ -288,6 +296,7 @@ export function ChartView({
     setSelectedRoundStart(initialRoundStart ?? null);
     setRoundMenuOpen(false);
     setRailTab(null);
+    setSelPat(null);
     setRoundDetail(null);
     if (!ticker) {
       setError(true);
@@ -452,6 +461,8 @@ export function ChartView({
       seriesRef.current = null;
       volumeSeriesRef.current = null;
       roundBgRef.current = null;
+      patShadeRef.current = null;
+      gapsRef.current = null;
       priceLinesRef.current = [];
     }
     if (!node) return;
@@ -474,6 +485,15 @@ export function ChartView({
     });
     c.priceScale("rounds").applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
 
+    // The selected pattern's bars, tinted the same way (own 0..1 scale).
+    const patShade = c.addHistogramSeries({
+      priceScaleId: "patshade",
+      priceLineVisible: false,
+      lastValueVisible: false,
+      autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 1 } }),
+    });
+    c.priceScale("patshade").applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
+
     const series = c.addCandlestickSeries({
       upColor: "#10B981",
       downColor: "#EF4444",
@@ -493,6 +513,19 @@ export function ChartView({
       visible: false,
     });
 
+    const gaps = new GapBands();
+    series.attachPrimitive(gaps);
+
+    // A click on a pattern marker selects it (its id is "pat:<key>"; trade
+    // markers have none) and opens the 型態 tab.
+    c.subscribeClick((p) => {
+      const id = p.hoveredObjectId;
+      if (typeof id === "string" && id.startsWith("pat:")) {
+        setSelPat(id.slice(4));
+        setRailTab("pat");
+      }
+    });
+
     c.subscribeCrosshairMove((p) => {
       const el = readoutRef.current;
       if (!el) return;
@@ -505,6 +538,8 @@ export function ChartView({
     seriesRef.current = series;
     volumeSeriesRef.current = vol;
     roundBgRef.current = roundBg;
+    patShadeRef.current = patShade;
+    gapsRef.current = gaps;
   }, []);
 
   // The rail goes sticky only when the two-column row is at least 1000px wide;
@@ -528,6 +563,14 @@ export function ChartView({
         : [],
     [chart],
   );
+
+  const hits = useMemo(() => chart?.patterns ?? [], [chart]);
+  const visPats = useMemo(() => visiblePatterns(hits, patOn, patHigh), [hits, patOn, patHigh]);
+  const patCounts = useMemo(() => {
+    const n = Object.fromEntries(PAT_CATS.map((k) => [k, 0])) as Record<(typeof PAT_CATS)[number], number>;
+    for (const p of hits) if (p.cat in n && (!patHigh || p.conf === "" || p.conf === "high")) n[p.cat]++;
+    return n;
+  }, [hits, patHigh]);
 
   const noteQueryLower = noteQuery.trim().toLowerCase();
   const filteredNotes = notes.filter(
@@ -633,19 +676,6 @@ export function ChartView({
     }
 
     if (roundDetail) {
-      const trades = [...roundDetail.trades].sort((a, b) =>
-        a.date < b.date ? -1 : a.date > b.date ? 1 : 0,
-      );
-      const currency = currencySymbol(marketOf(chart.ticker));
-      const markers: SeriesMarker<Time>[] = trades.map((t) => ({
-        time: t.date as Time,
-        position: t.side === "BUY" ? "belowBar" : "aboveBar",
-        color: t.side === "BUY" ? "#10B981" : "#EF4444",
-        shape: t.side === "BUY" ? "arrowUp" : "arrowDown",
-        text: `${t.side} ${t.shares}@${currency}${t.price.toFixed(2)}`,
-      }));
-      series.setMarkers(markers);
-
       const fromDate = roundDetail.start;
       const lastCandle = chart.candles[chart.candles.length - 1];
       const toDate = roundDetail.end || lastCandle?.date;
@@ -656,7 +686,6 @@ export function ChartView({
         });
       }
     } else {
-      series.setMarkers([]);
       // The endpoint serves ~2y; open on the latest year and let the user scroll back.
       const n = chart.candles.length;
       if (n > defaultVisibleBars) {
@@ -715,6 +744,87 @@ export function ChartView({
       }),
     );
   }, [chart, selectedRoundStart]);
+
+  // Trade markers of the selected round and the visible patterns share the one
+  // marker list lightweight-charts allows, which must be sorted by time. Kept
+  // apart from the series effect so picking a pattern doesn't reset the zoom.
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series || !chart) return;
+    const currency = currencySymbol(marketOf(chart.ticker));
+    const trades: SeriesMarker<Time>[] = (roundDetail?.trades ?? []).map((t) => ({
+      time: t.date as Time,
+      position: t.side === "BUY" ? "belowBar" : "aboveBar",
+      color: t.side === "BUY" ? "#10B981" : "#EF4444",
+      shape: t.side === "BUY" ? "arrowUp" : "arrowDown",
+      text: `${t.side} ${t.shares}@${currency}${t.price.toFixed(2)}`,
+    }));
+    const pats: SeriesMarker<Time>[] = visPats
+      .filter((p) => p.cat !== "gap")
+      .map((p) => {
+        const txt = patText(dict, p.type);
+        const isSel = patKey(p) === selPat;
+        return {
+          time: p.end as Time,
+          id: `pat:${patKey(p)}`,
+          position: p.dir === "bull" ? "belowBar" : "aboveBar",
+          shape: "circle",
+          color: isSel ? "#a5b4fc" : PAT_COLORS[p.dir],
+          size: isSel ? 1.6 : p.conf === "high" ? 1 : 0.6,
+          text: isSel ? txt.name : p.conf === "high" ? txt.code : "",
+        };
+      });
+    series.setMarkers([...trades, ...pats].sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0)));
+  }, [chart, roundDetail, visPats, selPat, dict]);
+
+  useEffect(() => {
+    gapsRef.current?.set(
+      visPats
+        .filter((p) => p.cat === "gap" && p.gap)
+        .map(
+          (p): GapBand => ({
+            lo: p.gap!.lo,
+            hi: p.gap!.hi,
+            from: p.end,
+            fill: p.gap!.fillDate,
+            bull: p.dir === "bull",
+            selected: patKey(p) === selPat,
+          }),
+        ),
+      dict.patGapOpen,
+    );
+  }, [chart, visPats, selPat, dict.patGapOpen]);
+
+  // The selected pattern's own bars get a tint; a gap has its band instead.
+  useEffect(() => {
+    const shade = patShadeRef.current;
+    if (!shade || !chart) return;
+    const sp = selPat ? hits.find((p) => patKey(p) === selPat) : undefined;
+    shade.setData(
+      sp && sp.cat !== "gap"
+        ? chart.candles
+            .filter((c) => c.date >= sp.start && c.date <= sp.end)
+            .map((c) => ({ time: c.date as Time, value: 1, color: "rgba(129,140,248,0.16)" }))
+        : [],
+    );
+  }, [chart, hits, selPat]);
+
+  // Picking a pattern that's off-screen (the chart opens on the latest year of
+  // two) scrolls it into view, keeping the current zoom.
+  useEffect(() => {
+    const ts = chartRef.current?.timeScale();
+    const sp = selPat ? hits.find((p) => patKey(p) === selPat) : undefined;
+    if (!ts || !sp || !chart) return;
+    const i0 = chart.candles.findIndex((c) => c.date >= sp.start);
+    const i1 = chart.candles.findIndex((c) => c.date >= sp.end);
+    const r = ts.getVisibleLogicalRange();
+    if (r && i0 >= 0 && i1 >= 0 && (i0 < r.from + 3 || i1 > r.to - 3)) {
+      const w = r.to - r.from;
+      const mid = (i0 + i1) / 2;
+      ts.setVisibleLogicalRange({ from: mid - w / 2, to: mid + w / 2 });
+    }
+    // Only a change of selection scrolls; a data refresh must not.
+  }, [selPat]);
 
   if (error) {
     return (
@@ -804,7 +914,7 @@ export function ChartView({
     setRoundMenuOpen(false);
   }
 
-  const tab = railTab ?? (selectedRoundStart ? "round" : "lvl");
+  const tab = railTab ?? (selectedRoundStart ? "round" : "pat");
   const detail = roundDetail && roundDetail.start === selectedRoundStart ? roundDetail : null;
   const pos = chart.position;
 
@@ -959,6 +1069,13 @@ export function ChartView({
             <div className="tk-tabs">
               <button
                 type="button"
+                className={`tk-tab${tab === "pat" ? " active" : ""}`}
+                onClick={() => setRailTab("pat")}
+              >
+                {dict.tkTabPat}
+              </button>
+              <button
+                type="button"
                 className={`tk-tab${tab === "lvl" ? " active" : ""}`}
                 onClick={() => setRailTab("lvl")}
               >
@@ -974,6 +1091,10 @@ export function ChartView({
                 <span className="tk-tab-count">{chart.rounds.length}</span>
               </button>
             </div>
+
+            {tab === "pat" && (
+              <PatternPanel dict={dict} hits={hits} visible={visPats} candles={chart.candles} selKey={selPat} onSelect={setSelPat} />
+            )}
 
             {tab === "lvl" && (
               <div style={{ overflowX: "auto" }}>
@@ -1272,6 +1393,27 @@ export function ChartView({
               <span className="pv-dot" />
               {dict.pvChip}
             </button>
+            {PAT_CATS.map((k) => (
+              <button
+                key={k}
+                type="button"
+                className={`round-chip${patOn[k] ? " active" : ""}`}
+                title={dict[`patCatTip_${k}`]}
+                onClick={() => setPatOn((o) => ({ ...o, [k]: !o[k] }))}
+              >
+                <span className={`pat-dot ${k}`} />
+                {dict[`patCat_${k}`]}
+                <span className="pat-chip-count">{patCounts[k]}</span>
+              </button>
+            ))}
+            <button
+              type="button"
+              className={`round-chip pat-high${patHigh ? " active" : ""}`}
+              title={dict.patHighTip}
+              onClick={() => setPatHigh((v) => !v)}
+            >
+              {dict.patHighOnly}
+            </button>
           </div>
 
           <div className="card card--glow chart-card">
@@ -1288,6 +1430,19 @@ export function ChartView({
                   ))}
                 </span>
               )}
+              <span className="pv-legend">
+                <span className="pv-legend-title">{dict.patTitle}</span>
+                {(["bull", "bear", "neu"] as const).map((d) => (
+                  <span key={d} className="pv-legend-item">
+                    <span className="pat-leg-dot" style={{ background: PAT_COLORS[d] }} />
+                    {dict[`patLeg${d === "bull" ? "Bull" : d === "bear" ? "Bear" : "Neu"}` as const]}
+                  </span>
+                ))}
+                <span className="pv-legend-item">
+                  <span className="pat-leg-gap" />
+                  {dict.patLegGap}
+                </span>
+              </span>
               <span className="pv-readout" ref={readoutRef} />
             </div>
           </div>

@@ -160,10 +160,45 @@ function getMockData(urlStr: string): any {
         volume: Math.floor(Math.random() * 5000000 + 1000000),
       });
     }
+    // A handful of hits on real candle dates so every chip, marker, the gap
+    // bands and the rail tab have something to show (numbers are made up).
+    const at = (i: number) => candles[i].date;
+    const hit = (type: string, cat: string, dir: string, i: number, extra: any = {}) => ({
+      type, cat, dir, start: at(i - (extra.bars ?? 1) + 1), end: at(i), conf: "mid",
+      bodyRatio: 1.7, volRatio: 1.5, prior5Pct: dir === "bull" ? -3.1 : 2.8, extra: 2.1, fwd5: 2.4, ...extra,
+    });
+    const gapAt = (i: number, up: boolean, fill: number | null) => {
+      const lo = up ? candles[i - 1].high : candles[i].high;
+      return hit(up ? "gapUp" : "gapDown", "gap", up ? "bull" : "bear", i, {
+        conf: "", bodyRatio: 0, volRatio: 0, prior5Pct: 0, extra: 0,
+        gap: { lo, hi: lo + 2.4, fillDate: fill === null ? "" : at(fill) },
+      });
+    };
+    const patterns = [
+      hit("bullEngulf", "rev", "bull", 300, { bars: 2, conf: "high", bodyRatio: 2.4, volRatio: 1.9, fwd5: 4.2 }),
+      hit("bullEngulf", "rev", "bull", 350, { bars: 2, conf: "high", fwd5: -1.3 }),
+      hit("bullEngulf", "rev", "bull", 430, { bars: 2, conf: "high", fwd5: 3.1 }),
+      hit("bearEngulf", "rev", "bear", 400, { bars: 2, conf: "high", extra: 1.8, fwd5: -3.5 }),
+      hit("hammer", "rev", "bull", 455, { conf: "mid", bodyRatio: 0.6, extra: 3.2, fwd5: -1.1 }),
+      hit("shooting", "rev", "bear", 470, { conf: "low", extra: 2.6, fwd5: null }),
+      hit("piercing", "rev", "bull", 410, { bars: 2, conf: "high", extra: 62.4, fwd5: 1.8 }),
+      hit("morning", "rev", "bull", 490, { bars: 3, conf: "high", extra: 0, fwd5: null }),
+      hit("soldiers", "cont", "bull", 380, { bars: 3, conf: "mid", prior5Pct: 1.2, fwd5: 2.2 }),
+      hit("volBreak", "vol", "bull", 320, { conf: "high", volRatio: 2.3, extra: candles[319].high, fwd5: 3.3 }),
+      hit("volBreak", "vol", "bull", 460, { conf: "high", volRatio: 2.1, extra: candles[459].high, fwd5: -0.6 }),
+      hit("volDiverge", "vol", "bear", 440, { conf: "mid", extra: 0.71, refDate: at(431), fwd5: -2.0 }),
+      hit("volDry", "vol", "neu", 495, { conf: "low", volRatio: 0.4, extra: 4.8, fwd5: null }),
+      hit("doji", "indec", "neu", 360, { conf: "low", fwd5: 0.4 }),
+      hit("doji", "indec", "neu", 420, { conf: "mid", fwd5: -0.9 }),
+      gapAt(340, true, 347),
+      gapAt(415, false, 419),
+      gapAt(485, true, null),
+    ].sort((a, b) => (a.end < b.end ? -1 : a.end > b.end ? 1 : 0));
+
     return {
       ticker,
       candles,
-      patterns: [],
+      patterns,
       levels: [
         { price: Number((basePrice * 0.92).toFixed(2)), touches: 4, firstDate: "2026-03-10", lastDate: "2026-06-15" },
         { price: Number((basePrice * 1.08).toFixed(2)), touches: 3, firstDate: "2026-04-01", lastDate: "2026-07-02" },
