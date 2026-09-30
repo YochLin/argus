@@ -800,4 +800,14 @@ var zhMessages = map[Key]string{
 
 不要重複列出上面已經給的數字，不要給具體投資標的建議。
 `,
+
+	KeyNewsClassifyIntro: "以下是使用者成交 %s 前後的新聞標題。請逐則判讀該則新聞對這檔股票的影響。只依標題與來源判斷，不要臆測標題沒寫的內容。\n\n",
+	KeyNewsClassifyTask: `
+請對上面每一則新聞各輸出一行，編號對應上面的編號，格式固定如下，不要輸出其他文字：
+%s
+
+sentiment：bull＝對該股偏多，bear＝偏空，neutral＝中性或與該股關係不大。
+tag：earn＝財報／營收公布，guide＝法說會／財測／展望，analyst＝分析師評等／目標價，sector＝產業動態，macro＝總經／政策，flow＝籌碼／資金流，other＝其他。
+major：1＝足以改變對該股看法的重大事件（財報、法說、併購、重大訴訟或監管、重大合約），否則 0。
+`,
 }

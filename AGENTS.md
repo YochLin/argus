@@ -319,7 +319,14 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   only exists for a session that actually traded (US holidays, TW multi-day breaks, and individual-ticker
   halts are then all automatically correct); the `sell_followups` table's `(ticker, exit_date)` row is
   only written once the follow-up message actually sends, so an LLM failure or not-yet-enough history
-  just retries on the next closing snapshot rather than being treated as done. `paper.go` backs `/paper`
+  just retries on the next closing snapshot rather than being treated as done. `fill_news.go`'s
+  `captureFillNews` (Phase 27 P7, migration 36) runs in a goroutine from `recordBuy`/`recordSell` — the
+  one choke point for Telegram, the web trade form, MCP confirmations and Sinopac sync (CSV import bypasses
+  it, and its dates are too old to have news anyway) — and keeps the headlines around the fill date, with
+  their links, plus an LLM reading of each (`llm.ClassifyNews`: sentiment / kind / major event). It exists
+  because `GetNews` has no date parameter, so a past day's news can never be fetched again. The labels are
+  headline-only and descriptive: like the chart patterns, nothing (alerts, ranking, trade decisions) may
+  act on them. `paper.go` backs `/paper`
   (view or reset the live paper-trading account, which forward-accumulates through the same
   `internal/paper.Account` rules `argus backtest` replays historically, see below) — `paperConfig` builds
   its `paper.Config` from the bot's own exit-discipline thresholds (`STOP_LOSS_PCT`/`TRAILING_STOP_PCT`

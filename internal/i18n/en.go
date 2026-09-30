@@ -815,4 +815,14 @@ Write a 150-250 word interpretation, focusing on:
 
 Don't repeat the numbers already listed above, and don't recommend specific investments.
 `,
+
+	KeyNewsClassifyIntro: "Below are news headlines from around the time the user traded %s. Judge each item's effect on this stock. Go only by the headline and source; do not assume anything the headline does not say.\n\n",
+	KeyNewsClassifyTask: `
+Output exactly one line per news item above, numbered to match, in this fixed format and nothing else:
+%s
+
+sentiment: bull = positive for the stock, bear = negative, neutral = mixed or of little relevance to it.
+tag: earn = earnings/revenue release, guide = earnings call/guidance/outlook, analyst = analyst rating or price target, sector = industry news, macro = macro/policy, flow = positioning/fund flow, other = anything else.
+major: 1 = an event big enough to change how one views the stock (earnings, guidance, M&A, major litigation or regulation, major contract), otherwise 0.
+`,
 }
