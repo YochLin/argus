@@ -123,6 +123,7 @@ type fakeScanStore struct {
 	universe  []db.UniverseEntry
 	watchlist map[market.MarketID][]string
 	hits      []string // "TICKER|date|reason"
+	alerts    []string // "TICKER|strategy|signalDate|channel|message"
 	refreshed []string // last RefreshTWLiquidUniverse argument
 }
 
@@ -134,6 +135,11 @@ func (f *fakeScanStore) GetWatchlistByMarket(m market.MarketID) ([]string, error
 
 func (f *fakeScanStore) SaveScanHit(ticker, date, reason string) error {
 	f.hits = append(f.hits, ticker+"|"+date+"|"+reason)
+	return nil
+}
+
+func (f *fakeScanStore) SaveStrategyAlert(ticker, strategy, signalDate, channel, message string) error {
+	f.alerts = append(f.alerts, ticker+"|"+strategy+"|"+signalDate+"|"+channel+"|"+message)
 	return nil
 }
 
@@ -388,4 +394,33 @@ func hasSignalType(sigs []signals.Signal, typ string) bool {
 		}
 	}
 	return false
+}
+
+func TestRecordStrategyAlerts(t *testing.T) {
+	store := &fakeScanStore{mockRiskStore: newMockRiskStore()}
+	s := NewScanService(ScanConfig{Store: store, Detector: signals.NewDetector(i18n.EN)})
+	candles := []data.Candle{
+		{Date: time.Date(2026, 9, 29, 0, 0, 0, 0, time.UTC)},
+		{Date: time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)},
+	}
+	sigs := []signals.Signal{
+		{Ticker: "NVDA", Type: signals.TypeSqueezeBreakout, Message: "squeeze fired"},
+		{Ticker: "NVDA", Type: "rsi_overbought", Message: "rsi"},
+		{Ticker: "NVDA", Type: signals.TypeMTFCross, Message: "mtf fired"},
+	}
+	s.RecordStrategyAlerts(sigs, candles, db.AlertChannelWatchlist)
+
+	want := []string{
+		"NVDA|strategy_squeeze_breakout|2026-09-30|watchlist|squeeze fired",
+		"NVDA|strategy_mtf_cross|2026-09-30|watchlist|mtf fired",
+	}
+	if len(store.alerts) != len(want) || store.alerts[0] != want[0] || store.alerts[1] != want[1] {
+		t.Fatalf("alerts = %v, want %v (RSI skipped, dated by the last candle)", store.alerts, want)
+	}
+
+	store.alerts = nil
+	s.RecordStrategyAlerts(sigs, nil, db.AlertChannelScan)
+	if len(store.alerts) != 0 {
+		t.Fatalf("no candles must record nothing (no bar to date it on), got %v", store.alerts)
+	}
 }

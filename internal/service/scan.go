@@ -33,6 +33,7 @@ type ScanStore interface {
 	GetUniverse() ([]db.UniverseEntry, error)
 	GetWatchlistByMarket(m market.MarketID) ([]string, error)
 	SaveScanHit(ticker, date, reason string) error
+	SaveStrategyAlert(ticker, strategy, signalDate, channel, message string) error
 	RefreshTWLiquidUniverse(tickers []string) (added, dropped []string, err error)
 }
 
@@ -481,6 +482,7 @@ func (s *ScanService) RunUniverseScan(ctx context.Context, m market.MarketID) (U
 			}
 			out.Hits++
 			out.HitSignals = append(out.HitSignals, sig)
+			s.RecordStrategyAlerts([]signals.Signal{sig}, candles, db.AlertChannelScan)
 		}
 
 		if i < len(chunk)-1 {
@@ -745,6 +747,30 @@ func DecorateStrategyHits(sigs []signals.Signal, isBear bool, lang i18n.Lang) []
 		}
 	}
 	return sigs
+}
+
+// RecordStrategyAlerts files the strategy_* signals in sigs as pushed alerts
+// (migration 37), dated by the last candle they were computed on, so the stock
+// chart can later show which strategies actually notified the user. Called
+// right where a signal is handed on for pushing — the daily report's watchlist
+// check and the universe scan — after DecorateStrategyHits, so message is the
+// exact text sent. RSI/MACD flips are skipped (not chart material) and a
+// failure only logs: recording must never cost the alert itself. It is
+// recorded a moment before the push, not after, because publishing does not
+// report delivery either way.
+func (s *ScanService) RecordStrategyAlerts(sigs []signals.Signal, candles []data.Candle, channel string) {
+	if len(candles) == 0 {
+		return
+	}
+	date := candles[len(candles)-1].Date.Format("2006-01-02")
+	for _, sig := range sigs {
+		if !strings.HasPrefix(sig.Type, "strategy_") {
+			continue
+		}
+		if err := s.store.SaveStrategyAlert(sig.Ticker, sig.Type, date, channel, sig.Message); err != nil {
+			logger.Errorf("strategy alert %s/%s: %v", sig.Ticker, sig.Type, err)
+		}
+	}
 }
 
 // BenchmarkFor is the project-wide market benchmark: SPY for US, 0050 for

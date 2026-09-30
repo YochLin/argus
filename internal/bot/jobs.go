@@ -507,7 +507,10 @@ func (b *Bot) exploreCandidates(ctx context.Context, in *recommendationInputs) m
 // service.DecorateStrategyHits for what they are and why they are applied
 // there rather than at render time.
 func (b *Bot) checkStatefulSignals(ticker string, candles []data.Candle, isBearRegime bool) []signals.Signal {
-	return service.DecorateStrategyHits(b.scans().CheckStatefulSignals(ticker, candles), isBearRegime, b.lang)
+	scans := b.scans()
+	sigs := service.DecorateStrategyHits(scans.CheckStatefulSignals(ticker, candles), isBearRegime, b.lang)
+	scans.RecordStrategyAlerts(sigs, candles, db.AlertChannelWatchlist)
+	return sigs
 }
 
 // checkEarningsAlerts sends one batched Telegram message warning about
