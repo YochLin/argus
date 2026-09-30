@@ -4191,6 +4191,11 @@ th {
   white-space: nowrap;
 }
 
+/* A wide TWD figure or a full date column can outgrow the rail; scroll the table, not the rail. */
+.tk-rail-scroll {
+  overflow-x: auto;
+}
+
 .tk-rail-title + .report-section {
   margin-top: 14px;
 }

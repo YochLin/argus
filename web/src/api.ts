@@ -146,6 +146,11 @@ export interface RoundSummary {
   open: boolean;
   shares: number;
   realizedPnL: number;
+  // Filled by /api/chart only; /api/rounds and rounds older than the chart's
+  // 1y candles come back with hasMaeMfe=false (shown as "—").
+  maePct: number;
+  mfePct: number;
+  hasMaeMfe: boolean;
 }
 
 export interface Rounds {

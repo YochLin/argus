@@ -200,3 +200,39 @@ func equalStrings(a, b []string) bool {
 	}
 	return true
 }
+
+func TestBuildChart_RoundMAEMFE(t *testing.T) {
+	// Candles start 2026-01-01. Round B (2026-01-05..01-10, cost 100) spans a
+	// 90 low / 120 high day, so MAE=-10% / MFE=+20%. Round A starts before the
+	// first candle, so its excursion would be window-truncated — it must
+	// report no MAE/MFE rather than an understated one.
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	candles := make([]data.Candle, 30)
+	for i := range candles {
+		candles[i] = data.Candle{Date: start.AddDate(0, 0, i), Open: 100, High: 101, Low: 99, Close: 100, Volume: 1_000_000}
+	}
+	candles[6].Low, candles[6].High = 90, 120 // 2026-01-07
+
+	fdb := &fakeDB{txs: []db.Transaction{
+		{ID: 1, Date: "2025-12-20", Ticker: "AAPL", Side: "BUY", Shares: 10, Price: 100},
+		{ID: 2, Date: "2025-12-28", Ticker: "AAPL", Side: "SELL", Shares: 10, Price: 105, RealizedPnL: 50},
+		{ID: 3, Date: "2026-01-05", Ticker: "AAPL", Side: "BUY", Shares: 10, Price: 100},
+		{ID: 4, Date: "2026-01-10", Ticker: "AAPL", Side: "SELL", Shares: 10, Price: 110, RealizedPnL: 100},
+	}}
+	hist := &fakeHistory{candles: map[string][]data.Candle{"AAPL": candles}}
+
+	got, err := buildChart(fdb, &fakeQuotes{quotes: map[string]*data.Quote{}}, hist, "AAPL")
+	if err != nil {
+		t.Fatalf("buildChart() error = %v", err)
+	}
+	if len(got.Rounds) != 2 {
+		t.Fatalf("Rounds len = %d, want 2", len(got.Rounds))
+	}
+	b, a := got.Rounds[0], got.Rounds[1] // newest first
+	if b.Start != "2026-01-05" || !b.HasMAEMFE || b.MAEPct != -10 || b.MFEPct != 20 {
+		t.Errorf("round B = %+v, want MAE -10 / MFE 20", b)
+	}
+	if a.Start != "2025-12-20" || a.HasMAEMFE {
+		t.Errorf("round A = %+v, want HasMAEMFE=false (starts before candles)", a)
+	}
+}

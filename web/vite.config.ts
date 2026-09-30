@@ -186,6 +186,9 @@ function getMockData(urlStr: string): any {
           open: false,
           shares: 80,
           realizedPnL: isTW ? 148000 : 4820,
+          maePct: -6.2,
+          mfePct: 18.4,
+          hasMaeMfe: true,
         },
         {
           ticker,
@@ -194,6 +197,21 @@ function getMockData(urlStr: string): any {
           open: true,
           shares: 80,
           realizedPnL: 0,
+          maePct: -3.1,
+          mfePct: 11.7,
+          hasMaeMfe: true,
+        },
+        {
+          // older than the chart's 1y candles — exercises the "—" path
+          ticker,
+          start: "2025-01-06",
+          end: "2025-02-14",
+          open: false,
+          shares: 40,
+          realizedPnL: isTW ? -21000 : -640,
+          maePct: 0,
+          mfePct: 0,
+          hasMaeMfe: false,
         },
       ],
     };
@@ -658,6 +676,15 @@ function getMockData(urlStr: string): any {
   }
   if (path === "/api/login") {
     return { ok: true };
+  }
+  if (path === "/api/research-notes") {
+    return {
+      notes: [
+        { id: 3, tag: "RISK", text: "財報前不加碼，等法說會後再看。", pinned: true, date: "2026-07-10" },
+        { id: 2, tag: "VALUATION", text: "本益比回到近兩年 60 百分位，不算便宜。", pinned: false, date: "2026-06-28" },
+        { id: 1, tag: "TECHNICAL", text: "舊分類（技術面）的筆記，仍照常顯示。", pinned: false, date: "2026-05-02" },
+      ],
+    };
   }
   return { message: "Mock operation completed successfully." };
 }

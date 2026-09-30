@@ -167,6 +167,13 @@ type roundSummary struct {
 	Open        bool    `json:"open"`
 	Shares      float64 `json:"shares"`
 	RealizedPnL float64 `json:"realizedPnL"`
+	// MAEPct/MFEPct are only filled by /api/chart (Phase 27 P2), which already
+	// holds ~1y of candles — /api/rounds has none, so it leaves HasMAEMFE
+	// false. HasMAEMFE is also false for a round that starts before the
+	// first candle, since a window-truncated excursion would understate it.
+	MAEPct    float64 `json:"maePct"`
+	MFEPct    float64 `json:"mfePct"`
+	HasMAEMFE bool    `json:"hasMaeMfe"`
 }
 
 // roundDetailResponse is /api/round-detail's body: one round's daily
