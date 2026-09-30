@@ -59,7 +59,12 @@ type Config struct {
 	ChatModel      string
 
 	DBPath string
-	Lang   i18n.Lang
+	// PriceDBPath is the daily-candle cache file (internal/histcache) — a
+	// second, rebuildable SQLite file, never argus.db. Empty means "next to
+	// DBPath as prices.db"; there is no off switch, since a cache that can't
+	// open just logs and Boot falls back to the uncached provider.
+	PriceDBPath string
+	Lang        i18n.Lang
 
 	// WebAddr gates the read-only dashboard (Phase 5 PR1, see
 	// docs/phase-5-web-dashboard.md) — empty means off, same
@@ -188,8 +193,9 @@ func Load() Config {
 		CheckModel:     EnvOr("CLAUDE_CHECK_MODEL", "sonnet"),
 		ChatModel:      EnvOr("CLAUDE_CHAT_MODEL", "sonnet"),
 
-		DBPath: EnvOr("DB_PATH", "data/argus.db"),
-		Lang:   i18n.Parse(EnvOr("BOT_LANGUAGE", "zh")),
+		DBPath:      EnvOr("DB_PATH", "data/argus.db"),
+		PriceDBPath: os.Getenv("PRICE_DB_PATH"),
+		Lang:        i18n.Parse(EnvOr("BOT_LANGUAGE", "zh")),
 
 		WebAddr:     os.Getenv("WEB_ADDR"),
 		WebPassword: os.Getenv("WEB_PASSWORD"),

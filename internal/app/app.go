@@ -14,6 +14,7 @@ import (
 	"argus/internal/bot"
 	"argus/internal/data"
 	"argus/internal/db"
+	"argus/internal/histcache"
 	"argus/internal/i18n"
 	"argus/internal/llm"
 	"argus/internal/logger"
@@ -49,7 +50,9 @@ type App struct {
 	cfg     Config
 	DB      *db.DB
 	PaperDB *db.DB
-	LLM     *llm.Client
+	// PriceCache is nil when its file couldn't be opened — see Boot.
+	PriceCache *histcache.Cache
+	LLM        *llm.Client
 	// Bot is never nil after a successful Boot: when Telegram isn't
 	// configured (Phase 17 PR1) it's a headless one (bot.NewHeadless), which
 	// runs every job and web-facing seam with its outbound text going
@@ -177,6 +180,26 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 	// blocks /stock/candle entirely, so history is Yahoo-only.
 	core := NewCoreProviders(cfg.FinnhubKey, cfg.FinMindToken, cfg.ShioajiAddr, newsBlocked)
 
+	// Daily candles for the bot, the scans and the dashboard go through a
+	// persistent cache in its own file (internal/histcache), so a chart view
+	// is a local read and a Yahoo outage serves stale bars instead of none.
+	// An unopenable cache only costs the optimisation: history stays the
+	// bare Yahoo provider, same as before it existed — deliberately not
+	// assigned to the named `err` return, or the deferred Close() above
+	// would tear down a process that is otherwise fine. runMCPServer keeps
+	// bare Yahoo: it is a short-lived per-chat subprocess with its own
+	// in-memory cache, and would only be a second writer on this file.
+	var history data.HistoryProvider = core.Yahoo
+	priceDBPath := cfg.PriceDBPath
+	if priceDBPath == "" {
+		priceDBPath = filepath.Join(filepath.Dir(cfg.DBPath), "prices.db")
+	}
+	if pc, pcErr := histcache.Open(priceDBPath, core.Yahoo); pcErr != nil {
+		logger.Errorf("open price cache %s: %v (daily candles stay uncached)", priceDBPath, pcErr)
+	} else {
+		a.PriceCache, history = pc, pc
+	}
+
 	// analystRatingProvider/marketNewsProvider/sectorProvider/
 	// earningsSurpriseProvider are Finnhub fields runMCPServer() has no use
 	// for, so NewCoreProviders doesn't return them — set here directly off
@@ -291,7 +314,7 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 		// per-ticker delay already paces every request this reader makes,
 		// same as it paces the history/quote calls around it.
 		Fundamentals: fundamentalsReader(core.Fundamentals),
-		History:      core.Yahoo,
+		History:      history,
 		Quotes:       core.Provider,
 		Restricted:   restricted,
 		Ranker:       ranker,
@@ -323,7 +346,7 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 		OptionChain:            core.Yahoo,
 		SECFundamentals:        secFundamentalsProvider,
 		TWValuation:            twValuationProvider,
-		History:                core.Yahoo,
+		History:                history,
 		Sinopac:                core.Sinopac,
 		SinopacSkip:            cfg.SinopacSkip,
 		SinopacSyncLive:        cfg.SinopacSyncLive,
@@ -377,7 +400,7 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 		a.Web = web.New(web.Config{
 			DB:           database,
 			Provider:     core.Provider,
-			History:      core.Yahoo,
+			History:      history,
 			Earnings:     core.Earnings,
 			Lang:         cfg.Lang,
 			CompanyNames: core.CompanyNames,
@@ -624,6 +647,9 @@ func (a *App) Run(ctx context.Context) {
 // itself (the MCP tool surface is a separate process with its own
 // connection), so there's no correctness reason to order it any differently.
 func (a *App) Close() {
+	if a.PriceCache != nil {
+		a.PriceCache.Close()
+	}
 	if a.PaperDB != nil {
 		a.PaperDB.Close()
 	}

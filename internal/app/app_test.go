@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"net"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -68,6 +69,14 @@ func TestBootWithoutTelegram(t *testing.T) {
 			}
 			if a.PaperDB != nil {
 				t.Error("PaperDB should be nil without PAPER_DB_PATH")
+			}
+			// The candle cache lives beside the ledger DB by default, as its
+			// own file — never inside argus.db.
+			if a.PriceCache == nil {
+				t.Error("PriceCache must be wired by default")
+			}
+			if _, err := os.Stat(filepath.Join(dir, "prices.db")); err != nil {
+				t.Errorf("prices.db should sit next to DBPath: %v", err)
 			}
 		})
 	}
