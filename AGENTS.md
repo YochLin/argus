@@ -194,7 +194,10 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
 - `internal/signals` — pure functions for rule-based technical signals (RSI, MACD, Stochastic KD,
   Bollinger Bandwidth, MA Alignment, Volume-Price, New High, Relative Strength, Lowest Close) and
   strategy screens (Squeeze Breakout, Box Bottom Rebound, and Phase 14's Trend Breakout/Trend Pullback),
-  independent of Telegram/LLM/DB. `mtf.go`'s 【日週共振穿越】 is the one *watchlist* tag here rather than
+  independent of Telegram/LLM/DB. `patterns.go`'s `DetectPatterns` (Phase 27 P4b) is the stock chart's 21
+  candlestick/volume/gap patterns — textbook heuristics with **no backtest behind them**, so they are
+  descriptive only: `/api/chart` returns them as numbers for the chart page and nothing (alerts, the LLM
+  prompt, recommendation ranking) may consume them. `mtf.go`'s 【日週共振穿越】 is the one *watchlist* tag here rather than
   an entry signal, and the only screen whose annotation depends on the market. Since 2026-09-04 the rule
   is a two-timeframe **angle** gate — daily MA5/MA7 and weekly MA5/MA7 each rising at ≥20°/≥30°, plus
   RSI14 ≤ 80 — where the angle is `atan(MA rise / that timeframe's trailing stdev of bar-to-bar moves)`,

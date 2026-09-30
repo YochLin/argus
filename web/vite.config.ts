@@ -142,7 +142,8 @@ function getMockData(urlStr: string): any {
     const basePrice = isTW ? 900 : 180;
     const candles: any[] = [];
     let cur = basePrice;
-    for (let i = 120; i >= 0; i--) {
+    // ~2y, like the real endpoint (the last candle stays 2026-06-29)
+    for (let i = 500; i >= 0; i--) {
       const d = new Date(2026, 2, 1);
       d.setDate(d.getDate() + (120 - i));
       const open = cur + (Math.random() - 0.5) * 2;
@@ -162,6 +163,7 @@ function getMockData(urlStr: string): any {
     return {
       ticker,
       candles,
+      patterns: [],
       levels: [
         { price: Number((basePrice * 0.92).toFixed(2)), touches: 4, firstDate: "2026-03-10", lastDate: "2026-06-15" },
         { price: Number((basePrice * 1.08).toFixed(2)), touches: 3, firstDate: "2026-04-01", lastDate: "2026-07-02" },
@@ -202,7 +204,7 @@ function getMockData(urlStr: string): any {
           hasMaeMfe: true,
         },
         {
-          // older than the chart's 1y candles — exercises the "—" path
+          // older than the chart's 2y candles — exercises the "—" path
           ticker,
           start: "2025-01-06",
           end: "2025-02-14",

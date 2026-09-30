@@ -223,10 +223,35 @@ export interface ChartLevel {
   lastDate: string;
 }
 
+// PatternHit is one candlestick/volume/gap pattern from /api/chart (Phase 27
+// P4b). Numbers only — names, definitions and the "why" rows come from the
+// frontend dictionary keyed by type. extra's meaning depends on type (see
+// signals.Pattern in Go): engulfing/harami body÷previous body, piercing/dark
+// cloud % of the previous body reached, hammer/hanging man lower shadow÷body,
+// shooting star/inverted hammer upper shadow÷body, breakout/breakdown the prior
+// 20-day high/low, divergence this volume÷the prior high's volume, dry-up the
+// 10-day range %.
+export interface PatternHit {
+  type: string;
+  cat: "rev" | "cont" | "indec" | "vol" | "gap";
+  dir: "bull" | "bear" | "neu";
+  start: string;
+  end: string;
+  conf: "high" | "mid" | "low" | ""; // "" for gaps
+  bodyRatio: number;
+  volRatio: number;
+  prior5Pct: number;
+  extra: number;
+  refDate?: string;
+  gap?: { lo: number; hi: number; fillDate: string }; // fillDate "" while open
+  fwd5: number | null;
+}
+
 export interface Chart {
   ticker: string;
   candles: Candle[];
   levels: ChartLevel[];
+  patterns: PatternHit[];
   position: RiskPosition | null;
   rounds: RoundSummary[];
 }
@@ -899,6 +924,7 @@ function getMockData(url: string): any {
         { price: Number((basePrice * 0.92).toFixed(2)), touches: 4, firstDate: "2026-03-10", lastDate: "2026-06-15" },
         { price: Number((basePrice * 1.08).toFixed(2)), touches: 3, firstDate: "2026-04-01", lastDate: "2026-07-02" },
       ],
+      patterns: [],
       position: {
         ticker,
         shares: 80,

@@ -202,6 +202,8 @@ function PeerPct({ v }: { v: number | null }) {
   return v === null ? <td className="tk-dim">—</td> : <td className={pnlClass(v)}>{spct(v, 1)}</td>;
 }
 
+const defaultVisibleBars = 250;
+
 const noteShowInitial = 8;
 const noteShowStep = 20;
 
@@ -655,7 +657,13 @@ export function ChartView({
       }
     } else {
       series.setMarkers([]);
-      chartRef.current?.timeScale().fitContent();
+      // The endpoint serves ~2y; open on the latest year and let the user scroll back.
+      const n = chart.candles.length;
+      if (n > defaultVisibleBars) {
+        chartRef.current?.timeScale().setVisibleLogicalRange({ from: n - defaultVisibleBars - 0.5, to: n + 0.5 });
+      } else {
+        chartRef.current?.timeScale().fitContent();
+      }
     }
   }, [chart, roundDetail, classified, dict.avgCost]);
 

@@ -11,28 +11,37 @@ import (
 	"argus/internal/signals"
 )
 
-// buildChart assembles /api/chart: ticker's ~1y of daily candles plus the
-// support/resistance levels computed from that same slice (docs/phase-7-
-// support-resistance.md §4.1), open position risk info if held, and historical
+// chartHistoryRange is how much history /api/chart serves. Two years, not one:
+// the pattern statistics (how a pattern has played out on this ticker) need
+// the sample, and a round up to two years old still gets its MAE/MFE.
+const chartHistoryRange = "2y"
+
+// buildChart assembles /api/chart: ticker's ~2y of daily candles, the
+// support/resistance levels computed from the latest year of them (docs/
+// phase-7-support-resistance.md §4.1 tuned PriceLevels on 1y; widening it to the
+// whole slice would move every line), the candlestick/volume/gap patterns
+// (signals.DetectPatterns), open position risk info if held, and historical
 // rounds for this ticker. A history-fetch failure (mistyped/delisted/
 // unresolvable ticker) degrades to empty candles/levels rather than erroring
 // out entirely — the DB-backed position/rounds section below has nothing to
 // do with price history, and a held position for a ticker Yahoo can't
 // resolve must still be reachable (and deletable) from this page.
 func buildChart(database dbReader, quotes quoteGetter, history data.HistoryProvider, ticker string) (chartResponse, error) {
-	candles, err := history.GetHistory(ticker, "1y")
+	candles, err := history.GetHistory(ticker, chartHistoryRange)
 	if err != nil {
 		logger.Errorf("web: build chart for %s: history unavailable: %v", ticker, err)
 		candles = nil
 	}
 
-	levels := signals.PriceLevels(candles)
+	levels := signals.PriceLevels(trailingYear(candles))
+	patterns := signals.DetectPatterns(candles)
 
 	resp := chartResponse{
-		Ticker:  ticker,
-		Candles: make([]candleResponse, 0, len(candles)),
-		Levels:  make([]levelResponse, 0, len(levels)),
-		Rounds:  []roundSummary{},
+		Ticker:   ticker,
+		Candles:  make([]candleResponse, 0, len(candles)),
+		Levels:   make([]levelResponse, 0, len(levels)),
+		Patterns: make([]patternResponse, 0, len(patterns)),
+		Rounds:   []roundSummary{},
 	}
 	for _, c := range candles {
 		resp.Candles = append(resp.Candles, candleResponse{
@@ -51,6 +60,25 @@ func buildChart(database dbReader, quotes quoteGetter, history data.HistoryProvi
 			FirstDate: l.FirstDate.Format("2006-01-02"),
 			LastDate:  l.LastDate.Format("2006-01-02"),
 		})
+	}
+
+	for _, p := range patterns {
+		pr := patternResponse{
+			Type: string(p.Type), Cat: p.Cat, Dir: p.Dir,
+			Start: candles[p.Start].Date.Format("2006-01-02"), End: candles[p.End].Date.Format("2006-01-02"),
+			Conf: p.Conf, BodyRatio: p.BodyRatio, VolRatio: p.VolRatio, Prior5Pct: p.Prior5Pct, Extra: p.Extra,
+			Fwd5: p.Fwd5Pct,
+		}
+		if p.RefIdx >= 0 {
+			pr.RefDate = candles[p.RefIdx].Date.Format("2006-01-02")
+		}
+		if p.Cat == signals.PatCatGap {
+			pr.Gap = &gapResponse{Lo: p.GapLo, Hi: p.GapHi}
+			if p.FillIdx >= 0 {
+				pr.Gap.FillDate = candles[p.FillIdx].Date.Format("2006-01-02")
+			}
+		}
+		resp.Patterns = append(resp.Patterns, pr)
 	}
 
 	if database != nil {
@@ -124,6 +152,15 @@ func buildChart(database dbReader, quotes quoteGetter, history data.HistoryProvi
 	}
 
 	return resp, nil
+}
+
+// trailingYear is the last year of candles ending at the latest one.
+func trailingYear(candles []data.Candle) []data.Candle {
+	if len(candles) == 0 {
+		return nil
+	}
+	cutoff := candles[len(candles)-1].Date.AddDate(-1, 0, 0)
+	return candles[sort.Search(len(candles), func(i int) bool { return !candles[i].Date.Before(cutoff) }):]
 }
 
 // buildTickers assembles /api/tickers: the union of watchlist and held
