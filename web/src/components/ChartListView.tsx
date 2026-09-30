@@ -23,7 +23,12 @@ interface Props {
 // Edge-to-edge area+line sparkline (mockup's watchCards.area/line paths) —
 // sits flush against the card's cropped bottom edge via the wrapper's
 // negative margins in theme.css, not this component's own sizing.
-function Sparkline({ data }: { data: number[] }) {
+// sparkWindow is how many trailing sessions the card's sparkline shows — the
+// summary endpoint returns a longer series than a card has room to read.
+const sparkWindow = 44;
+
+function Sparkline({ data: full }: { data: number[] }) {
+  const data = full ? full.slice(-sparkWindow) : full;
   const w = 200;
   const h = 56;
   if (!data || data.length < 2) {
@@ -155,10 +160,13 @@ export function ChartListView({
   return (
     <>
       <div className="watchlist-header-row">
-        <div>
-          <div className="eyebrow">
-            {dict.watchlistCount} {items ? `(${items.length})` : ""}
-          </div>
+        <div className="watchlist-title">
+          <span className="eyebrow">{dict.navChart}</span>
+          {items && (
+            <span className="watchlist-title-count">
+              {items.length} {dict.watchlistCount}
+            </span>
+          )}
         </div>
         <div className="watchlist-controls">
           <button
@@ -172,12 +180,27 @@ export function ChartListView({
             <span>{dict.heldOnly}</span>
             <span className="watchlist-held-filter-count">{heldTotal}</span>
           </button>
-          <input
-            className="watchlist-search-input"
-            value={search}
-            placeholder={dict.searchPlaceholder}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <div className="watchlist-search">
+            <svg
+              className="watchlist-search-icon"
+              width="13"
+              height="13"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              aria-hidden="true"
+            >
+              <circle cx="7" cy="7" r="4.5" />
+              <line x1="10.5" y1="10.5" x2="14" y2="14" />
+            </svg>
+            <input
+              className="watchlist-search-input"
+              value={search}
+              placeholder={dict.searchPlaceholder}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
           {writable && (
             <div className="add-ticker-form">
               <input

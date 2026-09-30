@@ -514,6 +514,15 @@ func TestHandleResearchNoteSave(t *testing.T) {
 		}
 	})
 
+	t.Run("accepts every tag in both the current and the legacy taxonomy", func(t *testing.T) {
+		for _, tag := range []string{"OBSERVATION", "VALUATION", "RISK", "CATALYST", "TECHNICAL", "CHIPS", "NEWS", "OTHER"} {
+			rec := post(researchNoteSaveRequest{Ticker: "AAPL", Tag: tag, Text: "x"})
+			if rec.Code != http.StatusOK {
+				t.Errorf("tag %s: status = %d, want 200, body = %s", tag, rec.Code, rec.Body.String())
+			}
+		}
+	})
+
 	t.Run("rejects a tag outside the fixed taxonomy", func(t *testing.T) {
 		rec := post(researchNoteSaveRequest{Ticker: "AAPL", Tag: "VIBES", Text: "x"})
 		if rec.Code != http.StatusBadRequest {

@@ -13,11 +13,21 @@ import (
 // stance column convention. Adjusting the taxonomy is a frontend-only
 // change; this set only exists server-side to reject garbage input at the
 // write boundary.
+//
+// The first four are the taxonomy the 2026-09 chart-page redesign switched
+// to (觀察/估值/風險/催化). The last four are the original one
+// (技術面/籌碼面/消息面/其他): the compose form no longer offers them, but
+// rows already stored under them stay valid, and re-saving one (the same-day
+// upsert) must not start failing — so they are kept, not migrated.
 var researchNoteTags = map[string]bool{
-	"TECHNICAL": true,
-	"CHIPS":     true,
-	"NEWS":      true,
-	"OTHER":     true,
+	"OBSERVATION": true,
+	"VALUATION":   true,
+	"RISK":        true,
+	"CATALYST":    true,
+	"TECHNICAL":   true,
+	"CHIPS":       true,
+	"NEWS":        true,
+	"OTHER":       true,
 }
 
 // researchNoteResponse is one row of GET /api/research-notes' list —

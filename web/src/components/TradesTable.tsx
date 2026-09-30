@@ -21,6 +21,10 @@ interface Props {
   // trying to precompute "is this the latest" across a table that, in
   // CalendarView's case, mixes multiple tickers.
   onDelete?: (tx: Transaction) => void;
+  // compact swaps the ticker column for the trade date and drops the fee
+  // column — for a single-ticker context (the chart page's narrow right rail)
+  // where the ticker is redundant and seven columns don't fit.
+  compact?: boolean;
 }
 
 function fmtSigned(v: number, currency: string): string {
@@ -32,7 +36,7 @@ function fmtSigned(v: number, currency: string): string {
 // (Phase 5 PR2/PR3) — same six columns, same BUY/SELL/realizedPnL
 // formatting, so this was pulled out rather than kept as two near-identical
 // copies once a second caller showed up.
-export function TradesTable({ dict, transactions, emptyMessage, currency = "$", names = {}, onDelete }: Props) {
+export function TradesTable({ dict, transactions, emptyMessage, currency = "$", names = {}, onDelete, compact = false }: Props) {
   if (transactions.length === 0) {
     return <div className="empty-message">{emptyMessage ?? dict.noTransactions}</div>;
   }
@@ -40,11 +44,11 @@ export function TradesTable({ dict, transactions, emptyMessage, currency = "$", 
     <table className="mono">
       <thead>
         <tr>
-          <th>{dict.ticker}</th>
+          <th>{compact ? dict.tradeDate : dict.ticker}</th>
           <th>{dict.side}</th>
           <th>{dict.shares}</th>
           <th>{dict.price}</th>
-          <th>{dict.fee}</th>
+          {!compact && <th>{dict.fee}</th>}
           <th>{dict.realizedPnL}</th>
           {onDelete && <th />}
         </tr>
@@ -52,17 +56,19 @@ export function TradesTable({ dict, transactions, emptyMessage, currency = "$", 
       <tbody>
         {transactions.map((t, i) => (
           <tr key={i}>
-            <td>{tickerLabel(t.ticker, names)}</td>
+            <td>{compact ? t.date : tickerLabel(t.ticker, names)}</td>
             <td className={t.side === "BUY" ? "profit" : "loss"}>{t.side === "BUY" ? dict.buy : dict.sell}</td>
             <td>{t.shares}</td>
             <td>
               {currency}
               {t.price.toFixed(2)}
             </td>
-            <td>
-              {currency}
-              {t.fee.toFixed(2)}
-            </td>
+            {!compact && (
+              <td>
+                {currency}
+                {t.fee.toFixed(2)}
+              </td>
+            )}
             <td className={t.realizedPnL > 0 ? "profit" : t.realizedPnL < 0 ? "loss" : ""}>
               {t.side === "SELL" ? fmtSigned(t.realizedPnL, currency) : "—"}
             </td>

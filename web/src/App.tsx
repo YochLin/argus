@@ -467,7 +467,7 @@ export default function App() {
         />
         {!isWealth &&
           (status ? <StatusBar status={status} dict={dict} market={market} /> : <div className="status-bar" />)}
-        <div className="content">
+        <div className={`content${path === "/chart" && params.get("ticker") ? " content-wide" : ""}`}>
           <ErrorBoundary key={`${path}:${market}`} message={dict.error}>
             {body}
           </ErrorBoundary>

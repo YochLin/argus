@@ -573,6 +573,11 @@ input {
   padding: 0 16px 16px;
 }
 
+/* Chart detail page (main column + right rail) uses the full viewport width. */
+.content.content-wide {
+  max-width: none;
+}
+
 /* Grid wrappers (.kpi-grid, .dash-charts-grid, ...) carry their own
    margin-bottom, but a bare .card has none — stacked pages built from
    consecutive top-level .card sections (OptionsView, PaperView, ...) need
@@ -746,14 +751,37 @@ input {
   opacity: 0.65;
 }
 
+.watchlist-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.watchlist-title-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.watchlist-search {
+  position: relative;
+}
+
+.watchlist-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 9px;
+  color: var(--ink-3);
+}
+
 .watchlist-search-input {
-  padding: 7px 12px;
+  width: 190px;
+  padding: 7px 10px 7px 30px;
   border-radius: 8px;
-  background: var(--surface-2);
+  background: var(--surface);
   border: 1px solid var(--border);
   color: var(--ink);
   font-size: 12.5px;
-  min-width: 200px;
 }
 
 .watchlist-grid {
@@ -832,6 +860,13 @@ input {
   border-color: var(--loss);
 }
 
+/* TradesTable's per-row delete reuses the list card's × chip. In a table cell
+   it has to sit in flow: left absolute, it pins itself to the nearest
+   positioned ancestor (the chart page's sticky rail) instead of its row. */
+td > .watchlist-remove-btn {
+  position: static;
+}
+
 .watchlist-price {
   font-family: var(--font-mono);
   font-size: 15px;
@@ -879,7 +914,7 @@ input {
 
 .watchlist-card-levels {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 8px;
   padding-bottom: 12px;
 }
@@ -930,6 +965,17 @@ input {
   letter-spacing: 0.02em;
 }
 
+.ticker-header-idrow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.ticker-header-name {
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
 .ticker-price-row {
   display: flex;
   align-items: baseline;
@@ -950,6 +996,14 @@ input {
   margin-left: auto;
 }
 
+.ticker-stat-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
 .ticker-stat-val {
   font-family: var(--font-mono);
   font-size: 15px;
@@ -962,6 +1016,17 @@ input {
   font-size: 11px;
   margin-top: 1px;
   color: var(--ink-3);
+  min-height: 1em;
+}
+
+/* Declared after .ticker-stat-note so the tint wins over its ink-3 (same
+   specificity as the bare .profit/.loss, which sit earlier in the file). */
+.ticker-stat-note.profit {
+  color: var(--profit);
+}
+
+.ticker-stat-note.loss {
+  color: var(--loss);
 }
 
 .ticker-header-actions {
@@ -986,7 +1051,7 @@ input {
 
 .btn-tint-buy {
   border: 1px solid rgba(16, 185, 129, 0.35);
-  background: rgba(16, 185, 129, 0.15);
+  background: rgba(16, 185, 129, 0.14);
   color: var(--profit);
 }
 
@@ -996,7 +1061,7 @@ input {
 
 .btn-tint-sell {
   border: 1px solid rgba(239, 68, 68, 0.35);
-  background: rgba(239, 68, 68, 0.15);
+  background: rgba(239, 68, 68, 0.14);
   color: var(--loss);
 }
 
@@ -1004,41 +1069,45 @@ input {
   border-color: var(--loss);
 }
 
+/* Neutral sibling of the buy/sell pair (停損價 / 購買點位). */
+.btn-tint-plain {
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--ink-2);
+}
+
+.btn-tint-plain:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
 .range-bar-wrap {
   margin-bottom: 16px;
 }
 
 .range-bar-track {
-  height: 8px;
-  background: var(--border);
-  border-radius: 4px;
   position: relative;
-  margin: 12px 0 6px;
-}
-
-.range-bar-fill {
-  height: 100%;
-  background: var(--accent);
-  border-radius: 4px;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, rgba(239, 68, 68, 0.14), var(--border), rgba(16, 185, 129, 0.14));
 }
 
 .range-bar-marker {
   position: absolute;
   top: -4px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--ink);
-  border: 2px solid var(--accent);
-  transform: translateX(-50%);
+  width: 2px;
+  height: 14px;
+  border-radius: 1px;
+  background: var(--accent);
 }
 
 .range-bar-labels {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
-  color: var(--ink-3);
   font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-top: 6px;
 }
 
 .round-chips {
@@ -1046,17 +1115,20 @@ input {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .round-chip {
-  padding: 6px 12px;
-  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 20px;
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--ink-2);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 11.5px;
   font-family: var(--font-mono);
   transition: all 0.15s ease;
 }
@@ -1068,9 +1140,8 @@ input {
 
 .round-chip.active {
   background: var(--accent-tint-bg);
-  border-color: var(--accent);
+  border-color: var(--accent-tint-border);
   color: var(--accent);
-  font-weight: 600;
 }
 
 table {
@@ -1101,8 +1172,14 @@ th {
 
 .chart-card {
   margin-bottom: 16px;
-  height: 320px;
   padding: 8px;
+}
+
+/* The design's min(520px, 100vh - 360px); the 260px floor keeps a short
+   window from collapsing the chart to a sliver. */
+.tk-chart {
+  position: relative;
+  height: max(260px, min(520px, calc(100vh - 360px)));
 }
 
 .chart-panel {
@@ -2123,10 +2200,69 @@ th {
   line-height: 1.7;
 }
 
-/* Research-notes card (chart page): reuses .round-chip (tag/filter chips),
-   .form-field/.modal-actions/.btn-primary (compose form) and .lessons-list
-   (row container) from above — only the note-row layout itself and the
-   search input are new. */
+/* Research-notes card (chart page): reuses .form-field/.modal-actions/
+   .btn-primary (compose form) and .thesis-header/.thesis-edit-btn (title row)
+   from above; tag pills and filter chips take their colour from --tag. */
+.note-tag-observation { --tag: var(--accent); }
+.note-tag-valuation { --tag: #a78bfa; }
+.note-tag-risk { --tag: var(--loss); }
+.note-tag-catalyst { --tag: #f59e0b; }
+
+.note-title-meta {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.note-title-meta.match {
+  color: var(--accent);
+}
+
+.note-sub {
+  color: var(--ink-3);
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.note-compose {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid var(--accent-tint-border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.note-compose .form-field textarea {
+  background: var(--surface);
+}
+
+.note-chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.note-chip.active {
+  border-color: var(--tag, var(--accent));
+  background: var(--accent-tint-bg);
+  color: var(--tag, var(--accent));
+}
+
+.note-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .note-toolbar {
   display: flex;
   align-items: center;
@@ -2135,40 +2271,96 @@ th {
   margin-top: 14px;
 }
 
-.note-search-input {
+.note-search {
+  position: relative;
   flex: 1;
-  min-width: 180px;
+  min-width: 220px;
+  display: flex;
+  align-items: center;
+}
+
+.note-search-icon {
+  position: absolute;
+  left: 11px;
+  color: var(--ink-3);
+}
+
+.note-search-input {
+  width: 100%;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 8px 10px 8px 32px;
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: 12.5px;
 }
 
+.note-search-clear {
+  position: absolute;
+  right: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.note-search-clear:hover {
+  color: var(--accent);
+}
+
 .note-month-label {
   font-family: var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   font-size: 10px;
+  letter-spacing: 0.08em;
   color: var(--ink-3);
-  padding: 12px 0 4px;
+  padding: 16px 0 3px;
+  border-bottom: 1px solid var(--border);
 }
 
 .note-pinned-block {
   margin-top: 14px;
-  padding: 10px 14px 4px;
+  padding: 2px 14px 10px;
   border: 1px solid var(--accent-tint-border);
   border-radius: 12px;
   background: var(--accent-tint-bg);
+}
+
+.note-pinned-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+  color: var(--accent);
+}
+
+.note-pinned-title {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10.5px;
+}
+
+.note-pinned-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+}
+
+.note-list {
+  display: flex;
+  flex-direction: column;
 }
 
 .note-row {
   display: flex;
   gap: 14px;
   align-items: flex-start;
-  padding: 12px 0;
+  padding: 14px 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -2176,14 +2368,30 @@ th {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  align-items: flex-start;
   flex-shrink: 0;
-  width: 96px;
+  width: 104px;
 }
 
+.note-row-date {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Legacy tags (技術面/籌碼面/消息面/其他) carry no --tag, so they fall back
+   to neutral ink-3 rather than borrowing one of the four current colours. */
 .note-tag-pill {
   font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--accent);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--tag, var(--ink-3));
+  color: var(--tag, var(--ink-3));
+  white-space: nowrap;
 }
 
 .note-row-text {
@@ -2192,6 +2400,7 @@ th {
   font-size: 13.5px;
   color: var(--ink-2);
   line-height: 1.75;
+  white-space: pre-wrap;
 }
 
 .note-row-actions {
@@ -2216,11 +2425,81 @@ th {
 
 .note-row-action:hover {
   color: var(--accent);
+}
+
+.note-row-action.active {
   border-color: var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+.note-row-action-quote {
+  border-color: var(--border);
+  color: var(--accent);
+}
+
+.note-row-action-quote:hover {
+  border-color: var(--accent-tint-border);
+  background: var(--accent-tint-bg);
 }
 
 .note-row-action-danger:hover {
   color: var(--loss);
+  border-color: var(--border);
+}
+
+.note-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.note-foot-btn {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.note-foot-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent-tint-border);
+}
+
+.note-foot-more {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.note-foot-more:hover {
+  background: var(--accent-tint-bg);
+  border-color: var(--accent-tint-border);
+}
+
+.note-empty {
+  margin-top: 12px;
+  padding: 20px 14px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  line-height: 1.7;
+  text-align: center;
 }
 
 /* Phase 10 write-input UI (docs/phase-10-web-trade-input.md §4.3):
@@ -3661,4 +3940,257 @@ th {
 .home-add-btn:hover {
   background: var(--accent);
   color: #fff;
+}
+
+/* Chart detail page (2026-09 redesign): a main column (round picker, chart,
+   notes) beside a right rail (position, levels/rounds tabs). DOM order is
+   rail-first with row-reverse so that when the row wraps on a narrow window
+   the rail lands on top as a single column. The rail only goes sticky once
+   the row is >= 1000px wide (ChartView's ResizeObserver toggles the class);
+   below that it is an ordinary block. */
+.tk-wrap {
+  display: flex;
+  flex-direction: row-reverse;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.tk-rail {
+  flex: 1 1 340px;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tk-rail.sticky {
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+}
+
+.tk-main {
+  flex: 999 1 640px;
+  min-width: 0;
+}
+
+.tk-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.tk-tab {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 5px 11px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.tk-tab.active {
+  border-color: var(--accent);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+.tk-tab-count {
+  margin-left: 6px;
+  opacity: 0.7;
+}
+
+.tk-rail-note {
+  color: var(--ink-3);
+  font-size: 11px;
+  margin-top: 8px;
+}
+
+.tk-section-title {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.tk-round-summary {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  margin: 4px 0 6px;
+}
+
+.tk-round-row {
+  cursor: pointer;
+}
+
+.tk-round-row:hover {
+  background: var(--bg);
+}
+
+.tk-round-row.selected {
+  background: var(--accent-tint-bg);
+}
+
+/* Round picker: 全部 chip, ‹ dropdown ›, and the popover list. */
+.rp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.rp-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-right: 2px;
+  cursor: help;
+}
+
+.rp-count {
+  font-size: 10.5px;
+  opacity: 0.75;
+}
+
+.rp-picker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rp-step {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1;
+  width: 26px;
+  height: 26px;
+  border-radius: 13px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rp-step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.rp-caret {
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+.rp-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.rp-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 41;
+  width: min(400px, 86vw);
+  max-height: 360px;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  padding: 6px;
+}
+
+.rp-menu-summary {
+  padding: 6px 8px 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+}
+
+.rp-menu-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 44px 88px;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink);
+}
+
+.rp-menu-row:hover {
+  background: var(--surface-2);
+}
+
+.rp-menu-row.selected {
+  background: var(--accent-tint-bg);
+}
+
+.rp-menu-n,
+.rp-menu-days {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.rp-menu-days {
+  text-align: right;
+}
+
+.rp-menu-pnl {
+  font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.tk-rail-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.tk-rail-title-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+.tk-rail-title-pnl {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tk-dim {
+  color: var(--ink-3);
+}
+
+/* The rail is only ~340px wide, so its tables trade the default 13px/8px cell
+   for 11.5px/4px and never wrap a date or 買入 across lines. */
+.tk-rail table th,
+.tk-rail table td {
+  padding: 8px 4px;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.tk-rail-title + .report-section {
+  margin-top: 14px;
 }
