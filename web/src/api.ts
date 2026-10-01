@@ -261,6 +261,19 @@ export interface Chart {
   position: RiskPosition | null;
   rounds: RoundSummary[];
   fills: Fill[]; // oldest first
+  strategies?: StrategyAlert[]; // oldest first; absent from a pre-P5 backend
+}
+
+// StrategyAlert is one strategy signal that was pushed to the user (Phase 27
+// P5). type is the signal type ("strategy_squeeze_breakout", ...), date the
+// candle it was computed on, message the text that was sent. verdict is the
+// LLM's call on that ticker around that date, null when it never weighed in.
+export interface StrategyAlert {
+  type: string;
+  date: string;
+  channel: "watchlist" | "scan";
+  message: string;
+  verdict: { date: string; action: "BUY" | "SELL" | "HOLD"; reason: string } | null;
 }
 
 // FillSnapshot is /api/fill-snapshot's body (Phase 27 P6): how the stock looked

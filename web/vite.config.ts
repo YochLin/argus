@@ -195,10 +195,25 @@ function getMockData(urlStr: string): any {
       gapAt(485, true, null),
     ].sort((a, b) => (a.end < b.end ? -1 : a.end > b.end ? 1 : 0));
 
+    const alertAt = (type: string, i: number, channel: string, message: string, verdict: any = null) => ({
+      type, date: at(i), channel, message, verdict,
+    });
+    const strategies = [
+      alertAt("strategy_squeeze_breakout", 405, "watchlist",
+        `🚀 ${ticker} 觸發【布林壓縮噴發】(今天): 帶寬 20 日新低後爆量突破上軌，MACD 柱翻紅\nℹ️ 網 1 未通過出樣本驗證：S&P 500 與台股，兩個時間切片的超額報酬皆未過 1 個標準誤（cmd/strategyscan）。僅供參考，勿單獨作為進場依據。`,
+        { date: at(405), action: "BUY", reason: "布林帶寬壓縮後放量突破，MACD 翻正，量價配合；停損設在近期低點下方。" }),
+      alertAt("strategy_box_bottom", 450, "scan", `🎯 ${ticker} 觸發【箱型地板抄底】(2 天前): 30 日箱型底 + KD 低檔金叉/勾頭 + RSI 止跌反彈`),
+      alertAt("strategy_mtf_cross", 480, "watchlist",
+        `📈 ${ticker} 觸發【日週共振穿越】(今天): 日 MA5/MA7 角度 ≥20°，週 MA5/MA7 角度 ≥30°，RSI ≤80`,
+        { date: at(481), action: "HOLD", reason: "已在持倉內，量能未放大，先觀察。" }),
+      alertAt("strategy_trend_breakout", 495, "scan", `🚀 ${ticker} 觸發【趨勢突破】(今天)：創新高 + 均線多頭排列 + 攻擊量 + 乖離未過大`),
+    ];
+
     return {
       ticker,
       candles,
       patterns,
+      strategies,
       levels: [
         { price: Number((basePrice * 0.92).toFixed(2)), touches: 4, firstDate: "2026-03-10", lastDate: "2026-06-15" },
         { price: Number((basePrice * 1.08).toFixed(2)), touches: 3, firstDate: "2026-04-01", lastDate: "2026-07-02" },

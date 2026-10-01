@@ -37,6 +37,7 @@ import { PV_COLORS, PV_STATES, pvReadout, pvState, type PvLabels } from "../pric
 import { GapBands, type GapBand } from "../gapBands";
 import { defaultFill, fillRows } from "../fillSnapshot";
 import { DEFAULT_PAT_ON, PAT_CATS, PAT_COLORS, patKey, patText, visiblePatterns, type PatOn } from "../patterns";
+import { STRAT_COLOR, stratKey, stratText } from "../strategies";
 import { PatternPanel } from "./PatternPanel";
 import { FillSnapshotPanel } from "./FillSnapshotPanel";
 import { TradesTable } from "./TradesTable";
@@ -263,6 +264,7 @@ export function ChartView({
   // The design's "量價" chip: colour volume bars by price × volume direction.
   const [pvOn, setPvOn] = useState(true);
   const [patOn, setPatOn] = useState<PatOn>(DEFAULT_PAT_ON);
+  const [stratOn, setStratOn] = useState(true);
   const [patHigh, setPatHigh] = useState(true);
   const [selPat, setSelPat] = useState<string | null>(null);
   const [roundDetail, setRoundDetail] = useState<RoundDetail | null>(null);
@@ -571,6 +573,8 @@ export function ChartView({
 
   const hits = useMemo(() => chart?.patterns ?? [], [chart]);
   const visPats = useMemo(() => visiblePatterns(hits, patOn, patHigh), [hits, patOn, patHigh]);
+  const strategies = useMemo(() => chart?.strategies ?? [], [chart]);
+  const visStrats = useMemo(() => (stratOn ? strategies : []), [strategies, stratOn]);
   const patCounts = useMemo(() => {
     const n = Object.fromEntries(PAT_CATS.map((k) => [k, 0])) as Record<(typeof PAT_CATS)[number], number>;
     for (const p of hits) if (p.cat in n && (!patHigh || p.conf === "" || p.conf === "high")) n[p.cat]++;
@@ -779,8 +783,21 @@ export function ChartView({
           text: isSel ? txt.name : p.conf === "high" ? txt.code : "",
         };
       });
-    series.setMarkers([...trades, ...pats].sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0)));
-  }, [chart, roundDetail, visPats, selPat, dict]);
+    // A strategy alert is a square under the bar, unlabelled until picked.
+    const strats: SeriesMarker<Time>[] = visStrats.map((a) => {
+      const isSel = stratKey(a) === selPat;
+      return {
+        time: a.date as Time,
+        id: `pat:${stratKey(a)}`,
+        position: "belowBar",
+        shape: "square",
+        color: isSel ? "#a5b4fc" : STRAT_COLOR,
+        size: isSel ? 1.4 : 1,
+        text: isSel ? stratText(dict, a.type).name : "",
+      };
+    });
+    series.setMarkers([...trades, ...pats, ...strats].sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0)));
+  }, [chart, roundDetail, visPats, visStrats, selPat, dict]);
 
   useEffect(() => {
     gapsRef.current?.set(
@@ -805,23 +822,29 @@ export function ChartView({
     const shade = patShadeRef.current;
     if (!shade || !chart) return;
     const sp = selPat ? hits.find((p) => patKey(p) === selPat) : undefined;
+    const sa = selPat ? strategies.find((a) => stratKey(a) === selPat) : undefined;
+    // A pattern shades its own bars (a gap has its band instead); a strategy alert, its one bar.
+    const span = sp && sp.cat !== "gap" ? { from: sp.start, to: sp.end } : sa ? { from: sa.date, to: sa.date } : null;
     shade.setData(
-      sp && sp.cat !== "gap"
+      span
         ? chart.candles
-            .filter((c) => c.date >= sp.start && c.date <= sp.end)
+            .filter((c) => c.date >= span.from && c.date <= span.to)
             .map((c) => ({ time: c.date as Time, value: 1, color: "rgba(129,140,248,0.16)" }))
         : [],
     );
-  }, [chart, hits, selPat]);
+  }, [chart, hits, strategies, selPat]);
 
   // Picking a pattern that's off-screen (the chart opens on the latest year of
   // two) scrolls it into view, keeping the current zoom.
   useEffect(() => {
     const ts = chartRef.current?.timeScale();
     const sp = selPat ? hits.find((p) => patKey(p) === selPat) : undefined;
-    if (!ts || !sp || !chart) return;
-    const i0 = chart.candles.findIndex((c) => c.date >= sp.start);
-    const i1 = chart.candles.findIndex((c) => c.date >= sp.end);
+    const sa = selPat ? strategies.find((a) => stratKey(a) === selPat) : undefined;
+    const from = sp?.start ?? sa?.date;
+    const to = sp?.end ?? sa?.date;
+    if (!ts || !from || !to || !chart) return;
+    const i0 = chart.candles.findIndex((c) => c.date >= from);
+    const i1 = chart.candles.findIndex((c) => c.date >= to);
     const r = ts.getVisibleLogicalRange();
     if (r && i0 >= 0 && i1 >= 0 && (i0 < r.from + 3 || i1 > r.to - 3)) {
       const w = r.to - r.from;
@@ -1124,7 +1147,17 @@ export function ChartView({
             )}
 
             {tab === "pat" && (
-              <PatternPanel dict={dict} hits={hits} visible={visPats} candles={chart.candles} selKey={selPat} onSelect={setSelPat} />
+              <PatternPanel
+                dict={dict}
+                hits={hits}
+                visible={visPats}
+                strategies={strategies}
+                visibleStrategies={visStrats}
+                ticker={chart.ticker}
+                candles={chart.candles}
+                selKey={selPat}
+                onSelect={setSelPat}
+              />
             )}
 
             {tab === "lvl" && (
@@ -1424,6 +1457,16 @@ export function ChartView({
               <span className="pv-dot" />
               {dict.pvChip}
             </button>
+            <button
+              type="button"
+              className={`round-chip${stratOn ? " active" : ""}`}
+              title={dict.stratChipTip}
+              onClick={() => setStratOn((v) => !v)}
+            >
+              <span className="pat-dot strat" />
+              {dict.stratChip}
+              <span className="pat-chip-count">{strategies.length}</span>
+            </button>
             {PAT_CATS.map((k) => (
               <button
                 key={k}
@@ -1472,6 +1515,10 @@ export function ChartView({
                 <span className="pv-legend-item">
                   <span className="pat-leg-gap" />
                   {dict.patLegGap}
+                </span>
+                <span className="pv-legend-item">
+                  <span className="pat-leg-strat" />
+                  {dict.stratLeg}
                 </span>
               </span>
               <span className="pv-readout" ref={readoutRef} />

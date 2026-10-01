@@ -255,6 +255,34 @@ export interface Dictionary {
   patLegBear: string;
   patLegNeu: string;
   patLegGap: string;
+  stratChip: string;
+  stratChipTip: string;
+  stratLeg: string;
+  stratPushedWatchlist: string;
+  stratPushedScan: string;
+  stratMsgTitle: string;
+  stratVerdictTitle: string;
+  stratVerdictNone: string;
+  stratValid_ok: string;
+  stratValid_warn: string;
+  stratValid_bad: string;
+  stratNote_warn: string;
+  stratNote_breakout: string;
+  stratNote_mtfTw: string;
+  stratNote_mtfUs: string;
+  stratDisclaimer: string;
+  stratCode_squeeze: string;
+  stratName_squeeze: string;
+  stratCode_box: string;
+  stratName_box: string;
+  stratCode_breakout: string;
+  stratName_breakout: string;
+  stratCode_pullback: string;
+  stratName_pullback: string;
+  stratCode_trust: string;
+  stratName_trust: string;
+  stratCode_mtf: string;
+  stratName_mtf: string;
   tkTabPat: string;
   condBody: string;
   condVol: string;
@@ -1384,7 +1412,7 @@ const en: Dictionary = {
   patHighOnly: "High confidence only",
   patHighTip:
     "Confidence scores three checks: volume above 1.4× the 20-day average, body above 1.5× the 20-day average body, and the right context (reversals must follow the opposite trend). All three = high. On: only high-confidence patterns. Off: medium and low appear as small unlabelled dots.",
-  patEvents: "PATTERN EVENTS",
+  patEvents: "PATTERN & STRATEGY EVENTS",
   patEventsNote: "newest first — click to locate on chart",
   patNone: "No patterns detected under the current filters.",
   patPick: "Click a pattern dot on the chart, or an event below, to see why it fired and how it has played out on this ticker.",
@@ -1407,6 +1435,34 @@ const en: Dictionary = {
   patLegBear: "Bearish (above bar)",
   patLegNeu: "Neutral",
   patLegGap: "Gap (dashed = unfilled)",
+  stratChip: "Strategy",
+  stratChipTip: "Strategy signals the bot pushed (Nets 1–5, daily-weekly cross) — only ones that were really sent; the record starts the day this shipped",
+  stratLeg: "Strategy alert (pushed)",
+  stratPushedWatchlist: "Signal on %s — caught in the daily report and pushed (watchlist / holding)",
+  stratPushedScan: "Signal on %s — caught by the universe scan and pushed",
+  stratMsgTitle: "WHAT WAS SENT",
+  stratVerdictTitle: "LLM CALL AT THE TIME",
+  stratVerdictNone: "The LLM made no call on this ticker within 4 days.",
+  stratValid_ok: "POSITIVE ON TW",
+  stratValid_warn: "NOT VALIDATED",
+  stratValid_bad: "CONTRARIAN",
+  stratNote_warn: "Its backtest has not passed the validation bar — treat it as a watchlist cue, not an entry.",
+  stratNote_breakout: "All four samples showed negative excess return.",
+  stratNote_mtfTw: "The only screen with a positive live test on TW — but its thresholds were picked after seeing both samples, so it stays a watchlist cue.",
+  stratNote_mtfUs: "Negative in US tests, so effectively a contrarian indicator. Alerts continue only because you asked to keep watching it.",
+  stratDisclaimer: "Markers are the alerts that were really pushed; the record starts when this shipped. A strategy that has not passed validation is a cue, not a trade signal.",
+  stratCode_squeeze: "N1",
+  stratName_squeeze: "Squeeze Breakout",
+  stratCode_box: "N2",
+  stratName_box: "Box Bottom Rebound",
+  stratCode_breakout: "N3",
+  stratName_breakout: "Trend Breakout",
+  stratCode_pullback: "N4",
+  stratName_pullback: "Trend Pullback",
+  stratCode_trust: "N5",
+  stratName_trust: "Trust Follow",
+  stratCode_mtf: "D/W",
+  stratName_mtf: "Daily-Weekly MA Cross",
   tkTabPat: "Patterns",
   condBody: "Body vs 20-day avg",
   condVol: "Volume vs 20-day avg",
@@ -2439,7 +2495,7 @@ const zh: Dictionary = {
   patHighOnly: "只看高信心",
   patHighTip:
     "信心依三項條件計分：量 > 1.4 倍 20 日均量、實體 > 1.5 倍 20 日平均實體、出現位置符合型態（反轉型要在相反趨勢之後）。三項都符合才算「高」。開啟時只顯示高信心型態；關閉後中、低信心也會以小圓點出現，不帶文字。",
-  patEvents: "型態事件",
+  patEvents: "型態與策略事件",
   patEventsNote: "由新到舊，點一下在圖上定位",
   patNone: "目前篩選下沒有偵測到型態。",
   patPick: "點圖上的型態圓點，或下方事件，查看判斷依據與這檔的歷史表現。",
@@ -2462,6 +2518,34 @@ const zh: Dictionary = {
   patLegBear: "看跌（K 棒上方）",
   patLegNeu: "中性",
   patLegGap: "缺口（虛線＝未回補）",
+  stratChip: "策略",
+  stratChipTip: "系統推播過的策略訊號（網 1–5、日週共振）——只列真的發過的，從這功能上線起才有紀錄",
+  stratLeg: "策略推播",
+  stratPushedWatchlist: "%s 的訊號——日報偵測到並已推播（自選股／持倉）",
+  stratPushedScan: "%s 的訊號——掃描池偵測到並已推播",
+  stratMsgTitle: "推播內容",
+  stratVerdictTitle: "當時的 LLM 建議",
+  stratVerdictNone: "4 天內 LLM 沒有對這檔給過建議。",
+  stratValid_ok: "台股實測為正",
+  stratValid_warn: "未通過驗證",
+  stratValid_bad: "反指標",
+  stratNote_warn: "回測尚未通過驗證門檻，當作觀察提示，不是進場訊號。",
+  stratNote_breakout: "四個獨立樣本的超額報酬都是負的。",
+  stratNote_mtfTw: "台股唯一實測為正的訊號——但門檻是看過兩個樣本後才選的，仍只當關注清單。",
+  stratNote_mtfUs: "美股實測為負，等於反指標。依你的要求保留觀察，才繼續發通知。",
+  stratDisclaimer: "標記是真的推播過的策略訊號，從功能上線起才有紀錄。未通過驗證的策略只是觀察提示，不構成買賣建議。",
+  stratCode_squeeze: "網1",
+  stratName_squeeze: "布林壓縮噴發",
+  stratCode_box: "網2",
+  stratName_box: "箱型地板抄底",
+  stratCode_breakout: "網3",
+  stratName_breakout: "趨勢突破",
+  stratCode_pullback: "網4",
+  stratName_pullback: "趨勢回檔",
+  stratCode_trust: "網5",
+  stratName_trust: "主力跟單",
+  stratCode_mtf: "共振",
+  stratName_mtf: "日週共振穿越",
   tkTabPat: "型態",
   condBody: "實體 / 20 日平均實體",
   condVol: "量 / 20 日均量",

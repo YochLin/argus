@@ -4129,6 +4129,11 @@ th {
   background: #cbd5e1;
 }
 
+.pat-dot.strat {
+  border-radius: 2px;
+  background: #38bdf8;
+}
+
 .round-chip:not(.active) .pat-dot {
   opacity: 0.4;
 }
@@ -4165,6 +4170,14 @@ th {
   background: rgba(16, 185, 129, 0.18);
   border-top: 1px dashed rgba(16, 185, 129, 0.75);
   border-bottom: 1px dashed rgba(16, 185, 129, 0.75);
+}
+
+.pat-leg-strat {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  background: #38bdf8;
 }
 
 /* Rail 型態 tab: detail of the picked pattern, then the event list. */
@@ -4215,8 +4228,122 @@ th {
   font-size: 11.5px;
 }
 
-.pat-badge.gap {
+.pat-badge.gap,
+.pat-badge.strat {
   border-radius: 4px;
+}
+
+.pat-badge.strat {
+  background: rgba(56, 189, 248, 0.14);
+}
+
+/* A picked strategy alert (Phase 27 P5): validation state, what was pushed,
+   the LLM's call. */
+.strat-valid-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.strat-valid {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid;
+}
+
+.strat-valid.ok {
+  color: var(--profit);
+  border-color: var(--profit);
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.strat-valid.warn {
+  color: var(--s1);
+  border-color: var(--s1);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.strat-valid.bad {
+  color: var(--loss);
+  border-color: var(--loss);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.strat-valid-note {
+  flex: 1;
+  min-width: 180px;
+  font-size: 12px;
+  color: var(--ink-2);
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.strat-msg {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.strat-verdict {
+  margin-top: 8px;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.strat-act {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  color: var(--ink-2);
+}
+
+.strat-act.BUY {
+  color: var(--profit);
+  border-color: var(--profit);
+}
+
+.strat-act.SELL {
+  color: var(--loss);
+  border-color: var(--loss);
+}
+
+.strat-verdict-date {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.strat-reason {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--ink-2);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.strat-verdict-none {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ink-3);
 }
 
 .pat-name {
