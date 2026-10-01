@@ -35,8 +35,10 @@ import {
 import type { Dictionary } from "../i18n";
 import { PV_COLORS, PV_STATES, pvReadout, pvState, type PvLabels } from "../pricevolume";
 import { GapBands, type GapBand } from "../gapBands";
+import { defaultFill, fillRows } from "../fillSnapshot";
 import { DEFAULT_PAT_ON, PAT_CATS, PAT_COLORS, patKey, patText, visiblePatterns, type PatOn } from "../patterns";
 import { PatternPanel } from "./PatternPanel";
+import { FillSnapshotPanel } from "./FillSnapshotPanel";
 import { TradesTable } from "./TradesTable";
 import type { TradeMode } from "./TradeModal";
 
@@ -254,7 +256,9 @@ export function ChartView({
   const [roundMenuOpen, setRoundMenuOpen] = useState(false);
   // railTab is only set by an explicit click / round pick; until then the tab
   // follows the selection (a picked round opens 回合, otherwise 支撐壓力).
-  const [railTab, setRailTab] = useState<"pat" | "lvl" | "round" | null>(null);
+  const [railTab, setRailTab] = useState<"pat" | "lvl" | "round" | "snap" | null>(null);
+  // The fill the 成交快照 tab was last pointed at; null follows the selected round.
+  const [snapPick, setSnapPick] = useState<number | null>(null);
   const [wide, setWide] = useState(false);
   // The design's "量價" chip: colour volume bars by price × volume direction.
   const [pvOn, setPvOn] = useState(true);
@@ -297,6 +301,7 @@ export function ChartView({
     setRoundMenuOpen(false);
     setRailTab(null);
     setSelPat(null);
+    setSnapPick(null);
     setRoundDetail(null);
     if (!ticker) {
       setError(true);
@@ -915,6 +920,8 @@ export function ChartView({
   }
 
   const tab = railTab ?? (selectedRoundStart ? "round" : "pat");
+  const fills = fillRows(chart.fills ?? [], chart.rounds);
+  const snapFill = defaultFill(fills, snapPick, selectedRoundStart);
   const detail = roundDetail && roundDetail.start === selectedRoundStart ? roundDetail : null;
   const pos = chart.position;
 
@@ -1084,6 +1091,14 @@ export function ChartView({
               </button>
               <button
                 type="button"
+                className={`tk-tab${tab === "snap" ? " active" : ""}`}
+                onClick={() => setRailTab("snap")}
+              >
+                {dict.snapTab}
+                <span className="tk-tab-count">{fills.length}</span>
+              </button>
+              <button
+                type="button"
                 className={`tk-tab${tab === "round" ? " active" : ""}`}
                 onClick={() => setRailTab("round")}
               >
@@ -1091,6 +1106,22 @@ export function ChartView({
                 <span className="tk-tab-count">{chart.rounds.length}</span>
               </button>
             </div>
+
+            {tab === "snap" && (
+              <FillSnapshotPanel
+                dict={dict}
+                ticker={chart.ticker}
+                rows={fills}
+                current={snapFill}
+                onPick={setSnapPick}
+                currency={currency}
+                patternKnown={(key) => hits.some((p) => patKey(p) === key)}
+                onPattern={(key) => {
+                  setSelPat(key);
+                  setRailTab("pat");
+                }}
+              />
+            )}
 
             {tab === "pat" && (
               <PatternPanel dict={dict} hits={hits} visible={visPats} candles={chart.candles} selKey={selPat} onSelect={setSelPat} />

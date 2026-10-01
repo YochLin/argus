@@ -233,6 +233,9 @@ type chartResponse struct {
 	Patterns []patternResponse     `json:"patterns"`
 	Position *riskPositionResponse `json:"position"`
 	Rounds   []roundSummary        `json:"rounds"`
+	// Fills is every buy/sell on this ticker, oldest first — the snapshot
+	// tab's picker (Phase 27 P6).
+	Fills []fillResponse `json:"fills"`
 }
 
 // patternResponse is one signals.DetectPatterns hit, dates instead of candle

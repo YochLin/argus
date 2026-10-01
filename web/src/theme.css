@@ -4445,6 +4445,607 @@ th {
   padding: 8px;
 }
 
+/* The rail's 成交快照 tab (Phase 27 P6). */
+.snap-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.snap-note {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  line-height: 1.7;
+  text-wrap: pretty;
+  padding: 6px 0;
+}
+
+.snap-note.small {
+  font-size: 11px;
+  line-height: 1.6;
+  padding: 0;
+}
+
+.snap-pick {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.snap-step {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 13px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.snap-step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.snap-pick-cur {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.snap-pick-cur:hover {
+  border-color: var(--accent);
+}
+
+.snap-pick-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.snap-pick-pos {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.snap-pick-caret {
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+.snap-pick-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.snap-pick-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 41;
+  max-height: 320px;
+  overflow: auto;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+}
+
+.snap-pick-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto 34px;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink);
+}
+
+.snap-pick-row:hover {
+  background: var(--surface-2);
+}
+
+.snap-pick-row.selected {
+  background: var(--accent-tint-bg);
+}
+
+.snap-pick-px {
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.snap-pick-no {
+  text-align: right;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.snap-side {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.snap-side.buy {
+  background: rgba(16, 185, 129, 0.14);
+  color: var(--profit);
+}
+
+.snap-side.sell {
+  background: rgba(239, 68, 68, 0.14);
+  color: var(--loss);
+}
+
+.snap-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.snap-head-top {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.snap-date {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.snap-fill {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.snap-round {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.snap-dayline {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.snap-prov {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.snap-prov-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.snap-verdict {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.snap-checks {
+  display: flex;
+  gap: 4px;
+}
+
+.snap-check {
+  width: 18px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+}
+
+.snap-check.ok {
+  background: var(--profit);
+}
+
+.snap-check.bad {
+  background: var(--loss);
+}
+
+.snap-verdict-text {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.snap-verdict-note {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.snap-inds {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.snap-ind {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 11px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.snap-ind-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.snap-ind-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.snap-ind-mark {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.snap-ind-mark.ok,
+.snap-ind-tag.ok {
+  color: var(--profit);
+}
+
+.snap-ind-mark.bad,
+.snap-ind-tag.bad {
+  color: var(--loss);
+}
+
+.snap-ind-val {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.snap-ind-num {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.snap-ind-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--ink-3);
+  color: var(--ink-3);
+}
+
+.snap-ind-tag.ok {
+  border-color: var(--profit);
+}
+
+.snap-ind-tag.bad {
+  border-color: var(--loss);
+}
+
+.snap-gauge {
+  position: relative;
+  height: 5px;
+  border-radius: 3px;
+  background: linear-gradient(
+    to right,
+    rgba(16, 185, 129, 0.14) 0 30%,
+    var(--surface-2) 30% 70%,
+    rgba(239, 68, 68, 0.14) 70% 100%
+  );
+}
+
+.snap-gauge span {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 11px;
+  border-radius: 1px;
+  background: var(--ink);
+}
+
+.snap-ind-sub {
+  font-size: 11px;
+  color: var(--ink-2);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.snap-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.snap-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.snap-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.snap-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.snap-chip:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.snap-chip:disabled {
+  cursor: default;
+}
+
+.snap-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+}
+
+.snap-newslist {
+  display: flex;
+  flex-direction: column;
+}
+
+.snap-news {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.snap-news-side {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 56px;
+  flex-shrink: 0;
+}
+
+.snap-news-time {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.snap-news-tag {
+  align-self: flex-start;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid;
+}
+
+.snap-news-tag.major {
+  border-color: transparent;
+  color: #111;
+  font-weight: 700;
+}
+
+.snap-news-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.snap-news-head {
+  font-size: 12.5px;
+  line-height: 1.55;
+  text-wrap: pretty;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.snap-news-head.major {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+a.snap-news-head {
+  text-decoration: none;
+}
+
+a.snap-news-head:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.snap-news-meta {
+  display: flex;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.snap-hind {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 9px;
+}
+
+.snap-hind-head {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.snap-hind-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+  gap: 10px;
+}
+
+.snap-hind-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.snap-hind-label {
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.snap-hind-val {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+
+.snap-hind-val.ok {
+  color: var(--profit);
+}
+
+.snap-hind-val.bad {
+  color: var(--loss);
+}
+
+.snap-data {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.snap-data-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.snap-data-title {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10.5px;
+  color: var(--ink);
+}
+
+.snap-btn {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.snap-btn:first-of-type {
+  margin-left: auto;
+}
+
+.snap-btn.accent {
+  color: var(--accent);
+}
+
+.snap-btn:hover {
+  border-color: var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+}
+
+.snap-json {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  white-space: pre;
+}
+
 /* Under the chart: the volume-colour legend on the left, the crosshair readout
    pushed to the right. */
 .pv-bar {

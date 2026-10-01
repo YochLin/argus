@@ -235,6 +235,7 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /api/distributions", s.handleDistributions)
 	s.mux.HandleFunc("GET /api/chart", s.handleChart)
 	s.mux.HandleFunc("GET /api/chart/peers", s.handlePeers)
+	s.mux.HandleFunc("GET /api/fill-snapshot", s.handleFillSnapshot)
 	s.mux.HandleFunc("GET /api/research-notes", s.handleResearchNotesGet)
 	s.mux.HandleFunc("GET /api/tickers", s.handleTickers)
 	s.mux.HandleFunc("GET /api/watchlist-summary", s.handleWatchlistSummary)

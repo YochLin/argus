@@ -42,6 +42,7 @@ func buildChart(database dbReader, quotes quoteGetter, history data.HistoryProvi
 		Levels:   make([]levelResponse, 0, len(levels)),
 		Patterns: make([]patternResponse, 0, len(patterns)),
 		Rounds:   []roundSummary{},
+		Fills:    []fillResponse{},
 	}
 	for _, c := range candles {
 		resp.Candles = append(resp.Candles, candleResponse{
@@ -127,6 +128,15 @@ func buildChart(database dbReader, quotes quoteGetter, history data.HistoryProvi
 			resp.Rounds = make([]roundSummary, 0, len(segmented))
 			now := time.Now()
 			for _, r := range segmented {
+				for _, l := range r.Legs {
+					resp.Fills = append(resp.Fills, fillResponse{
+						transactionResponse: transactionResponse{
+							ID: l.ID, Date: l.Date, Ticker: l.Ticker, Side: l.Side,
+							Shares: l.Shares, Price: l.Price, Fee: l.Fee, RealizedPnL: l.RealizedPnL,
+						},
+						RoundStart: r.StartDate,
+					})
+				}
 				rs := roundSummary{
 					Ticker:      ticker,
 					Start:       r.StartDate,

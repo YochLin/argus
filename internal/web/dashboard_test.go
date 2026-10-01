@@ -67,6 +67,8 @@ type fakeDB struct {
 	priceEvents []db.PriceEvent
 	// researchNotes backs GetResearchNotesByTicker for research_notes_test.go.
 	researchNotes map[string][]db.ResearchNote
+	// fillNews (key "TICKER|date") backs FillNewsFor for fillsnapshot_test.go.
+	fillNews map[string][]db.FillNews
 	// wealthAssets backs ListAssetsWithValue for assets_test.go (Phase 9 PR1).
 	wealthAssets []db.AssetWithValue
 	// wealthAssetsAsOf backs ListAssetsValueAsOf for wealth_home_test.go —
@@ -168,6 +170,9 @@ func (f *fakeDB) ListLLMRuns(limit int) ([]db.LLMRun, error) {
 func (f *fakeDB) GetLLMRun(id int64) (db.LLMRunDetail, bool, error) {
 	run, ok := f.llmRunByID[id]
 	return run, ok, nil
+}
+func (f *fakeDB) FillNewsFor(ticker, fillDate string) ([]db.FillNews, error) {
+	return f.fillNews[ticker+"|"+fillDate], nil
 }
 func (f *fakeDB) ListBlockedNewsSources() ([]db.BlockedNewsSource, error) {
 	return f.blockedSources, nil
