@@ -804,4 +804,29 @@ var migrations = []string{
 		UNIQUE (ticker, fill_date, headline)
 	);
 	`,
+	// 37: Phase 27 P5 — a record of the strategy signals that were actually
+	// pushed, so the stock chart can say "this fired and you were told" rather
+	// than replaying the rules over history (a replay can't know whether the
+	// ticker was in the scan pool that day or whether the Detector's dedupe
+	// swallowed it). Written from service.ScanService.RecordStrategyAlerts at
+	// the two places a strategy hit is pushed: channel 'watchlist' (the daily
+	// report's SendSignalAlert) and 'scan' (the universe scan's push). Only
+	// strategy_* signals — RSI/MACD flips are not chart material. signal_date
+	// is the last candle the hit was computed on, so it lands on a real bar;
+	// message is the text that was sent (conditions and validation notice
+	// included). Starts empty at migration time — there is nothing to backfill
+	// from (notifications is free text with no ticker column). LLM verdicts are
+	// not copied here: a reader joins recommendations by ticker and date.
+	`
+	CREATE TABLE IF NOT EXISTS strategy_alerts (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		ticker      TEXT NOT NULL,
+		strategy    TEXT NOT NULL,
+		signal_date TEXT NOT NULL,
+		channel     TEXT NOT NULL,
+		message     TEXT NOT NULL,
+		created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE (ticker, strategy, signal_date)
+	);
+	`,
 }
