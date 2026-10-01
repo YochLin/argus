@@ -474,6 +474,14 @@ Keep the reply concise — under 300 words total.
 `,
 	KeyLessonMarker: "Lesson:",
 
+	KeyTradeSnapshotHeader:     "\nSnapshot on the fill day (%s on %s at $%.2f; the state at that day's close, for judging entry/exit timing — nothing from after it):\n",
+	KeyTradeSnapshotIndicators: "• RSI(14) %.1f (5 days earlier %.1f); MACD histogram %+.2f (same sign for %d days); trend: %s, close %+.1f%% from MA20, MA20 5-day slope %+.2f%%; volume %.2fx the prior 20-day average\n",
+	KeyTradeSnapshotTrendBull:  "uptrend (close > MA20 > MA60, MA20 rising)",
+	KeyTradeSnapshotTrendBear:  "downtrend (close < MA20 < MA60, MA20 falling)",
+	KeyTradeSnapshotTrendRange: "no clean trend",
+	KeyTradeSnapshotNewsHeader: "• Headlines that day:\n",
+	KeyTradeSnapshotNewsLine:   "  - %s (%s)\n",
+
 	KeyTradeFollowupBlock: "\nPrice action since the exit (through trading day %d): sold at avg $%.2f -> close $%.2f (%+.1f%%), high $%.2f / low $%.2f over that span\n",
 	KeyTradeFollowupPromptTask: `
 Give an honest, unvarnished follow-up review of this sell, in English:

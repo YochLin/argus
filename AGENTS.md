@@ -326,7 +326,11 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   their links, plus an LLM reading of each (`llm.ClassifyNews`: sentiment / kind / major event). It exists
   because `GetNews` has no date parameter, so a past day's news can never be fetched again. The labels are
   headline-only and descriptive: like the chart patterns, nothing (alerts, ranking, trade decisions) may
-  act on them. `paper.go` backs `/paper`
+  act on them. `trade_snapshot.go`'s `reviewSnapshots` (P7b) hands every trade review (at close, the
+  5-day follow-up, `/review`) the entry and exit fill days' indicator readings (`service.SnapshotAt`,
+  that day's close only) and stored headlines via `llm.ClosedTrade.Snapshots`; it deliberately leaves
+  out the candle patterns and the LLM news labels, because a review's lesson is fed back into the
+  recommendation prompt (`PastLessons`) and neither is backtested. `paper.go` backs `/paper`
   (view or reset the live paper-trading account, which forward-accumulates through the same
   `internal/paper.Account` rules `argus backtest` replays historically, see below) — `paperConfig` builds
   its `paper.Config` from the bot's own exit-discipline thresholds (`STOP_LOSS_PCT`/`TRAILING_STOP_PCT`

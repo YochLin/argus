@@ -736,3 +736,71 @@ func TestBuildWealthHealthReportPromptIncludesRetirementLine(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildTradeReviewPromptSnapshots(t *testing.T) {
+	base := ClosedTrade{
+		Ticker: "AAPL",
+		Legs: []TradeLeg{
+			{Side: "BUY", Shares: 10, Price: 150, Date: "2026-06-01"},
+			{Side: "SELL", Shares: 10, Price: 180, Date: "2026-06-20"},
+		},
+		RealizedPnL: 300,
+		HoldingDays: 19,
+	}
+	snaps := []TradeSnapshot{
+		{
+			Side: "BUY", Date: "2026-06-01", Price: 150,
+			RSI: 71.2, RSIPrev5: 55.4, MACDHist: 0.5, MACDDays: 3, Trend: "bull",
+			CloseVsMA20Pct: 3.1, MA20Slope5dPct: 0.6, VolRatio20: 1.8,
+			News: []TradeSnapshotNews{{Source: "Reuters", Headline: "AAPL beats"}},
+		},
+		{Side: "SELL", Date: "2026-06-20", Price: 180, RSI: 45, RSIPrev5: 50, Trend: "range", VolRatio20: 0.7},
+	}
+
+	t.Run("no snapshots renders exactly what it did before P7b", func(t *testing.T) {
+		got := buildTradeReviewPrompt(i18n.EN, base)
+		if strings.Contains(got, "Snapshot on the fill day") {
+			t.Errorf("a trade without snapshots must not mention them:\n%s", got)
+		}
+	})
+
+	for _, lang := range []i18n.Lang{i18n.EN, i18n.ZH} {
+		trade := base
+		trade.Snapshots = snaps
+		got := buildTradeReviewPrompt(lang, trade)
+		for _, want := range []string{"2026-06-01", "71.2", "55.4", "AAPL beats", "Reuters", "2026-06-20"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("lang %v: prompt missing %q:\n%s", lang, want, got)
+			}
+		}
+		// One header per snapshot; the headline block only where there is news.
+		if n := strings.Count(got, i18n.T(lang, i18n.KeyTradeSnapshotNewsHeader)); n != 1 {
+			t.Errorf("lang %v: %d news headers, want 1 (only the entry has news)", lang, n)
+		}
+		// The snapshot comes before the task, so the model reads the data first.
+		if strings.Index(got, "2026-06-20") > strings.Index(got, i18n.T(lang, i18n.KeyLessonMarker)) {
+			t.Errorf("lang %v: snapshot after the task section", lang)
+		}
+	}
+
+	t.Run("a snapshot never carries what happened afterwards", func(t *testing.T) {
+		trade := base
+		trade.Snapshots = snaps
+		got := buildTradeReviewPrompt(i18n.EN, trade)
+		if strings.Contains(got, "Price action since the exit") {
+			t.Errorf("without a Followup there is no post-exit block:\n%s", got)
+		}
+	})
+
+	t.Run("the trend label follows the reading", func(t *testing.T) {
+		trade := base
+		trade.Snapshots = snaps
+		got := buildTradeReviewPrompt(i18n.EN, trade)
+		if !strings.Contains(got, i18n.T(i18n.EN, i18n.KeyTradeSnapshotTrendBull)) || !strings.Contains(got, i18n.T(i18n.EN, i18n.KeyTradeSnapshotTrendRange)) {
+			t.Errorf("trend labels missing:\n%s", got)
+		}
+		if strings.Contains(got, i18n.T(i18n.EN, i18n.KeyTradeSnapshotTrendBear)) {
+			t.Errorf("no snapshot was bearish:\n%s", got)
+		}
+	})
+}

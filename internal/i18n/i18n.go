@@ -551,6 +551,15 @@ const (
 	KeyTradeFollowupBlock      Key = "trade_followup_block"
 	KeyTradeFollowupPromptTask Key = "trade_followup_prompt_task"
 
+	// Phase 27 P7b: the fill-day snapshot block of the trade-review prompt.
+	KeyTradeSnapshotHeader     Key = "trade_snapshot_header"
+	KeyTradeSnapshotIndicators Key = "trade_snapshot_indicators"
+	KeyTradeSnapshotTrendBull  Key = "trade_snapshot_trend_bull"
+	KeyTradeSnapshotTrendBear  Key = "trade_snapshot_trend_bear"
+	KeyTradeSnapshotTrendRange Key = "trade_snapshot_trend_range"
+	KeyTradeSnapshotNewsHeader Key = "trade_snapshot_news_header"
+	KeyTradeSnapshotNewsLine   Key = "trade_snapshot_news_line"
+
 	// Phase 20's gap/big-move event log (see
 	// docs/phase-20-price-event-log.md) — buildPriceEventPrompt/
 	// ExplainPriceEvent's prompt keys, RunClosingSnapshot's push/overflow

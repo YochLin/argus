@@ -156,3 +156,18 @@ func TestHindsightAfter(t *testing.T) {
 		t.Errorf("no fill price: %+v", h)
 	}
 }
+
+func TestFillHistoryRange(t *testing.T) {
+	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	// A fill ~250 days ago needs the 100 days before it too, which a 1y window
+	// (365 days) would not reach.
+	if got := FillHistoryRange("2026-01-24", now); got != "2y" {
+		t.Errorf("250-day-old fill: %s", got)
+	}
+	if got := FillHistoryRange("2026-09-01", now); got != "1y" {
+		t.Errorf("recent fill: %s", got)
+	}
+	if got := FillHistoryRange("garbage", now); got != "2y" {
+		t.Errorf("bad date: %s", got)
+	}
+}

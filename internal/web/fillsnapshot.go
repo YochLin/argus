@@ -85,20 +85,10 @@ type fillSnapshotResponse struct {
 	News      []fillNewsResponse `json:"news"`
 }
 
-// fillHistoryRange asks for enough history to cover the fill date plus the
-// warm-up bars before it (~100 calendar days ≈ the 60 bars the readings need).
-func fillHistoryRange(date string, now time.Time) string {
-	t, err := time.Parse("2006-01-02", date)
-	if err != nil {
-		return "2y"
-	}
-	return roundHistoryRange(t.AddDate(0, 0, -100).Format("2006-01-02"), now)
-}
-
 func buildFillSnapshot(database dbReader, history data.HistoryProvider, ticker, date string, price float64, now time.Time) fillSnapshotResponse {
 	resp := fillSnapshotResponse{Ticker: ticker, Date: date, News: []fillNewsResponse{}}
 
-	candles, err := history.GetHistory(ticker, fillHistoryRange(date, now))
+	candles, err := history.GetHistory(ticker, service.FillHistoryRange(date, now))
 	if err != nil {
 		logger.Errorf("web: fill snapshot for %s %s: history unavailable: %v", ticker, date, err)
 	} else if i, ok := service.FillBar(candles, date); ok {

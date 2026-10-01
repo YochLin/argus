@@ -85,6 +85,40 @@ type FillHindsight struct {
 	MaxDownPct        *float64 // lowest low in the next 20 bars
 }
 
+// HistoryRangeSince picks the coarsest chart range value that still comfortably
+// covers "start through now" — GetHistory's window has to reach back far enough
+// for an old closed-out round, which a fixed "1y" can't guarantee. Pure and
+// separately tested so the bucket boundaries are pinned down without a network
+// call.
+func HistoryRangeSince(start string, now time.Time) string {
+	t, err := time.Parse("2006-01-02", start)
+	if err != nil {
+		return "1y"
+	}
+	days := now.Sub(t).Hours() / 24
+	switch {
+	case days <= 300:
+		return "1y"
+	case days <= 650:
+		return "2y"
+	case days <= 1700:
+		return "5y"
+	default:
+		return "max"
+	}
+}
+
+// FillHistoryRange is the range to fetch for a snapshot of a fill on date: it
+// has to cover the fill and ~100 calendar days before it (the 60 bars the
+// readings need), not just "date through now".
+func FillHistoryRange(date string, now time.Time) string {
+	t, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return "2y"
+	}
+	return HistoryRangeSince(t.AddDate(0, 0, -100).Format("2006-01-02"), now)
+}
+
 // FillBar maps a fill date to the candle it traded in: the last bar on or
 // before it. ok is false when there is no such bar, it is more than
 // fillMaxGapDays older than the date, or the history before it is too short to

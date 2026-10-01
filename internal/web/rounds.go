@@ -26,6 +26,9 @@ var (
 	segmentRounds    = service.SegmentRounds
 	roundRealizedPnL = service.RoundRealizedPnL
 	roundBuyShares   = service.RoundBuyShares
+	// roundHistoryRange picks the coarsest chart range covering "start through
+	// now" (service.HistoryRangeSince has the bucket boundaries).
+	roundHistoryRange = service.HistoryRangeSince
 )
 
 // buildRounds assembles /api/rounds: every round in market m, across every
@@ -67,29 +70,6 @@ func buildRounds(database dbReader, m market.MarketID) (roundsResponse, error) {
 		return resp.Rounds[i].Ticker < resp.Rounds[j].Ticker
 	})
 	return resp, nil
-}
-
-// roundHistoryRange picks the coarsest Yahoo chart range value that still
-// comfortably covers "start through now" — GetHistory's window has to reach
-// back far enough for an old closed-out round, which a fixed "1y" (every
-// other caller's window) can't guarantee. Pure and separately tested so the
-// bucket boundaries are pinned down without a network call.
-func roundHistoryRange(start string, now time.Time) string {
-	t, err := time.Parse("2006-01-02", start)
-	if err != nil {
-		return "1y"
-	}
-	days := now.Sub(t).Hours() / 24
-	switch {
-	case days <= 300:
-		return "1y"
-	case days <= 650:
-		return "2y"
-	case days <= 1700:
-		return "5y"
-	default:
-		return "max"
-	}
 }
 
 // buildRoundDetail assembles /api/round-detail: the requested round's daily

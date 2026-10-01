@@ -1026,6 +1026,7 @@ func (b *Bot) buildClosedTradeReview(ticker string, stopPrice float64) (llm.Clos
 		RealizedPnL: realizedPnL,
 		HoldingDays: holdingDays,
 		StopPrice:   stopPrice,
+		Snapshots:   b.reviewSnapshots(ticker, round),
 	}
 
 	if high, low, ok, err := b.db.GetCloseExtremes(ticker, round.StartDate, round.EndDate); err != nil {
