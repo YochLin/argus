@@ -462,6 +462,14 @@ var zhMessages = map[Key]string{
 `,
 	KeyLessonMarker: "教訓:",
 
+	KeyTradeSnapshotHeader:     "\n成交日快照（%s，%s，成交價 $%.2f；成交當日收盤的狀態，供檢視進出場時點，不含之後的走勢）：\n",
+	KeyTradeSnapshotIndicators: "• RSI(14) %.1f（5 日前 %.1f）；MACD 柱 %+.2f（同向 %d 天）；趨勢 %s，收盤距 MA20 %+.1f%%、MA20 5 日斜率 %+.2f%%；成交量為前 20 日均量的 %.2f 倍\n",
+	KeyTradeSnapshotTrendBull:  "多頭（收盤 > MA20 > MA60，MA20 上升）",
+	KeyTradeSnapshotTrendBear:  "空頭（收盤 < MA20 < MA60，MA20 下降）",
+	KeyTradeSnapshotTrendRange: "未成明確趨勢",
+	KeyTradeSnapshotNewsHeader: "• 當日新聞標題：\n",
+	KeyTradeSnapshotNewsLine:   "  - %s（%s）\n",
+
 	KeyTradeFollowupBlock: "\n賣出後走勢（第 %d 個交易日收盤）：賣出均價 $%.2f → 收盤 $%.2f（%+.1f%%），期間最高 $%.2f／最低 $%.2f\n",
 	KeyTradeFollowupPromptTask: `
 請用繁體中文，事後回頭評估這筆賣出，誠實、不粉飾：

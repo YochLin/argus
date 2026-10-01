@@ -31,24 +31,7 @@ const fillNewsTimeout = 5 * time.Minute
 func (b *Bot) captureFillNews(ticker, date string) {
 	defer b.recoverJobPanic("fill news")
 
-	// FilterNewsNearDate passes everything through on an unparseable date, which
-	// would file the latest headlines under a fill they have nothing to do with.
-	if _, err := time.Parse("2006-01-02", date); err != nil || b.provider == nil {
-		return
-	}
-
-	news, err := b.provider.GetNews(ticker, service.EventNewsFetch)
-	if err != nil {
-		logger.Errorf("fill news %s: fetch: %v", ticker, err)
-	}
-	news = (&service.NewsPicker{}).Pick(service.FilterNewsNearDate(news, date), service.EventNewsSlots)
-
-	rows := make([]db.FillNews, len(news))
-	for i, n := range news {
-		rows[i] = db.FillNews{Headline: n.Headline, Source: n.Source, URL: n.URL, PublishedAt: n.PublishedAt}
-	}
-	if err := b.db.SaveFillNews(ticker, date, rows); err != nil {
-		logger.Errorf("fill news %s: save: %v", ticker, err)
+	if !b.storeFillNews(ticker, date) {
 		return
 	}
 
@@ -86,4 +69,34 @@ func (b *Bot) captureFillNews(ticker, date string) {
 			logger.Errorf("fill news %s: label: %v", ticker, err)
 		}
 	}
+}
+
+// storeFillNews is captureFillNews' first half: fetch the headlines around date
+// and keep them, unlabelled. It is idempotent (a headline already stored for
+// that ticker/day is skipped), so a trade review can call it to be sure a
+// same-day fill's news is in before reading it, without waiting for the
+// capture goroutine that is still busy with the LLM. ok is false when there is
+// nothing to do or the save failed.
+func (b *Bot) storeFillNews(ticker, date string) (ok bool) {
+	// FilterNewsNearDate passes everything through on an unparseable date, which
+	// would file the latest headlines under a fill they have nothing to do with.
+	if _, err := time.Parse("2006-01-02", date); err != nil || b.provider == nil {
+		return false
+	}
+
+	news, err := b.provider.GetNews(ticker, service.EventNewsFetch)
+	if err != nil {
+		logger.Errorf("fill news %s: fetch: %v", ticker, err)
+	}
+	news = (&service.NewsPicker{}).Pick(service.FilterNewsNearDate(news, date), service.EventNewsSlots)
+
+	rows := make([]db.FillNews, len(news))
+	for i, n := range news {
+		rows[i] = db.FillNews{Headline: n.Headline, Source: n.Source, URL: n.URL, PublishedAt: n.PublishedAt}
+	}
+	if err := b.db.SaveFillNews(ticker, date, rows); err != nil {
+		logger.Errorf("fill news %s: save: %v", ticker, err)
+		return false
+	}
+	return true
 }

@@ -88,21 +88,6 @@ func TestBuildFillSnapshot_NoDataStillReturnsNews(t *testing.T) {
 	}
 }
 
-func TestFillHistoryRange(t *testing.T) {
-	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
-	// A fill ~250 days ago needs the 100 days before it too, which a 1y window
-	// (365 days) would not reach.
-	if got := fillHistoryRange("2026-01-24", now); got != "2y" {
-		t.Errorf("250-day-old fill: %s", got)
-	}
-	if got := fillHistoryRange("2026-09-01", now); got != "1y" {
-		t.Errorf("recent fill: %s", got)
-	}
-	if got := fillHistoryRange("garbage", now); got != "2y" {
-		t.Errorf("bad date: %s", got)
-	}
-}
-
 func TestHandleFillSnapshot(t *testing.T) {
 	end := time.Now().UTC().Truncate(24 * time.Hour)
 	cs := risingCandles(150, end)

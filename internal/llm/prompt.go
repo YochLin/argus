@@ -302,6 +302,40 @@ type ClosedTrade struct {
 	// block and swaps in the follow-up task section instead of the
 	// standard one.
 	Followup *TradeFollowup
+	// Snapshots is Phase 27 P7b's picture of the stock on the day of the
+	// round's entry and exit fills (see TradeSnapshot) — empty when the
+	// candles or the stored news for those days aren't available. It never
+	// carries anything from after the fill day: what happened since the exit
+	// is Followup's job, and only the follow-up review gets it.
+	Snapshots []TradeSnapshot
+}
+
+// TradeSnapshot is one fill's day, read at that day's close: the four
+// indicator readings the chart page's 成交快照 tab shows (service.SnapshotAt),
+// and the headlines bot.captureFillNews stored. Package-local, same
+// convention as the rest of ClosedTrade; Trend is one of "bull" / "bear" /
+// "range" (service.Trend*). Deliberately not carried: the candle patterns
+// (descriptive only, no backtest — signals.DetectPatterns) and the LLM's own
+// labels on the headlines, because a review's lesson is fed back into the
+// recommendation prompt (PastLessons) and neither may reach it.
+type TradeSnapshot struct {
+	Side           string // "BUY" / "SELL"
+	Date           string
+	Price          float64
+	RSI, RSIPrev5  float64
+	MACDHist       float64
+	MACDDays       int // bars the histogram has kept its sign
+	Trend          string
+	CloseVsMA20Pct float64
+	MA20Slope5dPct float64
+	VolRatio20     float64
+	News           []TradeSnapshotNews
+}
+
+// TradeSnapshotNews is one stored headline.
+type TradeSnapshotNews struct {
+	Source   string
+	Headline string
 }
 
 // TradeFollowup is Phase 26's post-sell follow-up input: how ticker traded
@@ -1003,6 +1037,10 @@ func buildTradeReviewPrompt(lang i18n.Lang, trade ClosedTrade) string {
 		}
 	}
 
+	for _, s := range trade.Snapshots {
+		writeTradeSnapshot(&sb, lang, s)
+	}
+
 	task := i18n.KeyTradeReviewPromptTask
 	if f := trade.Followup; f != nil {
 		fmt.Fprint(&sb, i18n.T(lang, i18n.KeyTradeFollowupBlock, f.TradingDaysAfterExit, f.ExitPrice, f.PriceAfter, f.PctSinceExit, f.HighAfter, f.LowAfter))
@@ -1010,6 +1048,26 @@ func buildTradeReviewPrompt(lang i18n.Lang, trade ClosedTrade) string {
 	}
 	sb.WriteString(i18n.T(lang, task, i18n.T(lang, i18n.KeyLessonMarker)))
 	return sb.String()
+}
+
+// writeTradeSnapshot renders one fill's snapshot block of the review prompt.
+func writeTradeSnapshot(sb *strings.Builder, lang i18n.Lang, s TradeSnapshot) {
+	trend := map[string]i18n.Key{
+		"bull": i18n.KeyTradeSnapshotTrendBull,
+		"bear": i18n.KeyTradeSnapshotTrendBear,
+	}[s.Trend]
+	if trend == "" {
+		trend = i18n.KeyTradeSnapshotTrendRange
+	}
+	fmt.Fprint(sb, i18n.T(lang, i18n.KeyTradeSnapshotHeader, s.Side, s.Date, s.Price))
+	fmt.Fprint(sb, i18n.T(lang, i18n.KeyTradeSnapshotIndicators,
+		s.RSI, s.RSIPrev5, s.MACDHist, s.MACDDays, i18n.T(lang, trend), s.CloseVsMA20Pct, s.MA20Slope5dPct, s.VolRatio20))
+	if len(s.News) > 0 {
+		sb.WriteString(i18n.T(lang, i18n.KeyTradeSnapshotNewsHeader))
+		for _, n := range s.News {
+			fmt.Fprint(sb, i18n.T(lang, i18n.KeyTradeSnapshotNewsLine, n.Headline, n.Source))
+		}
+	}
 }
 
 // tradeEntryPrice returns the share-weighted average BUY price and total
