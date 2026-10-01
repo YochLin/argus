@@ -236,6 +236,10 @@ type chartResponse struct {
 	// Fills is every buy/sell on this ticker, oldest first — the snapshot
 	// tab's picker (Phase 27 P6).
 	Fills []fillResponse `json:"fills"`
+	// Strategies is every strategy signal pushed for this ticker, oldest
+	// first (Phase 27 P5). Empty until the bot has pushed one — there is
+	// nothing to backfill from.
+	Strategies []strategyAlertResponse `json:"strategies"`
 }
 
 // patternResponse is one signals.DetectPatterns hit, dates instead of candle

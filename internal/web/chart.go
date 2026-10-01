@@ -43,6 +43,8 @@ func buildChart(database dbReader, quotes quoteGetter, history data.HistoryProvi
 		Patterns: make([]patternResponse, 0, len(patterns)),
 		Rounds:   []roundSummary{},
 		Fills:    []fillResponse{},
+
+		Strategies: buildStrategyAlerts(database, ticker),
 	}
 	for _, c := range candles {
 		resp.Candles = append(resp.Candles, candleResponse{

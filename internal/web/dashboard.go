@@ -109,6 +109,10 @@ type dbReader interface {
 	// headlines (with links and LLM labels) stored when a fill on that day was
 	// recorded (Phase 27 P7a).
 	FillNewsFor(ticker, fillDate string) ([]db.FillNews, error)
+	// StrategyAlertsFor and GetRecommendationsForTicker back strategies.go —
+	// the chart's strategy markers, each with the LLM's call on it (Phase 27 P5).
+	StrategyAlertsFor(ticker string) ([]db.StrategyAlert, error)
+	GetRecommendationsForTicker(ticker, from, to string) ([]db.Recommendation, error)
 	// ListAssetsWithValue backs assets.go's GET /api/wealth/assets (Phase 9
 	// PR1) — writes go through the separate wealthWriter interface.
 	ListAssetsWithValue(includeArchived bool) ([]db.AssetWithValue, error)

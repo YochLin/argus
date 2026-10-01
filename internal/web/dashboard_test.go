@@ -69,6 +69,9 @@ type fakeDB struct {
 	researchNotes map[string][]db.ResearchNote
 	// fillNews (key "TICKER|date") backs FillNewsFor for fillsnapshot_test.go.
 	fillNews map[string][]db.FillNews
+	// strategyAlerts backs StrategyAlertsFor (strategies_test.go); the verdicts
+	// come from recs through GetRecommendationsForTicker.
+	strategyAlerts []db.StrategyAlert
 	// wealthAssets backs ListAssetsWithValue for assets_test.go (Phase 9 PR1).
 	wealthAssets []db.AssetWithValue
 	// wealthAssetsAsOf backs ListAssetsValueAsOf for wealth_home_test.go —
@@ -170,6 +173,24 @@ func (f *fakeDB) ListLLMRuns(limit int) ([]db.LLMRun, error) {
 func (f *fakeDB) GetLLMRun(id int64) (db.LLMRunDetail, bool, error) {
 	run, ok := f.llmRunByID[id]
 	return run, ok, nil
+}
+func (f *fakeDB) StrategyAlertsFor(ticker string) ([]db.StrategyAlert, error) {
+	var out []db.StrategyAlert
+	for _, a := range f.strategyAlerts {
+		if a.Ticker == ticker {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+func (f *fakeDB) GetRecommendationsForTicker(ticker, from, to string) ([]db.Recommendation, error) {
+	var out []db.Recommendation
+	for _, r := range f.recs {
+		if r.Ticker == ticker && r.Date >= from && r.Date <= to {
+			out = append(out, r)
+		}
+	}
+	return out, nil
 }
 func (f *fakeDB) FillNewsFor(ticker, fillDate string) ([]db.FillNews, error) {
 	return f.fillNews[ticker+"|"+fillDate], nil
