@@ -247,6 +247,12 @@ export interface PatternHit {
   fwd5: number | null;
 }
 
+// Fill is one buy/sell of the viewed ticker, with the round it belongs to
+// (roundStart matches a RoundSummary.start) — the snapshot tab's picker.
+export interface Fill extends Transaction {
+  roundStart: string;
+}
+
 export interface Chart {
   ticker: string;
   candles: Candle[];
@@ -254,6 +260,60 @@ export interface Chart {
   patterns: PatternHit[];
   position: RiskPosition | null;
   rounds: RoundSummary[];
+  fills: Fill[]; // oldest first
+}
+
+// FillSnapshot is /api/fill-snapshot's body (Phase 27 P6): how the stock looked
+// on the day of a fill. Numbers and codes only. snapshot is null when no candle
+// maps to the fill (too old, or too little history before it); news is
+// independent of that. hindsight's moves are plain price changes from the fill
+// price, null where the candles don't reach yet.
+export interface FillSnapshotBody {
+  date: string; // the candle the fill maps to
+  close: number;
+  high: number;
+  low: number;
+  dayChangePct: number;
+  rsi14: number;
+  rsi14Prev5: number;
+  rsiZone: "hot" | "cold" | "mid";
+  macdDif: number;
+  macdDea: number;
+  macdHist: number;
+  macdCrossDays: number;
+  macdWidening: boolean;
+  trend: "bull" | "bear" | "range";
+  closeVsMa20Pct: number;
+  ma20Slope5dPct: number;
+  volRatio20: number;
+  volRatio5v20: number;
+  volState: "up" | "down" | "flat";
+  patterns: { type: string; dir: "bull" | "bear" | "neu" }[];
+}
+
+export interface FillHindsight {
+  fwd5Pct: number | null;
+  fwd20Pct: number | null;
+  maxUpPct: number | null;
+  maxDownPct: number | null;
+}
+
+export interface FillNews {
+  headline: string;
+  source: string;
+  url: string;
+  publishedAt: string; // RFC3339, "" when the source gave none
+  sentiment: "bull" | "bear" | "neutral" | ""; // "" = not labelled yet
+  tag: string; // earn | guide | analyst | sector | macro | flow | other | ""
+  major: boolean;
+}
+
+export interface FillSnapshot {
+  ticker: string;
+  date: string;
+  snapshot: FillSnapshotBody | null;
+  hindsight: FillHindsight | null;
+  news: FillNews[];
 }
 
 // Peers is /api/chart/peers' body (Phase 27 P3): the viewed ticker plus the
@@ -1367,6 +1427,12 @@ export function fetchRoundDetail(ticker: string, start: string): Promise<RoundDe
 
 export function fetchChart(ticker: string): Promise<Chart> {
   return getJSON<Chart>(`/api/chart?ticker=${encodeURIComponent(ticker)}`);
+}
+
+export function fetchFillSnapshot(ticker: string, date: string, price: number): Promise<FillSnapshot> {
+  return getJSON<FillSnapshot>(
+    `/api/fill-snapshot?ticker=${encodeURIComponent(ticker)}&date=${encodeURIComponent(date)}&price=${price}`,
+  );
 }
 
 export function fetchPeers(ticker: string): Promise<Peers> {

@@ -105,6 +105,10 @@ type dbReader interface {
 	// /api/research-notes — the chart page's notebook card history for one
 	// ticker; writes go through the separate researchNotesWriter interface.
 	GetResearchNotesByTicker(ticker string) ([]db.ResearchNote, error)
+	// FillNewsFor backs fillsnapshot.go's GET /api/fill-snapshot — the
+	// headlines (with links and LLM labels) stored when a fill on that day was
+	// recorded (Phase 27 P7a).
+	FillNewsFor(ticker, fillDate string) ([]db.FillNews, error)
 	// ListAssetsWithValue backs assets.go's GET /api/wealth/assets (Phase 9
 	// PR1) — writes go through the separate wealthWriter interface.
 	ListAssetsWithValue(includeArchived bool) ([]db.AssetWithValue, error)

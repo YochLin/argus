@@ -622,6 +622,76 @@ export interface Dictionary {
   roundSpan: string;
   tkTabLvl: string;
   tkTabRound: string;
+  snapTab: string;
+  snapEmpty: string;
+  snapPrevTip: string;
+  snapNextTip: string;
+  snapPickTip: string;
+  snapRound: string;
+  snapFillLine: string;
+  snapDayLine: string;
+  snapProvenance: string;
+  snapBarNote: string;
+  snapNoData: string;
+  snapLoadFail: string;
+  snapAligned: string;
+  snapAgainst: string;
+  snapReadAsBuy: string;
+  snapSellNote: string;
+  indRsi: string;
+  indMacd: string;
+  indTrend: string;
+  indVol: string;
+  rsiHot: string;
+  rsiCold: string;
+  rsiMid: string;
+  rsiSub: string;
+  macdGolden: string;
+  macdDeath: string;
+  macdSub: string;
+  macdWiden: string;
+  macdNarrow: string;
+  trendBullVal: string;
+  trendBearVal: string;
+  trendRangeVal: string;
+  trendBullTag: string;
+  trendBearTag: string;
+  trendRangeTag: string;
+  trendSub: string;
+  volUpTag: string;
+  volDownTag: string;
+  volFlatTag: string;
+  volSub: string;
+  snapPatTitle: string;
+  snapPatNone: string;
+  snapNewsTitle: string;
+  snapNewsNote: string;
+  snapNewsNone: string;
+  newsTag_earn: string;
+  newsTag_guide: string;
+  newsTag_analyst: string;
+  newsTag_sector: string;
+  newsTag_macro: string;
+  newsTag_flow: string;
+  newsTag_other: string;
+  newsSent_bull: string;
+  newsSent_bear: string;
+  newsSent_neutral: string;
+  newsSent_none: string;
+  newsMajor: string;
+  hindTitle: string;
+  hindNote: string;
+  hind5: string;
+  hind20: string;
+  hindBest: string;
+  hindWorst: string;
+  hindPending: string;
+  snapDataTitle: string;
+  snapDataNote: string;
+  snapJsonView: string;
+  snapJsonHide: string;
+  snapCopy: string;
+  snapCopied: string;
   levelsNote: string;
   pctOfRange: string;
   // Phase 9 wealth platform (docs/phase-9-asset-platform.md) — the /w net
@@ -1673,6 +1743,76 @@ const en: Dictionary = {
   roundSpan: "Round",
   tkTabLvl: "Levels",
   tkTabRound: "Rounds",
+  snapTab: "Fills",
+  snapEmpty: "No fills on this ticker yet. Each fill saves the news around it; indicators and candle events are worked out when you open it.",
+  snapPrevTip: "Older fill",
+  snapNextTip: "Newer fill",
+  snapPickTip: "Pick a fill",
+  snapRound: "Round #%s",
+  snapFillLine: "%s sh @ %s",
+  snapDayLine: "Day %s · close %s · H %s · L %s",
+  snapProvenance: "Indicators on that day's close · worked out each time you open it",
+  snapBarNote: "Matched to the %s session",
+  snapNoData: "No candle data for this fill — it is older than the price history available, or there is too little history before it.",
+  snapLoadFail: "Couldn't load the snapshot.",
+  snapAligned: "%s of 4 with the trade",
+  snapAgainst: " · %s against",
+  snapReadAsBuy: "read as a buy",
+  snapSellNote: "A sell gets the numbers only — selling into strength and into weakness can each be right, so nothing is scored as with or against.",
+  indRsi: "RSI(14)",
+  indMacd: "MACD",
+  indTrend: "Trend",
+  indVol: "Volume",
+  rsiHot: "Overbought",
+  rsiCold: "Oversold",
+  rsiMid: "Neutral",
+  rsiSub: "5d ago %s %s",
+  macdGolden: "Bull cross +%sd",
+  macdDeath: "Bear cross +%sd",
+  macdSub: "DIF %s · DEA %s · %s",
+  macdWiden: "hist widening",
+  macdNarrow: "hist narrowing",
+  trendBullVal: "Up",
+  trendBearVal: "Down",
+  trendRangeVal: "Range",
+  trendBullTag: "MA stack up",
+  trendBearTag: "MA stack down",
+  trendRangeTag: "No clean trend",
+  trendSub: "Close vs MA20 %s · MA20 5d slope %s",
+  volUpTag: "Expanding",
+  volDownTag: "Drying up",
+  volFlatTag: "Normal",
+  volSub: "Day / 20d avg · 5d avg / 20d %s",
+  snapPatTitle: "Candle events that day",
+  snapPatNone: "No pattern ended on this bar.",
+  snapNewsTitle: "News around the fill",
+  snapNewsNote: "Headlines saved when the fill was recorded · labels are an LLM's reading of the headline alone, rough and for reference only",
+  snapNewsNone: "No news was saved for this fill — none was found when it was recorded, or it was imported or added after the fact.",
+  newsTag_earn: "Earnings",
+  newsTag_guide: "Guidance",
+  newsTag_analyst: "Analyst",
+  newsTag_sector: "Sector",
+  newsTag_macro: "Macro",
+  newsTag_flow: "Flow",
+  newsTag_other: "Other",
+  newsSent_bull: "Positive",
+  newsSent_bear: "Negative",
+  newsSent_neutral: "Neutral",
+  newsSent_none: "Not labelled",
+  newsMajor: "Major",
+  hindTitle: "What happened next",
+  hindNote: "Known only after the fill · not part of the read above · colour = for / against this decision",
+  hind5: "+5d",
+  hind20: "+20d",
+  hindBest: "Best in 20d",
+  hindWorst: "Worst in 20d",
+  hindPending: "n/a",
+  snapDataTitle: "Snapshot data",
+  snapDataNote: "Indicators and candle events as of the fill day's close, plus the saved news — without what happened afterwards.",
+  snapJsonView: "View",
+  snapJsonHide: "Hide",
+  snapCopy: "Copy",
+  snapCopied: "Copied",
   levelsNote: "● drawn on chart (nearest three each side)",
   pctOfRange: "Range position",
   navWealth: "Net Worth",
@@ -2654,6 +2794,76 @@ const zh: Dictionary = {
   roundSpan: "回合區間",
   tkTabLvl: "支撐壓力",
   tkTabRound: "回合",
+  snapTab: "成交快照",
+  snapEmpty: "此標的還沒有成交紀錄。每筆買賣成交時會記下當天前後的新聞；指標與 K 線事件在開啟時才依當日收盤計算。",
+  snapPrevTip: "較早一筆",
+  snapNextTip: "較新一筆",
+  snapPickTip: "選擇成交",
+  snapRound: "回合 #%s",
+  snapFillLine: "%s 股 @ %s",
+  snapDayLine: "當日 %s · 收 %s · 高 %s · 低 %s",
+  snapProvenance: "指標以成交日收盤計算 · 每次開啟時重算",
+  snapBarNote: "對應 %s 的交易日",
+  snapNoData: "這筆成交沒有可用的 K 線資料（比可取得的價格歷史更早，或之前的歷史不足）。",
+  snapLoadFail: "快照載入失敗。",
+  snapAligned: "4 項中 %s 項順向",
+  snapAgainst: " · %s 項逆向",
+  snapReadAsBuy: "以買進方向判讀",
+  snapSellNote: "賣出只列數值，不判順逆——賣在強勢或弱勢都可能是對的，所以不打分數。",
+  indRsi: "RSI(14)",
+  indMacd: "MACD",
+  indTrend: "趨勢",
+  indVol: "量能",
+  rsiHot: "超買",
+  rsiCold: "超賣",
+  rsiMid: "中性",
+  rsiSub: "5 日前 %s %s",
+  macdGolden: "金叉 +%s 天",
+  macdDeath: "死叉 +%s 天",
+  macdSub: "DIF %s · DEA %s · %s",
+  macdWiden: "柱體放大",
+  macdNarrow: "柱體收斂",
+  trendBullVal: "多頭",
+  trendBearVal: "空頭",
+  trendRangeVal: "盤整",
+  trendBullTag: "多頭排列",
+  trendBearTag: "空頭排列",
+  trendRangeTag: "未成趨勢",
+  trendSub: "收盤距 MA20 %s · MA20 5 日斜率 %s",
+  volUpTag: "量增",
+  volDownTag: "量縮",
+  volFlatTag: "持平",
+  volSub: "當日 / 20 日均量 · 5 日均 / 20 日 %s",
+  snapPatTitle: "當日 K 線事件",
+  snapPatNone: "當天沒有偵測到型態。",
+  snapNewsTitle: "成交當日新聞",
+  snapNewsNote: "標題為成交當下記下 · 標籤是 LLM 只看標題的判讀，僅供參考",
+  snapNewsNone: "這筆成交沒有新聞快照（成交當下沒抓到，或是匯入／事後補登的成交）。",
+  newsTag_earn: "財報",
+  newsTag_guide: "法說",
+  newsTag_analyst: "分析師",
+  newsTag_sector: "產業",
+  newsTag_macro: "總經",
+  newsTag_flow: "資金",
+  newsTag_other: "其他",
+  newsSent_bull: "偏多",
+  newsSent_bear: "偏空",
+  newsSent_neutral: "中性",
+  newsSent_none: "尚未標註",
+  newsMajor: "大事件",
+  hindTitle: "事後表現",
+  hindNote: "成交後才知道 · 不列入上方判讀 · 顏色＝對此筆決策有利／不利",
+  hind5: "+5 日",
+  hind20: "+20 日",
+  hindBest: "20 日內最有利",
+  hindWorst: "20 日內最不利",
+  hindPending: "未滿",
+  snapDataTitle: "快照資料",
+  snapDataNote: "成交日收盤的指標與 K 線事件，加上記下的新聞；不含事後表現。",
+  snapJsonView: "檢視內容",
+  snapJsonHide: "收起",
+  snapCopy: "複製",
+  snapCopied: "已複製",
   levelsNote: "● 表示已畫在圖上（各取最近三檔）",
   pctOfRange: "區間位置",
   navWealth: "淨值總覽",

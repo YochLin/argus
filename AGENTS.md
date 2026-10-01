@@ -364,6 +364,13 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   rather than duplicating it, and has no P&L curve — `daily_snapshots`/`DailyPnL` don't cover option
   market value (no free historical option price source), so this page only ever shows realized P&L on
   closed trades, never a portfolio-value line that would silently omit open option exposure.
+  `fillsnapshot.go`'s `/api/fill-snapshot` (Phase 27 P6) is the chart page's 成交快照 tab: the RSI/MACD/
+  trend/volume readings and candle patterns on the day of a fill, computed per request by
+  `service.SnapshotAt` from candles up to that day only (nothing is stored, so there is nothing to go
+  stale — and no lookahead; `service.HindsightAfter` is a separate function so a caller that mustn't see
+  the future can't pick it up), plus the news `bot.captureFillNews` stored at fill time (`fill_news`).
+  A sell gets the numbers but no with/against verdict on the frontend — the buy-side rules of thumb
+  aren't backtested and say nothing useful about an exit.
   `apiauth.go`/`apiv1.go`/`apiv1_resources.go`/`ws.go` (Phase 24 Stage 4) are the `/api/v1` surface
   aimed at a future mobile app and at scripts — JWT (`JWT_SECRET`) or `X-API-Key` (`API_KEY`) auth, a
   `{success, data, error, timestamp}` envelope on every response, and a `/api/v1/ws` WebSocket fed by

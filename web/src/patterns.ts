@@ -29,8 +29,13 @@ export function patText(dict: Dictionary, type: string): { code: string; name: s
   return { code: d[`patCode_${type}`] ?? type, name: d[`patName_${type}`] ?? type, def: d[`patDef_${type}`] ?? "" };
 }
 
+// A pattern's identity: its type and the bar it ended on.
+export function patKeyOf(type: string, end: string): string {
+  return `${type}:${end}`;
+}
+
 export function patKey(p: PatternHit): string {
-  return `${p.type}:${p.end}`;
+  return patKeyOf(p.type, p.end);
 }
 
 export interface PatternHistory {

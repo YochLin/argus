@@ -215,6 +215,13 @@ function getMockData(urlStr: string): any {
         openRiskPct: 0.72,
         unrealizedPnLPct: 5.26,
       },
+      fills: [
+        { id: 1, date: "2025-01-06", ticker, side: "BUY", shares: 40, price: basePrice * 0.7, fee: 0, realizedPnL: 0, roundStart: "2025-01-06" },
+        { id: 2, date: "2025-02-14", ticker, side: "SELL", shares: 40, price: basePrice * 0.68, fee: 0, realizedPnL: -640, roundStart: "2025-01-06" },
+        { id: 3, date: "2026-02-10", ticker, side: "BUY", shares: 80, price: basePrice * 0.95, fee: 0, realizedPnL: 0, roundStart: "2026-02-10" },
+        { id: 4, date: "2026-05-04", ticker, side: "BUY", shares: 80, price: basePrice * 0.97, fee: 0, realizedPnL: 0, roundStart: "2026-05-04" },
+        { id: 5, date: "2026-06-26", ticker, side: "SELL", shares: 80, price: basePrice * 1.12, fee: 0, realizedPnL: 4820, roundStart: "2026-05-04" },
+      ],
       rounds: [
         {
           ticker,
@@ -251,6 +258,60 @@ function getMockData(urlStr: string): any {
           hasMaeMfe: false,
         },
       ],
+    };
+  }
+  if (path === "/api/fill-snapshot") {
+    const date = parsed.searchParams.get("date") || "2026-05-04";
+    const price = Number(parsed.searchParams.get("price")) || 100;
+    // Older than the mock candles: no bar, but the news path still answers.
+    const old = date < "2026-01-01";
+    const h = [...date].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+    const r = (n: number) => ((h >>> n) % 1000) / 1000;
+    const bull = r(1) > 0.4;
+    return {
+      ticker,
+      date,
+      snapshot: old
+        ? null
+        : {
+            date,
+            close: price,
+            high: price * 1.012,
+            low: price * 0.988,
+            dayChangePct: (r(2) - 0.4) * 4,
+            rsi14: 30 + r(3) * 50,
+            rsi14Prev5: 30 + r(4) * 50,
+            rsiZone: r(3) > 0.7 ? "hot" : r(3) < 0.15 ? "cold" : "mid",
+            macdDif: bull ? 1.2 : -0.8,
+            macdDea: bull ? 0.7 : -0.3,
+            macdHist: bull ? 0.5 : -0.5,
+            macdCrossDays: 1 + Math.floor(r(5) * 70),
+            macdWidening: r(6) > 0.5,
+            trend: bull ? "bull" : r(7) > 0.5 ? "bear" : "range",
+            closeVsMa20Pct: bull ? 3.1 : -2.4,
+            ma20Slope5dPct: bull ? 0.6 : -0.4,
+            volRatio20: 0.5 + r(8) * 2,
+            volRatio5v20: 0.8 + r(9) * 0.6,
+            volState: r(8) > 0.6 ? "up" : r(8) < 0.2 ? "down" : "flat",
+            patterns: bull ? [{ type: "bullEngulf", dir: "bull" }, { type: "volBreak", dir: "bull" }] : [],
+          },
+      hindsight: old
+        ? null
+        : {
+            fwd5Pct: bull ? 3.2 : -2.1,
+            fwd20Pct: date > "2026-06-01" ? null : bull ? 7.8 : -5.4,
+            maxUpPct: date > "2026-06-01" ? 4.1 : 11.2,
+            maxDownPct: date > "2026-06-01" ? -1.2 : -3.6,
+          },
+      news:
+        date === "2026-02-10"
+          ? []
+          : [
+              { headline: ticker + " reports quarterly revenue +24% YoY, gross margin 51%", source: "Reuters", url: "https://example.com/a", publishedAt: date + "T00:30:00Z", sentiment: "bull", tag: "earn", major: true },
+              { headline: "Morgan Stanley lifts target price on " + ticker + "; a long headline to check wrapping in the narrow rail column", source: "Bloomberg", url: "https://example.com/b", publishedAt: date + "T02:10:00Z", sentiment: "bull", tag: "analyst", major: false },
+              { headline: "Spot pricing slips for a second week", source: "WSJ", url: "javascript:void(0)", publishedAt: date + "T05:45:00Z", sentiment: "bear", tag: "sector", major: false },
+              { headline: "Not labelled yet (the LLM was down)", source: "Wire", url: "https://example.com/d", publishedAt: "", sentiment: "", tag: "", major: false },
+            ],
     };
   }
   if (path === "/api/round-detail") {
