@@ -1114,19 +1114,19 @@ export function ChartView({
               </button>
               <button
                 type="button"
-                className={`tk-tab${tab === "snap" ? " active" : ""}`}
-                onClick={() => setRailTab("snap")}
-              >
-                {dict.snapTab}
-                <span className="tk-tab-count">{fills.length}</span>
-              </button>
-              <button
-                type="button"
                 className={`tk-tab${tab === "round" ? " active" : ""}`}
                 onClick={() => setRailTab("round")}
               >
                 {dict.tkTabRound}
                 <span className="tk-tab-count">{chart.rounds.length}</span>
+              </button>
+              <button
+                type="button"
+                className={`tk-tab${tab === "snap" ? " active" : ""}`}
+                onClick={() => setRailTab("snap")}
+              >
+                {dict.snapTab}
+                <span className="tk-tab-count">{fills.length}</span>
               </button>
             </div>
 
@@ -1505,7 +1505,7 @@ export function ChartView({
                 </span>
               )}
               <span className="pv-legend">
-                <span className="pv-legend-title">{dict.patTitle}</span>
+                <span className="pv-legend-title">{dict.tkTabPat}</span>
                 {(["bull", "bear", "neu"] as const).map((d) => (
                   <span key={d} className="pv-legend-item">
                     <span className="pat-leg-dot" style={{ background: PAT_COLORS[d] }} />
@@ -1513,12 +1513,12 @@ export function ChartView({
                   </span>
                 ))}
                 <span className="pv-legend-item">
-                  <span className="pat-leg-gap" />
-                  {dict.patLegGap}
-                </span>
-                <span className="pv-legend-item">
                   <span className="pat-leg-strat" />
                   {dict.stratLeg}
+                </span>
+                <span className="pv-legend-item">
+                  <span className="pat-leg-gap" />
+                  {dict.patLegGap}
                 </span>
               </span>
               <span className="pv-readout" ref={readoutRef} />
