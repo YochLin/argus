@@ -54,7 +54,10 @@ SCREENS = ["post_gap_drift", "post_gap_drift_t1", "post_gap_drift_confirmed",
            # cmd/strategyscan/main.go's entryConfirmDaysFlag/confirmableStrategies).
            "squeeze_breakout_confirm", "box_bottom_confirm", "trend_breakout_confirm", "trend_pullback_confirm",
            "insider_cluster_buy",  # Phase 25 §8.2
-           "ema10_cross", "ema10_cross_up"]
+           "ema10_cross", "ema10_cross_up",
+           # 2026-09-19 request: KD entries above the MA100 (see
+           # signals.CheckKDJAboveMA100Exact / CheckKDJPullback50Exact).
+           "kdj_oversold_ma100", "kdj_pullback50_ma100"]
 
 
 def load_screens(path):
