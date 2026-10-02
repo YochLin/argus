@@ -171,3 +171,39 @@ func TestFillHistoryRange(t *testing.T) {
 		t.Errorf("bad date: %s", got)
 	}
 }
+
+func TestBarForming(t *testing.T) {
+	cs := fillCandles(100, rising)
+	last := len(cs) - 1
+	day := cs[last].Date // 2026-04-10, a Friday; fillCandles uses UTC midnights
+	at := func(h, m int) time.Time { return time.Date(day.Year(), day.Month(), day.Day(), h, m, 0, 0, time.UTC) }
+
+	// US: forming until 21:00 UTC on the bar's own date.
+	if !BarForming(cs, last, "AAPL", at(15, 0)) {
+		t.Error("US bar at midday must be forming")
+	}
+	if !BarForming(cs, last, "AAPL", at(20, 30)) {
+		t.Error("US bar just after a summer close is still held back (21:00 UTC covers winter too)")
+	}
+	if BarForming(cs, last, "AAPL", at(21, 0)) {
+		t.Error("US bar is final from 21:00 UTC")
+	}
+	// TW: closes 13:30 CST = 05:30 UTC.
+	if !BarForming(cs, last, "2330", at(5, 29)) {
+		t.Error("TW bar before 13:30 CST must be forming")
+	}
+	if BarForming(cs, last, "2330", at(5, 30)) {
+		t.Error("TW bar is final from 13:30 CST")
+	}
+	// A bar with a later one after it is finished whatever the clock says; so is
+	// one from a past day.
+	if BarForming(cs, last-1, "AAPL", at(0, 0)) {
+		t.Error("only the last bar can still be forming")
+	}
+	if BarForming(cs, last, "AAPL", at(0, 0).AddDate(0, 0, 3)) {
+		t.Error("a past day's bar is final")
+	}
+	if BarForming(cs, -1, "AAPL", at(0, 0)) || BarForming(nil, 0, "AAPL", at(0, 0)) {
+		t.Error("an index outside the candles is not a forming bar")
+	}
+}

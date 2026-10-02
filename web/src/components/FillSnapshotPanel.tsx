@@ -99,9 +99,11 @@ function cards(dict: Dictionary, s: FillSnapshotBody): Card[] {
     {
       id: "vol",
       label: dict.indVol,
-      value: `${s.volRatio20.toFixed(2)}×`,
-      tag: vol,
-      sub: fill(dict.volSub, `${s.volRatio5v20.toFixed(2)}×`),
+      // A session still running has traded only part of its volume, so the ratio
+      // would read as a dried-up market: say so instead of showing it.
+      value: s.provisional ? "—" : `${s.volRatio20.toFixed(2)}×`,
+      tag: s.provisional ? dict.snapIntradayTag : vol,
+      sub: s.provisional ? dict.snapVolPending : fill(dict.volSub, `${s.volRatio5v20.toFixed(2)}×`),
       gauge: null,
     },
   ];
@@ -242,7 +244,7 @@ export function FillSnapshotPanel({ dict, ticker, rows, current, onPick, currenc
       {snap && (
         <span className="snap-dayline">
           {fill(
-            dict.snapDayLine,
+            snap.provisional ? dict.snapDayLineLive : dict.snapDayLine,
             spct(snap.dayChangePct, 2),
             snap.close.toFixed(2),
             snap.high.toFixed(2),
@@ -252,7 +254,7 @@ export function FillSnapshotPanel({ dict, ticker, rows, current, onPick, currenc
       )}
       <span className="snap-prov">
         <span className="snap-prov-dot" />
-        {dict.snapProvenance}
+        {snap?.provisional ? dict.snapProvenanceLive : dict.snapProvenance}
         {snap && snap.date !== f.date && ` · ${fill(dict.snapBarNote, snap.date)}`}
       </span>
     </div>

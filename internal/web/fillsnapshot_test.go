@@ -40,6 +40,9 @@ func TestBuildFillSnapshot(t *testing.T) {
 	if got.Snapshot == nil || got.Snapshot.Date != fillDay || got.Snapshot.Close != 200 {
 		t.Fatalf("snapshot = %+v", got.Snapshot)
 	}
+	if got.Snapshot.Provisional {
+		t.Error("a bar with later bars after it is finished, not provisional")
+	}
 	if got.Snapshot.Trend != "bull" || got.Snapshot.Patterns == nil {
 		t.Errorf("trend %q, patterns %v (must be [] not null)", got.Snapshot.Trend, got.Snapshot.Patterns)
 	}
@@ -64,6 +67,24 @@ func TestBuildFillSnapshot(t *testing.T) {
 	// The fill day is the one asked for, whatever bar it landed on.
 	if got.Date != fillDay || got.Ticker != "AAPL" {
 		t.Errorf("echo = %q %q", got.Ticker, got.Date)
+	}
+}
+
+// A fill on the newest bar while its session is still running: the volume it
+// shows is a partial day, so the response must say so.
+func TestBuildFillSnapshot_Provisional(t *testing.T) {
+	end := time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC)
+	cs := risingCandles(150, end)
+	last := cs[len(cs)-1].Date.Format("2006-01-02")
+	hist := &fakeHistory{candles: map[string][]data.Candle{"AAPL": cs}}
+
+	midday := time.Date(2026, 6, 30, 15, 0, 0, 0, time.UTC)
+	if got := buildFillSnapshot(&fakeDB{}, hist, "AAPL", last, 200, midday); got.Snapshot == nil || !got.Snapshot.Provisional {
+		t.Errorf("newest US bar mid-session must be provisional: %+v", got.Snapshot)
+	}
+	after := time.Date(2026, 6, 30, 22, 0, 0, 0, time.UTC)
+	if got := buildFillSnapshot(&fakeDB{}, hist, "AAPL", last, 200, after); got.Snapshot == nil || got.Snapshot.Provisional {
+		t.Errorf("once the session is over it is final: %+v", got.Snapshot)
 	}
 }
 

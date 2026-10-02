@@ -804,3 +804,52 @@ func TestBuildTradeReviewPromptSnapshots(t *testing.T) {
 		}
 	})
 }
+
+// A fill made while its session was still running has a part-day volume: the
+// prompt must say the snapshot is of that moment and leave the ratio out.
+func TestWriteTradeSnapshotIntraday(t *testing.T) {
+	snap := TradeSnapshot{Side: "SELL", Date: "2026-06-20", Price: 180, RSI: 45, RSIPrev5: 50, Trend: "range", VolRatio20: 0.24}
+	for _, lang := range []i18n.Lang{i18n.EN, i18n.ZH} {
+		var final, live strings.Builder
+		writeTradeSnapshot(&final, lang, snap)
+		snap.Intraday = true
+		writeTradeSnapshot(&live, lang, snap)
+		snap.Intraday = false
+
+		if !strings.Contains(final.String(), "0.24") {
+			t.Errorf("lang %v: a finished bar keeps its volume ratio:\n%s", lang, final.String())
+		}
+		if strings.Contains(live.String(), "0.24") {
+			t.Errorf("lang %v: an intraday bar must not show a part-day volume ratio:\n%s", lang, live.String())
+		}
+		if !strings.Contains(live.String(), "45.0") || !strings.Contains(live.String(), "2026-06-20") {
+			t.Errorf("lang %v: the price-based readings stay:\n%s", lang, live.String())
+		}
+		if strings.Contains(live.String(), i18n.T(lang, i18n.KeyTradeSnapshotHeader, "SELL", "2026-06-20", 180.0)) {
+			t.Errorf("lang %v: the intraday block must not claim to be the close", lang)
+		}
+	}
+}
+
+// The lesson instruction tells the model not to turn one trade's indicator
+// readings into numeric thresholds (a review's lesson is fed back into every
+// recommendation prompt), in both reviews that carry snapshots, and the '%'
+// in its example must survive formatting.
+func TestReviewTaskForbidsThresholdLessons(t *testing.T) {
+	trade := ClosedTrade{Ticker: "AAPL", Legs: []TradeLeg{{Side: "BUY", Shares: 1, Price: 1, Date: "2026-06-01"}, {Side: "SELL", Shares: 1, Price: 2, Date: "2026-06-20"}}}
+	for _, lang := range []i18n.Lang{i18n.EN, i18n.ZH} {
+		atClose := buildTradeReviewPrompt(lang, trade)
+		followup := trade
+		followup.Followup = &TradeFollowup{TradingDaysAfterExit: 5}
+		later := buildTradeReviewPrompt(lang, followup)
+		for name, got := range map[string]string{"at close": atClose, "follow-up": later} {
+			if strings.Contains(got, "%%") || strings.Contains(got, "%!") {
+				t.Errorf("lang %v %s: unformatted percent in the prompt:\n%s", lang, name, got)
+			}
+		}
+		want := map[i18n.Lang]string{i18n.EN: "N% above the MA20", i18n.ZH: "乖離幾 %"}[lang]
+		if !strings.Contains(atClose, want) {
+			t.Errorf("lang %v: at-close task lost the threshold warning (want %q)", lang, want)
+		}
+	}
+}

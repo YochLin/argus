@@ -309,6 +309,7 @@ function getMockData(urlStr: string): any {
             volRatio5v20: 0.8 + r(9) * 0.6,
             volState: r(8) > 0.6 ? "up" : r(8) < 0.2 ? "down" : "flat",
             patterns: bull ? [{ type: "bullEngulf", dir: "bull" }, { type: "volBreak", dir: "bull" }] : [],
+            provisional: date === "2026-05-04", // one fill the page must treat as a session still running
           },
       hindsight: old
         ? null

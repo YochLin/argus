@@ -329,7 +329,11 @@ type TradeSnapshot struct {
 	CloseVsMA20Pct float64
 	MA20Slope5dPct float64
 	VolRatio20     float64
-	News           []TradeSnapshotNews
+	// Intraday marks a fill whose session was still running (service.BarForming):
+	// the readings are of the latest price, and VolRatio20 is a part-day volume
+	// that must not be shown — writeTradeSnapshot leaves it out.
+	Intraday bool
+	News     []TradeSnapshotNews
 }
 
 // TradeSnapshotNews is one stored headline.
@@ -1059,9 +1063,16 @@ func writeTradeSnapshot(sb *strings.Builder, lang i18n.Lang, s TradeSnapshot) {
 	if trend == "" {
 		trend = i18n.KeyTradeSnapshotTrendRange
 	}
-	fmt.Fprint(sb, i18n.T(lang, i18n.KeyTradeSnapshotHeader, s.Side, s.Date, s.Price))
+	header := i18n.KeyTradeSnapshotHeader
+	if s.Intraday {
+		header = i18n.KeyTradeSnapshotHeaderIntraday
+	}
+	fmt.Fprint(sb, i18n.T(lang, header, s.Side, s.Date, s.Price))
 	fmt.Fprint(sb, i18n.T(lang, i18n.KeyTradeSnapshotIndicators,
-		s.RSI, s.RSIPrev5, s.MACDHist, s.MACDDays, i18n.T(lang, trend), s.CloseVsMA20Pct, s.MA20Slope5dPct, s.VolRatio20))
+		s.RSI, s.RSIPrev5, s.MACDHist, s.MACDDays, i18n.T(lang, trend), s.CloseVsMA20Pct, s.MA20Slope5dPct))
+	if !s.Intraday {
+		fmt.Fprint(sb, i18n.T(lang, i18n.KeyTradeSnapshotVolume, s.VolRatio20))
+	}
 	if len(s.News) > 0 {
 		sb.WriteString(i18n.T(lang, i18n.KeyTradeSnapshotNewsHeader))
 		for _, n := range s.News {
