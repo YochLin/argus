@@ -87,8 +87,17 @@ func (b *Bot) storeFillNews(ticker, date string) (ok bool) {
 	news, err := b.provider.GetNews(ticker, service.EventNewsFetch)
 	if err != nil {
 		logger.Errorf("fill news %s: fetch: %v", ticker, err)
+	} else if len(news) == 0 {
+		// Yahoo's search sometimes answers an empty list with no error; without
+		// this line a fill with no stored headlines can't be told from one that
+		// had none to find.
+		logger.Warnf("fill news %s %s: provider returned no headlines", ticker, date)
 	}
+	fetched := len(news)
 	news = (&service.NewsPicker{}).Pick(service.FilterNewsNearDate(news, date), service.EventNewsSlots)
+	if fetched > 0 && len(news) == 0 {
+		logger.Infof("fill news %s %s: %d headlines fetched, none within the date window", ticker, date, fetched)
+	}
 
 	rows := make([]db.FillNews, len(news))
 	for i, n := range news {

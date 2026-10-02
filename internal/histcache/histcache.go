@@ -330,6 +330,12 @@ func (c *Cache) read(ticker string, from time.Time) ([]data.Candle, error) {
 			return nil, fmt.Errorf("%w: %v", errStore, err)
 		}
 		b.Date = time.Unix(ts, 0)
+		// Rows stored before data.Yahoo stopped returning filler bars are
+		// still in the file, and a tail refresh never deletes a day it no
+		// longer returns.
+		if b.IsFiller() {
+			continue
+		}
 		out = append(out, b)
 	}
 	if err := rows.Err(); err != nil {

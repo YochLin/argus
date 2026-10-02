@@ -284,9 +284,11 @@ func (y *Yahoo) getHistory(ticker, rangeParam string) ([]Candle, error) {
 	}
 
 	// Yahoo leaves a null (decoded as 0) hole for days without a trade
-	// (e.g. halts); drop them rather than feeding a false price into
-	// RSI/MACD/ATR. The other fields stay aligned by being read at the same
-	// index of the same day.
+	// (e.g. halts) and, for a market-closed weekday, sometimes a flat
+	// zero-volume bar at the previous close instead (2330 on 2026-07-10);
+	// drop both rather than feeding a false price into RSI/MACD/ATR or a
+	// session that never happened into the chart. The other fields stay
+	// aligned by being read at the same index of the same day.
 	timestamps := result.Chart.Result[0].Timestamp
 	quote := result.Chart.Result[0].Indicators.Quote[0]
 	var candles []Candle
@@ -309,6 +311,9 @@ func (y *Yahoo) getHistory(ticker, rangeParam string) ([]Candle, error) {
 		}
 		if i < len(quote.Volume) {
 			candle.Volume = quote.Volume[i]
+		}
+		if candle.IsFiller() {
+			continue
 		}
 		candles = append(candles, candle)
 	}

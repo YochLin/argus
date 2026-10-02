@@ -47,6 +47,15 @@ type Candle struct {
 	Volume                 int64
 }
 
+// IsFiller reports a bar that no trade made: zero volume with open, high, low
+// and close all equal. Yahoo fills a market-closed weekday (a typhoon day, an
+// exchange holiday) with the previous close in exactly this shape; kept, it
+// shows up as a session that did not happen — a pattern on it, a "gap" on the
+// day after.
+func (c Candle) IsFiller() bool {
+	return c.Volume == 0 && c.Open == c.High && c.High == c.Low && c.Low == c.Close
+}
+
 // Closes/Highs/Lows/Volumes extract one field's series from candles (oldest
 // first, same order), for indicator functions (signals.RSI/MACD/MA/ATR/
 // VolumeRatio) that take plain slices rather than candles.
