@@ -223,6 +223,8 @@ export interface Dictionary {
   patTitle: string;
   pvChip: string;
   pvChipTip: string;
+  maChip: string;
+  maChipTip: string;
   pvLegend: string;
   pvUpVu: string;
   pvUpVd: string;
@@ -1406,6 +1408,8 @@ const en: Dictionary = {
   patTitle: "PATTERNS",
   pvChip: "Price · volume",
   pvChipTip: "Colours every volume bar by price and volume direction",
+  maChip: "MA",
+  maChipTip: "Draws the 5 / 20 / 60-day simple moving averages of the close",
   pvLegend: "Volume",
   pvUpVu: "Price up · vol up",
   pvUpVd: "Price up · vol down",
@@ -2493,6 +2497,8 @@ const zh: Dictionary = {
   patTitle: "K 線型態",
   pvChip: "量價",
   pvChipTip: "每根量柱依「價漲跌 × 量增縮」著色",
+  maChip: "均線",
+  maChipTip: "畫出收盤價的 5／20／60 日簡單移動平均線",
   pvLegend: "量柱",
   pvUpVu: "價漲量增",
   pvUpVd: "價漲量縮",

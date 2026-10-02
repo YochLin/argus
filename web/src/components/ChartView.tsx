@@ -38,6 +38,7 @@ import { GapBands, type GapBand } from "../gapBands";
 import { defaultFill, fillRows } from "../fillSnapshot";
 import { DEFAULT_PAT_ON, PAT_CATS, PAT_COLORS, patKey, patText, visiblePatterns, type PatOn } from "../patterns";
 import { STRAT_COLOR, stratKey, stratText } from "../strategies";
+import { MA_COLORS, MA_PERIODS, loadMaOn, saveMaOn, sma } from "../ma";
 import { PatternPanel } from "./PatternPanel";
 import { FillSnapshotPanel } from "./FillSnapshotPanel";
 import { TradesTable } from "./TradesTable";
@@ -263,6 +264,7 @@ export function ChartView({
   const [wide, setWide] = useState(false);
   // The design's "量價" chip: colour volume bars by price × volume direction.
   const [pvOn, setPvOn] = useState(true);
+  const [maOn, setMaOn] = useState(loadMaOn);
   const [patOn, setPatOn] = useState<PatOn>(DEFAULT_PAT_ON);
   const [stratOn, setStratOn] = useState(true);
   const [patHigh, setPatHigh] = useState(true);
@@ -289,6 +291,7 @@ export function ChartView({
   const roundBgRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const patShadeRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const gapsRef = useRef<GapBands | null>(null);
+  const maRef = useRef<ISeriesApi<"Line">[]>([]);
   const priceLinesRef = useRef<IPriceLine[]>([]);
   const wrapObserverRef = useRef<ResizeObserver | null>(null);
   // The crosshair readout is written straight to the DOM (a React state per
@@ -467,6 +470,7 @@ export function ChartView({
       chartRef.current = null;
       seriesRef.current = null;
       volumeSeriesRef.current = null;
+      maRef.current = [];
       roundBgRef.current = null;
       patShadeRef.current = null;
       gapsRef.current = null;
@@ -519,6 +523,17 @@ export function ChartView({
       scaleMargins: { top: 0.8, bottom: 0 },
       visible: false,
     });
+
+    // After the candles, so the lines paint over them; filled by the 均線 effect.
+    maRef.current = MA_PERIODS.map((n) =>
+      c.addLineSeries({
+        color: MA_COLORS[n],
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      }),
+    );
 
     const gaps = new GapBands();
     series.attachPrimitive(gaps);
@@ -721,6 +736,15 @@ export function ChartView({
       }),
     );
   }, [chart, pvOn]);
+
+  // Moving averages, in their own effect like the volume bars so the chip
+  // doesn't reset the zoom.
+  useEffect(() => {
+    if (!chart) return;
+    MA_PERIODS.forEach((n, i) => {
+      maRef.current[i]?.setData(maOn ? sma(chart.candles, n).map((p) => ({ time: p.time as Time, value: p.value })) : []);
+    });
+  }, [chart, maOn]);
 
   const pvLabels: PvLabels = useMemo(
     () => ({
@@ -1459,6 +1483,18 @@ export function ChartView({
             </button>
             <button
               type="button"
+              className={`round-chip${maOn ? " active" : ""}`}
+              title={dict.maChipTip}
+              onClick={() => {
+                setMaOn(!maOn);
+                saveMaOn(!maOn);
+              }}
+            >
+              <span className="ma-dot" />
+              {dict.maChip}
+            </button>
+            <button
+              type="button"
               className={`round-chip${stratOn ? " active" : ""}`}
               title={dict.stratChipTip}
               onClick={() => setStratOn((v) => !v)}
@@ -1500,6 +1536,17 @@ export function ChartView({
                     <span key={k} className="pv-legend-item">
                       <span className="pv-swatch" style={{ background: PV_COLORS[k] }} />
                       {pvLabels.states[k]}
+                    </span>
+                  ))}
+                </span>
+              )}
+              {maOn && (
+                <span className="pv-legend">
+                  <span className="pv-legend-title">{dict.maChip}</span>
+                  {MA_PERIODS.map((n) => (
+                    <span key={n} className="pv-legend-item">
+                      <span className="ma-leg-line" style={{ background: MA_COLORS[n] }} />
+                      {n}
                     </span>
                   ))}
                 </span>

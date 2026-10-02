@@ -4111,6 +4111,26 @@ th {
   opacity: 0.4;
 }
 
+/* 均線 chip (the three line colours as one dot) and its legend swatch. */
+.ma-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: conic-gradient(#fbbf24 0 33%, #a78bfa 0 66%, #f472b6 0);
+}
+
+.round-chip:not(.active) .ma-dot {
+  opacity: 0.4;
+}
+
+.ma-leg-line {
+  width: 12px;
+  height: 2px;
+  flex-shrink: 0;
+  border-radius: 1px;
+}
+
 /* Pattern chips (Phase 27 P4b): a colour dot per category, dimmed when off. */
 .pat-dot {
   width: 7px;
