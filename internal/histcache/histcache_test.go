@@ -281,3 +281,27 @@ func TestRangeStart(t *testing.T) {
 		}
 	}
 }
+
+// A filler bar stored before data.Yahoo stopped returning them must not come
+// back out: a tail refresh only upserts the days it still returns, so nothing
+// else would ever remove it.
+func TestReadDropsStoredFillerBars(t *testing.T) {
+	c, _, _ := setup(t)
+	if _, err := c.GetHistory("AAPL", "1y"); err != nil {
+		t.Fatal(err)
+	}
+	d := day(2026, 6, 10)
+	if _, err := c.db.Exec(`UPDATE candles SET open = 100, high = 100, low = 100, close = 100, volume = 0 WHERE ticker = 'AAPL' AND date = ?`, d.Format(dateLayout)); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := c.GetHistory("AAPL", "1y")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range got {
+		if b.Date.UTC().Format(dateLayout) == d.Format(dateLayout) {
+			t.Fatalf("the filler bar for %s was served: %+v", d.Format(dateLayout), b)
+		}
+	}
+}

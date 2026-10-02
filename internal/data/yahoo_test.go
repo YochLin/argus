@@ -160,3 +160,30 @@ func TestIsUSEquitySymbol(t *testing.T) {
 		}
 	}
 }
+
+// Yahoo fills a market-closed weekday with a flat zero-volume bar at the
+// previous close (2330 on 2026-07-10, live-verified); GetHistory must drop it,
+// but keep a flat bar that did trade and a zero-volume one that moved.
+func TestYahooGetHistory_DropsFillerBars(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"chart":{"result":[{"timestamp":[1,2,3,4],"indicators":{"quote":[{`+
+			`"open":[10,10,10,10],"high":[11,10,10,12],"low":[9,10,10,9],"close":[10,10,10,11],"volume":[500,0,40,0]}]}}]}}`)
+	}))
+	defer srv.Close()
+
+	y := NewYahoo()
+	y.chartBaseURL = srv.URL
+
+	got, err := y.GetHistory("2330", "3mo")
+	if err != nil {
+		t.Fatalf("GetHistory: %v", err)
+	}
+	var vols []int64
+	for _, c := range got {
+		vols = append(vols, c.Volume)
+	}
+	if len(vols) != 3 || vols[0] != 500 || vols[1] != 40 || vols[2] != 0 {
+		t.Errorf("volumes = %v, want [500 40 0]: only the flat zero-volume bar (index 1) is dropped", vols)
+	}
+}

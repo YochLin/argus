@@ -1,8 +1,11 @@
 package bot
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -11,6 +14,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/i18n"
 	"argus/internal/llm"
+	"argus/internal/logger"
 )
 
 type fillNewsProvider struct{ news []data.NewsItem }
@@ -103,5 +107,44 @@ func TestCaptureFillNews(t *testing.T) {
 	}
 	if r, _ := d.FillNewsFor("NVDA", ""); len(r) != 0 {
 		t.Errorf("empty date got news: %+v", r)
+	}
+}
+
+// An empty news result leaves nothing stored, so the log is the only way to
+// tell "the provider returned nothing" (Yahoo does that now and then) from
+// "headlines came back but none was near the fill".
+func TestStoreFillNewsLogsEmptyResult(t *testing.T) {
+	d, err := db.New(t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+
+	var buf bytes.Buffer
+	prev := slog.Default()
+	logger.Configure(&buf, slog.LevelInfo)
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	cst := time.FixedZone("CST", 8*3600)
+	fill := time.Date(2026, 9, 30, 10, 0, 0, 0, cst)
+	date := fill.Format("2006-01-02")
+
+	(&Bot{db: d, provider: fillNewsProvider{}}).storeFillNews("AAPL", date)
+	if !strings.Contains(buf.String(), "provider returned no headlines") {
+		t.Errorf("empty fetch not logged: %q", buf.String())
+	}
+
+	buf.Reset()
+	old := fillNewsProvider{news: []data.NewsItem{{Headline: "Old story", PublishedAt: fill.AddDate(0, -1, 0)}}}
+	(&Bot{db: d, provider: old}).storeFillNews("AAPL", date)
+	if !strings.Contains(buf.String(), "none within the date window") || strings.Contains(buf.String(), "provider returned no headlines") {
+		t.Errorf("filtered-out fetch logged wrong: %q", buf.String())
+	}
+
+	buf.Reset()
+	fresh := fillNewsProvider{news: []data.NewsItem{{Headline: "Today", PublishedAt: fill}}}
+	(&Bot{db: d, provider: fresh}).storeFillNews("AAPL", date)
+	if buf.Len() != 0 {
+		t.Errorf("a normal capture should log nothing, got %q", buf.String())
 	}
 }

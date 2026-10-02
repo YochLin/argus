@@ -81,6 +81,9 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   silently ignores `interval=1d` for `range=max` and returns quarterly bars instead (live-verified:
   AAPL "max" comes back as 168 bars, matching "3mo"), which would otherwise corrupt anything computed
   off Yahoo history at that range (e.g. `/recs`/Distributions' h=1 return, MAE/MFE) without erroring.
+  It also drops `Candle.IsFiller` bars — zero volume with open=high=low=close — which Yahoo returns for
+  some market-closed weekdays (live-verified: 2330 on 2026-07-10); kept, one shows up as a session that
+  did not happen, with a pattern on it and a "gap" on the day after.
   `sec.go`'s `FundamentalHistoryProvider` (US-only, Phase 23 PR6) wraps SEC EDGAR's free, keyless XBRL
   `companyfacts` API for valuation percentile (self-relative P/E, US EPS × price since Yahoo's free-tier
   fundamentals-timeseries caps out at 4 years) and cash-flow quality (OCF/NetIncome, same fiscal year) —
@@ -179,7 +182,8 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   broken store falls back to the provider. **Not a backtest source**: it only holds tickers somebody has
   looked at, i.e. today's survivors — TW backtests stay on Sinopac `daily_quotes` (point-in-time, see
   `internal/sinopac`). Ranges it can't answer from ten years of daily bars (`5d`, `20y`, ...) pass
-  straight through.
+  straight through. `read` also skips filler bars, because rows stored before `data.Yahoo` filtered
+  them are still in the file and a tail refresh never deletes a day it no longer returns.
 
 - `internal/i18n` — every user/LLM-facing string, split into `zh.go` (default) and `en.go`, keyed by
   `Key` constants in `i18n.go`. `T(lang, key, args...)` does lookup + `fmt.Sprintf`; `TestTablesMatch`

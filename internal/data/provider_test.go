@@ -110,3 +110,21 @@ func TestMultiGetMarketMovers(t *testing.T) {
 		t.Errorf("GetMarketMovers() = %v, want fallback's tickers", tickers)
 	}
 }
+
+func TestCandleIsFiller(t *testing.T) {
+	cases := []struct {
+		name string
+		c    Candle
+		want bool
+	}{
+		{"flat, no volume", Candle{Open: 10, High: 10, Low: 10, Close: 10}, true},
+		{"flat but traded", Candle{Open: 10, High: 10, Low: 10, Close: 10, Volume: 1}, false},
+		{"no volume but moved", Candle{Open: 10, High: 11, Low: 9, Close: 10}, false},
+		{"close differs only", Candle{Open: 10, High: 10, Low: 10, Close: 11}, false},
+	}
+	for _, tc := range cases {
+		if got := tc.c.IsFiller(); got != tc.want {
+			t.Errorf("%s: IsFiller() = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
