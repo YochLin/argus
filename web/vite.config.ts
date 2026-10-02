@@ -423,12 +423,16 @@ function getMockData(urlStr: string): any {
               { ticker: "2454", start: "2026-04-13", end: "2026-05-22", open: false, shares: 500, realizedPnL: -38500 },
               { ticker: "2317", start: "2026-03-02", end: "2026-04-24", open: false, shares: 3000, realizedPnL: 96000 },
               { ticker: "0050", start: "2026-02-10", end: "", open: true, shares: 2000, realizedPnL: 0 },
+              { ticker: "2603", start: "2025-10-06", end: "2025-12-19", open: false, shares: 1000, realizedPnL: 52000 },
+              { ticker: "3231", start: "2025-03-10", end: "2025-04-07", open: false, shares: 2000, realizedPnL: -21000 },
             ]
           : [
               { ticker: "NVDA", start: "2026-05-04", end: "2026-06-26", open: false, shares: 80, realizedPnL: 4820 },
               { ticker: "AMD", start: "2026-04-13", end: "2026-05-22", open: false, shares: 100, realizedPnL: -1240 },
               { ticker: "MSFT", start: "2026-03-02", end: "2026-04-24", open: false, shares: 30, realizedPnL: 3110 },
               { ticker: "AAPL", start: "2026-02-10", end: "", open: true, shares: 80, realizedPnL: 0 },
+              { ticker: "TSM", start: "2025-10-06", end: "2025-12-19", open: false, shares: 60, realizedPnL: 2310 },
+              { ticker: "TSLA", start: "2025-03-10", end: "2025-04-07", open: false, shares: 40, realizedPnL: -980 },
             ],
     };
   }
