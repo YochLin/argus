@@ -53,6 +53,8 @@ func (b *Bot) reviewSnapshots(ticker string, round tradeRound) []llm.TradeSnapsh
 			MACDHist: s.MACDH, MACDDays: s.MACDCrossDays,
 			Trend: s.Trend, CloseVsMA20Pct: s.CloseVsMA20Pct, MA20Slope5dPct: s.MA20Slope5dPct,
 			VolRatio20: s.VolRatio20,
+			// A fill from today's session still running: its volume is a part day.
+			Intraday: service.BarForming(candles, i, ticker, time.Now()),
 		}
 		if news, err := b.db.FillNewsFor(ticker, leg.Date); err != nil {
 			logger.Errorf("review %s: snapshot news %s: %v", ticker, leg.Date, err)

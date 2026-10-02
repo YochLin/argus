@@ -465,7 +465,10 @@ Give an honest, unvarnished review in English — even if the trade made money, 
 3. Recommendation check: if recommendations from the holding period are shown above, did they match what the user
    actually did (e.g. the system said SELL but the position was held for two more weeks, or said HOLD but was sold)?
    Skip this point if no recommendations are shown.
-4. Distill one concrete, actionable lesson — not a vague "be more careful."
+4. Distill one concrete, actionable lesson — not a vague "be more careful." Make it about the process or
+   behaviour in this trade (was a stop set first? did the trade follow the thesis?), and don't derive numeric
+   thresholds such as "RSI above N" or "N%% above the MA20" from one trade's indicator readings — a single trade
+   can't show a threshold.
 
 End your reply with one final line starting with exactly:
 %s <the lesson, 2-4 sentences max>
@@ -475,7 +478,11 @@ Keep the reply concise — under 300 words total.
 	KeyLessonMarker: "Lesson:",
 
 	KeyTradeSnapshotHeader:     "\nSnapshot on the fill day (%s on %s at $%.2f; the state at that day's close, for judging entry/exit timing — nothing from after it):\n",
-	KeyTradeSnapshotIndicators: "• RSI(14) %.1f (5 days earlier %.1f); MACD histogram %+.2f (same sign for %d days); trend: %s, close %+.1f%% from MA20, MA20 5-day slope %+.2f%%; volume %.2fx the prior 20-day average\n",
+	KeyTradeSnapshotIndicators: "• RSI(14) %.1f (5 days earlier %.1f); MACD histogram %+.2f (same sign for %d days); trend: %s, close %+.1f%% from MA20, MA20 5-day slope %+.2f%%\n",
+
+	KeyTradeSnapshotHeaderIntraday: "\nSnapshot on the fill day (%s on %s at $%.2f; that session was still running when the fill was made, so what follows is read off the latest price at the time, and the day's volume — not yet traded out — is left out; the close may differ; nothing from after it):\n",
+	KeyTradeSnapshotVolume:         "• Volume %.2fx the prior 20-day average\n",
+
 	KeyTradeSnapshotTrendBull:  "uptrend (close > MA20 > MA60, MA20 rising)",
 	KeyTradeSnapshotTrendBear:  "downtrend (close < MA20 < MA60, MA20 falling)",
 	KeyTradeSnapshotTrendRange: "no clean trend",
@@ -492,7 +499,8 @@ Give an honest, unvarnished follow-up review of this sell, in English:
    did the follow-through confirm or contradict them?
 3. What should change in the exit mechanism next time this pattern shows up (staged exits? a trailing stop?
    a looser or tighter stop level?) — be concrete, not "be more careful."
-4. Remember this is only a 5-trading-day sample after the exit — don't treat short-term noise as a hard rule.
+4. Remember this is only a 5-trading-day sample after the exit — don't treat short-term noise as a hard rule,
+   and don't derive numeric thresholds from one trade's indicator readings.
 
 End your reply with one final line starting with exactly:
 %s <the lesson, 2-4 sentences max>

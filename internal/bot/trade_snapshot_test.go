@@ -138,3 +138,42 @@ func TestBuildClosedTradeReviewCarriesSnapshots(t *testing.T) {
 		t.Error("the at-close review must not carry post-exit data")
 	}
 }
+
+// An exit made while its session is still running is handed to the review as
+// such, so the prompt can leave the part-day volume out; an earlier bar never is.
+func TestReviewSnapshotsIntraday(t *testing.T) {
+	d, err := db.New(t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+
+	// Bars ending tomorrow (UTC), so "now" is before that session's end whatever
+	// time the test runs at.
+	cs := make([]data.Candle, 200)
+	last := time.Now().UTC().AddDate(0, 0, 1)
+	last = time.Date(last.Year(), last.Month(), last.Day(), 0, 0, 0, 0, time.UTC)
+	for i := range cs {
+		c := 100 + float64(i)
+		cs[i] = data.Candle{Date: last.AddDate(0, 0, i-len(cs)+1), Open: c, High: c + 1, Low: c - 1, Close: c, Volume: 1000}
+	}
+	entry, exit := cs[120].Date.Format("2006-01-02"), cs[len(cs)-1].Date.Format("2006-01-02")
+
+	b := &Bot{db: d, lang: i18n.EN, history: rankHistoryStub{byTicker: map[string][]data.Candle{"AAPL": cs}}}
+	got := b.reviewSnapshots("AAPL", tradeRound{
+		StartDate: entry, EndDate: exit,
+		Legs: []db.Transaction{
+			{Ticker: "AAPL", Side: "BUY", Shares: 10, Price: 220, Date: entry},
+			{Ticker: "AAPL", Side: "SELL", Shares: 10, Price: 299, Date: exit},
+		},
+	})
+	if len(got) != 2 {
+		t.Fatalf("snapshots = %+v", got)
+	}
+	if got[0].Intraday {
+		t.Error("the entry bar has later bars after it: not intraday")
+	}
+	if !got[1].Intraday {
+		t.Error("an exit on the newest bar of a session still running must be intraday")
+	}
+}

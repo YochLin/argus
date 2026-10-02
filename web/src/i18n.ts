@@ -658,7 +658,11 @@ export interface Dictionary {
   snapRound: string;
   snapFillLine: string;
   snapDayLine: string;
+  snapDayLineLive: string;
   snapProvenance: string;
+  snapProvenanceLive: string;
+  snapIntradayTag: string;
+  snapVolPending: string;
   snapBarNote: string;
   snapNoData: string;
   snapLoadFail: string;
@@ -1807,7 +1811,11 @@ const en: Dictionary = {
   snapRound: "Round #%s",
   snapFillLine: "%s sh @ %s",
   snapDayLine: "Day %s · close %s · H %s · L %s",
+  snapDayLineLive: "Day so far %s · last %s · H %s · L %s",
   snapProvenance: "Indicators on that day's close · worked out each time you open it",
+  snapProvenanceLive: "Session still open · readings use the latest price and are worked out again each time you open it",
+  snapIntradayTag: "Intraday",
+  snapVolPending: "Volume ratio not final — the session isn't over",
   snapBarNote: "Matched to the %s session",
   snapNoData: "No candle data for this fill — it is older than the price history available, or there is too little history before it.",
   snapLoadFail: "Couldn't load the snapshot.",
@@ -2886,7 +2894,11 @@ const zh: Dictionary = {
   snapRound: "回合 #%s",
   snapFillLine: "%s 股 @ %s",
   snapDayLine: "當日 %s · 收 %s · 高 %s · 低 %s",
+  snapDayLineLive: "當日至目前 %s · 現價 %s · 高 %s · 低 %s",
   snapProvenance: "指標以成交日收盤計算 · 每次開啟時重算",
+  snapProvenanceLive: "盤中 · 指標以目前價格計算，每次開啟時重算",
+  snapIntradayTag: "盤中",
+  snapVolPending: "盤中，量比未定",
   snapBarNote: "對應 %s 的交易日",
   snapNoData: "這筆成交沒有可用的 K 線資料（比可取得的價格歷史更早，或之前的歷史不足）。",
   snapLoadFail: "快照載入失敗。",

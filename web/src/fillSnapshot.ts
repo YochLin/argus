@@ -55,7 +55,8 @@ export function readings(s: FillSnapshotBody, side: Side): Reading[] {
     { id: "rsi", tone: t(s.rsiZone === "hot" ? "bad" : "ok") },
     { id: "macd", tone: t(s.macdHist > 0 ? "ok" : "bad") },
     { id: "trend", tone: t(s.trend === "bull" ? "ok" : s.trend === "bear" ? "bad" : "neu") },
-    { id: "vol", tone: t(s.volState === "up" ? "ok" : "neu") },
+    // A session still running has traded only part of its volume: no verdict on it.
+    { id: "vol", tone: t(s.volState === "up" && !s.provisional ? "ok" : "neu") },
   ];
 }
 
@@ -128,8 +129,11 @@ export function snapshotJson(ticker: string, fill: Fill, s: FillSnapshotBody, ne
           days_since_cross: s.macdCrossDays,
         },
         trend: { state: s.trend, close_vs_ma20_pct: r(s.closeVsMa20Pct, 2), ma20_slope_5d_pct: r(s.ma20Slope5dPct, 2) },
-        volume: { ratio_20d: r(s.volRatio20, 2), ratio_5d_20d: r(s.volRatio5v20, 2), state: s.volState },
+        volume: s.provisional
+          ? { ratio_20d: null, ratio_5d_20d: null, state: null } // the day is not traded out yet
+          : { ratio_20d: r(s.volRatio20, 2), ratio_5d_20d: r(s.volRatio5v20, 2), state: s.volState },
       },
+      ...(s.provisional ? { provisional: true } : {}),
       candle_events: s.patterns.map((p) => p.type),
       news: news.map((n) => ({
         time: n.publishedAt || null,

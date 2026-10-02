@@ -328,9 +328,14 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   headline-only and descriptive: like the chart patterns, nothing (alerts, ranking, trade decisions) may
   act on them. `trade_snapshot.go`'s `reviewSnapshots` (P7b) hands every trade review (at close, the
   5-day follow-up, `/review`) the entry and exit fill days' indicator readings (`service.SnapshotAt`,
-  that day's close only) and stored headlines via `llm.ClosedTrade.Snapshots`; it deliberately leaves
+  that day's close only — or, for a fill whose session was still open, the latest price with the
+  volume ratio left out) and stored headlines via `llm.ClosedTrade.Snapshots`; it deliberately leaves
   out the candle patterns and the LLM news labels, because a review's lesson is fed back into the
-  recommendation prompt (`PastLessons`) and neither is backtested. `paper.go` backs `/paper`
+  recommendation prompt (`PastLessons`) and neither is backtested. For the same reason both review task
+  texts tell the model to write the lesson about process or behaviour and not to derive numeric
+  thresholds ("RSI above N") from one trade's readings — measured with the real model: with the
+  snapshot and without that line, one AAPL round produced exactly such a rule, which is the
+  already-backtested-and-rejected "don't chase" filter. `paper.go` backs `/paper`
   (view or reset the live paper-trading account, which forward-accumulates through the same
   `internal/paper.Account` rules `argus backtest` replays historically, see below) — `paperConfig` builds
   its `paper.Config` from the bot's own exit-discipline thresholds (`STOP_LOSS_PCT`/`TRAILING_STOP_PCT`
@@ -375,6 +380,9 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   the future can't pick it up), plus the news `bot.captureFillNews` stored at fill time (`fill_news`).
   A sell gets the numbers but no with/against verdict on the frontend — the buy-side rules of thumb
   aren't backtested and say nothing useful about an exit.
+  A snapshot of a session still in progress (`service.BarForming`: the last candle, before that
+  market's close) comes back `provisional`: the readings are of the latest price and the page shows
+  no volume ratio for it — a part-day volume would read as a dried-up market.
   `strategies.go` (P5) adds `/api/chart`'s `strategies`: the strategy signals that were actually pushed
   (`strategy_alerts`, written by `service.ScanService.RecordStrategyAlerts`), each with the LLM's
   BUY/SELL/HOLD joined from `recommendations` — the first one for that ticker within 4 days of the

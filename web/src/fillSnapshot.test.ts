@@ -48,6 +48,7 @@ const snap = (over: Partial<FillSnapshotBody> = {}): FillSnapshotBody => ({
   volRatio5v20: 1.1,
   volState: "up",
   patterns: [],
+  provisional: false,
   ...over,
 });
 
@@ -95,6 +96,13 @@ describe("readings", () => {
   });
   it("a range trend is neutral", () => {
     expect(readings(snap({ trend: "range" }), "BUY")[2].tone).toBe("neu");
+  });
+  // A session still running has only traded part of its volume.
+  it("gives a session still in progress no volume verdict", () => {
+    const live = readings(snap({ volState: "up", provisional: true }), "BUY");
+    expect(live[3].tone).toBe("neu");
+    expect(alignment(live)).toEqual({ ok: 3, bad: 0 });
+    expect(readings(snap({ volState: "up" }), "BUY")[3].tone).toBe("ok");
   });
   // The case that made the design mislead: a profit-taking sell into strength.
   it("a sell gets no verdict at all", () => {
@@ -163,6 +171,14 @@ describe("snapshotJson", () => {
     expect(out.indicators.rsi14).toBe(55);
     expect(out.candle_events).toEqual(["hammer"]);
     expect(out.news[0]).toMatchObject({ headline: "h", url: "https://x", time: null, tag: null, sentiment: null });
+  });
+  it("leaves the volume ratios out while the session is still in progress, and says so", () => {
+    const live = JSON.parse(snapshotJson("AAPL", fill({}), snap({ provisional: true }), news));
+    expect(live.provisional).toBe(true);
+    expect(live.indicators.volume).toEqual({ ratio_20d: null, ratio_5d_20d: null, state: null });
+    expect(live.indicators.rsi14).toBe(55); // the price-based readings stay
+    expect(out.provisional).toBeUndefined();
+    expect(out.indicators.volume.ratio_20d).toBe(1.5);
   });
   it("leaves out what happened afterwards and the verdicts", () => {
     const text = JSON.stringify(out);

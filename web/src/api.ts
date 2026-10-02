@@ -302,6 +302,9 @@ export interface FillSnapshotBody {
   volRatio5v20: number;
   volState: "up" | "down" | "flat";
   patterns: { type: string; dir: "bull" | "bear" | "neu" }[];
+  // The bar is a session still in progress: the price-based readings are as of
+  // now and the volume ratios are of a day not yet traded out.
+  provisional: boolean;
 }
 
 export interface FillHindsight {

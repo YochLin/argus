@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"argus/internal/data"
+	"argus/internal/market"
 	"argus/internal/signals"
 )
 
@@ -117,6 +118,27 @@ func FillHistoryRange(date string, now time.Time) string {
 		return "2y"
 	}
 	return HistoryRangeSince(t.AddDate(0, 0, -100).Format("2006-01-02"), now)
+}
+
+// BarForming reports whether bar i is a session still in progress: it is the
+// last candle and its session has not ended yet. A snapshot of such a bar is
+// provisional — RSI/MACD/trend are read off the latest price, and the day's
+// volume is only what has traded so far (a US fill at midday would show a
+// volume ratio of a quarter), so neither is "the close" and the volume ratio
+// in particular means nothing yet. The session end is checked in UTC to keep
+// time zones (and tzdata) out of it: Taiwan closes 13:30 CST = 05:30 UTC; the US
+// closes 16:00 ET = 20:00 UTC in summer, 21:00 in winter, and 21:00 serves both
+// (so a summer bar still counts as forming for the hour after its close).
+func BarForming(candles []data.Candle, i int, ticker string, now time.Time) bool {
+	if i < 0 || i != len(candles)-1 {
+		return false // a later bar exists, so this one is finished
+	}
+	hour, min := 21, 0
+	if market.Of(ticker) == market.TW {
+		hour, min = 5, 30
+	}
+	d := candles[i].Date
+	return now.Before(time.Date(d.Year(), d.Month(), d.Day(), hour, min, 0, 0, time.UTC))
 }
 
 // FillBar maps a fill date to the candle it traded in: the last bar on or

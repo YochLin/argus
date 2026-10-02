@@ -52,6 +52,11 @@ type fillSnapshotBody struct {
 	VolRatio5v20   float64               `json:"volRatio5v20"`
 	VolState       string                `json:"volState"` // up | down | flat
 	Patterns       []fillPatternResponse `json:"patterns"`
+	// Provisional is true when the bar is a session still in progress
+	// (service.BarForming): the price-based readings are as of now, and the
+	// volume ratios are of a day not yet traded out, so the page must not show
+	// them as the close's.
+	Provisional bool `json:"provisional"`
 }
 
 // fillHindsightBody holds price moves from the fill price; null where the
@@ -100,7 +105,8 @@ func buildFillSnapshot(database dbReader, history data.HistoryProvider, ticker, 
 			MACDCrossDays: s.MACDCrossDays, MACDWidening: s.MACDWidening,
 			Trend: s.Trend, CloseVsMA20Pct: s.CloseVsMA20Pct, MA20Slope5dPct: s.MA20Slope5dPct,
 			VolRatio20: s.VolRatio20, VolRatio5v20: s.VolRatio5v20, VolState: s.VolState,
-			Patterns: make([]fillPatternResponse, 0, len(s.Patterns)),
+			Patterns:    make([]fillPatternResponse, 0, len(s.Patterns)),
+			Provisional: service.BarForming(candles, i, ticker, now),
 		}
 		for _, p := range s.Patterns {
 			resp.Snapshot.Patterns = append(resp.Snapshot.Patterns, fillPatternResponse{Type: p.Type, Dir: p.Dir})

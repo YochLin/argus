@@ -554,11 +554,17 @@ const (
 	// Phase 27 P7b: the fill-day snapshot block of the trade-review prompt.
 	KeyTradeSnapshotHeader     Key = "trade_snapshot_header"
 	KeyTradeSnapshotIndicators Key = "trade_snapshot_indicators"
-	KeyTradeSnapshotTrendBull  Key = "trade_snapshot_trend_bull"
-	KeyTradeSnapshotTrendBear  Key = "trade_snapshot_trend_bear"
-	KeyTradeSnapshotTrendRange Key = "trade_snapshot_trend_range"
-	KeyTradeSnapshotNewsHeader Key = "trade_snapshot_news_header"
-	KeyTradeSnapshotNewsLine   Key = "trade_snapshot_news_line"
+	// KeyTradeSnapshotHeaderIntraday replaces the header for a fill whose
+	// session was still running when the review was written, and
+	// KeyTradeSnapshotVolume is the volume line that bar goes without: a part-day
+	// volume ratio would read as a dried-up market.
+	KeyTradeSnapshotHeaderIntraday Key = "trade_snapshot_header_intraday"
+	KeyTradeSnapshotVolume         Key = "trade_snapshot_volume"
+	KeyTradeSnapshotTrendBull      Key = "trade_snapshot_trend_bull"
+	KeyTradeSnapshotTrendBear      Key = "trade_snapshot_trend_bear"
+	KeyTradeSnapshotTrendRange     Key = "trade_snapshot_trend_range"
+	KeyTradeSnapshotNewsHeader     Key = "trade_snapshot_news_header"
+	KeyTradeSnapshotNewsLine       Key = "trade_snapshot_news_line"
 
 	// Phase 20's gap/big-move event log (see
 	// docs/phase-20-price-event-log.md) — buildPriceEventPrompt/
