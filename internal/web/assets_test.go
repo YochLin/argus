@@ -33,6 +33,8 @@ type fakeWealthDB struct {
 	lastCashflowEdit                      db.RecurringCashflowEdit
 	updateCashflowErr                     error
 	lastDeactivateID                      int64
+	lastDeactivateDay                     string
+	lastResumeID, lastDeleteCashflowID    int64
 	lastNewGoal                           db.NewGoal
 	lastDeleteGoalID                      int64
 	lastUpdateGoalID                      int64
@@ -56,6 +58,8 @@ type fakeWealthDB struct {
 	settingErr        error
 	cashflowErr       error
 	deactivateErr     error
+	resumeErr         error
+	deleteCashflowErr error
 	goalErr           error
 	deleteGoalErr     error
 	earmarkErr        error
@@ -124,9 +128,17 @@ func (f *fakeWealthDB) CreateRecurringCashflow(c db.NewRecurringCashflow) (int64
 	f.nextCashflowID++
 	return f.nextCashflowID, f.cashflowErr
 }
-func (f *fakeWealthDB) DeactivateRecurringCashflow(id int64) error {
-	f.lastDeactivateID = id
+func (f *fakeWealthDB) DeactivateRecurringCashflow(id int64, today string) error {
+	f.lastDeactivateID, f.lastDeactivateDay = id, today
 	return f.deactivateErr
+}
+func (f *fakeWealthDB) ResumeRecurringCashflow(id int64) error {
+	f.lastResumeID = id
+	return f.resumeErr
+}
+func (f *fakeWealthDB) DeleteRecurringCashflow(id int64) error {
+	f.lastDeleteCashflowID = id
+	return f.deleteCashflowErr
 }
 func (f *fakeWealthDB) UpdateRecurringCashflow(id int64, e db.RecurringCashflowEdit) error {
 	f.lastUpdateCashflowID, f.lastCashflowEdit = id, e
@@ -180,6 +192,8 @@ func newWealthTestServer(password string, wealthDB wealthWriter, dbr dbReader) *
 	s.mux.HandleFunc("GET /api/wealth/cash", s.handleWealthCashList)
 	s.mux.HandleFunc("POST /api/wealth/cash", s.requireWritable(s.requireAuth(s.handleWealthCashCreate)))
 	s.mux.HandleFunc("POST /api/wealth/cash/deactivate", s.requireWritable(s.requireAuth(s.handleWealthCashDeactivate)))
+	s.mux.HandleFunc("POST /api/wealth/cash/resume", s.requireWritable(s.requireAuth(s.handleWealthCashResume)))
+	s.mux.HandleFunc("POST /api/wealth/cash/delete", s.requireWritable(s.requireAuth(s.handleWealthCashDelete)))
 	s.mux.HandleFunc("POST /api/wealth/cash/update", s.requireWritable(s.requireAuth(s.handleWealthCashUpdate)))
 	s.mux.HandleFunc("GET /api/wealth/goals", s.handleWealthGoalsList)
 	s.mux.HandleFunc("POST /api/wealth/goals", s.requireWritable(s.requireAuth(s.handleWealthGoalCreate)))

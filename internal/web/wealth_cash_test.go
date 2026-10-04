@@ -20,6 +20,8 @@ func newWealthCashTestServer(password string, fake *fakeDB, wealthDB wealthWrite
 	s.mux.HandleFunc("GET /api/wealth/cash", s.handleWealthCashList)
 	s.mux.HandleFunc("POST /api/wealth/cash", s.requireWritable(s.requireAuth(s.handleWealthCashCreate)))
 	s.mux.HandleFunc("POST /api/wealth/cash/deactivate", s.requireWritable(s.requireAuth(s.handleWealthCashDeactivate)))
+	s.mux.HandleFunc("POST /api/wealth/cash/resume", s.requireWritable(s.requireAuth(s.handleWealthCashResume)))
+	s.mux.HandleFunc("POST /api/wealth/cash/delete", s.requireWritable(s.requireAuth(s.handleWealthCashDelete)))
 	s.mux.HandleFunc("POST /api/wealth/cash/update", s.requireWritable(s.requireAuth(s.handleWealthCashUpdate)))
 	return s
 }
@@ -64,7 +66,7 @@ func TestHandleWealthCashList(t *testing.T) {
 			{ID: 1, Direction: "in", Name: "薪資", Amount: 80000, Currency: "TWD", Category: "salary", Active: true},
 			{ID: 2, Direction: "out", Name: "房貸", Amount: 35000, Currency: "TWD", Category: "mortgage", Active: true, DayOfMonth: &dueDay},
 			{ID: 3, Direction: "out", Name: "0050 定期定額", Amount: 15000, Currency: "TWD", Category: "sip", Active: true, DayOfMonth: &dueDay, AssetID: int64p(1)},
-			{ID: 4, Direction: "out", Name: "已停用的訂閱", Amount: 500, Currency: "TWD", Category: "living", Active: false},
+			{ID: 4, Direction: "out", Name: "已停用的訂閱", Amount: 500, Currency: "TWD", Category: "living", Active: false, PausedAt: "2026-05-01"},
 		},
 	}
 	s := newWealthCashTestServer("", fake, &fakeWealthDB{})
@@ -126,6 +128,10 @@ func TestHandleWealthCashList(t *testing.T) {
 	}
 	if v := byID[4].ValueTwd; v != nil {
 		t.Errorf("paused item 4 ValueTwd = %v, want nil", v)
+	}
+	// The paused list's "paused on" column comes from here; an active flow has none.
+	if byID[4].PausedAt != "2026-05-01" || byID[1].PausedAt != "" {
+		t.Errorf("PausedAt = %q (paused), %q (active), want 2026-05-01 and empty", byID[4].PausedAt, byID[1].PausedAt)
 	}
 	// EventsNet sums the (TWD, all-in-out here) event amounts with sign —
 	// checked against the events list itself rather than a hardcoded number,
@@ -190,8 +196,8 @@ func TestBuildCashForecast(t *testing.T) {
 }
 
 // TestHandleWealthCashCreateAndDeactivate pins the write paths: create
-// requires a valid direction/name/amount, and deactivate is the only way to
-// remove a flow from the active total (no hard delete, §9.1's soft-delete
+// requires a valid direction/name/amount, and deactivate takes a flow out of
+// the active total (soft delete — §9.1's soft-delete
 // convention applied to recurring_cashflows).
 func TestHandleWealthCashCreateAndDeactivate(t *testing.T) {
 	wealthDB := &fakeWealthDB{}
@@ -232,6 +238,79 @@ func TestHandleWealthCashCreateAndDeactivate(t *testing.T) {
 	}
 	if wealthDB.lastDeactivateID != 7 {
 		t.Errorf("lastDeactivateID = %d, want 7", wealthDB.lastDeactivateID)
+	}
+	if want := time.Now().Format("2006-01-02"); wealthDB.lastDeactivateDay != want {
+		t.Errorf("paused on %q, want today (%s)", wealthDB.lastDeactivateDay, want)
+	}
+}
+
+func postCashID(t *testing.T, s *Server, cookie *http.Cookie, route string, payload any) *httptest.ResponseRecorder {
+	t.Helper()
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/wealth/cash/"+route, bytes.NewReader(body))
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, req)
+	return rec
+}
+
+// TestHandleWealthCashPauseResumeDelete pins the three lifecycle routes: each
+// passes its id through, rejects a missing id before the DB, is behind the
+// write gate, and maps the DB's errors — unknown id 404, delete of an active
+// flow 409, anything else 500.
+func TestHandleWealthCashPauseResumeDelete(t *testing.T) {
+	routes := map[string]func(f *fakeWealthDB) (calledID *int64, setErr func(error)){
+		"deactivate": func(f *fakeWealthDB) (*int64, func(error)) {
+			return &f.lastDeactivateID, func(e error) { f.deactivateErr = e }
+		},
+		"resume": func(f *fakeWealthDB) (*int64, func(error)) {
+			return &f.lastResumeID, func(e error) { f.resumeErr = e }
+		},
+		"delete": func(f *fakeWealthDB) (*int64, func(error)) {
+			return &f.lastDeleteCashflowID, func(e error) { f.deleteCashflowErr = e }
+		},
+	}
+	for route, bind := range routes {
+		t.Run(route, func(t *testing.T) {
+			for name, tc := range map[string]struct {
+				payload map[string]any
+				dbErr   error
+				want    int
+			}{
+				"ok":         {map[string]any{"id": 7}, nil, http.StatusOK},
+				"no id":      {map[string]any{}, nil, http.StatusBadRequest},
+				"negative":   {map[string]any{"id": -1}, nil, http.StatusBadRequest},
+				"unknown id": {map[string]any{"id": 7}, db.ErrCashflowNotFound, http.StatusNotFound},
+				"still live": {map[string]any{"id": 7}, db.ErrCashflowActive, http.StatusConflict},
+				"db failure": {map[string]any{"id": 7}, errors.New("disk full"), http.StatusInternalServerError},
+			} {
+				t.Run(name, func(t *testing.T) {
+					wealthDB := &fakeWealthDB{}
+					calledID, setErr := bind(wealthDB)
+					setErr(tc.dbErr)
+					s := newWealthCashTestServer("secret", &fakeDB{}, wealthDB)
+					rec := postCashID(t, s, loginAndGetCookie(t, s, "secret"), route, tc.payload)
+					if rec.Code != tc.want {
+						t.Fatalf("status = %d, want %d, body = %s", rec.Code, tc.want, rec.Body.String())
+					}
+					if tc.want == http.StatusBadRequest && *calledID != 0 {
+						t.Errorf("DB was called (id %d) for a rejected request", *calledID)
+					}
+					if tc.want == http.StatusOK && *calledID != 7 {
+						t.Errorf("DB called with id %d, want 7", *calledID)
+					}
+				})
+			}
+
+			wealthDB := &fakeWealthDB{}
+			calledID, _ := bind(wealthDB)
+			s := newWealthCashTestServer("secret", &fakeDB{}, wealthDB)
+			if rec := postCashID(t, s, nil, route, map[string]any{"id": 7}); rec.Code != http.StatusUnauthorized || *calledID != 0 {
+				t.Errorf("without the auth cookie: status = %d, DB id = %d, want 401 and no DB call", rec.Code, *calledID)
+			}
+		})
 	}
 }
 

@@ -26,6 +26,9 @@ type cashflowItem struct {
 	AssetID    *int64  `json:"assetId,omitempty"`
 	Venue      string  `json:"venue,omitempty"`
 	Active     bool    `json:"active"`
+	// PausedAt is the day a paused flow was paused; omitted while active and
+	// for a flow paused before the date was recorded.
+	PausedAt string `json:"pausedAt,omitempty"`
 	// ValueTwd is Amount converted to TWD as of today — nil if the item is
 	// inactive (not part of any monthly total) or its currency couldn't be
 	// priced. Backs the in/out breakdown's per-item bar (§8.4's wcm.inRows/
@@ -199,7 +202,7 @@ func (s *Server) handleWealthCashList(w http.ResponseWriter, r *http.Request) {
 		indexByID[c.ID] = len(resp.Items)
 		resp.Items = append(resp.Items, cashflowItem{
 			ID: c.ID, Direction: c.Direction, Name: c.Name, Amount: c.Amount, Currency: c.Currency,
-			DayOfMonth: c.DayOfMonth, Category: c.Category, AssetID: c.AssetID, Venue: venue, Active: c.Active,
+			DayOfMonth: c.DayOfMonth, Category: c.Category, AssetID: c.AssetID, Venue: venue, Active: c.Active, PausedAt: c.PausedAt,
 		})
 		if c.Active {
 			active = append(active, c)
@@ -366,25 +369,74 @@ func (s *Server) handleWealthCashUpdate(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-type wealthCashDeactivateRequest struct {
+// wealthCashIDRequest is the body of the pause / resume / delete routes.
+type wealthCashIDRequest struct {
 	ID int64 `json:"id"`
 }
 
-// handleWealthCashDeactivate backs POST /api/wealth/cash/deactivate — pauses
-// a flow (soft delete, see db.DeactivateRecurringCashflow's doc comment).
-func (s *Server) handleWealthCashDeactivate(w http.ResponseWriter, r *http.Request) {
-	var req wealthCashDeactivateRequest
+// decodeCashflowID reads and validates the id of a pause / resume / delete
+// request, answering the 400 itself.
+func decodeCashflowID(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	var req wealthCashIDRequest
 	if !decodeJSON(w, r, &req) {
-		return
+		return 0, false
 	}
 	if req.ID <= 0 {
 		writeError(w, http.StatusBadRequest, "id is required")
+		return 0, false
+	}
+	return req.ID, true
+}
+
+// writeCashflowErr maps a pause / resume / delete error onto its response and
+// reports whether the call succeeded: an unknown id is 404, deleting a flow
+// that isn't paused is 409, anything else 500. `what` completes "failed to ...".
+func writeCashflowErr(w http.ResponseWriter, err error, what string) bool {
+	switch {
+	case err == nil:
+		return true
+	case errors.Is(err, db.ErrCashflowNotFound):
+		writeError(w, http.StatusNotFound, "cash flow not found")
+	case errors.Is(err, db.ErrCashflowActive):
+		writeError(w, http.StatusConflict, err.Error())
+	default:
+		logger.Errorf("web: %s: %v", what, err)
+		writeError(w, http.StatusInternalServerError, "failed to "+what)
+	}
+	return false
+}
+
+// handleWealthCashDeactivate backs POST /api/wealth/cash/deactivate — pauses
+// a flow, stamping today's date (see db.DeactivateRecurringCashflow).
+func (s *Server) handleWealthCashDeactivate(w http.ResponseWriter, r *http.Request) {
+	id, ok := decodeCashflowID(w, r)
+	if !ok {
 		return
 	}
-	if err := s.wealthDB.DeactivateRecurringCashflow(req.ID); err != nil {
-		logger.Errorf("web: deactivate recurring cashflow: %v", err)
-		writeError(w, http.StatusInternalServerError, "failed to pause cash flow")
+	if writeCashflowErr(w, s.wealthDB.DeactivateRecurringCashflow(id, time.Now().Format("2006-01-02")), "pause cash flow") {
+		writeJSON(w, http.StatusOK, tradeResponse{Message: "paused"})
+	}
+}
+
+// handleWealthCashResume backs POST /api/wealth/cash/resume.
+func (s *Server) handleWealthCashResume(w http.ResponseWriter, r *http.Request) {
+	id, ok := decodeCashflowID(w, r)
+	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, tradeResponse{Message: "paused"})
+	if writeCashflowErr(w, s.wealthDB.ResumeRecurringCashflow(id), "resume cash flow") {
+		writeJSON(w, http.StatusOK, tradeResponse{Message: "resumed"})
+	}
+}
+
+// handleWealthCashDelete backs POST /api/wealth/cash/delete — permanent, and
+// only for a paused flow (409 otherwise, see db.ErrCashflowActive).
+func (s *Server) handleWealthCashDelete(w http.ResponseWriter, r *http.Request) {
+	id, ok := decodeCashflowID(w, r)
+	if !ok {
+		return
+	}
+	if writeCashflowErr(w, s.wealthDB.DeleteRecurringCashflow(id), "delete cash flow") {
+		writeJSON(w, http.StatusOK, tradeResponse{Message: "deleted"})
+	}
 }
