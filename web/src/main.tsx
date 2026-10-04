@@ -8,9 +8,12 @@ import "@fontsource/plus-jakarta-sans/500.css";
 import "@fontsource/plus-jakarta-sans/600.css";
 import "./theme.css";
 import App from "./App";
+import { FlashProvider } from "./flash";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <FlashProvider>
+      <App />
+    </FlashProvider>
   </React.StrictMode>,
 );

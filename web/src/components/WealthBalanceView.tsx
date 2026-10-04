@@ -17,6 +17,7 @@ import {
 import type { Dictionary } from "../i18n";
 import { AddAssetModal, EditValueModal, MONO_LABEL, fmtMoney, groupLabel, liabilityNote } from "./WealthHomeView";
 import { CATEGORY_COLOR } from "../wealthCategory";
+import { useFlash } from "../flash";
 
 interface Props {
   dict: Dictionary;
@@ -64,6 +65,7 @@ export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
   const [payoffLoading, setPayoffLoading] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<WealthAsset | null>(null);
+  const flash = useFlash();
 
   useEffect(() => {
     setError(false);
@@ -102,7 +104,7 @@ export function WealthBalanceView({ dict, writable, onUnauthorized }: Props) {
       if (e instanceof ApiError && e.status === 401) {
         onUnauthorized(saveSalary);
       } else {
-        window.alert(e instanceof ApiError ? e.message : dict.error);
+        flash(e instanceof ApiError ? e.message : dict.error, "error");
       }
     } finally {
       setSavingSalary(false);

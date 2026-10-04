@@ -13,6 +13,7 @@ import {
 import type { Dictionary } from "../i18n";
 import { fmtMoney, mmdd } from "./WealthHomeView";
 import { shortTWD } from "../currency";
+import { useFlash } from "../flash";
 
 interface Props {
   dict: Dictionary;
@@ -301,6 +302,7 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
   const [error, setError] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
   const [showAddForm, setShowAddForm] = useState(false);
+  const flash = useFlash();
 
   useEffect(() => {
     setError(false);
@@ -313,11 +315,12 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
     try {
       await deactivateWealthCashflow(item.id);
       setRefreshSignal((n) => n + 1);
+      flash(dict.wealthFlashPaused.replace("%s", item.name));
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         onUnauthorized(() => pause(item));
       } else {
-        window.alert(e instanceof ApiError ? e.message : dict.error);
+        flash(e instanceof ApiError ? e.message : dict.error, "error");
       }
     }
   }
