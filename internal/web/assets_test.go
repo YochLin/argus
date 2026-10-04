@@ -240,6 +240,45 @@ func TestHandleWealthAssetsList(t *testing.T) {
 	}
 }
 
+// TestHandleWealthAssetsListPricesInTWD pins the TWD value the wealth pages
+// show for a foreign-currency asset: today's rate, archived entries included,
+// and no value at all (not a guess) for a currency with no rate or an asset with
+// no snapshot yet.
+func TestHandleWealthAssetsListPricesInTWD(t *testing.T) {
+	today := time.Now().Format("2006-01-02")
+	usd, twd, eur := 1000.0, 50000.0, 20.0
+	fake := &fakeDB{wealthAssets: []db.AssetWithValue{
+		{Asset: db.Asset{ID: 1, Side: "asset", Type: "deposit", Name: "美元活存", Currency: "USD"}, Value: &usd},
+		{Asset: db.Asset{ID: 2, Side: "asset", Type: "deposit", Name: "台幣活存", Currency: "TWD"}, Value: &twd},
+		{Asset: db.Asset{ID: 3, Side: "asset", Type: "deposit", Name: "歐元活存", Currency: "EUR"}, Value: &eur},
+		{Asset: db.Asset{ID: 4, Side: "asset", Type: "deposit", Name: "未估價美元", Currency: "USD"}},
+		{Asset: db.Asset{ID: 5, Side: "asset", Type: "deposit", Name: "已封存美元", Currency: "USD", ArchivedAt: "2026-09-01"}, Value: &usd},
+	}}
+	s := newWealthTestServer("secret", &fakeWealthDB{}, fake)
+	s.fxDB = &fakeFXDB{rates: map[string]float64{fxKey(today, "USDTWD"): 30}}
+	s.quotes = &fakeQuotes{err: map[string]error{"EURTWD=X": errors.New("no quote")}}
+
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/assets?archived=1", nil))
+	var got struct {
+		Assets []assetResponse `json:"assets"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, err = %v, body = %s", rec.Code, err, rec.Body.String())
+	}
+	want := map[int64]*float64{1: new(float64), 2: new(float64), 3: nil, 4: nil, 5: new(float64)}
+	*want[1], *want[2], *want[5] = 30000, 50000, 30000
+	for _, a := range got.Assets {
+		w := want[a.ID]
+		switch {
+		case w == nil && a.ValueTwd != nil:
+			t.Errorf("asset %d (%s) ValueTwd = %v, want nil", a.ID, a.Name, *a.ValueTwd)
+		case w != nil && (a.ValueTwd == nil || *a.ValueTwd != *w):
+			t.Errorf("asset %d (%s) ValueTwd = %v, want %v", a.ID, a.Name, a.ValueTwd, *w)
+		}
+	}
+}
+
 func TestHandleWealthAssetCreateDeposit(t *testing.T) {
 	wealthDB := &fakeWealthDB{}
 	s := newWealthTestServer("secret", wealthDB, &fakeDB{})

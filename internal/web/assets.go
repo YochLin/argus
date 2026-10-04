@@ -11,6 +11,7 @@ import (
 	"argus/internal/assets"
 	"argus/internal/db"
 	"argus/internal/logger"
+	"argus/internal/service"
 )
 
 // wealthWriter is web's narrow view of *db.DB for Phase 9's wealth-platform
@@ -89,6 +90,10 @@ type assetResponse struct {
 	Value      *float64 `json:"value"`
 	Cost       *float64 `json:"cost,omitempty"`
 	AsOf       string   `json:"asOf,omitempty"`
+	// ValueTwd is Value in TWD at today's rate (the same rate the balance sheet
+	// uses) — what the wealth pages show for a foreign-currency asset. Nil when
+	// there is no Value, or its currency can't be priced.
+	ValueTwd *float64 `json:"valueTwd,omitempty"`
 }
 
 func toAssetResponse(a db.AssetWithValue) assetResponse {
@@ -117,9 +122,29 @@ func (s *Server) handleWealthAssetsList(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "failed to load assets")
 		return
 	}
+	// One lookup per currency, not per asset: an unpriceable currency would
+	// otherwise retry its quote for every asset that holds it.
+	type priced struct {
+		rate float64
+		ok   bool
+	}
+	today := time.Now().Format("2006-01-02")
+	rates := map[string]priced{}
 	resp := make([]assetResponse, 0, len(assets))
 	for _, a := range assets {
-		resp = append(resp, toAssetResponse(a))
+		item := toAssetResponse(a)
+		if a.Value != nil {
+			p, seen := rates[a.Currency]
+			if !seen {
+				p.rate, p.ok = service.RateToTWD(a.Currency, today, true, s.quotes, s.fxDB)
+				rates[a.Currency] = p
+			}
+			if p.ok {
+				v := *a.Value * p.rate
+				item.ValueTwd = &v
+			}
+		}
+		resp = append(resp, item)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"assets": resp})
 }
