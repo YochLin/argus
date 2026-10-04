@@ -282,7 +282,13 @@ func (d *DB) ListAssetsWithValue(includeArchived bool) ([]AssetWithValue, error)
 // asset's latest snapshot on or before asOfDate, not the global latest. It
 // backs the net-worth home page's YTD/MoM figures: an asset created after
 // asOfDate simply has no matching snapshot and contributes nothing, which is
-// correct (it didn't exist yet), not a data gap.
+// correct (it didn't exist yet), not a data gap. Symmetrically, an asset
+// archived on or before asOfDate is gone by then, but one archived later was
+// still held on asOfDate and stays in — otherwise archiving a sold house
+// would rewrite every past quarter's net worth, which is the very thing soft
+// delete exists to avoid (§9.1). archived_at is CURRENT_TIMESTAMP (UTC), so
+// the day boundary can be off by the Taiwan offset; day-level is all the
+// history views need.
 func (d *DB) ListAssetsValueAsOf(asOfDate string, includeArchived bool) ([]AssetWithValue, error) {
 	query := `
 		SELECT a.id, a.side, a.type, a.name, a.asset_group, a.venue, a.currency, a.source, a.created_at, a.archived_at,
@@ -290,11 +296,13 @@ func (d *DB) ListAssetsValueAsOf(asOfDate string, includeArchived bool) ([]Asset
 		FROM assets a
 		LEFT JOIN asset_snapshots s ON s.asset_id = a.id
 			AND s.date = (SELECT MAX(date) FROM asset_snapshots WHERE asset_id = a.id AND date <= ?)`
+	args := []any{asOfDate}
 	if !includeArchived {
-		query += ` WHERE a.archived_at IS NULL`
+		query += ` WHERE (a.archived_at IS NULL OR substr(a.archived_at, 1, 10) > ?)`
+		args = append(args, asOfDate)
 	}
 	query += ` ORDER BY a.id DESC`
-	return queryAssetsWithValue(d, query, asOfDate)
+	return queryAssetsWithValue(d, query, args...)
 }
 
 func queryAssetsWithValue(d *DB, query string, args ...any) ([]AssetWithValue, error) {

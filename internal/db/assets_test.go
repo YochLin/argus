@@ -136,6 +136,52 @@ func TestListAssetsValueAsOfUsesLatestSnapshotOnOrBeforeDate(t *testing.T) {
 	}
 }
 
+// TestListAssetsValueAsOfKeepsAssetUntilItsArchiveDate pins that archiving an
+// asset (a sold house, a closed account) doesn't rewrite the past: it still
+// counts on every date before the day it was archived, and drops out from
+// that day on. includeArchived=true always returns it.
+func TestListAssetsValueAsOfKeepsAssetUntilItsArchiveDate(t *testing.T) {
+	d := newTestDB(t)
+
+	id, err := d.CreateAsset(NewAsset{Side: "asset", Type: "estate", Name: "房子", AssetGroup: "hard"})
+	if err != nil {
+		t.Fatalf("CreateAsset() error = %v", err)
+	}
+	if err := d.UpsertAssetSnapshot(AssetSnapshot{AssetID: id, Date: "2026-06-01", Value: 8000000}); err != nil {
+		t.Fatalf("UpsertAssetSnapshot() error = %v", err)
+	}
+	// Pin archived_at to a known day; ArchiveAsset stamps the real clock.
+	if _, err := d.conn.Exec(`UPDATE assets SET archived_at = '2026-09-10 08:00:00' WHERE id = ?`, id); err != nil {
+		t.Fatalf("set archived_at: %v", err)
+	}
+
+	for _, tc := range []struct {
+		asOf        string
+		wantPresent bool
+	}{
+		{"2026-07-01", true},  // held then, archived later
+		{"2026-09-09", true},  // the day before archive
+		{"2026-09-10", false}, // the archive day itself
+		{"2026-12-31", false},
+	} {
+		got, err := d.ListAssetsValueAsOf(tc.asOf, false)
+		if err != nil {
+			t.Fatalf("ListAssetsValueAsOf(%s) error = %v", tc.asOf, err)
+		}
+		if present := len(got) == 1; present != tc.wantPresent {
+			t.Errorf("ListAssetsValueAsOf(%s, false) = %+v, want present=%v", tc.asOf, got, tc.wantPresent)
+		}
+		if tc.wantPresent && (got[0].Value == nil || *got[0].Value != 8000000) {
+			t.Errorf("ListAssetsValueAsOf(%s, false) value = %+v, want 8000000", tc.asOf, got[0].Value)
+		}
+	}
+
+	all, err := d.ListAssetsValueAsOf("2026-12-31", true)
+	if err != nil || len(all) != 1 {
+		t.Fatalf("ListAssetsValueAsOf(includeArchived) = %+v, %v; want 1 asset", all, err)
+	}
+}
+
 func TestGetAssetMissingReturnsNil(t *testing.T) {
 	d := newTestDB(t)
 
