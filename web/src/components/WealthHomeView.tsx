@@ -24,6 +24,7 @@ import { convertTWD, shortTWD } from "../currency";
 import { CATEGORY_COLOR, categoryLabel, loadModel } from "../wealthCategory";
 import { useFlash } from "../flash";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { WealthEmptyCard, WealthGuide } from "./WealthOnboarding";
 
 interface Props {
   dict: Dictionary;
@@ -292,6 +293,9 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
   }
 
   const currency = "NT$"; // converted for display by fmtMoney (顯示幣別)
+  // Nothing recorded (archived ones don't count): the page is a one-line card
+  // and the setup guide instead of a screen of "—".
+  const empty = assets != null && assets.length === 0;
 
   // --- derived, all from data the three endpoints already send ------------
   const assetCount = assets ? assets.filter((a) => a.side === "asset").length : 3;
@@ -436,265 +440,272 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
         )}
       </div>
 
-      {home && home.staleCount > 0 && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            flexWrap: "wrap",
-            padding: "11px 14px",
-            borderRadius: 10,
-            background: "rgba(245,158,11,.1)",
-            border: "1px solid rgba(245,158,11,.35)",
-            marginBottom: 16,
-          }}
-        >
-          <span style={{ fontSize: 12.5, color: "#f59e0b" }}>{dict.wealthHomeStaleBanner.replace("%s", String(home.staleCount))}</span>
-          <a
-            href="/w/balance"
-            onClick={(e) => {
-              e.preventDefault();
-              onNavigate("/w/balance");
-            }}
-            style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11.5, color: "#f59e0b", textDecoration: "none" }}
-          >
-            {dict.wealthHomeStaleGo}
-          </a>
-        </div>
-      )}
+      {empty && <WealthEmptyCard dict={dict} line={dict.wealthEmptyNet} onAdd={writable ? () => setShowAdd(true) : undefined} />}
+      {assets && <WealthGuide dict={dict} hasAssets={!empty} onNavigate={onNavigate} />}
 
-      {variant === "a" ? (
+      {!empty && (
         <>
-          <div className="card card--glow" style={{ ...CARD_BASE, padding: 16 * 1.3, display: "flex", gap: 16 * 1.6, flexWrap: "wrap", alignItems: "center" }}>
-            <div style={{ flex: "0 1 auto", minWidth: 0 }}>
-              <div style={MONO_LABEL}>
-                <span title={dict.wealthHomeTipDrift} style={DOTTED}>{dict.wealthHomeDriftLabel}</span>
-              </div>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 44, lineHeight: 1.1, marginTop: 10, wordBreak: "keep-all", color: heroDriftColor }}>
-                {thin ? "—" : driftN === 0 ? dict.wealthHomeDriftOnTarget : dict.wealthHomeDriftCount.replace("%s", String(driftN))}
-              </div>
-              <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 4, wordBreak: "keep-all" }}>
-                {thin ? thinReason : driftN === 0 ? dict.wealthHomeDriftNoRebal : dict.wealthHomeDriftOff}
-              </div>
+          {home && home.staleCount > 0 && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                flexWrap: "wrap",
+                padding: "11px 14px",
+                borderRadius: 10,
+                background: "rgba(245,158,11,.1)",
+                border: "1px solid rgba(245,158,11,.35)",
+                marginBottom: 16,
+              }}
+            >
+              <span style={{ fontSize: 12.5, color: "#f59e0b" }}>{dict.wealthHomeStaleBanner.replace("%s", String(home.staleCount))}</span>
+              <a
+                href="/w/balance"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onNavigate("/w/balance");
+                }}
+                style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11.5, color: "#f59e0b", textDecoration: "none" }}
+              >
+                {dict.wealthHomeStaleGo}
+              </a>
             </div>
-            <div style={{ flex: "1 1 260px", minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{ display: "flex", gap: 24, flexWrap: "wrap", fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink-3)" }}>
-                <span>
-                  <span title={dict.wealthHomeTipRebal} style={DOTTED}>{dict.wealthHomeRebalanceLabel}</span>{" "}
-                  <span style={{ color: "var(--ink)" }}>{rebalance}</span>
-                </span>
-                <span>
-                  {dict.wealthHomeNetWorth}{" "}
-                  <span style={{ color: "var(--ink)" }}>{home?.netWorth != null ? fmtMoney(home.netWorth, currency) : "—"}</span>
-                </span>
-              </div>
-              {segBar(10, 5)}
-            </div>
-          </div>
+          )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(45%,1fr))", gap: 16, marginBottom: 16 }}>
-            {kpiCard(dict.wealthTotalAssets, home?.totalAssets != null ? fmtMoney(home.totalAssets, currency) : "—")}
-            {kpiCard(dict.wealthTotalLiabilities, home?.totalLiabilities != null ? fmtMoney(home.totalLiabilities, currency) : "—", { color: "var(--loss)" })}
-            {kpiCard(<span title={dict.wealthHomeTipDebt} style={DOTTED}>{dict.wealthDebtRatio}</span>, debtRatio, { note: "" })}
-            {kpiCard(<span title={dict.wealthHomeTipLiquid} style={DOTTED}>{dict.wealthHomeLiquidLabel}</span>, liquidMonths, { note: "" })}
-          </div>
-
-          <div className="card" style={{ ...CARD_BASE, overflowX: "auto" }}>
-            <div style={{ ...MONO_LABEL, marginBottom: 4 }}>{dict.wealthHomeAllocTitle}</div>
-            <table className="mono" style={{ width: "100%" }}>
-              <thead>
-                <tr>
-                  <th>{dict.wealthHomeClass}</th>
-                  <th style={{ width: "26%" }} />
-                  <th>{dict.wealthHomeCurrent}</th>
-                  <th>{dict.wealthHomeTarget}</th>
-                  <th>{dict.wealthHomeDrift}</th>
-                  <th>{dict.wealthHomeAction}</th>
-                  <th>{dict.wealthMarketValue}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.category}>
-                    <td style={{ fontFamily: "var(--font-sans)" }}>{nameCell(r)}</td>
-                    <td>{bar(r, 8, 4)}</td>
-                    <td>{r.cur.toFixed(1)}%</td>
-                    <td style={{ color: "var(--ink-3)" }}>{r.target}%</td>
-                    <td style={{ color: driftColor(thin, r.drift) }}>{fmtDrift(r.drift)}pt</td>
-                    <td style={{ fontFamily: "var(--font-sans)", fontSize: 12, color: r.actionColor }}>{r.action}</td>
-                    <td>{fmtMoney(r.value, currency)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 16, marginBottom: 16 }}>
-            <div className="card" style={{ margin: 0 }}>
-              <div style={{ ...MONO_LABEL, marginBottom: 10 }}>{dict.wealthHomeGroupTitle}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {groups.map((g) => (
-                  <div key={g.group} style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-                    <span style={{ fontSize: 12.5, color: "var(--ink)", width: 72, flexShrink: 0 }}>{groupLabel(dict, g.group)}</span>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{g.cur.toFixed(1)}%</span>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-3)" }}>/ {g.target}%</span>
-                    <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 12, color: driftColor(thin, g.drift) }}>{fmtDrift(g.drift)}pt</span>
+          {variant === "a" ? (
+            <>
+              <div className="card card--glow" style={{ ...CARD_BASE, padding: 16 * 1.3, display: "flex", gap: 16 * 1.6, flexWrap: "wrap", alignItems: "center" }}>
+                <div style={{ flex: "0 1 auto", minWidth: 0 }}>
+                  <div style={MONO_LABEL}>
+                    <span title={dict.wealthHomeTipDrift} style={DOTTED}>{dict.wealthHomeDriftLabel}</span>
                   </div>
-                ))}
-              </div>
-            </div>
-            <div className="card" style={{ margin: 0 }}>
-              <div style={{ ...MONO_LABEL, marginBottom: 10 }}>{dict.wealthHomeLiabTitle}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>{liabList(true)}</div>
-            </div>
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="card card--glow" style={{ ...CARD_BASE, padding: 16 * 1.6 }}>
-            <div style={{ ...MONO_LABEL, color: "var(--ink-3)" }}>{dict.wealthHomeNetWorth}</div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 60, lineHeight: 1.05, fontVariantNumeric: "tabular-nums", marginTop: 8 }}>
-              {home?.netWorth != null ? fmtMoney(home.netWorth, currency) : "—"}
-            </div>
-            <div style={{ display: "flex", gap: 28, marginTop: 16, flexWrap: "wrap", fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink-3)" }}>
-              <span>
-                <span title={dict.wealthHomeTipYtd} style={DOTTED}>{dict.wealthHomeYtd}</span>{" "}
-                <span style={{ color: signColor(home?.ytdPct) }}>{pctText(home?.ytdPct)}</span>
-              </span>
-              <span>
-                {dict.wealthHomeMom} <span style={{ color: signColor(home?.momPct) }}>{pctText(home?.momPct)}</span>
-              </span>
-              <span>
-                {dict.wealthTotalAssets}{" "}
-                <span style={{ color: "var(--ink)" }}>{home?.totalAssets != null ? fmtMoney(home.totalAssets, currency) : "—"}</span>
-              </span>
-              <span>
-                {dict.wealthTotalLiabilities}{" "}
-                <span style={{ color: "var(--loss)" }}>{home?.totalLiabilities != null ? fmtMoney(home.totalLiabilities, currency) : "—"}</span>
-              </span>
-            </div>
-            {segBar(12, 6, 20)}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 12 }}>
-              {rows.map((r) => (
-                <span key={r.category} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--ink-3)" }}>
-                  {dot(r.color)}
-                  {r.name} <span style={{ fontFamily: "var(--font-mono)", color: "var(--ink-2)" }}>{r.cur.toFixed(1)}%</span>
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 16, marginBottom: 16 }}>
-            <div className="card" style={{ margin: 0 }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
-                <span style={MONO_LABEL}>{dict.wealthHomeOffTitle}</span>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: heroDriftColor }}>
-                  {thin ? `${dict.wealthHomeThinShort} · ${thinReason}` : driftN === 0 ? dict.wealthHomeHeadOk : dict.wealthHomeDriftHead.replace("%s", String(driftN))}
-                </span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {off.slice(0, 4).map((r) => (
-                  <div key={r.category} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                      {dot(r.color)}
-                      <span style={{ fontSize: 12.5 }}>{r.name}</span>
-                      <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 12, color: driftColor(thin, r.drift) }}>{fmtDrift(r.drift)}pt</span>
-                    </div>
-                    {bar(r, 8, 4)}
-                    <div style={{ fontSize: 11, color: "var(--ink-3)" }}>
-                      {r.cur.toFixed(1)}% → {r.target}% · {r.action}
-                    </div>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 44, lineHeight: 1.1, marginTop: 10, wordBreak: "keep-all", color: heroDriftColor }}>
+                    {thin ? "—" : driftN === 0 ? dict.wealthHomeDriftOnTarget : dict.wealthHomeDriftCount.replace("%s", String(driftN))}
                   </div>
-                ))}
-              </div>
-            </div>
-            <div className="card" style={{ margin: 0 }}>
-              <div style={{ ...MONO_LABEL, marginBottom: 12 }}>{dict.wealthHomeLiabTitle}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {liabList(false)}
-                <div style={{ display: "flex", alignItems: "baseline", gap: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: ".06em", color: "var(--ink-3)" }}>
-                    <span title={dict.wealthHomeTipDebt} style={DOTTED}>{dict.wealthDebtRatio}</span>
-                  </span>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 15 }}>{debtRatio}</span>
-                  <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: ".06em", color: "var(--ink-3)" }}>
-                    <span title={dict.wealthHomeTipLiquid} style={DOTTED}>{dict.wealthHomeLiquidLabel}</span>
-                  </span>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 15 }}>{liquidMonths}</span>
+                  <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 4, wordBreak: "keep-all" }}>
+                    {thin ? thinReason : driftN === 0 ? dict.wealthHomeDriftNoRebal : dict.wealthHomeDriftOff}
+                  </div>
+                </div>
+                <div style={{ flex: "1 1 260px", minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div style={{ display: "flex", gap: 24, flexWrap: "wrap", fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink-3)" }}>
+                    <span>
+                      <span title={dict.wealthHomeTipRebal} style={DOTTED}>{dict.wealthHomeRebalanceLabel}</span>{" "}
+                      <span style={{ color: "var(--ink)" }}>{rebalance}</span>
+                    </span>
+                    <span>
+                      {dict.wealthHomeNetWorth}{" "}
+                      <span style={{ color: "var(--ink)" }}>{home?.netWorth != null ? fmtMoney(home.netWorth, currency) : "—"}</span>
+                    </span>
+                  </div>
+                  {segBar(10, 5)}
                 </div>
               </div>
-            </div>
-          </div>
 
-          <div className="card" style={{ ...CARD_BASE, overflowX: "auto" }}>
-            <div style={{ ...MONO_LABEL, marginBottom: 4 }}>{dict.wealthHomeAllocTitle}</div>
-            <table className="mono" style={{ width: "100%" }}>
-              <thead>
-                <tr>
-                  <th>{dict.wealthHomeClass}</th>
-                  <th>{dict.wealthHomeCurrent}</th>
-                  <th>{dict.wealthHomeTarget}</th>
-                  <th>{dict.wealthHomeDrift}</th>
-                  <th>{dict.wealthMarketValue}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.category}>
-                    <td style={{ fontFamily: "var(--font-sans)" }}>{nameCell(r)}</td>
-                    <td>{r.cur.toFixed(1)}%</td>
-                    <td style={{ color: "var(--ink-3)" }}>{r.target}%</td>
-                    <td style={{ color: driftColor(thin, r.drift) }}>{fmtDrift(r.drift)}pt</td>
-                    <td>{fmtMoney(r.value, currency)}</td>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(45%,1fr))", gap: 16, marginBottom: 16 }}>
+                {kpiCard(dict.wealthTotalAssets, home?.totalAssets != null ? fmtMoney(home.totalAssets, currency) : "—")}
+                {kpiCard(dict.wealthTotalLiabilities, home?.totalLiabilities != null ? fmtMoney(home.totalLiabilities, currency) : "—", { color: "var(--loss)" })}
+                {kpiCard(<span title={dict.wealthHomeTipDebt} style={DOTTED}>{dict.wealthDebtRatio}</span>, debtRatio, { note: "" })}
+                {kpiCard(<span title={dict.wealthHomeTipLiquid} style={DOTTED}>{dict.wealthHomeLiquidLabel}</span>, liquidMonths, { note: "" })}
+              </div>
+
+              <div className="card" style={{ ...CARD_BASE, overflowX: "auto" }}>
+                <div style={{ ...MONO_LABEL, marginBottom: 4 }}>{dict.wealthHomeAllocTitle}</div>
+                <table className="mono" style={{ width: "100%" }}>
+                  <thead>
+                    <tr>
+                      <th>{dict.wealthHomeClass}</th>
+                      <th style={{ width: "26%" }} />
+                      <th>{dict.wealthHomeCurrent}</th>
+                      <th>{dict.wealthHomeTarget}</th>
+                      <th>{dict.wealthHomeDrift}</th>
+                      <th>{dict.wealthHomeAction}</th>
+                      <th>{dict.wealthMarketValue}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr key={r.category}>
+                        <td style={{ fontFamily: "var(--font-sans)" }}>{nameCell(r)}</td>
+                        <td>{bar(r, 8, 4)}</td>
+                        <td>{r.cur.toFixed(1)}%</td>
+                        <td style={{ color: "var(--ink-3)" }}>{r.target}%</td>
+                        <td style={{ color: driftColor(thin, r.drift) }}>{fmtDrift(r.drift)}pt</td>
+                        <td style={{ fontFamily: "var(--font-sans)", fontSize: 12, color: r.actionColor }}>{r.action}</td>
+                        <td>{fmtMoney(r.value, currency)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 16, marginBottom: 16 }}>
+                <div className="card" style={{ margin: 0 }}>
+                  <div style={{ ...MONO_LABEL, marginBottom: 10 }}>{dict.wealthHomeGroupTitle}</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {groups.map((g) => (
+                      <div key={g.group} style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                        <span style={{ fontSize: 12.5, color: "var(--ink)", width: 72, flexShrink: 0 }}>{groupLabel(dict, g.group)}</span>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{g.cur.toFixed(1)}%</span>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-3)" }}>/ {g.target}%</span>
+                        <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 12, color: driftColor(thin, g.drift) }}>{fmtDrift(g.drift)}pt</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="card" style={{ margin: 0 }}>
+                  <div style={{ ...MONO_LABEL, marginBottom: 10 }}>{dict.wealthHomeLiabTitle}</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>{liabList(true)}</div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="card card--glow" style={{ ...CARD_BASE, padding: 16 * 1.6 }}>
+                <div style={{ ...MONO_LABEL, color: "var(--ink-3)" }}>{dict.wealthHomeNetWorth}</div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 60, lineHeight: 1.05, fontVariantNumeric: "tabular-nums", marginTop: 8 }}>
+                  {home?.netWorth != null ? fmtMoney(home.netWorth, currency) : "—"}
+                </div>
+                <div style={{ display: "flex", gap: 28, marginTop: 16, flexWrap: "wrap", fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink-3)" }}>
+                  <span>
+                    <span title={dict.wealthHomeTipYtd} style={DOTTED}>{dict.wealthHomeYtd}</span>{" "}
+                    <span style={{ color: signColor(home?.ytdPct) }}>{pctText(home?.ytdPct)}</span>
+                  </span>
+                  <span>
+                    {dict.wealthHomeMom} <span style={{ color: signColor(home?.momPct) }}>{pctText(home?.momPct)}</span>
+                  </span>
+                  <span>
+                    {dict.wealthTotalAssets}{" "}
+                    <span style={{ color: "var(--ink)" }}>{home?.totalAssets != null ? fmtMoney(home.totalAssets, currency) : "—"}</span>
+                  </span>
+                  <span>
+                    {dict.wealthTotalLiabilities}{" "}
+                    <span style={{ color: "var(--loss)" }}>{home?.totalLiabilities != null ? fmtMoney(home.totalLiabilities, currency) : "—"}</span>
+                  </span>
+                </div>
+                {segBar(12, 6, 20)}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 12 }}>
+                  {rows.map((r) => (
+                    <span key={r.category} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--ink-3)" }}>
+                      {dot(r.color)}
+                      {r.name} <span style={{ fontFamily: "var(--font-mono)", color: "var(--ink-2)" }}>{r.cur.toFixed(1)}%</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 16, marginBottom: 16 }}>
+                <div className="card" style={{ margin: 0 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
+                    <span style={MONO_LABEL}>{dict.wealthHomeOffTitle}</span>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: heroDriftColor }}>
+                      {thin ? `${dict.wealthHomeThinShort} · ${thinReason}` : driftN === 0 ? dict.wealthHomeHeadOk : dict.wealthHomeDriftHead.replace("%s", String(driftN))}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {off.slice(0, 4).map((r) => (
+                      <div key={r.category} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                          {dot(r.color)}
+                          <span style={{ fontSize: 12.5 }}>{r.name}</span>
+                          <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 12, color: driftColor(thin, r.drift) }}>{fmtDrift(r.drift)}pt</span>
+                        </div>
+                        {bar(r, 8, 4)}
+                        <div style={{ fontSize: 11, color: "var(--ink-3)" }}>
+                          {r.cur.toFixed(1)}% → {r.target}% · {r.action}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="card" style={{ margin: 0 }}>
+                  <div style={{ ...MONO_LABEL, marginBottom: 12 }}>{dict.wealthHomeLiabTitle}</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {liabList(false)}
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: ".06em", color: "var(--ink-3)" }}>
+                        <span title={dict.wealthHomeTipDebt} style={DOTTED}>{dict.wealthDebtRatio}</span>
+                      </span>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 15 }}>{debtRatio}</span>
+                      <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: ".06em", color: "var(--ink-3)" }}>
+                        <span title={dict.wealthHomeTipLiquid} style={DOTTED}>{dict.wealthHomeLiquidLabel}</span>
+                      </span>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 15 }}>{liquidMonths}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card" style={{ ...CARD_BASE, overflowX: "auto" }}>
+                <div style={{ ...MONO_LABEL, marginBottom: 4 }}>{dict.wealthHomeAllocTitle}</div>
+                <table className="mono" style={{ width: "100%" }}>
+                  <thead>
+                    <tr>
+                      <th>{dict.wealthHomeClass}</th>
+                      <th>{dict.wealthHomeCurrent}</th>
+                      <th>{dict.wealthHomeTarget}</th>
+                      <th>{dict.wealthHomeDrift}</th>
+                      <th>{dict.wealthMarketValue}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr key={r.category}>
+                        <td style={{ fontFamily: "var(--font-sans)" }}>{nameCell(r)}</td>
+                        <td>{r.cur.toFixed(1)}%</td>
+                        <td style={{ color: "var(--ink-3)" }}>{r.target}%</td>
+                        <td style={{ color: driftColor(thin, r.drift) }}>{fmtDrift(r.drift)}pt</td>
+                        <td>{fmtMoney(r.value, currency)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          <div className="card">
+            <div className="modal-header" style={{ border: "none", padding: 0, marginBottom: 12 }}>
+              <div className="eyebrow">{dict.wealthAssetsLabel}</div>
+            </div>
+            {!assets ? (
+              <div className="loading">{dict.loading}</div>
+            ) : assets.length === 0 ? (
+              <div className="empty-message">{dict.wealthEmpty}</div>
+            ) : (
+              <table className="mono">
+                <thead>
+                  <tr>
+                    <th>{dict.wealthName}</th>
+                    <th>{dict.wealthGroupLabel}</th>
+                    <th>{dict.wealthVenue}</th>
+                    <th>{dict.wealthValue}</th>
+                    {writable && <th />}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {assets.map((a) => (
+                    <tr key={a.id}>
+                      <td>{a.name}</td>
+                      <td>{groupLabel(dict, a.assetGroup)}</td>
+                      <td>{a.venue || dict.wealthVenueUnset}</td>
+                      <td className={a.side === "liability" ? "loss" : ""}>
+                        <AssetValue dict={dict} asset={a} />
+                      </td>
+                      {writable && (
+                        <td className="row-actions">
+                          <button onClick={() => setEditing(a)}>{dict.wealthEditValueTitle}</button>
+                          <button onClick={() => setArchiving(a)}>{dict.wealthArchive}</button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </>
       )}
-
-      <div className="card">
-        <div className="modal-header" style={{ border: "none", padding: 0, marginBottom: 12 }}>
-          <div className="eyebrow">{dict.wealthAssetsLabel}</div>
-        </div>
-        {!assets ? (
-          <div className="loading">{dict.loading}</div>
-        ) : assets.length === 0 ? (
-          <div className="empty-message">{dict.wealthEmpty}</div>
-        ) : (
-          <table className="mono">
-            <thead>
-              <tr>
-                <th>{dict.wealthName}</th>
-                <th>{dict.wealthGroupLabel}</th>
-                <th>{dict.wealthVenue}</th>
-                <th>{dict.wealthValue}</th>
-                {writable && <th />}
-              </tr>
-            </thead>
-            <tbody>
-              {assets.map((a) => (
-                <tr key={a.id}>
-                  <td>{a.name}</td>
-                  <td>{groupLabel(dict, a.assetGroup)}</td>
-                  <td>{a.venue || dict.wealthVenueUnset}</td>
-                  <td className={a.side === "liability" ? "loss" : ""}>
-                    <AssetValue dict={dict} asset={a} />
-                  </td>
-                  {writable && (
-                    <td className="row-actions">
-                      <button onClick={() => setEditing(a)}>{dict.wealthEditValueTitle}</button>
-                      <button onClick={() => setArchiving(a)}>{dict.wealthArchive}</button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
 
       {showAdd && (
         <AddAssetModal
@@ -731,6 +742,40 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
             setArchiving(null);
             void doArchive(a);
           }}
+        />
+      )}
+    </>
+  );
+}
+
+// WealthEmptyAssets is the empty-page card of a page that has no add button of
+// its own (/w/alloc, /w/retire): its "新增" opens the add-asset drawer.
+export function WealthEmptyAssets({
+  dict,
+  line,
+  writable,
+  onUnauthorized,
+  onAdded,
+}: {
+  dict: Dictionary;
+  line: string;
+  writable: boolean;
+  onUnauthorized: (retry: () => void) => void;
+  onAdded: () => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  return (
+    <>
+      <WealthEmptyCard dict={dict} line={line} onAdd={writable ? () => setAdding(true) : undefined} />
+      {adding && (
+        <AddAssetModal
+          dict={dict}
+          onClose={() => setAdding(false)}
+          onSuccess={() => {
+            setAdding(false);
+            onAdded();
+          }}
+          onUnauthorized={onUnauthorized}
         />
       )}
     </>

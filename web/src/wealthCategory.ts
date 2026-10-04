@@ -51,6 +51,17 @@ export function loadModel(): AllocationModel {
   return "balanced";
 }
 
+// hasPickedModel tells "chose 平衡" from "never chose": loadModel defaults to
+// balanced either way, and the choice only lives in this browser. The setup
+// guide's allocation step counts as done once a model has been saved here.
+export function hasPickedModel(): boolean {
+  try {
+    return localStorage.getItem(MODEL_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
 export function saveModel(m: AllocationModel) {
   try {
     localStorage.setItem(MODEL_KEY, m);

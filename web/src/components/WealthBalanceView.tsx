@@ -20,6 +20,7 @@ import { CATEGORY_COLOR } from "../wealthCategory";
 import { useFlash } from "../flash";
 import { BalanceRow } from "./BalanceRow";
 import { RowEditDrawer } from "./RowEditDrawer";
+import { WealthEmptyCard } from "./WealthOnboarding";
 
 interface Props {
   dict: Dictionary;
@@ -165,6 +166,9 @@ export function WealthBalanceView({ dict, writable, onUnauthorized, onNavigate }
   const archived = (assets ?? [])
     .filter((a) => a.archivedAt)
     .sort((a, b) => (b.archivedAt ?? "").localeCompare(a.archivedAt ?? ""));
+  // Archived records count too, so the one-line empty card never stands in
+  // for a sheet whose 已封存 tab still has something to restore.
+  const empty = assets != null && assets.length === 0;
   // Counts the equity row too, like the design's tab does.
   const liveCount = sheet ? sheet.assetGroups.reduce((n, g) => n + g.assets.length, 0) + sheet.liabilities.length : 0;
 
@@ -203,6 +207,8 @@ export function WealthBalanceView({ dict, writable, onUnauthorized, onNavigate }
 
       {view === "arc" ? (
         <ArchivedCard dict={dict} items={archived} loaded={assets != null} onOpen={setDrawer} onRestore={restore} />
+      ) : empty ? (
+        <WealthEmptyCard dict={dict} line={dict.wealthEmptyBalance} onAdd={writable ? () => setShowAdd(true) : undefined} />
       ) : (
         <>
           <div className="card card--glow" style={{ padding: 19.2, marginBottom: 16 }}>

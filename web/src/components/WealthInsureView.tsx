@@ -15,6 +15,7 @@ import type { Dictionary } from "../i18n";
 import { DOTTED, fmtMoney } from "./WealthHomeView";
 import { srcLabel } from "./WealthBalanceView";
 import { useFlash } from "../flash";
+import { WealthEmptyCard } from "./WealthOnboarding";
 
 interface Props {
   dict: Dictionary;
@@ -362,6 +363,7 @@ export function WealthInsureView({ dict, writable, onUnauthorized }: Props) {
   }
 
   const worst = data?.rows.find((r) => r.kind === data.worstKind);
+  const empty = data != null && data.policies.length === 0;
 
   return (
     <>
@@ -394,87 +396,93 @@ export function WealthInsureView({ dict, writable, onUnauthorized }: Props) {
         />
       )}
 
-      {writable && data && !data.hasProfile && (
-        <InsureSetupCard dict={dict} onUnauthorized={onUnauthorized} onSaved={refresh} />
-      )}
+      {empty && <WealthEmptyCard dict={dict} line={dict.wealthEmptyInsure} onAdd={writable ? () => setShowAddForm(true) : undefined} />}
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
-        <div className="card card--glow" style={{ flex: "1.5 1 250px", padding: 19.2 }}>
-          <div className="eyebrow">{dict.wealthInsureBiggestGapLabel}</div>
-          <div className="mono loss" style={{ fontSize: 30, lineHeight: 1.15, marginTop: 8, wordBreak: "keep-all" }}>
-            {data && data.worstKind ? fmtCoverage(dict, data.worstGap, worst?.perPeriod) : "—"}
-          </div>
-          <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 4 }}>
-            {data?.worstKind ? kindLabel(dict, data.worstKind) : "—"} ·{" "}
-            <span title={dict.wealthInsureTipCoverage} style={DOTTED}>
-              {dict.wealthInsureCoverageLabel}
-            </span>{" "}
-            {data?.worstKind ? `${data.worstPct.toFixed(0)}%` : "—"}
-          </div>
-        </div>
-        <div className="card" style={{ flex: "1 1 200px" }}>
-          <div className="eyebrow">{dict.wealthInsureTotalGapLabel}</div>
-          <div className="mono loss" style={{ fontSize: "clamp(17px,2.1vw,28px)", marginTop: 8 }}>
-            {data ? fmtMoney(data.totalGapLumpSum, CURRENCY) : "—"}
-          </div>
-        </div>
-        <div className="card" style={{ flex: "1 1 200px" }}>
-          <div className="eyebrow">{dict.wealthInsurePremiumLabel}</div>
-          <div className="mono" style={{ fontSize: "clamp(17px,2.1vw,28px)", marginTop: 8 }}>
-            {data ? fmtMoney(data.premium, CURRENCY) : "—"}
-          </div>
-          <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6 }}>
-            {dict.wealthInsurePremShareLabel} {data?.premSharePct != null ? `${data.premSharePct.toFixed(1)}%` : "—"}
-          </div>
-        </div>
-        <div className="card" style={{ flex: "1 1 200px" }}>
-          <div className="eyebrow">{dict.wealthInsureCountLabel}</div>
-          <div className="mono" style={{ fontSize: "clamp(17px,2.1vw,28px)", marginTop: 8 }}>
-            {data?.count ?? "—"}
-          </div>
-        </div>
-      </div>
+      {!empty && (
+        <>
+          {writable && data && !data.hasProfile && (
+            <InsureSetupCard dict={dict} onUnauthorized={onUnauthorized} onSaved={refresh} />
+          )}
 
-      <div className="card" style={{ marginBottom: 16, padding: 17.6 }}>
-        <div className="eyebrow" style={{ marginBottom: 6 }}>
-          {dict.wealthInsureGapTitle}
-        </div>
-        <div style={{ fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.6, marginBottom: 18, maxWidth: 640 }}>
-          {dict.wealthInsureNeedHow}
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {data?.rows.map((row) => (
-            <CoverageRow key={row.kind} dict={dict} row={row} />
-          ))}
-        </div>
-      </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
+            <div className="card card--glow" style={{ flex: "1.5 1 250px", padding: 19.2 }}>
+              <div className="eyebrow">{dict.wealthInsureBiggestGapLabel}</div>
+              <div className="mono loss" style={{ fontSize: 30, lineHeight: 1.15, marginTop: 8, wordBreak: "keep-all" }}>
+                {data && data.worstKind ? fmtCoverage(dict, data.worstGap, worst?.perPeriod) : "—"}
+              </div>
+              <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 4 }}>
+                {data?.worstKind ? kindLabel(dict, data.worstKind) : "—"} ·{" "}
+                <span title={dict.wealthInsureTipCoverage} style={DOTTED}>
+                  {dict.wealthInsureCoverageLabel}
+                </span>{" "}
+                {data?.worstKind ? `${data.worstPct.toFixed(0)}%` : "—"}
+              </div>
+            </div>
+            <div className="card" style={{ flex: "1 1 200px" }}>
+              <div className="eyebrow">{dict.wealthInsureTotalGapLabel}</div>
+              <div className="mono loss" style={{ fontSize: "clamp(17px,2.1vw,28px)", marginTop: 8 }}>
+                {data ? fmtMoney(data.totalGapLumpSum, CURRENCY) : "—"}
+              </div>
+            </div>
+            <div className="card" style={{ flex: "1 1 200px" }}>
+              <div className="eyebrow">{dict.wealthInsurePremiumLabel}</div>
+              <div className="mono" style={{ fontSize: "clamp(17px,2.1vw,28px)", marginTop: 8 }}>
+                {data ? fmtMoney(data.premium, CURRENCY) : "—"}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6 }}>
+                {dict.wealthInsurePremShareLabel} {data?.premSharePct != null ? `${data.premSharePct.toFixed(1)}%` : "—"}
+              </div>
+            </div>
+            <div className="card" style={{ flex: "1 1 200px" }}>
+              <div className="eyebrow">{dict.wealthInsureCountLabel}</div>
+              <div className="mono" style={{ fontSize: "clamp(17px,2.1vw,28px)", marginTop: 8 }}>
+                {data?.count ?? "—"}
+              </div>
+            </div>
+          </div>
 
-      <div className="card" style={{ overflowX: "auto" }}>
-        <div className="eyebrow" style={{ marginBottom: 4 }}>
-          {dict.wealthInsurePoliciesTitle}
-        </div>
-        {data && data.policies.length > 0 ? (
-          <table className="mono">
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left" }}>{dict.wealthAllocClass}</th>
-                <th style={{ textAlign: "left" }}>{dict.wealthInsureInsurerLabel}</th>
-                <th style={{ textAlign: "left" }}>{dict.wealthInsureColType}</th>
-                <th>{dict.wealthInsureAmountLabel}</th>
-                <th>{dict.wealthInsureAnnualPremiumLabel}</th>
-                <th style={{ textAlign: "left" }}>{dict.wealthInsureColTerm}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.policies.map((p, i) => (
-                <PolicyRow key={`${p.assetId}-${i}`} dict={dict} policy={p} />
+          <div className="card" style={{ marginBottom: 16, padding: 17.6 }}>
+            <div className="eyebrow" style={{ marginBottom: 6 }}>
+              {dict.wealthInsureGapTitle}
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.6, marginBottom: 18, maxWidth: 640 }}>
+              {dict.wealthInsureNeedHow}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {data?.rows.map((row) => (
+                <CoverageRow key={row.kind} dict={dict} row={row} />
               ))}
-            </tbody>
-          </table>
-        ) : (
-          <div className="empty-message">{dict.wealthInsureNoPolicies}</div>
-        )}
-      </div>
+            </div>
+          </div>
+
+          <div className="card" style={{ overflowX: "auto" }}>
+            <div className="eyebrow" style={{ marginBottom: 4 }}>
+              {dict.wealthInsurePoliciesTitle}
+            </div>
+            {data && data.policies.length > 0 ? (
+              <table className="mono">
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left" }}>{dict.wealthAllocClass}</th>
+                    <th style={{ textAlign: "left" }}>{dict.wealthInsureInsurerLabel}</th>
+                    <th style={{ textAlign: "left" }}>{dict.wealthInsureColType}</th>
+                    <th>{dict.wealthInsureAmountLabel}</th>
+                    <th>{dict.wealthInsureAnnualPremiumLabel}</th>
+                    <th style={{ textAlign: "left" }}>{dict.wealthInsureColTerm}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.policies.map((p, i) => (
+                    <PolicyRow key={`${p.assetId}-${i}`} dict={dict} policy={p} />
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="empty-message">{dict.wealthInsureNoPolicies}</div>
+            )}
+          </div>
+        </>
+      )}
     </>
   );
 }

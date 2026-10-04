@@ -268,7 +268,13 @@ export default function App() {
       />
     );
   } else if (path === "/w/alloc") {
-    body = <WealthAllocView dict={dict} />;
+    body = (
+      <WealthAllocView
+        dict={dict}
+        writable={status?.writable ?? false}
+        onUnauthorized={(retry) => setAuthRetry(() => retry)}
+      />
+    );
   } else if (path === "/w/cash") {
     body = (
       <WealthCashView
