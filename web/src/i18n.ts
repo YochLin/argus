@@ -833,6 +833,62 @@ export interface Dictionary {
   wealthArchiveBody: string;
   wealthFlashArchived: string;
   wealthFlashPaused: string;
+  // /w/balance's 使用中/已封存 tabs and the archived table.
+  wealthTabActive: string;
+  wealthTabArchived: string;
+  wealthArcDesc: string;
+  wealthArcColKind: string;
+  wealthArcColDate: string;
+  wealthArcColValue: string;
+  wealthArcNone: string;
+  wealthRestore: string;
+  wealthFlashRestored: string; // %s = name
+  wealthRoNoChange: string;
+  wealthSideAsset: string;
+  wealthSideLiability: string;
+  // A balance-sheet row's ⋯ button and click-to-edit value.
+  wealthRowMore: string;
+  wealthRowLinkGo: string;
+  wealthRowLinkTitle: string;
+  wealthRowEditHint: string;
+  // The edit drawer (RowEditDrawer). %s placeholders are noted per key.
+  wealthEdTitle: string;
+  wealthEdTitleArchived: string;
+  wealthEdLastRecord: string; // %s = date
+  wealthEdNoRecord: string;
+  wealthEdArchNote: string; // %s = archive date
+  wealthEdRoNote: string;
+  wealthEdLockSide: string;
+  wealthEdLockCurrency: string;
+  wealthEdLockSource: string;
+  wealthEdLockNote: string;
+  wealthEdInstPhAsset: string;
+  wealthEdInstPhLiab: string;
+  wealthEdLogTitle: string;
+  wealthEdFixTitle: string;
+  wealthEdCancelFix: string;
+  wealthEdHintTwd: string;
+  wealthEdHintFx: string; // %s = currency code
+  wealthEdAdd: string;
+  wealthEdUpdate: string;
+  wealthEdErrAmount: string;
+  wealthEdErrFuture: string;
+  wealthEdErrName: string;
+  wealthEdErrLocked: string;
+  wealthEdHistTitle: string;
+  wealthEdHistEmpty: string;
+  wealthEdTagToday: string;
+  wealthEdTagHistory: string;
+  wealthEdFix: string;
+  wealthEdDel: string;
+  wealthEdHistNote: string;
+  wealthEdSave: string;
+  wealthEdClose: string;
+  wealthEdArchive: string;
+  wealthEdFlashSaved: string;
+  wealthEdFlashLogged: string;
+  wealthEdFlashFixed: string;
+  wealthEdFlashDeleted: string;
   // Read-only mode (WEB_PASSWORD unset): the shell banner, its "how to
   // enable editing" steps, and the import pages' stand-in panels.
   roTag: string;
@@ -855,6 +911,7 @@ export interface Dictionary {
   wealthKindCrypto: string;
   wealthKindPension: string;
   wealthKindOther: string;
+  wealthKindCreditCard: string;
   wealthBank: string;
   wealthAccountNote: string;
   wealthLender: string;
@@ -2008,9 +2065,63 @@ const en: Dictionary = {
   wealthArchive: "Archive",
   wealthArchiveTitle: "Archive “%s”?",
   wealthArchiveBody:
-    "It will no longer count toward net worth, allocation or ratios. All value records are kept.",
+    "It will no longer count toward net worth, allocation or ratios. All value records are kept, and you can restore it from Archived on the balance sheet.",
   wealthFlashArchived: "Archived “%s”",
   wealthFlashPaused: "Paused “%s”",
+  wealthTabActive: "Active",
+  wealthTabArchived: "Archived",
+  wealthArcDesc: "Not counted in net worth, allocation or ratios. Value records are kept in full.",
+  wealthArcColKind: "Type",
+  wealthArcColDate: "Archived on",
+  wealthArcColValue: "Value when archived",
+  wealthArcNone: "Nothing archived. Any entry can be archived from its “⋯” menu.",
+  wealthRestore: "Restore",
+  wealthFlashRestored: "Restored “%s”",
+  wealthRoNoChange: "Read-only: set a password to make changes",
+  wealthSideAsset: "Asset",
+  wealthSideLiability: "Liability",
+  wealthRowMore: "Edit · history · archive",
+  wealthRowLinkGo: "Open trading account",
+  wealthRowLinkTitle: "Synced from the trading account — click to open",
+  wealthRowEditHint: "Click to edit (Enter saves, Esc cancels)",
+  wealthEdTitle: "EDIT ENTRY",
+  wealthEdTitleArchived: "ARCHIVED ENTRY",
+  wealthEdLastRecord: "last record %s",
+  wealthEdNoRecord: "no records yet",
+  wealthEdArchNote: "Archived %s · excluded from net worth, allocation and ratios. History is kept read-only.",
+  wealthEdRoNote: "Read-only: view only. Set WEB_PASSWORD to edit, log values or archive.",
+  wealthEdLockSide: "Side",
+  wealthEdLockCurrency: "Currency",
+  wealthEdLockSource: "Source",
+  wealthEdLockNote: "Side and currency are fixed once created. To change them, archive this entry and add a new one.",
+  wealthEdInstPhAsset: "e.g. Bank of Taiwan",
+  wealthEdInstPhLiab: "e.g. Cathay Bank",
+  wealthEdLogTitle: "LOG NEW VALUE",
+  wealthEdFixTitle: "CORRECT TODAY'S RECORD",
+  wealthEdCancelFix: "Cancel correction",
+  wealthEdHintTwd: "Enter the amount in TWD",
+  wealthEdHintFx: "Enter the amount in %s; converted to TWD at that day's rate",
+  wealthEdAdd: "Add record",
+  wealthEdUpdate: "Update record",
+  wealthEdErrAmount: "Enter an amount",
+  wealthEdErrFuture: "Date can't be in the future",
+  wealthEdErrName: "Name is required",
+  wealthEdErrLocked: "That day already has a record, and past records can't be changed",
+  wealthEdHistTitle: "VALUE HISTORY",
+  wealthEdHistEmpty: "No value records yet",
+  wealthEdTagToday: "Logged today · editable",
+  wealthEdTagHistory: "History",
+  wealthEdFix: "Correct",
+  wealthEdDel: "Delete",
+  wealthEdHistNote:
+    "Records can be corrected or deleted on the day they're logged; after that they become history. To fix an older one, log a new value.",
+  wealthEdSave: "Save",
+  wealthEdClose: "Close",
+  wealthEdArchive: "Archive this entry",
+  wealthEdFlashSaved: "Saved",
+  wealthEdFlashLogged: "Value logged",
+  wealthEdFlashFixed: "Record corrected",
+  wealthEdFlashDeleted: "Record deleted",
   roTag: "READ-ONLY",
   roMsg:
     "WEB_PASSWORD isn't set on the server, so this is view-only. Adding, editing, archiving and import are disabled.",
@@ -2034,6 +2145,7 @@ const en: Dictionary = {
   wealthKindCrypto: "Crypto",
   wealthKindPension: "Pension",
   wealthKindOther: "Other",
+  wealthKindCreditCard: "Credit card",
   wealthBank: "Bank",
   wealthAccountNote: "Account note",
   wealthLender: "Lender",
@@ -3122,9 +3234,62 @@ const zh: Dictionary = {
   wealthValue: "現值",
   wealthArchive: "封存",
   wealthArchiveTitle: "封存「%s」？",
-  wealthArchiveBody: "封存後這筆不再計入淨值、配置與比率，所有現值紀錄都會保留。",
+  wealthArchiveBody: "封存後這筆不再計入淨值、配置與比率，所有現值紀錄都會保留。之後可以在資產負債表的「已封存」取消封存。",
   wealthFlashArchived: "已封存「%s」",
   wealthFlashPaused: "已暫停「%s」",
+  wealthTabActive: "使用中",
+  wealthTabArchived: "已封存",
+  wealthArcDesc: "不計入淨值、配置與比率，現值紀錄完整保留。",
+  wealthArcColKind: "類別",
+  wealthArcColDate: "封存日",
+  wealthArcColValue: "封存時現值",
+  wealthArcNone: "沒有封存的項目。在任一筆資料的「⋯」選單可以封存。",
+  wealthRestore: "取消封存",
+  wealthFlashRestored: "已取消封存「%s」",
+  wealthRoNoChange: "唯讀模式：設定密碼後才能變更",
+  wealthSideAsset: "資產",
+  wealthSideLiability: "負債",
+  wealthRowMore: "編輯 · 紀錄 · 封存",
+  wealthRowLinkGo: "前往交易帳戶",
+  wealthRowLinkTitle: "由交易帳戶自動帶入，點擊前往",
+  wealthRowEditHint: "點一下直接改（Enter 儲存、Esc 取消）",
+  wealthEdTitle: "編輯項目",
+  wealthEdTitleArchived: "已封存項目",
+  wealthEdLastRecord: "最後紀錄 %s",
+  wealthEdNoRecord: "尚無紀錄",
+  wealthEdArchNote: "封存於 %s · 不計入淨值、配置與比率。紀錄保留，只能檢視。",
+  wealthEdRoNote: "唯讀模式：只能檢視。設定 WEB_PASSWORD 後才能編輯、記錄現值或封存。",
+  wealthEdLockSide: "類別",
+  wealthEdLockCurrency: "幣別",
+  wealthEdLockSource: "來源",
+  wealthEdLockNote: "類別、幣別建立後不能更改。要改的話，封存這筆再重新新增。",
+  wealthEdInstPhAsset: "例：台灣銀行",
+  wealthEdInstPhLiab: "例：國泰世華",
+  wealthEdLogTitle: "記錄新現值",
+  wealthEdFixTitle: "修正今天的紀錄",
+  wealthEdCancelFix: "取消修正",
+  wealthEdHintTwd: "填新台幣金額",
+  wealthEdHintFx: "填 %s 原幣金額，系統依當日匯率換算新台幣",
+  wealthEdAdd: "新增紀錄",
+  wealthEdUpdate: "更新這筆",
+  wealthEdErrAmount: "請輸入金額",
+  wealthEdErrFuture: "日期不能晚於今天",
+  wealthEdErrName: "名稱不能空白",
+  wealthEdErrLocked: "這天已經有紀錄，過去的紀錄不能再改",
+  wealthEdHistTitle: "現值紀錄",
+  wealthEdHistEmpty: "還沒有現值紀錄",
+  wealthEdTagToday: "今天記錄 · 可修正",
+  wealthEdTagHistory: "歷史",
+  wealthEdFix: "修正",
+  wealthEdDel: "刪除",
+  wealthEdHistNote: "當天記的可以修正或刪除；過了當天就成為歷史紀錄，不能再改。記錯了請新增一筆正確的現值。",
+  wealthEdSave: "儲存",
+  wealthEdClose: "關閉",
+  wealthEdArchive: "封存這筆",
+  wealthEdFlashSaved: "已儲存",
+  wealthEdFlashLogged: "已新增現值紀錄",
+  wealthEdFlashFixed: "已修正紀錄",
+  wealthEdFlashDeleted: "已刪除紀錄",
   roTag: "唯讀模式",
   roMsg: "伺服器尚未設定 WEB_PASSWORD，目前只能檢視。新增、編輯、封存與匯入都已停用。",
   roHow: "如何開啟編輯 →",
@@ -3146,6 +3311,7 @@ const zh: Dictionary = {
   wealthKindCrypto: "加密貨幣",
   wealthKindPension: "勞保勞退",
   wealthKindOther: "其他",
+  wealthKindCreditCard: "信用卡",
   wealthBank: "銀行",
   wealthAccountNote: "帳戶備註",
   wealthLender: "貸款機構",

@@ -90,6 +90,14 @@ function kindLabel(dict: Dictionary, k: Kind): string {
   }
 }
 
+// typeLabel names an asset's stored `type` — the Kind list above plus
+// credit_card (which the quick-add form files under "loan"), falling back to
+// the raw string for anything else the CSV import may have written.
+export function typeLabel(dict: Dictionary, type: string): string {
+  if (type === "credit_card") return dict.wealthKindCreditCard;
+  return (KINDS as string[]).includes(type) ? kindLabel(dict, type as Kind) : type;
+}
+
 export function groupLabel(dict: Dictionary, g: AssetGroup): string {
   switch (g) {
     case "liquid":
