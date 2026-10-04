@@ -14,6 +14,7 @@ import {
 import type { Dictionary } from "../i18n";
 import { DOTTED, fmtMoney } from "./WealthHomeView";
 import { srcLabel } from "./WealthBalanceView";
+import { useFlash } from "../flash";
 
 interface Props {
   dict: Dictionary;
@@ -271,6 +272,7 @@ function InsureSetupCard({
   const [age, setAge] = useState("");
   const [spouseIncome, setSpouseIncome] = useState<"yes" | "no" | "">("");
   const [saving, setSaving] = useState(false);
+  const flash = useFlash();
 
   const dependentsNum = Number(dependents);
   const hasDependents = Number.isFinite(dependentsNum) && dependentsNum > 0;
@@ -296,7 +298,7 @@ function InsureSetupCard({
       if (e instanceof ApiError && e.status === 401) {
         onUnauthorized(save);
       } else {
-        window.alert(e instanceof ApiError ? e.message : dict.error);
+        flash(e instanceof ApiError ? e.message : dict.error, "error");
       }
     } finally {
       setSaving(false);

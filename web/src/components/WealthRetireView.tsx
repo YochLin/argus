@@ -12,6 +12,7 @@ import {
 import type { Dictionary } from "../i18n";
 import { DOTTED, fmtMoney } from "./WealthHomeView";
 import { shortTWD } from "../currency";
+import { useFlash } from "../flash";
 
 interface Props {
   dict: Dictionary;
@@ -216,6 +217,7 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
   const [retire, setRetire] = useState<WealthRetire | null>(null);
   const [error, setError] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
+  const flash = useFlash();
   const [birthYearInput, setBirthYearInput] = useState("");
   const birthYearInputRef = useRef<HTMLInputElement>(null);
   const [contribInput, setContribInput] = useState("");
@@ -318,7 +320,7 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
       if (e instanceof ApiError && e.status === 401) {
         onUnauthorized(() => saveQuickSwitch(age, spend));
       } else {
-        window.alert(e instanceof ApiError ? e.message : dict.error);
+        flash(e instanceof ApiError ? e.message : dict.error, "error");
       }
     }
   }
@@ -336,7 +338,7 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
       if (e instanceof ApiError && e.status === 401) {
         onUnauthorized(saveSetup);
       } else {
-        window.alert(e instanceof ApiError ? e.message : dict.error);
+        flash(e instanceof ApiError ? e.message : dict.error, "error");
       }
     } finally {
       setSavingSetup(false);

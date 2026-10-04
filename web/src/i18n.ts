@@ -828,7 +828,23 @@ export interface Dictionary {
   wealthCurrency: string;
   wealthValue: string;
   wealthArchive: string;
-  wealthArchiveConfirm: string;
+  // %s = the asset's name in the title and in the two flash toasts.
+  wealthArchiveTitle: string;
+  wealthArchiveBody: string;
+  wealthFlashArchived: string;
+  wealthFlashPaused: string;
+  // Read-only mode (WEB_PASSWORD unset): the shell banner, its "how to
+  // enable editing" steps, and the import pages' stand-in panels.
+  roTag: string;
+  roMsg: string;
+  roHow: string;
+  roHide: string;
+  roStep1: string;
+  roStep2: string;
+  roStep3: string;
+  roImportTitle: string;
+  roImportBodyWealth: string;
+  roImportBodyTrade: string;
   wealthKindDeposit: string;
   wealthKindLoan: string;
   wealthKindInsurance: string;
@@ -1990,7 +2006,24 @@ const en: Dictionary = {
   wealthCurrency: "Currency",
   wealthValue: "Value",
   wealthArchive: "Archive",
-  wealthArchiveConfirm: "Archive this asset? Its history stays on record, it just leaves the active list.",
+  wealthArchiveTitle: "Archive “%s”?",
+  wealthArchiveBody:
+    "It will no longer count toward net worth, allocation or ratios. All value records are kept.",
+  wealthFlashArchived: "Archived “%s”",
+  wealthFlashPaused: "Paused “%s”",
+  roTag: "READ-ONLY",
+  roMsg:
+    "WEB_PASSWORD isn't set on the server, so this is view-only. Adding, editing, archiving and import are disabled.",
+  roHow: "How to enable editing →",
+  roHide: "Hide",
+  roStep1: "Set a password in the server's environment",
+  roStep2: "Restart the service",
+  roStep3: "Come back and enter the same password the first time you edit",
+  roImportTitle: "Import needs edit access",
+  roImportBodyWealth:
+    "This is read-only, so nothing can be written. You can still prepare your CSV using the column guide above, then paste it in once a password is set.",
+  roImportBodyTrade:
+    "This is read-only, so trades can't be imported. After setting WEB_PASSWORD and restarting, the import form appears here.",
   wealthKindDeposit: "Deposit",
   wealthKindLoan: "Loan",
   wealthKindInsurance: "Insurance",
@@ -3088,7 +3121,21 @@ const zh: Dictionary = {
   wealthCurrency: "幣別",
   wealthValue: "現值",
   wealthArchive: "封存",
-  wealthArchiveConfirm: "封存這筆資產？歷史紀錄會保留，只是從清單中隱藏。",
+  wealthArchiveTitle: "封存「%s」？",
+  wealthArchiveBody: "封存後這筆不再計入淨值、配置與比率，所有現值紀錄都會保留。",
+  wealthFlashArchived: "已封存「%s」",
+  wealthFlashPaused: "已暫停「%s」",
+  roTag: "唯讀模式",
+  roMsg: "伺服器尚未設定 WEB_PASSWORD，目前只能檢視。新增、編輯、封存與匯入都已停用。",
+  roHow: "如何開啟編輯 →",
+  roHide: "收起",
+  roStep1: "在伺服器的環境變數設定密碼",
+  roStep2: "重新啟動服務",
+  roStep3: "回到這裡，第一次編輯時輸入同一組密碼登入",
+  roImportTitle: "匯入需要編輯權限",
+  roImportBodyWealth:
+    "目前是唯讀模式，不能寫入資料。你仍然可以先照上方欄位說明整理好 CSV，設定密碼後再回來貼上匯入。",
+  roImportBodyTrade: "目前是唯讀模式，不能匯入交易紀錄。設定 WEB_PASSWORD 並重新啟動後，這裡會出現匯入表單。",
   wealthKindDeposit: "存款",
   wealthKindLoan: "貸款",
   wealthKindInsurance: "保單",

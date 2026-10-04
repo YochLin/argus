@@ -5632,3 +5632,229 @@ a.snap-news-head:hover {
 .tk-rail-title + .report-section {
   margin-top: 14px;
 }
+
+/* Shared confirm dialog (ConfirmDialog.tsx) — the design's "SHARED CONFIRM
+   DIALOG": a destructive red OK, a quiet Cancel. */
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.confirm-dialog {
+  width: min(400px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border-radius: 13px;
+  background: linear-gradient(145deg, var(--surface) 0%, var(--surface-2) 100%);
+  box-shadow: var(--card-glow-shadow);
+}
+
+.confirm-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+
+.confirm-body {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 6px;
+}
+
+.confirm-actions button {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 15px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.confirm-actions .confirm-ok {
+  padding: 8px 16px;
+  border-color: var(--loss);
+  background: var(--loss);
+  color: #fff;
+}
+
+/* Shell toast (flash.tsx). Fixed to the viewport so it survives a route
+   change; the error tone (not in the design, which only toasts successes)
+   reuses the shape with --loss and may wrap. */
+.flash {
+  position: fixed;
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 155;
+  padding: 11px 18px;
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--card-glow-shadow);
+  border: 1px solid var(--accent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.flash--error {
+  border-color: var(--loss);
+  color: var(--loss);
+  white-space: normal;
+  max-width: min(560px, calc(100vw - 32px));
+}
+
+/* Read-only banner and the import pages' stand-in panel (ReadOnlyBanner.tsx),
+   shown while WEB_PASSWORD is unset. */
+.ro {
+  margin: 16px 0;
+}
+
+.ro-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.ro-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--ink-2);
+  border: 1px solid var(--border);
+}
+
+.ro-msg {
+  flex: 1 1 320px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.ro-how {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--accent);
+}
+
+.ro-steps {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 6px 0 0;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px dashed var(--border);
+}
+
+.ro-steps li {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.ro-step-n {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.ro-step-code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--accent);
+  margin-left: 6px;
+}
+
+.ro-import {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 18px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px dashed var(--border);
+}
+
+/* /import's version sits in a plain card of its own, so the dashed box goes. */
+.ro-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ro-card .ro-import {
+  margin-top: 0;
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.ro-import-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ro-import-body {
+  max-width: 60ch;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.ro-import-how {
+  align-self: flex-start;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  padding: 7px 13px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}

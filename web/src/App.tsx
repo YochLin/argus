@@ -18,6 +18,7 @@ import { OptionsView } from "./components/OptionsView";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { TradeModal, type TradeMode } from "./components/TradeModal";
 import { LoginModal } from "./components/LoginModal";
+import { ReadOnlyBanner, ReadOnlyImportPanel } from "./components/ReadOnlyBanner";
 import { ImportView } from "./components/ImportView";
 import { SettingsView } from "./components/SettingsView";
 import { SectorFlowView } from "./components/SectorFlowView";
@@ -96,6 +97,12 @@ export default function App() {
     return stored === null ? null : normalizeLang(stored);
   });
   const [status, setStatus] = useState<Status | null>(null);
+  // readOnly outlives status's reset-to-null on every market toggle below, so
+  // the banner doesn't blink out and back in; false until the first status
+  // arrives so a writable server never flashes it. roHow is the banner's
+  // "how to enable editing" panel, shared with the import pages' stand-ins.
+  const [readOnly, setReadOnly] = useState(false);
+  const [roHow, setRoHow] = useState(false);
   const [wealthHome, setWealthHome] = useState<WealthHome | null>(null);
   // names is /api/company-names' TW ticker -> Chinese short name map — see
   // internal/web/companynames.go. Fetched once at the shell level (not
@@ -193,7 +200,10 @@ export default function App() {
     // internal/web/dashboard.go's buildStatus).
     setStatus(null);
     fetchStatus(market)
-      .then(setStatus)
+      .then((s) => {
+        setStatus(s);
+        setReadOnly(!s.writable);
+      })
       .catch(() => {});
   }, [market]);
 
@@ -304,11 +314,14 @@ export default function App() {
       />
     );
   } else if (path === "/w/import") {
-    body = status?.writable ? (
+    // status === null is still loading: render nothing rather than briefly
+    // show the read-only panel to a server that turns out to be writable.
+    body = status ? (
       <WealthImportView
         dict={dict}
         onUnauthorized={(retry) => setAuthRetry(() => retry)}
         onSuccess={() => setRefreshSignal((n) => n + 1)}
+        readOnly={status.writable ? undefined : { howOpen: roHow, onToggleHow: () => setRoHow((o) => !o) }}
       />
     ) : null;
   } else if (path === "/calendar") {
@@ -372,13 +385,23 @@ export default function App() {
       <SettingsView dict={dict} onUnauthorized={(retry) => setAuthRetry(() => retry)} />
     ) : null;
   } else if (path === "/import") {
-    body = status?.writable ? (
+    body = !status ? null : status.writable ? (
       <ImportView
         dict={dict}
         onUnauthorized={(retry) => setAuthRetry(() => retry)}
         onSuccess={() => setRefreshSignal((n) => n + 1)}
       />
-    ) : null;
+    ) : (
+      <div className="card ro-card">
+        <div className="eyebrow">{dict.navImport}</div>
+        <ReadOnlyImportPanel
+          dict={dict}
+          body={dict.roImportBodyTrade}
+          howOpen={roHow}
+          onToggleHow={() => setRoHow((o) => !o)}
+        />
+      </div>
+    );
   } else if (path === "/flow") {
     body = (
       <SectorFlowView
@@ -469,6 +492,7 @@ export default function App() {
         {!isWealth &&
           (status ? <StatusBar status={status} dict={dict} market={market} /> : <div className="status-bar" />)}
         <div className={`content${path === "/chart" && params.get("ticker") ? " content-wide" : ""}`}>
+          {readOnly && <ReadOnlyBanner dict={dict} howOpen={roHow} onToggleHow={() => setRoHow((o) => !o)} />}
           <ErrorBoundary key={`${path}:${market}`} message={dict.error}>
             {body}
           </ErrorBoundary>

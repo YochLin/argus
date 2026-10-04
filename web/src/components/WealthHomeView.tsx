@@ -22,6 +22,8 @@ import {
 import type { Dictionary } from "../i18n";
 import { convertTWD, shortTWD } from "../currency";
 import { CATEGORY_COLOR, categoryLabel, loadModel } from "../wealthCategory";
+import { useFlash } from "../flash";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 interface Props {
   dict: Dictionary;
@@ -202,6 +204,8 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
   const [refreshSignal, setRefreshSignal] = useState(0);
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<WealthAsset | null>(null);
+  const [archiving, setArchiving] = useState<WealthAsset | null>(null);
+  const flash = useFlash();
 
   useEffect(() => {
     setError(false);
@@ -235,16 +239,16 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
     }
   }
 
-  async function handleArchive(a: WealthAsset) {
-    if (!window.confirm(dict.wealthArchiveConfirm)) return;
+  async function doArchive(a: WealthAsset) {
     try {
       await archiveWealthAsset(a.id);
       refresh();
+      flash(dict.wealthFlashArchived.replace("%s", a.name));
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        onUnauthorized(() => handleArchive(a));
+        onUnauthorized(() => doArchive(a));
       } else {
-        window.alert(e instanceof ApiError ? e.message : dict.error);
+        flash(e instanceof ApiError ? e.message : dict.error, "error");
       }
     }
   }
@@ -648,7 +652,7 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
                   {writable && (
                     <td className="row-actions">
                       <button onClick={() => setEditing(a)}>{dict.wealthEditValueTitle}</button>
-                      <button onClick={() => handleArchive(a)}>{dict.wealthArchive}</button>
+                      <button onClick={() => setArchiving(a)}>{dict.wealthArchive}</button>
                     </td>
                   )}
                 </tr>
@@ -679,6 +683,20 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
             refresh();
           }}
           onUnauthorized={onUnauthorized}
+        />
+      )}
+      {archiving && (
+        <ConfirmDialog
+          title={dict.wealthArchiveTitle.replace("%s", archiving.name)}
+          body={dict.wealthArchiveBody}
+          okLabel={dict.wealthArchive}
+          cancelLabel={dict.cancel}
+          onCancel={() => setArchiving(null)}
+          onConfirm={() => {
+            const a = archiving;
+            setArchiving(null);
+            void doArchive(a);
+          }}
         />
       )}
     </>

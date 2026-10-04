@@ -1,11 +1,15 @@
 import { useRef, useState } from "react";
 import { ApiError, importWealthCSV, type WealthImportResult, type WealthImportRow } from "../api";
 import type { Dictionary } from "../i18n";
+import { ReadOnlyImportPanel } from "./ReadOnlyBanner";
 
 interface Props {
   dict: Dictionary;
   onUnauthorized: (retry: () => void) => void;
   onSuccess: () => void;
+  // Set while the server has no WEB_PASSWORD; howOpen/onToggleHow are the
+  // shell banner's "how to enable editing" state, shared with this panel.
+  readOnly?: { howOpen: boolean; onToggleHow: () => void };
 }
 
 const statusLabelKey: Record<WealthImportRow["status"], keyof Dictionary> = {
@@ -20,7 +24,7 @@ const statusLabelKey: Record<WealthImportRow["status"], keyof Dictionary> = {
 // replaced PDF statement parsing. Same "paste → preview (dryRun) → confirm"
 // shape as ImportView.tsx's trade importer, against /api/wealth/import
 // instead of /api/import.
-export function WealthImportView({ dict, onUnauthorized, onSuccess }: Props) {
+export function WealthImportView({ dict, onUnauthorized, onSuccess, readOnly }: Props) {
   const [csv, setCsv] = useState("");
   const [result, setResult] = useState<WealthImportResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -53,6 +57,26 @@ export function WealthImportView({ dict, onUnauthorized, onSuccess }: Props) {
   }
 
   const canApply = result !== null && result.rows.some((r) => r.status === "ok" || r.status === "warning");
+
+  // Read-only: keep the column guide (a CSV can still be prepared) but swap
+  // the form for the explanation — the page used to render nothing at all.
+  if (readOnly) {
+    return (
+      <div className="import-view">
+        <div className="card">
+          <div className="eyebrow">{dict.wealthImportTitle}</div>
+          <p>{dict.wealthImportInstructions}</p>
+          <p className="mono">{dict.wealthImportTemplateHint}</p>
+          <ReadOnlyImportPanel
+            dict={dict}
+            body={dict.roImportBodyWealth}
+            howOpen={readOnly.howOpen}
+            onToggleHow={readOnly.onToggleHow}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="import-view">

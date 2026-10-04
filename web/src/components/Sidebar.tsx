@@ -18,9 +18,11 @@ interface Props {
   // totals) — null while /api/wealth/networth hasn't resolved yet, or while
   // on the trading side where it isn't fetched at all.
   wealthHome: WealthHome | null;
-  // writable (Phase 5 §B) gates the /import nav link — same "hidden
-  // entirely, not just disabled" convention as every other write-only
-  // entry point (TopBar's "+ Trade", ChartListView's remove button).
+  // writable (Phase 5 §B) gates the account menu's Settings entry — same
+  // "hidden entirely, not just disabled" convention as every other write-only
+  // entry point (TopBar's "+ Trade", ChartListView's remove button). The
+  // /import link is no longer gated: read-only mode shows its explanation
+  // page instead (see ReadOnlyBanner.tsx), so the page is findable.
   writable: boolean;
   // paperEnabled (Phase 11 PR4) gates the /paper nav link the same way —
   // hidden entirely when PAPER_DB_PATH isn't configured server-side.
@@ -108,7 +110,7 @@ export function Sidebar({
         ...links,
         ...(paperEnabled ? [paperLink] : []),
         ...(llmAuditEnabled && devMode ? [llmLink] : []),
-        ...(writable ? [importLink] : []),
+        importLink,
       ];
   return (
     <div className="sidebar">
