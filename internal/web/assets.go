@@ -1,7 +1,9 @@
 package web
 
 import (
+	"errors"
 	"net/http"
+	"slices"
 	"strings"
 
 	"argus/internal/assets"
@@ -20,6 +22,11 @@ type wealthWriter interface {
 	CreateLoanAsset(a db.NewAsset, det db.LoanDetails) (int64, error)
 	UpsertAssetSnapshot(s db.AssetSnapshot) error
 	ArchiveAsset(id int64) error
+	// UnarchiveAsset/UpdateAsset back the edit-asset flow: restoring a
+	// soft-deleted asset and changing its name/group/venue/detail fields
+	// (never value, type or currency — see db.AssetEdit).
+	UnarchiveAsset(id int64) error
+	UpdateAsset(id int64, e db.AssetEdit) error
 	// SetSetting backs wealth_balance.go's profile.annual_salary write (the
 	// health-metric ratios' one denominator, §9.3) — the same settings
 	// table/method service.PortfolioService's cash_balance uses.
@@ -171,7 +178,7 @@ func (s *Server) handleWealthAssetCreate(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "type and name are required")
 		return
 	}
-	if req.AssetGroup != "liquid" && req.AssetGroup != "growth" && req.AssetGroup != "income" && req.AssetGroup != "hard" {
+	if !slices.Contains(assets.AssetGroups, req.AssetGroup) {
 		writeError(w, http.StatusBadRequest, "assetGroup must be one of liquid/growth/income/hard")
 		return
 	}
@@ -276,4 +283,92 @@ func (s *Server) handleWealthAssetArchive(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, tradeResponse{Message: "archived"})
+}
+
+// handleWealthAssetUnarchive backs POST /api/wealth/assets/unarchive — the
+// undo of the archive route above, same request shape.
+func (s *Server) handleWealthAssetUnarchive(w http.ResponseWriter, r *http.Request) {
+	var req wealthArchiveRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.AssetID <= 0 {
+		writeError(w, http.StatusBadRequest, "assetId is required")
+		return
+	}
+	if err := s.wealthDB.UnarchiveAsset(req.AssetID); err != nil {
+		logger.Errorf("web: unarchive wealth asset: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to unarchive asset")
+		return
+	}
+	writeJSON(w, http.StatusOK, tradeResponse{Message: "unarchived"})
+}
+
+// wealthAssetUpdateRequest is the edit-asset flow's submission. Side, type,
+// currency and value are deliberately not here (see db.AssetEdit): value has
+// its own snapshot route, the rest stay "archive and recreate". A deposit/
+// loan block replaces that detail row wholesale, so the client sends every
+// field it wants kept; omit the block to leave the details alone.
+type wealthAssetUpdateRequest struct {
+	AssetID    int64                      `json:"assetId"`
+	Name       string                     `json:"name"`
+	AssetGroup string                     `json:"assetGroup"`
+	Venue      string                     `json:"venue"`
+	Deposit    *wealthAssetDepositRequest `json:"deposit"`
+	Loan       *wealthAssetLoanRequest    `json:"loan"`
+}
+
+// handleWealthAssetUpdate backs POST /api/wealth/assets/update. It never
+// writes asset_snapshots, so editing an asset can't rewrite its value
+// history.
+func (s *Server) handleWealthAssetUpdate(w http.ResponseWriter, r *http.Request) {
+	var req wealthAssetUpdateRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	req.AssetGroup = strings.TrimSpace(req.AssetGroup)
+	if req.AssetID <= 0 {
+		writeError(w, http.StatusBadRequest, "assetId is required")
+		return
+	}
+	if req.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if !slices.Contains(assets.AssetGroups, req.AssetGroup) {
+		writeError(w, http.StatusBadRequest, "assetGroup must be one of liquid/growth/income/hard")
+		return
+	}
+	if req.Deposit != nil && req.Loan != nil {
+		writeError(w, http.StatusBadRequest, "send either deposit or loan details, not both")
+		return
+	}
+
+	edit := db.AssetEdit{Name: req.Name, AssetGroup: req.AssetGroup, Venue: strings.TrimSpace(req.Venue)}
+	if req.Deposit != nil {
+		edit.Deposit = &db.DepositDetails{Bank: req.Deposit.Bank, AccountNote: req.Deposit.AccountNote}
+	}
+	if l := req.Loan; l != nil {
+		if l.SecuredAssetID != nil && *l.SecuredAssetID == req.AssetID {
+			writeError(w, http.StatusBadRequest, "a loan can't be secured by itself")
+			return
+		}
+		edit.Loan = &db.LoanDetails{
+			Lender: l.Lender, RatePct: l.RatePct, OriginalPrincipal: l.OriginalPrincipal,
+			RemainingMonths: l.RemainingMonths, SecuredAssetID: l.SecuredAssetID,
+		}
+	}
+
+	switch err := s.wealthDB.UpdateAsset(req.AssetID, edit); {
+	case errors.Is(err, db.ErrAssetNotFound):
+		writeError(w, http.StatusNotFound, "asset not found")
+	case errors.Is(err, db.ErrAssetNoDetails):
+		writeError(w, http.StatusBadRequest, "this asset has no such details to edit")
+	case err != nil:
+		logger.Errorf("web: update wealth asset: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to update asset")
+	default:
+		writeJSON(w, http.StatusOK, tradeResponse{Message: "saved"})
+	}
 }

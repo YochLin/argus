@@ -1,6 +1,9 @@
 package db
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestCreateDepositAssetAndListWithValue(t *testing.T) {
 	d := newTestDB(t)
@@ -98,6 +101,130 @@ func TestArchiveAssetSoftDeletesAndIsIdempotent(t *testing.T) {
 	all, err := d.ListAssets(true)
 	if err != nil || len(all) != 1 || all[0].ArchivedAt == "" {
 		t.Fatalf("ListAssets(true) after archive = %+v, %v; want 1 asset with ArchivedAt set", all, err)
+	}
+}
+
+func TestUnarchiveAssetRestoresAndIsIdempotent(t *testing.T) {
+	d := newTestDB(t)
+
+	id, err := d.CreateAsset(NewAsset{Side: "asset", Type: "estate", Name: "房子", AssetGroup: "hard"})
+	if err != nil {
+		t.Fatalf("CreateAsset() error = %v", err)
+	}
+	if err := d.ArchiveAsset(id); err != nil {
+		t.Fatalf("ArchiveAsset() error = %v", err)
+	}
+	for i := 0; i < 2; i++ { // second call is a no-op, not an error
+		if err := d.UnarchiveAsset(id); err != nil {
+			t.Fatalf("UnarchiveAsset() call %d error = %v", i+1, err)
+		}
+	}
+	if err := d.UnarchiveAsset(999); err != nil {
+		t.Errorf("UnarchiveAsset(nonexistent) error = %v, want nil", err)
+	}
+	active, err := d.ListAssets(false)
+	if err != nil || len(active) != 1 || active[0].ArchivedAt != "" {
+		t.Fatalf("ListAssets(false) after unarchive = %+v, %v; want the asset back", active, err)
+	}
+}
+
+// TestUpdateAssetEditsDescriptiveFieldsAndDetails pins what an edit may and
+// may not touch: name/group/venue and the matching detail row change, while
+// the value history, type and currency stay put.
+func TestUpdateAssetEditsDescriptiveFieldsAndDetails(t *testing.T) {
+	d := newTestDB(t)
+
+	id, err := d.CreateDepositAsset(
+		NewAsset{Side: "asset", Type: "deposit", Name: "活存", AssetGroup: "liquid", Venue: "舊銀行", Currency: "USD"},
+		DepositDetails{Bank: "舊銀行", AccountNote: "舊備註"},
+	)
+	if err != nil {
+		t.Fatalf("CreateDepositAsset() error = %v", err)
+	}
+	if err := d.UpsertAssetSnapshot(AssetSnapshot{AssetID: id, Date: "2026-09-01", Value: 1000}); err != nil {
+		t.Fatalf("UpsertAssetSnapshot() error = %v", err)
+	}
+
+	if err := d.UpdateAsset(id, AssetEdit{
+		Name: "外幣活存", AssetGroup: "growth", Venue: "",
+		Deposit: &DepositDetails{Bank: "新銀行"},
+	}); err != nil {
+		t.Fatalf("UpdateAsset() error = %v", err)
+	}
+
+	a, err := d.GetAsset(id)
+	if err != nil || a == nil {
+		t.Fatalf("GetAsset() = %+v, %v", a, err)
+	}
+	if a.Name != "外幣活存" || a.AssetGroup != "growth" || a.Venue != "" {
+		t.Errorf("asset = %+v, want name 外幣活存 / group growth / venue cleared", a)
+	}
+	if a.Type != "deposit" || a.Currency != "USD" || a.Side != "asset" {
+		t.Errorf("asset = %+v, type/currency/side must not change", a)
+	}
+	det, _ := d.GetDepositDetails(id)
+	if det == nil || det.Bank != "新銀行" || det.AccountNote != "" {
+		t.Errorf("deposit details = %+v, want bank 新銀行 and note cleared (wholesale replace)", det)
+	}
+	list, _ := d.ListAssetsWithValue(false)
+	if len(list) != 1 || list[0].Value == nil || *list[0].Value != 1000 {
+		t.Errorf("value after edit = %+v, want 1000 untouched", list)
+	}
+
+	// Details omitted → the detail row is left alone.
+	if err := d.UpdateAsset(id, AssetEdit{Name: "再改名", AssetGroup: "growth"}); err != nil {
+		t.Fatalf("UpdateAsset(no details) error = %v", err)
+	}
+	if det, _ := d.GetDepositDetails(id); det == nil || det.Bank != "新銀行" {
+		t.Errorf("deposit details = %+v after a details-less edit, want bank 新銀行 kept", det)
+	}
+}
+
+func TestUpdateAssetLoanDetails(t *testing.T) {
+	d := newTestDB(t)
+
+	rate := 2.1
+	id, err := d.CreateLoanAsset(
+		NewAsset{Side: "liability", Type: "loan", Name: "房貸", AssetGroup: "hard"},
+		LoanDetails{Lender: "富邦", RatePct: &rate},
+	)
+	if err != nil {
+		t.Fatalf("CreateLoanAsset() error = %v", err)
+	}
+
+	newRate, months := 2.4, int64(240)
+	if err := d.UpdateAsset(id, AssetEdit{
+		Name: "房貸", AssetGroup: "hard",
+		Loan: &LoanDetails{Lender: "國泰", RatePct: &newRate, RemainingMonths: &months},
+	}); err != nil {
+		t.Fatalf("UpdateAsset() error = %v", err)
+	}
+	det, _ := d.GetLoanDetails(id)
+	if det == nil || det.Lender != "國泰" || det.RatePct == nil || *det.RatePct != 2.4 ||
+		det.RemainingMonths == nil || *det.RemainingMonths != 240 {
+		t.Errorf("loan details = %+v, want lender 國泰 / 2.4%% / 240 months", det)
+	}
+}
+
+func TestUpdateAssetErrors(t *testing.T) {
+	d := newTestDB(t)
+
+	if err := d.UpdateAsset(999, AssetEdit{Name: "x", AssetGroup: "liquid"}); !errors.Is(err, ErrAssetNotFound) {
+		t.Errorf("UpdateAsset(unknown id) = %v, want ErrAssetNotFound", err)
+	}
+
+	// A deposit has no loan_details row: the edit must fail as a whole, not
+	// half-apply the name change.
+	id, err := d.CreateDepositAsset(NewAsset{Side: "asset", Type: "deposit", Name: "活存", AssetGroup: "liquid"}, DepositDetails{})
+	if err != nil {
+		t.Fatalf("CreateDepositAsset() error = %v", err)
+	}
+	err = d.UpdateAsset(id, AssetEdit{Name: "改了", AssetGroup: "liquid", Loan: &LoanDetails{Lender: "x"}})
+	if !errors.Is(err, ErrAssetNoDetails) {
+		t.Errorf("UpdateAsset(loan block on a deposit) = %v, want ErrAssetNoDetails", err)
+	}
+	if a, _ := d.GetAsset(id); a == nil || a.Name != "活存" {
+		t.Errorf("asset = %+v after a failed edit, want name 活存 (rolled back)", a)
 	}
 }
 

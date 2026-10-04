@@ -170,8 +170,10 @@ func (f *fakeWealthImportDB) UpsertAssetSnapshot(s db.AssetSnapshot) error {
 	f.snapshots = append(f.snapshots, s)
 	return nil
 }
-func (f *fakeWealthImportDB) ArchiveAsset(id int64) error        { return nil }
-func (f *fakeWealthImportDB) SetSetting(key, value string) error { return nil }
+func (f *fakeWealthImportDB) ArchiveAsset(id int64) error                { return nil }
+func (f *fakeWealthImportDB) UnarchiveAsset(id int64) error              { return nil }
+func (f *fakeWealthImportDB) UpdateAsset(id int64, e db.AssetEdit) error { return nil }
+func (f *fakeWealthImportDB) SetSetting(key, value string) error         { return nil }
 func (f *fakeWealthImportDB) CreateRecurringCashflow(c db.NewRecurringCashflow) (int64, error) {
 	return 0, nil
 }

@@ -339,6 +339,78 @@ func (d *DB) ArchiveAsset(id int64) error {
 	return err
 }
 
+// UnarchiveAsset undoes ArchiveAsset. Like it, a no-op (not an error) for an
+// asset that isn't archived or doesn't exist.
+func (d *DB) UnarchiveAsset(id int64) error {
+	_, err := d.conn.Exec(`UPDATE assets SET archived_at = NULL WHERE id = ? AND archived_at IS NOT NULL`, id)
+	return err
+}
+
+// AssetEdit is the editable part of an asset: the spine's descriptive fields
+// plus, optionally, its detail row. Side, Type, Currency and Source are
+// deliberately absent — snapshots are stored in the asset's own currency, so
+// changing it would reinterpret the whole value history, and Type decides
+// which detail table the asset lives in. Those stay "archive and recreate".
+// Deposit/Loan each replace their detail row wholesale (a nil field inside
+// Loan clears the column, it doesn't keep the old value); nil leaves the
+// detail row alone.
+type AssetEdit struct {
+	Name       string
+	AssetGroup string
+	Venue      string
+	Deposit    *DepositDetails
+	Loan       *LoanDetails
+}
+
+// UpdateAsset applies an AssetEdit to one asset atomically. It never touches
+// asset_snapshots (§9.1 rule 2: an asset's value history is never rewritten
+// by editing the asset). Returns ErrAssetNotFound for an unknown id and
+// ErrAssetNoDetails when Deposit/Loan is set but the asset has no such row.
+func (d *DB) UpdateAsset(id int64, e AssetEdit) error {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	res, err := tx.Exec(`UPDATE assets SET name = ?, asset_group = ?, venue = ? WHERE id = ?`,
+		e.Name, e.AssetGroup, nullableString(e.Venue), id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrAssetNotFound
+	}
+
+	if e.Deposit != nil {
+		res, err := tx.Exec(`UPDATE deposit_details SET bank = ?, account_note = ? WHERE asset_id = ?`,
+			nullableString(e.Deposit.Bank), nullableString(e.Deposit.AccountNote), id)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return ErrAssetNoDetails
+		}
+	}
+	if e.Loan != nil {
+		l := e.Loan
+		res, err := tx.Exec(`
+			UPDATE loan_details SET lender = ?, rate_pct = ?, original_principal = ?, remaining_months = ?, secured_asset_id = ?
+			WHERE asset_id = ?`,
+			nullableString(l.Lender), nullableFloat(l.RatePct), nullableFloat(l.OriginalPrincipal),
+			nullableInt64(l.RemainingMonths), nullableInt64(l.SecuredAssetID), id)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return ErrAssetNoDetails
+		}
+	}
+	return tx.Commit()
+}
+
 // GetDepositDetails returns nil, nil if the asset has no deposit_details row.
 func (d *DB) GetDepositDetails(assetID int64) (*DepositDetails, error) {
 	var det DepositDetails
@@ -353,14 +425,6 @@ func (d *DB) GetDepositDetails(assetID int64) (*DepositDetails, error) {
 	det.Bank = bank.String
 	det.AccountNote = note.String
 	return &det, nil
-}
-
-// UpdateDepositDetails overwrites an existing deposit_details row — the
-// asset itself must already have one (created via CreateDepositAsset).
-func (d *DB) UpdateDepositDetails(assetID int64, det DepositDetails) error {
-	_, err := d.conn.Exec(`UPDATE deposit_details SET bank = ?, account_note = ? WHERE asset_id = ?`,
-		nullableString(det.Bank), nullableString(det.AccountNote), assetID)
-	return err
 }
 
 // GetLoanDetails returns nil, nil if the asset has no loan_details row.
@@ -393,16 +457,6 @@ func (d *DB) GetLoanDetails(assetID int64) (*LoanDetails, error) {
 		det.SecuredAssetID = &secured.Int64
 	}
 	return &det, nil
-}
-
-// UpdateLoanDetails overwrites an existing loan_details row.
-func (d *DB) UpdateLoanDetails(assetID int64, det LoanDetails) error {
-	_, err := d.conn.Exec(`
-		UPDATE loan_details SET lender = ?, rate_pct = ?, original_principal = ?, remaining_months = ?, secured_asset_id = ?
-		WHERE asset_id = ?`,
-		nullableString(det.Lender), nullableFloat(det.RatePct), nullableFloat(det.OriginalPrincipal),
-		nullableInt64(det.RemainingMonths), nullableInt64(det.SecuredAssetID), assetID)
-	return err
 }
 
 // UpsertAssetSnapshot writes (or overwrites) one asset's value for one date
