@@ -2211,6 +2211,9 @@ export interface CashflowItem {
   assetId?: number;
   venue?: string;
   active: boolean;
+  // pausedAt is the day a paused flow was paused — absent while active, and
+  // for one paused before the server started recording it.
+  pausedAt?: string;
   // valueTwd is amount converted to TWD as of today — absent for a paused
   // item or one whose currency couldn't be priced. Backs the in/out
   // breakdown's per-item bar.
@@ -2277,6 +2280,15 @@ export function createWealthCashflow(c: NewCashflow): Promise<{ id: number }> {
 
 export function deactivateWealthCashflow(id: number): Promise<TradeResponse> {
   return postJSON("/api/wealth/cash/deactivate", { id });
+}
+
+export function resumeWealthCashflow(id: number): Promise<TradeResponse> {
+  return postJSON("/api/wealth/cash/resume", { id });
+}
+
+// Permanent, and only for a paused flow — the server answers 409 otherwise.
+export function deleteWealthCashflow(id: number): Promise<TradeResponse> {
+  return postJSON("/api/wealth/cash/delete", { id });
 }
 
 // GoalKind/GoalAssetItem/Goal mirror wealth_goals.go's response shapes

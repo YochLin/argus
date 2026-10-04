@@ -4,7 +4,9 @@ import {
   ApiError,
   createWealthCashflow,
   deactivateWealthCashflow,
+  deleteWealthCashflow,
   fetchWealthCash,
+  resumeWealthCashflow,
   type CashflowDirection,
   type CashflowItem,
   type CashForecastMonth,
@@ -14,6 +16,7 @@ import type { Dictionary } from "../i18n";
 import { fmtMoney, mmdd } from "./WealthHomeView";
 import { shortTWD } from "../currency";
 import { useFlash } from "../flash";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 interface Props {
   dict: Dictionary;
@@ -195,19 +198,24 @@ function AddCashflowForm({
 // (Argus Trading WebUI.dc.html lines 811-850, cashModel()'s inRows/outRows)
 // — each active item sorted by its own TWD value, a bar sized relative to
 // the largest item across BOTH cards (cashModel()'s maxRow), and a % of
-// that column's own total.
+// that column's own total. A writable page also gets each row's 暫停 button,
+// revealed on hover/focus (design: r.pauseStyle).
 function BreakdownCard({
+  dict,
   title,
   items,
   total,
   maxValue,
   positive,
+  onPause,
 }: {
+  dict: Dictionary;
   title: string;
   items: CashflowItem[];
   total: number;
   maxValue: number;
   positive: boolean;
+  onPause?: (item: CashflowItem) => void;
 }) {
   return (
     <div className="card">
@@ -223,7 +231,7 @@ function BreakdownCard({
           const pct = total > 0 ? (value / total) * 100 : 0;
           const barPct = maxValue > 0 ? (value / maxValue) * 100 : 0;
           return (
-            <div key={item.id} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <div key={item.id} className="wealth-flow-row" style={{ display: "flex", flexDirection: "column", gap: 5 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontFamily: "var(--sans)", fontSize: 12.5 }}>{item.name}</span>
                 <span className="mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>
@@ -232,6 +240,16 @@ function BreakdownCard({
                 <span className="mono" style={{ marginLeft: "auto", fontSize: 12.5 }}>
                   {fmtMoney(value, CURRENCY)}
                 </span>
+                {onPause && (
+                  <button
+                    className="wealth-flow-pause"
+                    title={dict.wealthCashPauseTitle}
+                    aria-label={`${dict.wealthCashPause} ${item.name}`}
+                    onClick={() => onPause(item)}
+                  >
+                    {dict.wealthCashPause}
+                  </button>
+                )}
               </div>
               <div
                 style={{
@@ -297,11 +315,75 @@ function ForecastChart({ dict, forecast, annualNet }: { dict: Dictionary; foreca
   );
 }
 
+// PausedCard mirrors the template's 已暫停 card (Argus Trading WebUI.dc.html's
+// wcm.pausedRows): flows left out of the monthly totals and forecast, each with
+// the day it was paused and the two ways out — 恢復, or 刪除 for good. Shown to
+// a read-only visitor too, whose buttons only explain why nothing changes.
+function PausedCard({
+  dict,
+  items,
+  onResume,
+  onDelete,
+}: {
+  dict: Dictionary;
+  items: CashflowItem[];
+  onResume: (item: CashflowItem) => void;
+  onDelete: (item: CashflowItem) => void;
+}) {
+  return (
+    <div className="card" style={{ marginBottom: 16, overflowX: "auto" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        <span className="eyebrow">{dict.wealthCashPaused}</span>
+        <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>
+          {items.length}
+        </span>
+        <span style={{ fontSize: 12, color: "var(--ink-3)", textWrap: "pretty" }}>{dict.wealthCashPausedNote}</span>
+      </div>
+      <div style={{ minWidth: 520 }}>
+        {items.map((item) => (
+          <div
+            key={item.id}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(140px,2fr) 52px minmax(110px,1fr) minmax(110px,1fr) auto",
+              gap: 12,
+              alignItems: "center",
+              padding: "9px 10px",
+              borderTop: "1px solid var(--border)",
+            }}
+          >
+            <span style={{ fontSize: 12.5, color: "var(--ink-2)" }}>{item.name}</span>
+            <span className="mono" style={{ fontSize: 10.5, color: item.direction === "in" ? "var(--profit)" : "var(--loss)" }}>
+              {item.direction === "in" ? dict.wealthCashDirectionIn : dict.wealthCashDirectionOut}
+            </span>
+            <span className="mono" style={{ fontSize: 12.5, color: "var(--ink-3)", textAlign: "right" }}>
+              {fmtMoney(item.amount, !item.currency || item.currency === "TWD" ? CURRENCY : item.currency)}
+              {dict.wealthCashPerMonth}
+            </span>
+            <span className="mono" style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
+              {item.pausedAt ? dict.wealthCashPausedSince.replace("%s", item.pausedAt) : ""}
+            </span>
+            <span style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+              <button className="wealth-flow-resume" aria-label={`${dict.wealthCashResume} ${item.name}`} onClick={() => onResume(item)}>
+                {dict.wealthCashResume}
+              </button>
+              <button className="wealth-flow-delete" aria-label={`${dict.wealthCashDelete} ${item.name}`} onClick={() => onDelete(item)}>
+                {dict.wealthCashDelete}
+              </button>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
   const [cash, setCash] = useState<WealthCash | null>(null);
   const [error, setError] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<CashflowItem | null>(null);
   const flash = useFlash();
 
   useEffect(() => {
@@ -311,18 +393,34 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
       .catch(() => setError(true));
   }, [refreshSignal]);
 
-  async function pause(item: CashflowItem) {
+  // One write: reload and say `done` on success; on a 401 sign in and retry; on
+  // any other failure say why and reload anyway, so a stale list (another tab
+  // already resumed or deleted this flow) catches up instead of staying wrong.
+  async function mutate(op: () => Promise<unknown>, done: string): Promise<void> {
     try {
-      await deactivateWealthCashflow(item.id);
+      await op();
       setRefreshSignal((n) => n + 1);
-      flash(dict.wealthFlashPaused.replace("%s", item.name));
+      flash(done);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        onUnauthorized(() => pause(item));
-      } else {
-        flash(e instanceof ApiError ? e.message : dict.error, "error");
+        onUnauthorized(() => void mutate(op, done));
+        return;
       }
+      flash(e instanceof ApiError ? e.message : dict.error, "error");
+      setRefreshSignal((n) => n + 1);
     }
+  }
+
+  const named = (template: string, item: CashflowItem) => template.replace("%s", item.name);
+  const pause = (item: CashflowItem) => mutate(() => deactivateWealthCashflow(item.id), named(dict.wealthFlashPaused, item));
+  // Resume and delete are on screen read-only too (the design shows the paused
+  // card to everyone), so they say why nothing happens instead of failing a 403.
+  const resume = (item: CashflowItem) =>
+    writable ? mutate(() => resumeWealthCashflow(item.id), named(dict.wealthFlashResumed, item)) : flash(dict.wealthRoNoChange);
+  const askDelete = (item: CashflowItem) => (writable ? setConfirmDelete(item) : flash(dict.wealthRoNoChange));
+  function confirmedDelete(item: CashflowItem) {
+    setConfirmDelete(null);
+    void mutate(() => deleteWealthCashflow(item.id), named(dict.wealthFlashDeleted, item));
   }
 
   if (error) {
@@ -336,6 +434,10 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
     .filter((i) => i.active && i.direction === "out" && i.valueTwd != null)
     .sort((a, b) => (b.valueTwd ?? 0) - (a.valueTwd ?? 0));
   const maxRow = Math.max(inItems[0]?.valueTwd ?? 0, outItems[0]?.valueTwd ?? 0);
+  // The design lists income before expense, each in the order they were added.
+  const pausedItems = (cash?.items ?? [])
+    .filter((i) => !i.active)
+    .sort((a, b) => Number(a.direction === "out") - Number(b.direction === "out") || a.id - b.id);
 
   return (
     <>
@@ -408,9 +510,29 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 16, marginBottom: 16 }}>
-        <BreakdownCard title={dict.wealthCashInBreakdownTitle} items={inItems} total={cash?.monthlyIn ?? 0} maxValue={maxRow} positive />
-        <BreakdownCard title={dict.wealthCashOutBreakdownTitle} items={outItems} total={cash?.monthlyOut ?? 0} maxValue={maxRow} positive={false} />
+        <BreakdownCard
+          dict={dict}
+          title={dict.wealthCashInBreakdownTitle}
+          items={inItems}
+          total={cash?.monthlyIn ?? 0}
+          maxValue={maxRow}
+          positive
+          onPause={writable ? pause : undefined}
+        />
+        <BreakdownCard
+          dict={dict}
+          title={dict.wealthCashOutBreakdownTitle}
+          items={outItems}
+          total={cash?.monthlyOut ?? 0}
+          maxValue={maxRow}
+          positive={false}
+          onPause={writable ? pause : undefined}
+        />
       </div>
+
+      {pausedItems.length > 0 && (
+        <PausedCard dict={dict} items={pausedItems} onResume={resume} onDelete={askDelete} />
+      )}
 
       {cash && cash.forecast.length > 0 && <ForecastChart dict={dict} forecast={cash.forecast} annualNet={cash.annualNet} />}
 
@@ -454,51 +576,15 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
         )}
       </div>
 
-      {writable && (
-        <details className="card">
-          <summary style={{ cursor: "pointer", fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-3)" }}>
-            {dict.wealthManageLabel}
-          </summary>
-          <div className="eyebrow" style={{ marginTop: 12 }}>
-            {dict.wealthCashItemsTitle}
-          </div>
-          {cash && cash.items.length > 0 ? (
-            <table className="mono">
-              <thead>
-                <tr>
-                  <th>{dict.wealthCashNameLabel}</th>
-                  <th>{dict.wealthCashCategoryLabel}</th>
-                  <th>{dict.wealthCashAmountLabel}</th>
-                  <th>{dict.wealthCashDayOfMonthLabel}</th>
-                  <th>{dict.wealthVenueLabel}</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {cash.items.map((item) => (
-                  <tr key={item.id} style={{ opacity: item.active ? 1 : 0.5 }}>
-                    <td style={{ fontFamily: "var(--sans)" }}>
-                      {item.name}
-                      {!item.active && ` (${dict.wealthCashPaused})`}
-                    </td>
-                    <td style={{ fontFamily: "var(--sans)", fontSize: 12, color: "var(--ink-3)" }}>
-                      {categoryLabel(dict, item.category)}
-                    </td>
-                    <td className={item.direction === "in" ? "profit" : "loss"}>
-                      {item.direction === "in" ? "+" : "-"}
-                      {fmtMoney(item.amount, CURRENCY)}
-                    </td>
-                    <td>{item.dayOfMonth ?? "—"}</td>
-                    <td style={{ fontFamily: "var(--sans)", fontSize: 12, color: "var(--ink-3)" }}>{item.venue || "—"}</td>
-                    <td>{item.active && <button onClick={() => pause(item)}>{dict.wealthCashPause}</button>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="empty-message">{dict.wealthCashNoItems}</div>
-          )}
-        </details>
+      {confirmDelete && (
+        <ConfirmDialog
+          title={named(dict.wealthCashDeleteTitle, confirmDelete)}
+          body={dict.wealthCashDeleteBody}
+          okLabel={dict.wealthCashDelete}
+          cancelLabel={dict.cancel}
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => confirmedDelete(confirmDelete)}
+        />
       )}
     </>
   );

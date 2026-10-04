@@ -4002,6 +4002,68 @@ th {
   }
 }
 
+/* /w/cash's per-row 暫停 button (design: r.pauseStyle) — same reveal rule as
+   the ⋯ button above. */
+.wealth-flow-pause {
+  flex-shrink: 0;
+  font-family: var(--sans);
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--ink-3);
+  opacity: 0;
+}
+
+.wealth-flow-row:hover .wealth-flow-pause,
+.wealth-flow-row:focus-within .wealth-flow-pause,
+.wealth-flow-pause:hover {
+  opacity: 1;
+}
+
+.wealth-flow-pause:hover,
+.wealth-flow-resume:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+@media (hover: none) {
+  .wealth-flow-pause {
+    opacity: 1;
+  }
+}
+
+/* The 已暫停 card's two buttons (design: wcm.pausedRows). */
+.wealth-flow-resume,
+.wealth-flow-delete {
+  font-family: var(--sans);
+  font-size: 12px;
+  border-radius: 7px;
+  background: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.wealth-flow-resume {
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  color: var(--ink-2);
+}
+
+.wealth-flow-delete {
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  color: var(--ink-3);
+}
+
+.wealth-flow-delete:hover {
+  color: var(--loss);
+  border-color: var(--loss);
+}
+
 /* /w/balance's 使用中 / 已封存 switch (design: wae.tabs). */
 .wealth-tabs {
   display: flex;
