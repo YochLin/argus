@@ -15,8 +15,8 @@ import {
   type WealthAsset,
 } from "../api";
 import type { Dictionary } from "../i18n";
-import { AddAssetModal, AssetValue, MONO_LABEL, fmtMoney, groupLabel, liabilityNote } from "./WealthHomeView";
-import { CATEGORY_COLOR } from "../wealthCategory";
+import { AddAssetModal, AssetValue, MONO_LABEL, fmtMoney, liabilityNote } from "./WealthHomeView";
+import { CATEGORY_COLOR, sheetGroupLabel, sheetGroups } from "../wealthCategory";
 import { useFlash } from "../flash";
 import { BalanceRow } from "./BalanceRow";
 import { RowEditDrawer } from "./RowEditDrawer";
@@ -268,12 +268,12 @@ export function WealthBalanceView({ dict, writable, onUnauthorized, onNavigate }
                 <div className="loading">{dict.loading}</div>
               ) : (
                 <div className="wealth-col-stack">
-                  {sheet.assetGroups
+                  {sheetGroups(sheet.assetGroups, sheet.totalAssets)
                     .filter((g) => g.assets.length > 0)
                     .map((g) => (
                       <div key={g.group} className="wealth-group-block">
                         <div className="wealth-group-header">
-                          {groupLabel(dict, g.group)}
+                          {sheetGroupLabel(dict, g.group)}
                           <span style={{ fontSize: 10, color: "var(--ink-3)" }}>
                             {g.pctOfAssets != null ? `${g.pctOfAssets.toFixed(1)}% ${dict.wealthPctOfAssets}` : ""}
                           </span>

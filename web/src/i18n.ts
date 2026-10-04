@@ -759,9 +759,15 @@ export interface Dictionary {
   wealthGroupGrowth: string;
   wealthGroupIncome: string;
   wealthGroupHard: string;
+  // wealthSheet* are the balance sheet's own four headings (design balanceModel:
+  // grouped by asset type, not asset_group) — see wealthCategory.ts sheetGroups.
+  wealthSheetLiquid: string;
+  wealthSheetInvestment: string;
+  wealthSheetHard: string;
+  wealthSheetRetirement: string;
   // wealthCategory* back /w/alloc's own nine-category taxonomy
   // (assets.AllocCategories, §8.5) — distinct from the four wealthGroup*
-  // keys above, which the home page and balance sheet still use.
+  // keys above, which the home page still uses.
   wealthCategoryCash: string;
   wealthCategoryEquity: string;
   wealthCategoryFund: string;
@@ -2028,6 +2034,10 @@ const en: Dictionary = {
   wealthGroupGrowth: "Growth",
   wealthGroupIncome: "Income",
   wealthGroupHard: "Hard Assets",
+  wealthSheetLiquid: "Liquid assets",
+  wealthSheetInvestment: "Investments",
+  wealthSheetHard: "Hard assets",
+  wealthSheetRetirement: "Retirement",
   wealthCategoryCash: "Cash & FX deposits",
   wealthCategoryEquity: "Equities (trading account)",
   wealthCategoryFund: "ETFs & mutual funds",
@@ -3259,6 +3269,10 @@ const zh: Dictionary = {
   wealthGroupGrowth: "成長",
   wealthGroupIncome: "收益",
   wealthGroupHard: "實體",
+  wealthSheetLiquid: "流動資產",
+  wealthSheetInvestment: "投資資產",
+  wealthSheetHard: "實體資產",
+  wealthSheetRetirement: "退休資產",
   wealthCategoryCash: "活存 · 定存 · 外幣",
   wealthCategoryEquity: "股票（交易帳戶）",
   wealthCategoryFund: "ETF 與共同基金",
