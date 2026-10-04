@@ -468,11 +468,12 @@ func (d *DB) GetLoanDetails(assetID int64) (*LoanDetails, error) {
 }
 
 // UpsertAssetSnapshot writes (or overwrites) one asset's value for one date
-// — this is the *only* write path for an asset's current value, whether
-// that's the quick-add drawer's initial figure or the balance-sheet page's
-// in-place edit (§9.1 rule 2: never UPDATE assets, an edit is always
-// "today's value is now X"). Overwriting today's row is deliberate — a
-// same-day correction shouldn't produce two rows.
+// with no checks — the quick-add drawer's initial figure and the CSV import
+// use it; a person editing a value goes through LogAssetValue, which guards
+// history. Either way an asset's value only ever lives here (§9.1 rule 2:
+// never UPDATE assets, an edit is always "today's value is now X").
+// Overwriting today's row is deliberate — a same-day correction shouldn't
+// produce two rows.
 func (d *DB) UpsertAssetSnapshot(s AssetSnapshot) error {
 	if s.Source == "" {
 		s.Source = "manual"
@@ -487,6 +488,113 @@ func (d *DB) UpsertAssetSnapshot(s AssetSnapshot) error {
 		s.AssetID, s.Date, s.Value, nullableFloat(s.Cost), s.Source,
 	)
 	return err
+}
+
+// ListAssetSnapshots returns every value record of one asset, newest first
+// (empty for an unknown asset or one with no value yet).
+func (d *DB) ListAssetSnapshots(assetID int64) ([]AssetSnapshot, error) {
+	rows, err := d.conn.Query(`
+		SELECT date, value, cost, source FROM asset_snapshots
+		WHERE asset_id = ? ORDER BY date DESC`, assetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []AssetSnapshot
+	for rows.Next() {
+		s := AssetSnapshot{AssetID: assetID}
+		var cost sql.NullFloat64
+		if err := rows.Scan(&s.Date, &s.Value, &cost, &s.Source); err != nil {
+			return nil, err
+		}
+		if cost.Valid {
+			s.Cost = &cost.Float64
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// requireOpenAsset is the shared gate for changing an asset's value history:
+// it must exist and not be archived.
+func requireOpenAsset(tx *sql.Tx, id int64) error {
+	var archived sql.NullString
+	err := tx.QueryRow(`SELECT archived_at FROM assets WHERE id = ?`, id).Scan(&archived)
+	if err == sql.ErrNoRows {
+		return ErrAssetNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if archived.Valid {
+		return ErrAssetArchived
+	}
+	return nil
+}
+
+// LogAssetValue records a hand-entered value for an asset on date (Source
+// "manual"). Today's record may be overwritten — that is the same-day
+// correction — but any other date only if it has no record yet, so a day that
+// has passed can be back-filled and never rewritten. Unlike
+// UpsertAssetSnapshot (the import/create path) it leaves an existing record's
+// cost alone, so correcting a bond's value doesn't erase what was paid for it.
+// The caller passes today (and has rejected a future date) so the rule is
+// testable without a clock.
+func (d *DB) LogAssetValue(assetID int64, date string, value float64, today string) error {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := requireOpenAsset(tx, assetID); err != nil {
+		return err
+	}
+	if date != today {
+		var n int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM asset_snapshots WHERE asset_id = ? AND date = ?`, assetID, date).Scan(&n); err != nil {
+			return err
+		}
+		if n > 0 {
+			return ErrSnapshotLocked
+		}
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO asset_snapshots (asset_id, date, value, source) VALUES (?, ?, ?, 'manual')
+		ON CONFLICT(asset_id, date) DO UPDATE SET value = excluded.value, source = 'manual'`,
+		assetID, date, value); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// DeleteAssetSnapshot removes the asset's value record for date, which must be
+// today (ErrSnapshotLocked otherwise): the undo of a record logged by mistake
+// the same day. ErrSnapshotNotFound when there is no such record.
+func (d *DB) DeleteAssetSnapshot(assetID int64, date, today string) error {
+	if date != today {
+		return ErrSnapshotLocked
+	}
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := requireOpenAsset(tx, assetID); err != nil {
+		return err
+	}
+	res, err := tx.Exec(`DELETE FROM asset_snapshots WHERE asset_id = ? AND date = ?`, assetID, date)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrSnapshotNotFound
+	}
+	return tx.Commit()
 }
 
 // GetLatestAssetSnapshot returns an asset's most recent snapshot, or nil,

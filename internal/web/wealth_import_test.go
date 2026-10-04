@@ -170,6 +170,12 @@ func (f *fakeWealthImportDB) UpsertAssetSnapshot(s db.AssetSnapshot) error {
 	f.snapshots = append(f.snapshots, s)
 	return nil
 }
+func (f *fakeWealthImportDB) LogAssetValue(assetID int64, date string, value float64, today string) error {
+	return nil
+}
+func (f *fakeWealthImportDB) DeleteAssetSnapshot(assetID int64, date, today string) error {
+	return nil
+}
 func (f *fakeWealthImportDB) ArchiveAsset(id int64) error                { return nil }
 func (f *fakeWealthImportDB) UnarchiveAsset(id int64) error              { return nil }
 func (f *fakeWealthImportDB) UpdateAsset(id int64, e db.AssetEdit) error { return nil }

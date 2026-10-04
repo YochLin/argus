@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"argus/internal/db"
 )
@@ -20,6 +21,8 @@ type fakeWealthDB struct {
 	lastDeposit                           db.DepositDetails
 	lastLoan                              db.LoanDetails
 	lastSnapshot                          db.AssetSnapshot
+	lastLog                               loggedValue
+	lastSnapshotDelete                    loggedValue
 	lastArchiveID, lastUnarchiveID        int64
 	lastUpdateAssetID                     int64
 	lastAssetEdit                         db.AssetEdit
@@ -47,6 +50,8 @@ type fakeWealthDB struct {
 
 	createErr         error
 	snapshotErr       error
+	logErr            error
+	snapshotDeleteErr error
 	archiveErr        error
 	settingErr        error
 	cashflowErr       error
@@ -80,6 +85,23 @@ func (f *fakeWealthDB) CreateLoanAsset(a db.NewAsset, det db.LoanDetails) (int64
 func (f *fakeWealthDB) UpsertAssetSnapshot(s db.AssetSnapshot) error {
 	f.lastSnapshot = s
 	return f.snapshotErr
+}
+
+// loggedValue is what LogAssetValue/DeleteAssetSnapshot were called with.
+type loggedValue struct {
+	AssetID int64
+	Date    string
+	Value   float64
+	Today   string
+}
+
+func (f *fakeWealthDB) LogAssetValue(assetID int64, date string, value float64, today string) error {
+	f.lastLog = loggedValue{assetID, date, value, today}
+	return f.logErr
+}
+func (f *fakeWealthDB) DeleteAssetSnapshot(assetID int64, date, today string) error {
+	f.lastSnapshotDelete = loggedValue{AssetID: assetID, Date: date, Today: today}
+	return f.snapshotDeleteErr
 }
 func (f *fakeWealthDB) ArchiveAsset(id int64) error {
 	f.lastArchiveID = id
@@ -150,6 +172,8 @@ func newWealthTestServer(password string, wealthDB wealthWriter, dbr dbReader) *
 	s.mux.HandleFunc("GET /api/wealth/assets", s.handleWealthAssetsList)
 	s.mux.HandleFunc("POST /api/wealth/assets", s.requireWritable(s.requireAuth(s.handleWealthAssetCreate)))
 	s.mux.HandleFunc("POST /api/wealth/assets/snapshot", s.requireWritable(s.requireAuth(s.handleWealthAssetSnapshot)))
+	s.mux.HandleFunc("POST /api/wealth/assets/snapshot/delete", s.requireWritable(s.requireAuth(s.handleWealthAssetSnapshotDelete)))
+	s.mux.HandleFunc("GET /api/wealth/assets/history", s.handleWealthAssetHistory)
 	s.mux.HandleFunc("POST /api/wealth/assets/archive", s.requireWritable(s.requireAuth(s.handleWealthAssetArchive)))
 	s.mux.HandleFunc("POST /api/wealth/assets/unarchive", s.requireWritable(s.requireAuth(s.handleWealthAssetUnarchive)))
 	s.mux.HandleFunc("POST /api/wealth/assets/update", s.requireWritable(s.requireAuth(s.handleWealthAssetUpdate)))
@@ -287,22 +311,169 @@ func TestHandleWealthAssetCreateRequiresAuth(t *testing.T) {
 	}
 }
 
-func TestHandleWealthAssetSnapshot(t *testing.T) {
+func postWealthJSON(t *testing.T, s *Server, cookie *http.Cookie, path string, v any) *httptest.ResponseRecorder {
+	t.Helper()
+	body, _ := json.Marshal(v)
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestHandleWealthAssetSnapshotLogsToday(t *testing.T) {
 	wealthDB := &fakeWealthDB{}
 	s := newWealthTestServer("secret", wealthDB, &fakeDB{})
 	cookie := loginAndGetCookie(t, s, "secret")
 
-	body, _ := json.Marshal(wealthSnapshotRequest{AssetID: 7, Value: 123456})
-	req := httptest.NewRequest(http.MethodPost, "/api/wealth/assets/snapshot", bytes.NewReader(body))
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-	s.mux.ServeHTTP(rec, req)
-
+	rec := postWealthJSON(t, s, cookie, "/api/wealth/assets/snapshot", wealthSnapshotRequest{AssetID: 7, Value: 123456})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
 	}
-	if wealthDB.lastSnapshot.AssetID != 7 || wealthDB.lastSnapshot.Value != 123456 || wealthDB.lastSnapshot.Source != "manual" {
-		t.Errorf("UpsertAssetSnapshot() got %+v", wealthDB.lastSnapshot)
+	got := wealthDB.lastLog
+	today := time.Now().Format("2006-01-02")
+	if got.AssetID != 7 || got.Value != 123456 || got.Date != today || got.Today != today {
+		t.Errorf("LogAssetValue() got %+v, want asset 7, 123456 on %s", got, today)
+	}
+}
+
+func TestHandleWealthAssetSnapshotBackfillsAPastDate(t *testing.T) {
+	wealthDB := &fakeWealthDB{}
+	s := newWealthTestServer("secret", wealthDB, &fakeDB{})
+	rec := postWealthJSON(t, s, loginAndGetCookie(t, s, "secret"), "/api/wealth/assets/snapshot",
+		wealthSnapshotRequest{AssetID: 7, Value: 5, Date: "2020-01-02"})
+	if rec.Code != http.StatusOK || wealthDB.lastLog.Date != "2020-01-02" {
+		t.Errorf("status = %d, logged %+v, want 200 on 2020-01-02", rec.Code, wealthDB.lastLog)
+	}
+}
+
+func TestHandleWealthAssetSnapshotRejectsBadInput(t *testing.T) {
+	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	for name, req := range map[string]wealthSnapshotRequest{
+		"no asset id": {Value: 1},
+		"bad date":    {AssetID: 7, Value: 1, Date: "07/15"},
+		"future date": {AssetID: 7, Value: 1, Date: tomorrow},
+	} {
+		t.Run(name, func(t *testing.T) {
+			wealthDB := &fakeWealthDB{}
+			s := newWealthTestServer("secret", wealthDB, &fakeDB{})
+			rec := postWealthJSON(t, s, loginAndGetCookie(t, s, "secret"), "/api/wealth/assets/snapshot", req)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("status = %d, want 400, body = %s", rec.Code, rec.Body.String())
+			}
+			if wealthDB.lastLog != (loggedValue{}) {
+				t.Errorf("LogAssetValue was called (%+v) for a rejected request", wealthDB.lastLog)
+			}
+		})
+	}
+}
+
+func TestHandleWealthAssetSnapshotMapsDBErrors(t *testing.T) {
+	for name, tc := range map[string]struct {
+		err  error
+		want int
+	}{
+		"unknown asset":  {db.ErrAssetNotFound, http.StatusNotFound},
+		"archived asset": {db.ErrAssetArchived, http.StatusConflict},
+		"closed day":     {db.ErrSnapshotLocked, http.StatusConflict},
+		"anything else":  {errors.New("disk full"), http.StatusInternalServerError},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := newWealthTestServer("secret", &fakeWealthDB{logErr: tc.err}, &fakeDB{})
+			rec := postWealthJSON(t, s, loginAndGetCookie(t, s, "secret"), "/api/wealth/assets/snapshot", wealthSnapshotRequest{AssetID: 7, Value: 1})
+			if rec.Code != tc.want {
+				t.Errorf("status = %d, want %d", rec.Code, tc.want)
+			}
+		})
+	}
+}
+
+func TestHandleWealthAssetSnapshotDelete(t *testing.T) {
+	wealthDB := &fakeWealthDB{}
+	s := newWealthTestServer("secret", wealthDB, &fakeDB{})
+	cookie := loginAndGetCookie(t, s, "secret")
+	today := time.Now().Format("2006-01-02")
+
+	rec := postWealthJSON(t, s, cookie, "/api/wealth/assets/snapshot/delete", wealthSnapshotDeleteRequest{AssetID: 7, Date: today})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	if got := wealthDB.lastSnapshotDelete; got.AssetID != 7 || got.Date != today || got.Today != today {
+		t.Errorf("DeleteAssetSnapshot() got %+v, want asset 7 on %s", got, today)
+	}
+
+	for name, tc := range map[string]struct {
+		req  wealthSnapshotDeleteRequest
+		err  error
+		want int
+	}{
+		"no asset id":   {wealthSnapshotDeleteRequest{Date: today}, nil, http.StatusBadRequest},
+		"bad date":      {wealthSnapshotDeleteRequest{AssetID: 7, Date: "yesterday"}, nil, http.StatusBadRequest},
+		"closed day":    {wealthSnapshotDeleteRequest{AssetID: 7, Date: "2020-01-02"}, db.ErrSnapshotLocked, http.StatusConflict},
+		"no such row":   {wealthSnapshotDeleteRequest{AssetID: 7, Date: today}, db.ErrSnapshotNotFound, http.StatusNotFound},
+		"archived":      {wealthSnapshotDeleteRequest{AssetID: 7, Date: today}, db.ErrAssetArchived, http.StatusConflict},
+		"anything else": {wealthSnapshotDeleteRequest{AssetID: 7, Date: today}, errors.New("disk full"), http.StatusInternalServerError},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := newWealthTestServer("secret", &fakeWealthDB{snapshotDeleteErr: tc.err}, &fakeDB{})
+			rec := postWealthJSON(t, s, loginAndGetCookie(t, s, "secret"), "/api/wealth/assets/snapshot/delete", tc.req)
+			if rec.Code != tc.want {
+				t.Errorf("status = %d, want %d, body = %s", rec.Code, tc.want, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestHandleWealthAssetSnapshotRoutesRequireAuth(t *testing.T) {
+	s := newWealthTestServer("secret", &fakeWealthDB{}, &fakeDB{})
+	for _, path := range []string{"/api/wealth/assets/snapshot", "/api/wealth/assets/snapshot/delete"} {
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader([]byte(`{"assetId":7}`)))
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s status = %d, want 401 (no auth cookie)", path, rec.Code)
+		}
+	}
+}
+
+func TestHandleWealthAssetHistory(t *testing.T) {
+	dbr := &fakeDB{assetSnapshots: map[int64][]db.AssetSnapshot{
+		7: {{AssetID: 7, Date: "2026-07-15", Value: 120, Source: "manual"}, {AssetID: 7, Date: "2026-06-30", Value: 100, Source: "import"}},
+	}}
+	s := newWealthTestServer("secret", &fakeWealthDB{}, dbr)
+
+	get := func(q string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/assets/history"+q, nil))
+		return rec
+	}
+
+	rec := get("?assetId=7")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Today     string              `json:"today"`
+		Snapshots []wealthSnapshotRow `json:"snapshots"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Today != time.Now().Format("2006-01-02") {
+		t.Errorf("today = %q, want the server's date", resp.Today)
+	}
+	if len(resp.Snapshots) != 2 || resp.Snapshots[0] != (wealthSnapshotRow{Date: "2026-07-15", Value: 120, Source: "manual"}) || resp.Snapshots[1].Source != "import" {
+		t.Errorf("snapshots = %+v, want the two rows newest first", resp.Snapshots)
+	}
+
+	// An asset with no records is an empty list, not null — the drawer maps it.
+	if rec := get("?assetId=8"); !bytes.Contains(rec.Body.Bytes(), []byte(`"snapshots":[]`)) {
+		t.Errorf("unknown asset body = %s, want an empty snapshots array", rec.Body.String())
+	}
+	for _, q := range []string{"", "?assetId=abc", "?assetId=0"} {
+		if rec := get(q); rec.Code != http.StatusBadRequest {
+			t.Errorf("history%s status = %d, want 400", q, rec.Code)
+		}
 	}
 }
 

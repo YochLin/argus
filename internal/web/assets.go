@@ -4,7 +4,9 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"argus/internal/assets"
 	"argus/internal/db"
@@ -21,6 +23,11 @@ type wealthWriter interface {
 	CreateDepositAsset(a db.NewAsset, det db.DepositDetails) (int64, error)
 	CreateLoanAsset(a db.NewAsset, det db.LoanDetails) (int64, error)
 	UpsertAssetSnapshot(s db.AssetSnapshot) error
+	// LogAssetValue/DeleteAssetSnapshot back the value-history drawer: log (or
+	// correct today's) value, and undo today's. Both enforce db's "history is
+	// read-only" rule; UpsertAssetSnapshot stays the unchecked create/import path.
+	LogAssetValue(assetID int64, date string, value float64, today string) error
+	DeleteAssetSnapshot(assetID int64, date, today string) error
 	ArchiveAsset(id int64) error
 	// UnarchiveAsset/UpdateAsset back the edit-asset flow: restoring a
 	// soft-deleted asset and changing its name/group/venue/detail fields
@@ -239,10 +246,12 @@ type wealthSnapshotRequest struct {
 }
 
 // handleWealthAssetSnapshot backs POST /api/wealth/assets/snapshot — the
-// balance sheet's in-place edit (wEditCell). It always upserts today (or
-// the given date) with Source "manual", per §9.1 rule 2: this writes
-// asset_snapshots, never assets — an edit is "today's value is now X", not
-// a correction to the asset's identity.
+// balance sheet's in-place edit (wEditCell) and the drawer's "log new value".
+// It writes today (or the given past date) with Source "manual", per §9.1
+// rule 2: this writes asset_snapshots, never assets — an edit is "today's
+// value is now X", not a correction to the asset's identity. A past date that
+// already has a record is refused (409): history is read-only, see
+// db.LogAssetValue.
 func (s *Server) handleWealthAssetSnapshot(w http.ResponseWriter, r *http.Request) {
 	var req wealthSnapshotRequest
 	if !decodeJSON(w, r, &req) {
@@ -252,17 +261,94 @@ func (s *Server) handleWealthAssetSnapshot(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "assetId is required")
 		return
 	}
+	today := time.Now().Format("2006-01-02")
 	date, ok := resolveTradeDate(req.Date)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid date")
 		return
 	}
-	if err := s.wealthDB.UpsertAssetSnapshot(db.AssetSnapshot{AssetID: req.AssetID, Date: date, Value: req.Value, Source: "manual"}); err != nil {
-		logger.Errorf("web: upsert wealth asset snapshot: %v", err)
-		writeError(w, http.StatusInternalServerError, "failed to save value")
+	if date > today {
+		writeError(w, http.StatusBadRequest, "date can't be in the future")
+		return
+	}
+	if !writeSnapshotErr(w, s.wealthDB.LogAssetValue(req.AssetID, date, req.Value, today), "save value") {
 		return
 	}
 	writeJSON(w, http.StatusOK, tradeResponse{Message: "saved"})
+}
+
+// writeSnapshotErr maps the snapshot write paths' db errors onto HTTP and
+// reports whether err was nil (the caller carries on only then).
+func writeSnapshotErr(w http.ResponseWriter, err error, what string) bool {
+	switch {
+	case err == nil:
+		return true
+	case errors.Is(err, db.ErrAssetNotFound), errors.Is(err, db.ErrSnapshotNotFound):
+		writeError(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, db.ErrAssetArchived), errors.Is(err, db.ErrSnapshotLocked):
+		writeError(w, http.StatusConflict, err.Error())
+	default:
+		logger.Errorf("web: %s: %v", what, err)
+		writeError(w, http.StatusInternalServerError, "failed to "+what)
+	}
+	return false
+}
+
+type wealthSnapshotDeleteRequest struct {
+	AssetID int64  `json:"assetId"`
+	Date    string `json:"date"`
+}
+
+// handleWealthAssetSnapshotDelete backs POST /api/wealth/assets/snapshot/delete
+// — undoing a value logged by mistake. Only today's record can go (409
+// otherwise); older ones are history.
+func (s *Server) handleWealthAssetSnapshotDelete(w http.ResponseWriter, r *http.Request) {
+	var req wealthSnapshotDeleteRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.AssetID <= 0 {
+		writeError(w, http.StatusBadRequest, "assetId is required")
+		return
+	}
+	if _, err := time.Parse("2006-01-02", req.Date); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid date")
+		return
+	}
+	today := time.Now().Format("2006-01-02")
+	if !writeSnapshotErr(w, s.wealthDB.DeleteAssetSnapshot(req.AssetID, req.Date, today), "delete value record") {
+		return
+	}
+	writeJSON(w, http.StatusOK, tradeResponse{Message: "deleted"})
+}
+
+type wealthSnapshotRow struct {
+	Date   string  `json:"date"`
+	Value  float64 `json:"value"`
+	Source string  `json:"source"`
+}
+
+// handleWealthAssetHistory backs GET /api/wealth/assets/history?assetId= — one
+// asset's value records, newest first, in the asset's own currency. today is
+// the server's date, the one the write routes judge "today's record" by, so
+// the drawer doesn't have to trust the browser's clock for it.
+func (s *Server) handleWealthAssetHistory(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.URL.Query().Get("assetId"), 10, 64)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusBadRequest, "assetId is required")
+		return
+	}
+	snaps, err := s.db.ListAssetSnapshots(id)
+	if err != nil {
+		logger.Errorf("web: list wealth asset history: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to load value history")
+		return
+	}
+	rows := make([]wealthSnapshotRow, 0, len(snaps))
+	for _, sn := range snaps {
+		rows = append(rows, wealthSnapshotRow{Date: sn.Date, Value: sn.Value, Source: sn.Source})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"today": time.Now().Format("2006-01-02"), "snapshots": rows})
 }
 
 type wealthArchiveRequest struct {

@@ -228,6 +228,135 @@ func TestUpdateAssetErrors(t *testing.T) {
 	}
 }
 
+func newSnapshotAsset(t *testing.T, d *DB) int64 {
+	t.Helper()
+	id, err := d.CreateAsset(NewAsset{Side: "asset", Type: "bond", Name: "公債", AssetGroup: "income"})
+	if err != nil {
+		t.Fatalf("CreateAsset() error = %v", err)
+	}
+	return id
+}
+
+func TestLogAssetValueOverwritesTodayAndBackfillsButNeverRewritesHistory(t *testing.T) {
+	d := newTestDB(t)
+	id := newSnapshotAsset(t, d)
+	const today = "2026-07-15"
+
+	// A back-fill into an empty past date is fine…
+	if err := d.LogAssetValue(id, "2026-06-30", 90, today); err != nil {
+		t.Fatalf("LogAssetValue(back-fill) = %v", err)
+	}
+	// …but once it exists that day is history.
+	if err := d.LogAssetValue(id, "2026-06-30", 95, today); !errors.Is(err, ErrSnapshotLocked) {
+		t.Errorf("LogAssetValue(existing past date) = %v, want ErrSnapshotLocked", err)
+	}
+
+	// Today is the same-day correction: the second write replaces the first.
+	if err := d.LogAssetValue(id, today, 100, today); err != nil {
+		t.Fatalf("LogAssetValue(today) = %v", err)
+	}
+	if err := d.LogAssetValue(id, today, 110, today); err != nil {
+		t.Fatalf("LogAssetValue(today, again) = %v", err)
+	}
+
+	snaps, err := d.ListAssetSnapshots(id)
+	if err != nil || len(snaps) != 2 {
+		t.Fatalf("ListAssetSnapshots() = %+v, %v; want 2 rows", snaps, err)
+	}
+	if snaps[0].Date != today || snaps[0].Value != 110 || snaps[0].Source != "manual" {
+		t.Errorf("newest = %+v, want today's corrected 110 (manual) first", snaps[0])
+	}
+	if snaps[1].Date != "2026-06-30" || snaps[1].Value != 90 {
+		t.Errorf("older = %+v, want the untouched back-fill 90", snaps[1])
+	}
+}
+
+func TestLogAssetValueKeepsTheRecordsCost(t *testing.T) {
+	d := newTestDB(t)
+	id := newSnapshotAsset(t, d)
+	const today = "2026-07-15"
+	cost := 80.0
+	if err := d.UpsertAssetSnapshot(AssetSnapshot{AssetID: id, Date: today, Value: 100, Cost: &cost, Source: "import"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := d.LogAssetValue(id, today, 120, today); err != nil {
+		t.Fatalf("LogAssetValue() = %v", err)
+	}
+	got, _ := d.GetLatestAssetSnapshot(id)
+	if got == nil || got.Value != 120 || got.Cost == nil || *got.Cost != 80 || got.Source != "manual" {
+		t.Errorf("snapshot = %+v, want value 120, cost 80 kept, source manual", got)
+	}
+}
+
+func TestSnapshotWritesRefuseUnknownAndArchivedAssets(t *testing.T) {
+	d := newTestDB(t)
+	const today = "2026-07-15"
+
+	if err := d.LogAssetValue(999, today, 1, today); !errors.Is(err, ErrAssetNotFound) {
+		t.Errorf("LogAssetValue(unknown asset) = %v, want ErrAssetNotFound", err)
+	}
+	if err := d.DeleteAssetSnapshot(999, today, today); !errors.Is(err, ErrAssetNotFound) {
+		t.Errorf("DeleteAssetSnapshot(unknown asset) = %v, want ErrAssetNotFound", err)
+	}
+
+	id := newSnapshotAsset(t, d)
+	if err := d.LogAssetValue(id, today, 100, today); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.ArchiveAsset(id); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.LogAssetValue(id, today, 200, today); !errors.Is(err, ErrAssetArchived) {
+		t.Errorf("LogAssetValue(archived) = %v, want ErrAssetArchived", err)
+	}
+	if err := d.DeleteAssetSnapshot(id, today, today); !errors.Is(err, ErrAssetArchived) {
+		t.Errorf("DeleteAssetSnapshot(archived) = %v, want ErrAssetArchived", err)
+	}
+	if snaps, _ := d.ListAssetSnapshots(id); len(snaps) != 1 || snaps[0].Value != 100 {
+		t.Errorf("snapshots = %+v, want the pre-archive 100 untouched", snaps)
+	}
+
+	// Restoring the asset reopens it.
+	if err := d.UnarchiveAsset(id); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.LogAssetValue(id, today, 200, today); err != nil {
+		t.Errorf("LogAssetValue(after unarchive) = %v, want nil", err)
+	}
+}
+
+func TestDeleteAssetSnapshotOnlyTodaysRecord(t *testing.T) {
+	d := newTestDB(t)
+	id := newSnapshotAsset(t, d)
+	const today = "2026-07-15"
+	for _, date := range []string{"2026-06-30", today} {
+		if err := d.UpsertAssetSnapshot(AssetSnapshot{AssetID: id, Date: date, Value: 100, Source: "import"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := d.DeleteAssetSnapshot(id, "2026-06-30", today); !errors.Is(err, ErrSnapshotLocked) {
+		t.Errorf("DeleteAssetSnapshot(past date) = %v, want ErrSnapshotLocked", err)
+	}
+	if err := d.DeleteAssetSnapshot(id, today, today); err != nil {
+		t.Fatalf("DeleteAssetSnapshot(today) = %v", err)
+	}
+	if err := d.DeleteAssetSnapshot(id, today, today); !errors.Is(err, ErrSnapshotNotFound) {
+		t.Errorf("DeleteAssetSnapshot(already gone) = %v, want ErrSnapshotNotFound", err)
+	}
+	if snaps, _ := d.ListAssetSnapshots(id); len(snaps) != 1 || snaps[0].Date != "2026-06-30" {
+		t.Errorf("snapshots = %+v, want only the 2026-06-30 history left", snaps)
+	}
+}
+
+func TestListAssetSnapshotsEmptyForUnknownAsset(t *testing.T) {
+	d := newTestDB(t)
+	if snaps, err := d.ListAssetSnapshots(999); err != nil || len(snaps) != 0 {
+		t.Errorf("ListAssetSnapshots(unknown) = %+v, %v; want empty", snaps, err)
+	}
+}
+
 // TestListAssetsValueAsOfUsesLatestSnapshotOnOrBeforeDate pins the
 // historical-lookup semantics wealth_home.go's YTD/MoM depend on: a date
 // before the asset's first snapshot gets no value (it didn't exist yet, not
