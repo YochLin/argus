@@ -1,6 +1,46 @@
 package db
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
+
+// TestUpdateRecurringCashflowKeepsWhatIsNotEditable pins that an edit changes
+// name/amount/day/category and leaves direction, currency and the paused flag
+// alone — including on a paused line, and that an unknown id is an error.
+func TestUpdateRecurringCashflowKeepsWhatIsNotEditable(t *testing.T) {
+	d := newTestDB(t)
+
+	day := int64(5)
+	id, err := d.CreateRecurringCashflow(NewRecurringCashflow{
+		Direction: "in", Name: "薪資", Amount: 80000, Currency: "USD", DayOfMonth: &day, Category: "salary",
+	})
+	if err != nil {
+		t.Fatalf("CreateRecurringCashflow() error = %v", err)
+	}
+	if err := d.DeactivateRecurringCashflow(id); err != nil {
+		t.Fatalf("DeactivateRecurringCashflow() error = %v", err)
+	}
+
+	if err := d.UpdateRecurringCashflow(id, RecurringCashflowEdit{Name: "薪資(加薪)", Amount: 90000}); err != nil {
+		t.Fatalf("UpdateRecurringCashflow() error = %v", err)
+	}
+	list, err := d.ListRecurringCashflows(false)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("ListRecurringCashflows() = %+v, %v", list, err)
+	}
+	c := list[0]
+	if c.Name != "薪資(加薪)" || c.Amount != 90000 || c.DayOfMonth != nil || c.Category != "" {
+		t.Errorf("row = %+v, want new name/amount with day and category cleared (full overwrite)", c)
+	}
+	if c.Direction != "in" || c.Currency != "USD" || c.Active {
+		t.Errorf("row = %+v, direction/currency/active must not change", c)
+	}
+
+	if err := d.UpdateRecurringCashflow(999, RecurringCashflowEdit{Name: "x", Amount: 1}); !errors.Is(err, ErrCashflowNotFound) {
+		t.Errorf("UpdateRecurringCashflow(unknown id) = %v, want ErrCashflowNotFound", err)
+	}
+}
 
 func TestCreateAndListRecurringCashflows(t *testing.T) {
 	d := newTestDB(t)
