@@ -44,20 +44,35 @@ export function ReadOnlyBanner({ dict, howOpen, onToggleHow }: Props) {
 
 // ReadOnlyImportPanel stands in for the import form on /import and /w/import
 // while read-only — those pages used to render nothing at all. The wealth
-// variant sits inside the page's existing card under the column guide.
+// variant sits inside the page's existing card under the column guide. With
+// onDownload it also offers the CSV template, which a read-only visitor can
+// still use to prepare a file.
 export function ReadOnlyImportPanel({
   dict,
   body,
   howOpen,
   onToggleHow,
-}: Props & { body: string }) {
+  onDownload,
+}: Props & { body: string; onDownload?: () => void }) {
+  const how = (
+    <button type="button" className="ro-import-how" onClick={onToggleHow}>
+      {howOpen ? dict.roHide : dict.roHow}
+    </button>
+  );
   return (
     <div className="ro-import">
       <span className="ro-import-title">{dict.roImportTitle}</span>
       <span className="ro-import-body">{body}</span>
-      <button type="button" className="ro-import-how" onClick={onToggleHow}>
-        {howOpen ? dict.roHide : dict.roHow}
-      </button>
+      {onDownload ? (
+        <div className="ro-import-actions">
+          <button type="button" className="ro-import-download" onClick={onDownload}>
+            {dict.wealthImportDownload}
+          </button>
+          {how}
+        </div>
+      ) : (
+        how
+      )}
     </div>
   );
 }

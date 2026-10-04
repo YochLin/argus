@@ -964,7 +964,16 @@ export interface Dictionary {
   navWealthImport: string;
   wealthImportTitle: string;
   wealthImportInstructions: string;
-  wealthImportTemplateHint: string;
+  wealthImportHintNote: string; // beside the header line: what is required, and that line 1 is the header
+  wealthImportGuide: [string, string][]; // [what goes in the CSV, what it means], one per column / value
+  wealthImportSample: string; // example rows, no header line — the template file and "load sample" both put one on top
+  wealthImportTemplateName: string;
+  wealthImportDownload: string;
+  wealthImportLoadSample: string;
+  wealthImportClear: string;
+  wealthImportSummary: string;
+  wealthImportNoHeader: string;
+  wealthImportDuplicateMsg: string; // the server's own text for this status is English only
   wealthImportTextareaPlaceholder: string;
   wealthImportColSide: string;
   wealthImportColType: string;
@@ -2154,7 +2163,7 @@ const en: Dictionary = {
   roStep3: "Come back and enter the same password the first time you edit",
   roImportTitle: "Import needs edit access",
   roImportBodyWealth:
-    "This is read-only, so nothing can be written. You can still prepare your CSV using the column guide above, then paste it in once a password is set.",
+    "This is read-only, so nothing can be written. You can still download the template and prepare your CSV using the column guide above, then paste it in once a password is set.",
   roImportBodyTrade:
     "This is read-only, so trades can't be imported. After setting WEB_PASSWORD and restarting, the import form appears here.",
   wealthKindDeposit: "Deposit",
@@ -2214,10 +2223,46 @@ const en: Dictionary = {
   navWealthImport: "Import",
   wealthImportTitle: "Import Wealth Assets",
   wealthImportInstructions:
-    "Paste or upload a CSV to bulk-create deposits, loans, and other assets/liabilities — the fastest way to enter your first batch of accounts.",
-  wealthImportTemplateHint:
-    "Columns: side,type,name,group,venue,currency,value,date,bank,accountNote,lender,ratePct,originalPrincipal,remainingMonths " +
-    "(side: asset/liability; group: liquid/growth/income/hard; bank/accountNote apply to type=deposit; lender/ratePct/originalPrincipal/remainingMonths apply to type=loan/credit_card; header row required)",
+    "Paste or upload a CSV, preview the result row by row, then write it in — the fastest way to enter your first batch of accounts.",
+  wealthImportHintNote:
+    "side, type, name, group and value are required, the rest may be blank; every row needs at least the first 8 columns (pad with commas). The first line is the header and is not imported.",
+  wealthImportGuide: [
+    ["asset", "side: an asset"],
+    ["liability", "side: a liability"],
+    ["type", "Assets: deposit, fund, bond, estate, gold, crypto, pension, other. Liabilities: loan, credit_card"],
+    ["name", "Required. The same name and type as an existing record is skipped"],
+    ["liquid", "group: available any time, e.g. savings, deposits"],
+    ["growth", "group: stocks, ETFs, equity funds"],
+    ["income", "group: bonds, dividend funds, savings policies"],
+    ["hard", "group: property, gold, pension"],
+    ["venue", "Bank or platform; may be blank"],
+    ["currency", "e.g. TWD, USD; blank means TWD"],
+    ["value", "Current value in that currency; enter a liability as a positive number"],
+    ["date", "Valuation date, YYYY-MM-DD; blank means today"],
+    ["bank", "deposit: bank"],
+    ["accountNote", "deposit: account note"],
+    ["lender", "loan: lender"],
+    ["ratePct", "loan: annual rate in %, e.g. 2.1"],
+    ["originalPrincipal", "loan: original principal"],
+    ["remainingMonths", "loan: months left"],
+    ["fundCode", "fund: code, e.g. F00012"],
+    ["fundPlatform", "fund: where it was bought"],
+    ["fundMonthlyAmount", "fund: monthly auto-invest; blank for a lump sum"],
+    ["fundNextContributionDate", "fund: next debit date, YYYY-MM-DD"],
+  ],
+  wealthImportSample:
+    "asset,deposit,Time deposit - Bank X,liquid,Bank X,TWD,350000,,Bank X,Salary account,,,,,,,,\n" +
+    "asset,fund,Taiwan Tech Fund,growth,Fund platform,TWD,186000,,,,,,,,F00012,Fund platform,5000,2026-11-06\n" +
+    "asset,gold,Gold passbook,hard,Bank X,TWD,128000,,,,,,,,,,,\n" +
+    "liability,loan,Renovation loan,hard,Bank X,TWD,280000,,,,Bank X,2.1,500000,48,,,,",
+  wealthImportTemplateName: "argus-wealth-template.csv",
+  wealthImportDownload: "Download template",
+  wealthImportLoadSample: "Load sample",
+  wealthImportClear: "Clear",
+  wealthImportSummary: "ROW RESULTS",
+  wealthImportNoHeader:
+    "The first line looks like data, not a header — the first line is always skipped. Add a header row on top (Load sample shows the format).",
+  wealthImportDuplicateMsg: "Same name and type as an existing record — skipped",
   wealthImportTextareaPlaceholder:
     "side,type,name,group,venue,currency,value,date\nasset,deposit,Checking,liquid,Bank,TWD,100000,2026-09-01",
   wealthImportColSide: "Side",
@@ -3346,7 +3391,7 @@ const zh: Dictionary = {
   roStep3: "回到這裡，第一次編輯時輸入同一組密碼登入",
   roImportTitle: "匯入需要編輯權限",
   roImportBodyWealth:
-    "目前是唯讀模式，不能寫入資料。你仍然可以先照上方欄位說明整理好 CSV，設定密碼後再回來貼上匯入。",
+    "目前是唯讀模式，不能寫入資料。你仍然可以先下載範本、照上方欄位說明整理好 CSV，設定密碼後再回來貼上匯入。",
   roImportBodyTrade: "目前是唯讀模式，不能匯入交易紀錄。設定 WEB_PASSWORD 並重新啟動後，這裡會出現匯入表單。",
   wealthKindDeposit: "存款",
   wealthKindLoan: "貸款",
@@ -3404,11 +3449,45 @@ const zh: Dictionary = {
   wealthSrcSync: "同步",
   navWealthImport: "匯入",
   wealthImportTitle: "匯入資產資料",
-  wealthImportInstructions: "貼上或上傳 CSV 批次建立存款/貸款/其他資產負債——第一批帳戶最快的建檔方式。",
-  wealthImportTemplateHint:
-    "欄位：side,type,name,group,venue,currency,value,date,bank,accountNote,lender,ratePct,originalPrincipal,remainingMonths" +
-    "（side：asset/liability；group：liquid/growth/income/hard；bank/accountNote 僅 type=deposit 時填寫；" +
-    "lender/ratePct/originalPrincipal/remainingMonths 僅 type=loan/credit_card 時填寫；需保留標題列）",
+  wealthImportInstructions: "貼上或上傳 CSV，先預覽逐列結果，確認沒問題再寫入——第一批帳戶最快的建檔方式。",
+  wealthImportHintNote:
+    "side、type、name、group、value 必填，其餘可留空；每列至少要有前 8 欄（用逗號補齊）。第一列是標題列，不會被匯入。",
+  wealthImportGuide: [
+    ["asset", "side：資產"],
+    ["liability", "side：負債"],
+    ["type", "資產：deposit 存款、fund 基金、bond 債券、estate 不動產、gold 黃金、crypto 加密貨幣、pension 退休帳戶、other 其他。負債：loan 貸款、credit_card 信用卡"],
+    ["name", "必填。與現有資料同名同類型會被略過"],
+    ["liquid", "group 流動：隨時可動用，如活存、定存"],
+    ["growth", "group 成長：股票、ETF、股票型基金"],
+    ["income", "group 收益：債券、配息型基金、儲蓄險"],
+    ["hard", "group 實體：不動產、黃金、退休帳戶"],
+    ["venue", "往來機構或平台，可留空"],
+    ["currency", "幣別，如 TWD、USD；留空視為 TWD"],
+    ["value", "目前金額（該幣別）；負債填正數"],
+    ["date", "估值日 YYYY-MM-DD；留空為今天"],
+    ["bank", "存款：銀行"],
+    ["accountNote", "存款：帳戶備註"],
+    ["lender", "貸款：放款機構"],
+    ["ratePct", "貸款：年利率 %，如 2.1"],
+    ["originalPrincipal", "貸款：原始本金"],
+    ["remainingMonths", "貸款：剩餘月數"],
+    ["fundCode", "基金：代碼，如 F00012"],
+    ["fundPlatform", "基金：購買平台"],
+    ["fundMonthlyAmount", "基金：每月定期定額；一次買入留空"],
+    ["fundNextContributionDate", "基金：下次扣款日 YYYY-MM-DD"],
+  ],
+  wealthImportSample:
+    "asset,deposit,台銀活存,liquid,台灣銀行,TWD,350000,,台灣銀行,薪轉帳戶,,,,,,,,\n" +
+    "asset,fund,安聯台灣科技基金,growth,基富通,TWD,186000,,,,,,,,F00012,基富通,5000,2026-11-06\n" +
+    "asset,gold,黃金存摺,hard,台灣銀行,TWD,128000,,,,,,,,,,,\n" +
+    "liability,loan,裝修貸款,hard,台灣銀行,TWD,280000,,,,台灣銀行,2.1,500000,48,,,,",
+  wealthImportTemplateName: "argus-資產匯入範本.csv",
+  wealthImportDownload: "下載範本",
+  wealthImportLoadSample: "載入範例",
+  wealthImportClear: "清空",
+  wealthImportSummary: "逐列結果",
+  wealthImportNoHeader: "第一列看起來是資料，不是標題列——匯入時第一列一律略過。請在最上面加上標題列（按「載入範例」可看格式）。",
+  wealthImportDuplicateMsg: "與現有資料同名同類型，已略過",
   wealthImportTextareaPlaceholder:
     "side,type,name,group,venue,currency,value,date\nasset,deposit,活存,liquid,銀行,TWD,100000,2026-09-01",
   wealthImportColSide: "類別",
