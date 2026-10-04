@@ -50,6 +50,33 @@ func (d *DB) CreateRecurringCashflow(c NewRecurringCashflow) (int64, error) {
 	return res.LastInsertId()
 }
 
+// RecurringCashflowEdit is the editable part of a recurring cashflow. The
+// direction (in/out), currency, linked asset and active flag are not here:
+// those stay "pause and add a new line". Every field is overwritten, so a nil
+// DayOfMonth clears the day and an empty Category clears the category.
+type RecurringCashflowEdit struct {
+	Name       string
+	Amount     float64
+	DayOfMonth *int64
+	Category   string
+}
+
+// UpdateRecurringCashflow applies a RecurringCashflowEdit, paused lines
+// included. Returns ErrCashflowNotFound for an unknown id.
+func (d *DB) UpdateRecurringCashflow(id int64, e RecurringCashflowEdit) error {
+	res, err := d.conn.Exec(`UPDATE recurring_cashflows SET name = ?, amount = ?, day_of_month = ?, category = ? WHERE id = ?`,
+		e.Name, e.Amount, nullableInt64(e.DayOfMonth), nullableString(e.Category), id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrCashflowNotFound
+	}
+	return nil
+}
+
 // ListRecurringCashflows returns every recurring cashflow, newest first.
 // activeOnly=true filters active = 1, the default for /w/cash's list and
 // monthly-total math — a paused flow shouldn't silently keep counting.

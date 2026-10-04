@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"net/http"
 	"sort"
 	"strings"
@@ -318,6 +319,51 @@ func (s *Server) handleWealthCashCreate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+}
+
+// wealthCashUpdateRequest is the edit form's submission — the fields a flow
+// can be corrected on (a raise, a rent increase). Direction, currency and the
+// linked asset aren't editable (see db.RecurringCashflowEdit); like the
+// create form, a missing dayOfMonth/category clears them.
+type wealthCashUpdateRequest struct {
+	ID         int64   `json:"id"`
+	Name       string  `json:"name"`
+	Amount     float64 `json:"amount"`
+	DayOfMonth *int64  `json:"dayOfMonth"`
+	Category   string  `json:"category"`
+}
+
+// handleWealthCashUpdate backs POST /api/wealth/cash/update. It edits paused
+// flows too — pausing is a separate switch, not a lock.
+func (s *Server) handleWealthCashUpdate(w http.ResponseWriter, r *http.Request) {
+	var req wealthCashUpdateRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	if req.ID <= 0 {
+		writeError(w, http.StatusBadRequest, "id is required")
+		return
+	}
+	if req.Name == "" || req.Amount <= 0 {
+		writeError(w, http.StatusBadRequest, "name and a positive amount are required")
+		return
+	}
+	if req.DayOfMonth != nil && (*req.DayOfMonth < 1 || *req.DayOfMonth > 31) {
+		writeError(w, http.StatusBadRequest, "dayOfMonth must be between 1 and 31")
+		return
+	}
+	switch err := s.wealthDB.UpdateRecurringCashflow(req.ID, db.RecurringCashflowEdit{
+		Name: req.Name, Amount: req.Amount, DayOfMonth: req.DayOfMonth, Category: strings.TrimSpace(req.Category),
+	}); {
+	case errors.Is(err, db.ErrCashflowNotFound):
+		writeError(w, http.StatusNotFound, "cash flow not found")
+	case err != nil:
+		logger.Errorf("web: update recurring cashflow: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to update cash flow")
+	default:
+		writeJSON(w, http.StatusOK, tradeResponse{Message: "saved"})
+	}
 }
 
 type wealthCashDeactivateRequest struct {

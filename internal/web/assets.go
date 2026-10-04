@@ -35,6 +35,9 @@ type wealthWriter interface {
 	// wealth_cash.go's add-flow form and pause action (Phase 9 波次2 PR5).
 	CreateRecurringCashflow(c db.NewRecurringCashflow) (int64, error)
 	DeactivateRecurringCashflow(id int64) error
+	// UpdateRecurringCashflow backs wealth_cash.go's edit route (name/amount/
+	// day/category only — see db.RecurringCashflowEdit).
+	UpdateRecurringCashflow(id int64, e db.RecurringCashflowEdit) error
 	// CreateGoal/DeleteGoal/SetGoalAsset back wealth_goals.go's
 	// create/delete/earmark write routes (Phase 9 波次3 PR6). The goals
 	// drawer calls create/update/delete; earmark has no UI, the route stays

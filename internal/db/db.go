@@ -26,6 +26,10 @@ var ErrInsufficientShares = errors.New("insufficient shares for sell")
 // exist.
 var ErrTransactionNotFound = errors.New("transaction not found")
 
+// ErrCashflowNotFound is returned by UpdateRecurringCashflow when id doesn't
+// exist.
+var ErrCashflowNotFound = errors.New("recurring cashflow not found")
+
 // ErrNotLatestTransaction is returned by DeleteTransaction when id isn't the
 // most recently recorded transaction for its ticker — see that function's
 // doc comment for why only the latest one is safe to undo.

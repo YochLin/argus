@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,6 +20,7 @@ func newWealthCashTestServer(password string, fake *fakeDB, wealthDB wealthWrite
 	s.mux.HandleFunc("GET /api/wealth/cash", s.handleWealthCashList)
 	s.mux.HandleFunc("POST /api/wealth/cash", s.requireWritable(s.requireAuth(s.handleWealthCashCreate)))
 	s.mux.HandleFunc("POST /api/wealth/cash/deactivate", s.requireWritable(s.requireAuth(s.handleWealthCashDeactivate)))
+	s.mux.HandleFunc("POST /api/wealth/cash/update", s.requireWritable(s.requireAuth(s.handleWealthCashUpdate)))
 	return s
 }
 
@@ -230,5 +232,66 @@ func TestHandleWealthCashCreateAndDeactivate(t *testing.T) {
 	}
 	if wealthDB.lastDeactivateID != 7 {
 		t.Errorf("lastDeactivateID = %d, want 7", wealthDB.lastDeactivateID)
+	}
+}
+
+func postCashUpdate(t *testing.T, s *Server, cookie *http.Cookie, payload any) *httptest.ResponseRecorder {
+	t.Helper()
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/wealth/cash/update", bytes.NewReader(body))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestHandleWealthCashUpdate(t *testing.T) {
+	wealthDB := &fakeWealthDB{}
+	s := newWealthCashTestServer("secret", &fakeDB{}, wealthDB)
+	cookie := loginAndGetCookie(t, s, "secret")
+
+	rec := postCashUpdate(t, s, cookie, map[string]any{"id": 7, "name": "  薪資  ", "amount": 90000, "dayOfMonth": 5, "category": "salary"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	got := wealthDB.lastCashflowEdit
+	if wealthDB.lastUpdateCashflowID != 7 || got.Name != "薪資" || got.Amount != 90000 ||
+		got.DayOfMonth == nil || *got.DayOfMonth != 5 || got.Category != "salary" {
+		t.Errorf("UpdateRecurringCashflow(%d, %+v), want id 7 with trimmed name, 90000, day 5, salary", wealthDB.lastUpdateCashflowID, got)
+	}
+
+	// Without the auth cookie the write gate must reject it.
+	body, _ := json.Marshal(map[string]any{"id": 7, "name": "x", "amount": 1})
+	rec = httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/wealth/cash/update", bytes.NewReader(body)))
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status without cookie = %d, want 401", rec.Code)
+	}
+}
+
+func TestHandleWealthCashUpdateRejectsBadInputAndMapsErrors(t *testing.T) {
+	for name, tc := range map[string]struct {
+		payload map[string]any
+		dbErr   error
+		want    int
+	}{
+		"no id":         {map[string]any{"name": "x", "amount": 1}, nil, http.StatusBadRequest},
+		"blank name":    {map[string]any{"id": 7, "name": " ", "amount": 1}, nil, http.StatusBadRequest},
+		"zero amount":   {map[string]any{"id": 7, "name": "x", "amount": 0}, nil, http.StatusBadRequest},
+		"day too large": {map[string]any{"id": 7, "name": "x", "amount": 1, "dayOfMonth": 32}, nil, http.StatusBadRequest},
+		"unknown id":    {map[string]any{"id": 7, "name": "x", "amount": 1}, db.ErrCashflowNotFound, http.StatusNotFound},
+		"db failure":    {map[string]any{"id": 7, "name": "x", "amount": 1}, errors.New("disk full"), http.StatusInternalServerError},
+	} {
+		t.Run(name, func(t *testing.T) {
+			wealthDB := &fakeWealthDB{updateCashflowErr: tc.dbErr}
+			s := newWealthCashTestServer("secret", &fakeDB{}, wealthDB)
+			rec := postCashUpdate(t, s, loginAndGetCookie(t, s, "secret"), tc.payload)
+			if rec.Code != tc.want {
+				t.Errorf("status = %d, want %d, body = %s", rec.Code, tc.want, rec.Body.String())
+			}
+			if tc.dbErr == nil && wealthDB.lastUpdateCashflowID != 0 {
+				t.Errorf("UpdateRecurringCashflow was called (id %d) for a rejected request", wealthDB.lastUpdateCashflowID)
+			}
+		})
 	}
 }

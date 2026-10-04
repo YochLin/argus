@@ -26,6 +26,9 @@ type fakeWealthDB struct {
 	updateAssetErr                        error
 	lastSettingKey, lastSettingValue      string
 	lastNewCashflow                       db.NewRecurringCashflow
+	lastUpdateCashflowID                  int64
+	lastCashflowEdit                      db.RecurringCashflowEdit
+	updateCashflowErr                     error
 	lastDeactivateID                      int64
 	lastNewGoal                           db.NewGoal
 	lastDeleteGoalID                      int64
@@ -103,6 +106,10 @@ func (f *fakeWealthDB) DeactivateRecurringCashflow(id int64) error {
 	f.lastDeactivateID = id
 	return f.deactivateErr
 }
+func (f *fakeWealthDB) UpdateRecurringCashflow(id int64, e db.RecurringCashflowEdit) error {
+	f.lastUpdateCashflowID, f.lastCashflowEdit = id, e
+	return f.updateCashflowErr
+}
 func (f *fakeWealthDB) CreateGoal(g db.NewGoal) (int64, error) {
 	f.lastNewGoal = g
 	f.nextGoalID++
@@ -149,6 +156,7 @@ func newWealthTestServer(password string, wealthDB wealthWriter, dbr dbReader) *
 	s.mux.HandleFunc("GET /api/wealth/cash", s.handleWealthCashList)
 	s.mux.HandleFunc("POST /api/wealth/cash", s.requireWritable(s.requireAuth(s.handleWealthCashCreate)))
 	s.mux.HandleFunc("POST /api/wealth/cash/deactivate", s.requireWritable(s.requireAuth(s.handleWealthCashDeactivate)))
+	s.mux.HandleFunc("POST /api/wealth/cash/update", s.requireWritable(s.requireAuth(s.handleWealthCashUpdate)))
 	s.mux.HandleFunc("GET /api/wealth/goals", s.handleWealthGoalsList)
 	s.mux.HandleFunc("POST /api/wealth/goals", s.requireWritable(s.requireAuth(s.handleWealthGoalCreate)))
 	s.mux.HandleFunc("POST /api/wealth/goals/delete", s.requireWritable(s.requireAuth(s.handleWealthGoalDelete)))
