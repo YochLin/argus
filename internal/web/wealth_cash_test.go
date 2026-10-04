@@ -117,8 +117,8 @@ func TestHandleWealthCashList(t *testing.T) {
 			t.Errorf("Forecast[%s].Net = %v, want 30000 (flat MonthlyNet)", f.Month, f.Net)
 		}
 	}
-	// Each active item's ValueTwd is its own TWD amount; the paused item
-	// (id 4) has none since it's excluded from every total.
+	// Every item's ValueTwd is its own TWD amount, the paused item (id 4)
+	// included — the paused list shows it in TWD — even though it feeds no total.
 	byID := map[int64]cashflowItem{}
 	for _, it := range got.Items {
 		byID[it.ID] = it
@@ -126,8 +126,8 @@ func TestHandleWealthCashList(t *testing.T) {
 	if v := byID[1].ValueTwd; v == nil || *v != 80000 {
 		t.Errorf("item 1 ValueTwd = %v, want 80000", v)
 	}
-	if v := byID[4].ValueTwd; v != nil {
-		t.Errorf("paused item 4 ValueTwd = %v, want nil", v)
+	if v := byID[4].ValueTwd; v == nil || *v != 500 {
+		t.Errorf("paused item 4 ValueTwd = %v, want 500", v)
 	}
 	// The paused list's "paused on" column comes from here; an active flow has none.
 	if byID[4].PausedAt != "2026-05-01" || byID[1].PausedAt != "" {
@@ -169,6 +169,99 @@ func TestHandleWealthCashList(t *testing.T) {
 	}
 	if !sawSIPWithVenue {
 		t.Errorf("Events = %+v, want a 0050 定期定額 occurrence with venue 國泰證券", got.Events)
+	}
+}
+
+func getCash(t *testing.T, s *Server) cashResponse {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/cash", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	var got cashResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	return got
+}
+
+// TestHandleWealthCashListPricesEveryItemAndEventInTWD pins that the page can
+// show a foreign-currency flow in TWD wherever it appears: an active item, a
+// paused one (which feeds no total), and its 90-day event — whose ValueTwd is
+// the magnitude (an expense isn't negated; Direction carries the sign).
+func TestHandleWealthCashListPricesEveryItemAndEventInTWD(t *testing.T) {
+	now := time.Now()
+	today := now.Format("2006-01-02")
+	dueDay := int64(now.Day())
+	fake := &fakeDB{recurringCashflows: []db.RecurringCashflow{
+		{ID: 1, Direction: "out", Name: "美股定期定額", Amount: 1000, Currency: "USD", Category: "sip", Active: true, DayOfMonth: &dueDay},
+		{ID: 2, Direction: "in", Name: "美元股息", Amount: 200, Currency: "USD", PausedAt: "2026-05-01"},
+	}}
+	s := newWealthCashTestServer("", fake, &fakeWealthDB{})
+	s.fxDB = &fakeFXDB{rates: map[string]float64{fxKey(today, "USDTWD"): 30}}
+
+	got := getCash(t, s)
+	byID := map[int64]cashflowItem{}
+	for _, it := range got.Items {
+		byID[it.ID] = it
+	}
+	if v := byID[1].ValueTwd; v == nil || *v != 30000 {
+		t.Errorf("active USD item ValueTwd = %v, want 30000", v)
+	}
+	if v := byID[2].ValueTwd; v == nil || *v != 6000 {
+		t.Errorf("paused USD item ValueTwd = %v, want 6000", v)
+	}
+	if got.MonthlyOut == nil || *got.MonthlyOut != 30000 || got.MonthlyIn == nil || *got.MonthlyIn != 0 {
+		t.Errorf("monthly in/out = %v / %v, want 0 / 30000 (the paused flow feeds no total)", got.MonthlyIn, got.MonthlyOut)
+	}
+
+	var event *cashEvent
+	for i := range got.Events {
+		if got.Events[i].Item == "美股定期定額" {
+			event = &got.Events[i]
+			break
+		}
+	}
+	if event == nil {
+		t.Fatalf("Events = %+v, want a 美股定期定額 occurrence", got.Events)
+	}
+	if event.Currency != "USD" || event.Amount == nil || *event.Amount != 1000 || event.ValueTwd == nil || *event.ValueTwd != 30000 {
+		t.Errorf("event = %+v, want 1000 USD with ValueTwd +30000 (not negated for an expense)", event)
+	}
+	if got.EventsNet == nil || *got.EventsNet >= 0 {
+		t.Errorf("EventsNet = %v, want negative (its only events are USD expenses)", got.EventsNet)
+	}
+}
+
+// TestHandleWealthCashListUnpricedFlowDegradesTotalsNotItems pins the
+// "don't fabricate a number" rule's reach: a flow whose currency can't be
+// priced has no ValueTwd and blanks every monthly total, but the flows that can
+// be priced still carry theirs.
+func TestHandleWealthCashListUnpricedFlowDegradesTotalsNotItems(t *testing.T) {
+	today := time.Now().Format("2006-01-02")
+	fake := &fakeDB{recurringCashflows: []db.RecurringCashflow{
+		{ID: 1, Direction: "in", Name: "薪資", Amount: 80000, Currency: "TWD", Active: true},
+		{ID: 2, Direction: "in", Name: "歐元租金", Amount: 500, Currency: "EUR", Active: true},
+		{ID: 3, Direction: "out", Name: "歐元訂閱", Amount: 20, Currency: "EUR"},
+	}}
+	s := newWealthCashTestServer("", fake, &fakeWealthDB{})
+	s.fxDB = &fakeFXDB{rates: map[string]float64{fxKey(today, "USDTWD"): 30}}
+	s.quotes = &fakeQuotes{err: map[string]error{"EURTWD=X": errors.New("no quote")}}
+
+	got := getCash(t, s)
+	if got.MonthlyIn != nil || got.MonthlyOut != nil || got.MonthlyNet != nil {
+		t.Errorf("monthly totals = %v / %v / %v, want all nil with an unpriceable active flow", got.MonthlyIn, got.MonthlyOut, got.MonthlyNet)
+	}
+	byID := map[int64]cashflowItem{}
+	for _, it := range got.Items {
+		byID[it.ID] = it
+	}
+	if v := byID[1].ValueTwd; v == nil || *v != 80000 {
+		t.Errorf("the TWD item ValueTwd = %v, want 80000 (still priced)", v)
+	}
+	if byID[2].ValueTwd != nil || byID[3].ValueTwd != nil {
+		t.Errorf("EUR items ValueTwd = %v / %v, want nil", byID[2].ValueTwd, byID[3].ValueTwd)
 	}
 }
 

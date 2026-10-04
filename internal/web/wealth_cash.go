@@ -29,11 +29,12 @@ type cashflowItem struct {
 	// PausedAt is the day a paused flow was paused; omitted while active and
 	// for a flow paused before the date was recorded.
 	PausedAt string `json:"pausedAt,omitempty"`
-	// ValueTwd is Amount converted to TWD as of today — nil if the item is
-	// inactive (not part of any monthly total) or its currency couldn't be
-	// priced. Backs the in/out breakdown's per-item bar (§8.4's wcm.inRows/
-	// outRows), computed once here rather than making the frontend redo FX
-	// conversion it has no quotes access to do.
+	// ValueTwd is Amount converted to TWD as of today — nil only if its
+	// currency couldn't be priced. Set for a paused item too (the paused list
+	// shows it in TWD like everything else); only active items count toward the
+	// monthly totals. Backs the in/out breakdown's per-item bar (§8.4's
+	// wcm.inRows/outRows), computed once here rather than making the frontend
+	// redo FX conversion it has no quotes access to do.
 	ValueTwd *float64 `json:"valueTwd,omitempty"`
 }
 
@@ -42,11 +43,14 @@ type cashflowItem struct {
 // option contract's expiry. Amount is nil for an "event" (an expiry isn't a
 // known cash amount until assignment/exercise is decided).
 type cashEvent struct {
-	Date      string   `json:"date"`
-	Item      string   `json:"item"`
-	Venue     string   `json:"venue,omitempty"`
-	Amount    *float64 `json:"amount"`
-	Currency  string   `json:"currency,omitempty"`
+	Date     string   `json:"date"`
+	Item     string   `json:"item"`
+	Venue    string   `json:"venue,omitempty"`
+	Amount   *float64 `json:"amount"`
+	Currency string   `json:"currency,omitempty"`
+	// ValueTwd is Amount converted to TWD as of today (the magnitude — Direction
+	// carries the sign); nil for an "event" or an unpriceable currency.
+	ValueTwd  *float64 `json:"valueTwd,omitempty"`
 	Direction string   `json:"direction"` // "in" | "out" | "event"
 }
 
@@ -193,13 +197,11 @@ func (s *Server) handleWealthCashList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var active []db.RecurringCashflow
-	indexByID := make(map[int64]int, len(all))
 	for _, c := range all {
 		venue := ""
 		if c.AssetID != nil {
 			venue = venueByAsset[*c.AssetID]
 		}
-		indexByID[c.ID] = len(resp.Items)
 		resp.Items = append(resp.Items, cashflowItem{
 			ID: c.ID, Direction: c.Direction, Name: c.Name, Amount: c.Amount, Currency: c.Currency,
 			DayOfMonth: c.DayOfMonth, Category: c.Category, AssetID: c.AssetID, Venue: venue, Active: c.Active, PausedAt: c.PausedAt,
@@ -212,14 +214,21 @@ func (s *Server) handleWealthCashList(w http.ResponseWriter, r *http.Request) {
 	var monthlyIn, monthlyOut, dcaOut, fixedOut float64
 	fxOK := true
 	isFixedCategory := map[string]bool{"mortgage": true, "loan": true, "insurance": true}
-	for _, c := range active {
+	// Every item is priced in TWD for display, a paused one included; only the
+	// active ones feed the totals, and one that can't be priced degrades them all.
+	for i, c := range all {
 		rate, rok := service.RateToTWD(c.Currency, resp.AsOf, true, s.quotes, s.fxDB)
 		if !rok {
-			fxOK = false
+			if c.Active {
+				fxOK = false
+			}
 			continue
 		}
 		amt := c.Amount * rate
-		resp.Items[indexByID[c.ID]].ValueTwd = &amt
+		resp.Items[i].ValueTwd = &amt
+		if !c.Active {
+			continue
+		}
 		if c.Direction == "in" {
 			monthlyIn += amt
 		} else {
@@ -256,22 +265,25 @@ func (s *Server) handleWealthCashList(w http.ResponseWriter, r *http.Request) {
 		events = []cashEvent{}
 	}
 
+	// Each event's amount in TWD (for display), and their signed sum.
 	var eventsNet float64
 	eventsNetOK := true
-	for _, e := range events {
+	for i, e := range events {
 		if e.Amount == nil {
 			continue
 		}
 		rate, rok := service.RateToTWD(e.Currency, resp.AsOf, true, s.quotes, s.fxDB)
 		if !rok {
 			eventsNetOK = false
-			break
+			continue
 		}
-		amt := *e.Amount * rate
+		twd := *e.Amount * rate
+		events[i].ValueTwd = &twd
 		if e.Direction == "out" {
-			amt = -amt
+			eventsNet -= twd
+		} else {
+			eventsNet += twd
 		}
-		eventsNet += amt
 	}
 	if eventsNetOK {
 		resp.EventsNet = &eventsNet
