@@ -74,6 +74,8 @@ type fakeDB struct {
 	strategyAlerts []db.StrategyAlert
 	// wealthAssets backs ListAssetsWithValue for assets_test.go (Phase 9 PR1).
 	wealthAssets []db.AssetWithValue
+	// assetSnapshots backs ListAssetSnapshots, keyed by asset id.
+	assetSnapshots map[int64][]db.AssetSnapshot
 	// wealthAssetsAsOf backs ListAssetsValueAsOf for wealth_home_test.go —
 	// keyed by the exact asOfDate a test passes in, nil (the zero value)
 	// behaves as "no historical data for that date."
@@ -227,6 +229,9 @@ func (f *fakeDB) ListAssetsWithValue(includeArchived bool) ([]db.AssetWithValue,
 		}
 	}
 	return out, nil
+}
+func (f *fakeDB) ListAssetSnapshots(assetID int64) ([]db.AssetSnapshot, error) {
+	return f.assetSnapshots[assetID], nil
 }
 func (f *fakeDB) ListAssetsValueAsOf(asOfDate string, includeArchived bool) ([]db.AssetWithValue, error) {
 	list := f.wealthAssetsAsOf[asOfDate]

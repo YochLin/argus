@@ -299,6 +299,8 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /api/wealth/fx", s.handleWealthFX)
 	s.mux.HandleFunc("POST /api/wealth/assets", s.requireWritable(s.requireAuth(s.handleWealthAssetCreate)))
 	s.mux.HandleFunc("POST /api/wealth/assets/snapshot", s.requireWritable(s.requireAuth(s.handleWealthAssetSnapshot)))
+	s.mux.HandleFunc("POST /api/wealth/assets/snapshot/delete", s.requireWritable(s.requireAuth(s.handleWealthAssetSnapshotDelete)))
+	s.mux.HandleFunc("GET /api/wealth/assets/history", s.handleWealthAssetHistory)
 	s.mux.HandleFunc("POST /api/wealth/assets/archive", s.requireWritable(s.requireAuth(s.handleWealthAssetArchive)))
 	// unarchive/update have no UI yet (the edit-asset drawer is awaiting its
 	// design) — same "API first, route stays as surface" shape as goals/earmark.

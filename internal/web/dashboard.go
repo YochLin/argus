@@ -116,6 +116,9 @@ type dbReader interface {
 	// ListAssetsWithValue backs assets.go's GET /api/wealth/assets (Phase 9
 	// PR1) — writes go through the separate wealthWriter interface.
 	ListAssetsWithValue(includeArchived bool) ([]db.AssetWithValue, error)
+	// ListAssetSnapshots backs assets.go's GET /api/wealth/assets/history — one
+	// asset's value records for the edit drawer.
+	ListAssetSnapshots(assetID int64) ([]db.AssetSnapshot, error)
 	// ListAssetsValueAsOf backs wealth_home.go's YTD/MoM historical totals.
 	ListAssetsValueAsOf(asOfDate string, includeArchived bool) ([]db.AssetWithValue, error)
 	// GetLoanDetails backs wealth_balance.go's liabilities list (rate/term
