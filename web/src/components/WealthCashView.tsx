@@ -17,6 +17,7 @@ import { fmtMoney, mmdd, twdAmount } from "./WealthHomeView";
 import { shortTWD } from "../currency";
 import { useFlash } from "../flash";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { WealthEmptyCard } from "./WealthOnboarding";
 
 interface Props {
   dict: Dictionary;
@@ -435,6 +436,8 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
     return <div className="error-message">{dict.error}</div>;
   }
 
+  // Paused flows count: they have a card of their own that must stay reachable.
+  const empty = cash != null && cash.items.length === 0;
   // A flow with no TWD value (no exchange rate) is still listed, last, in its own
   // currency — otherwise nothing on the page would say why the totals are "—".
   const inItems = (cash?.items ?? [])
@@ -478,114 +481,120 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
         />
       )}
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
-        {/* padding:19.2 matches the design's calc(var(--pad)*1.2) on this one
-            card (Argus Trading WebUI.dc.html's wCashNet block) — same 1.2x
-            hero-card padding already applied to /w/balance's net-worth card. */}
-        <div className="card card--glow" style={{ flex: "1.5 1 250px", padding: 19.2 }}>
-          <div className="eyebrow">{dict.wealthCashMonthlyNet}</div>
-          <div
-            className={`mono ${cash?.monthlyNet != null && cash.monthlyNet < 0 ? "loss" : "profit"}`}
-            style={{ fontSize: 40, lineHeight: 1.1, marginTop: 8 }}
-          >
-            {cash?.monthlyNet != null ? fmtMoney(cash.monthlyNet, CURRENCY) : "—"}
-          </div>
-          <div style={{ display: "flex", gap: 22, marginTop: 12, fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--ink-3)", flexWrap: "wrap" }}>
-            <span>
-              {dict.wealthCashMonthlyIn} <span style={{ color: "var(--ink)" }}>{cash?.monthlyIn != null ? fmtMoney(cash.monthlyIn, CURRENCY) : "—"}</span>
-            </span>
-            <span>
-              {dict.wealthCashMonthlyOut} <span style={{ color: "var(--ink)" }}>{cash?.monthlyOut != null ? fmtMoney(cash.monthlyOut, CURRENCY) : "—"}</span>
-            </span>
-          </div>
-        </div>
-        <div className="card" style={{ flex: "1 1 200px" }}>
-          <div className="eyebrow">{dict.wealthCashSaveRateLabel}</div>
-          <div className="mono profit" style={{ fontSize: "clamp(17px,2.1vw,28px)", marginTop: 8 }}>
-            {cash?.saveRatePct != null ? `${cash.saveRatePct.toFixed(1)}%` : "—"}
-          </div>
-          <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6 }}>
-            {dict.wealthCashDcaShareLabel} {cash?.dcaSharePct != null ? `${cash.dcaSharePct.toFixed(1)}%` : "—"}
-          </div>
-        </div>
-        <div className="card" style={{ flex: "1 1 200px" }}>
-          <div className="eyebrow">{dict.wealthCashFixedShareLabel}</div>
-          <div className="mono" style={{ fontSize: "clamp(17px,2.1vw,28px)", marginTop: 8 }}>
-            {cash?.fixedSharePct != null ? `${cash.fixedSharePct.toFixed(1)}%` : "—"}
-          </div>
-          <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6 }}>
-            {dict.wealthCashAnnualNetLabel} {cash?.annualNet != null ? fmtMoney(cash.annualNet, CURRENCY) : "—"}
-          </div>
-        </div>
-      </div>
+      {empty && <WealthEmptyCard dict={dict} line={dict.wealthEmptyCash} onAdd={writable ? () => setShowAddForm(true) : undefined} />}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 16, marginBottom: 16 }}>
-        <BreakdownCard
-          dict={dict}
-          title={dict.wealthCashInBreakdownTitle}
-          items={inItems}
-          total={cash?.monthlyIn ?? null}
-          maxValue={maxRow}
-          positive
-          onPause={writable ? pause : undefined}
-        />
-        <BreakdownCard
-          dict={dict}
-          title={dict.wealthCashOutBreakdownTitle}
-          items={outItems}
-          total={cash?.monthlyOut ?? null}
-          maxValue={maxRow}
-          positive={false}
-          onPause={writable ? pause : undefined}
-        />
-      </div>
+      {!empty && (
+        <>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
+            {/* padding:19.2 matches the design's calc(var(--pad)*1.2) on this one
+                card (Argus Trading WebUI.dc.html's wCashNet block) — same 1.2x
+                hero-card padding already applied to /w/balance's net-worth card. */}
+            <div className="card card--glow" style={{ flex: "1.5 1 250px", padding: 19.2 }}>
+              <div className="eyebrow">{dict.wealthCashMonthlyNet}</div>
+              <div
+                className={`mono ${cash?.monthlyNet != null && cash.monthlyNet < 0 ? "loss" : "profit"}`}
+                style={{ fontSize: 40, lineHeight: 1.1, marginTop: 8 }}
+              >
+                {cash?.monthlyNet != null ? fmtMoney(cash.monthlyNet, CURRENCY) : "—"}
+              </div>
+              <div style={{ display: "flex", gap: 22, marginTop: 12, fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--ink-3)", flexWrap: "wrap" }}>
+                <span>
+                  {dict.wealthCashMonthlyIn} <span style={{ color: "var(--ink)" }}>{cash?.monthlyIn != null ? fmtMoney(cash.monthlyIn, CURRENCY) : "—"}</span>
+                </span>
+                <span>
+                  {dict.wealthCashMonthlyOut} <span style={{ color: "var(--ink)" }}>{cash?.monthlyOut != null ? fmtMoney(cash.monthlyOut, CURRENCY) : "—"}</span>
+                </span>
+              </div>
+            </div>
+            <div className="card" style={{ flex: "1 1 200px" }}>
+              <div className="eyebrow">{dict.wealthCashSaveRateLabel}</div>
+              <div className="mono profit" style={{ fontSize: "clamp(17px,2.1vw,28px)", marginTop: 8 }}>
+                {cash?.saveRatePct != null ? `${cash.saveRatePct.toFixed(1)}%` : "—"}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6 }}>
+                {dict.wealthCashDcaShareLabel} {cash?.dcaSharePct != null ? `${cash.dcaSharePct.toFixed(1)}%` : "—"}
+              </div>
+            </div>
+            <div className="card" style={{ flex: "1 1 200px" }}>
+              <div className="eyebrow">{dict.wealthCashFixedShareLabel}</div>
+              <div className="mono" style={{ fontSize: "clamp(17px,2.1vw,28px)", marginTop: 8 }}>
+                {cash?.fixedSharePct != null ? `${cash.fixedSharePct.toFixed(1)}%` : "—"}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6 }}>
+                {dict.wealthCashAnnualNetLabel} {cash?.annualNet != null ? fmtMoney(cash.annualNet, CURRENCY) : "—"}
+              </div>
+            </div>
+          </div>
 
-      {pausedItems.length > 0 && (
-        <PausedCard dict={dict} items={pausedItems} onResume={resume} onDelete={askDelete} />
-      )}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 16, marginBottom: 16 }}>
+            <BreakdownCard
+              dict={dict}
+              title={dict.wealthCashInBreakdownTitle}
+              items={inItems}
+              total={cash?.monthlyIn ?? null}
+              maxValue={maxRow}
+              positive
+              onPause={writable ? pause : undefined}
+            />
+            <BreakdownCard
+              dict={dict}
+              title={dict.wealthCashOutBreakdownTitle}
+              items={outItems}
+              total={cash?.monthlyOut ?? null}
+              maxValue={maxRow}
+              positive={false}
+              onPause={writable ? pause : undefined}
+            />
+          </div>
 
-      {cash && cash.forecast.length > 0 && <ForecastChart dict={dict} forecast={cash.forecast} annualNet={cash.annualNet} />}
+          {pausedItems.length > 0 && (
+            <PausedCard dict={dict} items={pausedItems} onResume={resume} onDelete={askDelete} />
+          )}
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 4, flexWrap: "wrap" }}>
-          <span className="eyebrow">{dict.wealthCashEventsTitle}</span>
-          <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-3)" }}>
-            {dict.wealthCashNet90Label}{" "}
-            <span className={cash?.eventsNet != null && cash.eventsNet < 0 ? "loss" : "profit"}>
-              {cash?.eventsNet != null ? fmtMoney(cash.eventsNet, CURRENCY) : "—"}
-            </span>
-          </span>
-        </div>
-        {cash && cash.events.length > 0 ? (
-          <table className="mono">
-            <thead>
-              <tr>
-                <th>{dict.wealthCashDateLabel}</th>
-                <th>{dict.wealthCashNameLabel}</th>
-                <th>{dict.wealthVenueLabel}</th>
-                <th>{dict.wealthCashAmountLabel}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cash.events.map((e, i) => {
-                const amount = e.amount != null ? twdAmount(dict, e.valueTwd, e.amount, e.currency) : null;
-                return (
-                  <tr key={`${e.date}-${e.item}-${i}`}>
-                    <td>{mmdd(e.date)}</td>
-                    <td style={{ fontFamily: "var(--sans)" }}>{e.item}</td>
-                    <td style={{ fontFamily: "var(--sans)", fontSize: 12, color: "var(--ink-3)" }}>{e.venue || "—"}</td>
-                    <td className={e.direction === "in" ? "profit" : e.direction === "out" ? "loss" : undefined} title={amount?.title}>
-                      {amount ? `${e.direction === "in" ? "+" : "-"}${amount.text}` : "—"}
-                    </td>
+          {cash && cash.forecast.length > 0 && <ForecastChart dict={dict} forecast={cash.forecast} annualNet={cash.annualNet} />}
+
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 4, flexWrap: "wrap" }}>
+              <span className="eyebrow">{dict.wealthCashEventsTitle}</span>
+              <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-3)" }}>
+                {dict.wealthCashNet90Label}{" "}
+                <span className={cash?.eventsNet != null && cash.eventsNet < 0 ? "loss" : "profit"}>
+                  {cash?.eventsNet != null ? fmtMoney(cash.eventsNet, CURRENCY) : "—"}
+                </span>
+              </span>
+            </div>
+            {cash && cash.events.length > 0 ? (
+              <table className="mono">
+                <thead>
+                  <tr>
+                    <th>{dict.wealthCashDateLabel}</th>
+                    <th>{dict.wealthCashNameLabel}</th>
+                    <th>{dict.wealthVenueLabel}</th>
+                    <th>{dict.wealthCashAmountLabel}</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        ) : (
-          <div className="empty-message">{dict.wealthCashNoEvents}</div>
-        )}
-      </div>
+                </thead>
+                <tbody>
+                  {cash.events.map((e, i) => {
+                    const amount = e.amount != null ? twdAmount(dict, e.valueTwd, e.amount, e.currency) : null;
+                    return (
+                      <tr key={`${e.date}-${e.item}-${i}`}>
+                        <td>{mmdd(e.date)}</td>
+                        <td style={{ fontFamily: "var(--sans)" }}>{e.item}</td>
+                        <td style={{ fontFamily: "var(--sans)", fontSize: 12, color: "var(--ink-3)" }}>{e.venue || "—"}</td>
+                        <td className={e.direction === "in" ? "profit" : e.direction === "out" ? "loss" : undefined} title={amount?.title}>
+                          {amount ? `${e.direction === "in" ? "+" : "-"}${amount.text}` : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <div className="empty-message">{dict.wealthCashNoEvents}</div>
+            )}
+          </div>
+        </>
+      )}
 
       {confirmDelete && (
         <ConfirmDialog

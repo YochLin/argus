@@ -1054,6 +1054,21 @@ export interface Dictionary {
   wealthCashDeleteBody: string;
   wealthFlashResumed: string; // %s = name
   wealthFlashDeleted: string; // %s = name
+  // Onboarding: the empty-page card (one line per page) and the /w setup guide.
+  wealthEmptyNet: string;
+  wealthEmptyAlloc: string;
+  wealthEmptyBalance: string;
+  wealthEmptyCash: string;
+  wealthEmptyRetire: string;
+  wealthEmptyInsure: string;
+  wealthGuideTitle: string;
+  wealthGuideDone: string; // %s = steps done, %s = total
+  wealthGuideHide: string;
+  wealthGuideWhyBalance: string;
+  wealthGuideWhyCash: string;
+  wealthGuideWhyRetire: string;
+  wealthGuideWhyAlloc: string;
+  wealthGuideWhyInsure: string;
   wealthCashDateLabel: string;
   wealthCashCatSalary: string;
   wealthCashCatRent: string;
@@ -2287,6 +2302,20 @@ const en: Dictionary = {
   wealthCashDeleteBody: "It will no longer appear in cash flow or the forecast. Past actual transactions are not affected. This can't be undone.",
   wealthFlashResumed: "Resumed “%s”",
   wealthFlashDeleted: "Deleted “%s”",
+  wealthEmptyNet: "No assets or liabilities yet. Add the first one from the top right and net worth starts filling in.",
+  wealthEmptyAlloc: "Nothing to allocate yet. Add an asset and the current-vs-target view appears here.",
+  wealthEmptyBalance: "The balance sheet is empty. Add your first asset or liability from the top right.",
+  wealthEmptyCash: "No income or expense items yet. Add a cash-flow item from the top right.",
+  wealthEmptyRetire: "Nothing to project yet. Add your first asset from the top right, then tune the assumptions.",
+  wealthEmptyInsure: "No policies on file yet. Add a policy from the top right.",
+  wealthGuideTitle: "SUGGESTED ORDER",
+  wealthGuideDone: "%s of %s done",
+  wealthGuideHide: "Hide",
+  wealthGuideWhyBalance: "Record what you own and owe so net worth can be computed",
+  wealthGuideWhyCash: "Monthly cash flow sets how much you can save — retirement and goals depend on it",
+  wealthGuideWhyRetire: "Set your birth year so the projection has a starting point",
+  wealthGuideWhyAlloc: "Pick conservative, balanced or growth so drift has a baseline",
+  wealthGuideWhyInsure: "Optional — needed to see coverage gaps",
   wealthCashDateLabel: "Date",
   wealthCashCatSalary: "Salary",
   wealthCashCatRent: "Rental income",
@@ -3464,6 +3493,20 @@ const zh: Dictionary = {
   wealthCashDeleteBody: "刪除後不再出現在現金流與預測。過去已發生的實際收支紀錄不受影響。這個動作無法復原。",
   wealthFlashResumed: "已恢復「%s」",
   wealthFlashDeleted: "已刪除「%s」",
+  wealthEmptyNet: "還沒有任何資產或負債。從右上新增第一筆，淨值總覽就會開始長出來。",
+  wealthEmptyAlloc: "還沒有資產可以配置。先新增一筆資產，這裡才會出現現況與目標的對照。",
+  wealthEmptyBalance: "資產負債表還是空的。從右上新增第一筆資產或負債。",
+  wealthEmptyCash: "還沒有任何收支項目。從右上新增一筆現金流。",
+  wealthEmptyRetire: "還沒有可以試算的資產。從右上新增第一筆，再回來調整假設。",
+  wealthEmptyInsure: "還沒有保單資料。從右上新增一張保單。",
+  wealthGuideTitle: "建議的建檔順序",
+  wealthGuideDone: "%s / %s 完成",
+  wealthGuideHide: "隱藏",
+  wealthGuideWhyBalance: "先記下有什麼、欠什麼，淨值才算得出來",
+  wealthGuideWhyCash: "每月收支決定能存多少，退休與目標都靠它",
+  wealthGuideWhyRetire: "填出生年，退休試算才有起點",
+  wealthGuideWhyAlloc: "選保守、平衡或成長型，偏離度才有比較基準",
+  wealthGuideWhyInsure: "選填：登錄後才看得到保障缺口",
   wealthCashDateLabel: "日期",
   wealthCashCatSalary: "薪資",
   wealthCashCatRent: "租金收入",
