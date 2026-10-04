@@ -1711,7 +1711,8 @@ export interface WealthImportResult {
 }
 
 export function importWealthCSV(csv: string, dryRun: boolean): Promise<WealthImportResult> {
-  return postJSON("/api/wealth/import", { csv, dryRun });
+  const result = postJSON<WealthImportResult>("/api/wealth/import", { csv, dryRun });
+  return dryRun ? result : movesNetWorth(result); // a preview writes nothing
 }
 
 // --- Phase 19: LLM input transparency + news-source blacklist ---
@@ -1954,22 +1955,38 @@ export interface CreateWealthAssetRequest {
   };
 }
 
+// The sidebar's net-worth card (App) lives apart from the pages that write the
+// numbers it shows, so every write that moves net worth tells it to reload —
+// here, once, rather than from each page that adds, edits, archives or imports.
+const netWorthListeners = new Set<() => void>();
+
+export function onNetWorthChange(listener: () => void): () => void {
+  netWorthListeners.add(listener);
+  return () => void netWorthListeners.delete(listener);
+}
+
+async function movesNetWorth<T>(write: Promise<T>): Promise<T> {
+  const result = await write;
+  netWorthListeners.forEach((notify) => notify());
+  return result;
+}
+
 export function createWealthAsset(req: CreateWealthAssetRequest): Promise<{ id: number }> {
-  return postJSON("/api/wealth/assets", req);
+  return movesNetWorth(postJSON("/api/wealth/assets", req));
 }
 
 // saveWealthAssetSnapshot backs the balance-sheet's in-place edit — always
 // writes today's (or date's) value, never renames/edits the asset itself.
 export function saveWealthAssetSnapshot(assetId: number, value: number, date?: string): Promise<TradeResponse> {
-  return postJSON("/api/wealth/assets/snapshot", { assetId, value, date });
+  return movesNetWorth(postJSON("/api/wealth/assets/snapshot", { assetId, value, date }));
 }
 
 export function archiveWealthAsset(assetId: number): Promise<TradeResponse> {
-  return postJSON("/api/wealth/assets/archive", { assetId });
+  return movesNetWorth(postJSON("/api/wealth/assets/archive", { assetId }));
 }
 
 export function unarchiveWealthAsset(assetId: number): Promise<TradeResponse> {
-  return postJSON("/api/wealth/assets/unarchive", { assetId });
+  return movesNetWorth(postJSON("/api/wealth/assets/unarchive", { assetId }));
 }
 
 // updateWealthAsset changes only the descriptive fields — side, type, currency
@@ -1998,7 +2015,7 @@ export function fetchWealthAssetHistory(assetId: number): Promise<{ today: strin
 // deleteWealthAssetSnapshot undoes a record logged today (the server refuses
 // any other date).
 export function deleteWealthAssetSnapshot(assetId: number, date: string): Promise<TradeResponse> {
-  return postJSON("/api/wealth/assets/snapshot/delete", { assetId, date });
+  return movesNetWorth(postJSON("/api/wealth/assets/snapshot/delete", { assetId, date }));
 }
 
 // --- Phase 9 PR2: balance sheet / health metrics / debt payoff ---
