@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchCompanyNames, fetchConfig, fetchStatus, fetchWealthFX, fetchWealthHome, marketOf, type Market, type Status, type WealthHome } from "./api";
+import { fetchCompanyNames, fetchConfig, fetchStatus, fetchWealthFX, fetchWealthHome, marketOf, onNetWorthChange, type Market, type Status, type WealthHome } from "./api";
 import { setDisplayCurrency, type DisplayCurrency } from "./currency";
 import { getDictionary, normalizeLang, type Lang } from "./i18n";
 import { Sidebar } from "./components/Sidebar";
@@ -249,12 +249,20 @@ export default function App() {
       setWealthHome(null);
       return;
     }
-    fetchWealthHome("balanced")
-      .then(setWealthHome)
-      .catch(() => {});
+    // Reloaded when a write moves net worth too; only the newest answer counts,
+    // so a slow earlier reply can't overwrite a later one.
+    let latest = 0;
+    const load = () => {
+      const mine = ++latest;
+      fetchWealthHome("balanced")
+        .then((h) => mine === latest && setWealthHome(h))
+        .catch(() => {});
+    };
+    load();
     fetchWealthFX()
       .then((r) => setFxRates(r.rates))
       .catch(() => {});
+    return onNetWorthChange(load);
   }, [isWealth]);
 
   let body;
