@@ -350,10 +350,9 @@ func TestHandleWealthAssetSnapshotBackfillsAPastDate(t *testing.T) {
 func TestHandleWealthAssetSnapshotRejectsBadInput(t *testing.T) {
 	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
 	for name, req := range map[string]wealthSnapshotRequest{
-		"no asset id":    {Value: 1},
-		"negative value": {AssetID: 7, Value: -1},
-		"bad date":       {AssetID: 7, Value: 1, Date: "07/15"},
-		"future date":    {AssetID: 7, Value: 1, Date: tomorrow},
+		"no asset id": {Value: 1},
+		"bad date":    {AssetID: 7, Value: 1, Date: "07/15"},
+		"future date": {AssetID: 7, Value: 1, Date: tomorrow},
 	} {
 		t.Run(name, func(t *testing.T) {
 			wealthDB := &fakeWealthDB{}

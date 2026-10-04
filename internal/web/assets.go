@@ -261,10 +261,6 @@ func (s *Server) handleWealthAssetSnapshot(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "assetId is required")
 		return
 	}
-	if req.Value < 0 {
-		writeError(w, http.StatusBadRequest, "value can't be negative")
-		return
-	}
 	today := time.Now().Format("2006-01-02")
 	date, ok := resolveTradeDate(req.Date)
 	if !ok {
