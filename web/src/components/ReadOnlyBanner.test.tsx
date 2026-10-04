@@ -42,4 +42,20 @@ describe("ReadOnlyImportPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: dict.roHow }));
     expect(onToggleHow).toHaveBeenCalledTimes(1);
   });
+
+  it("has no template button unless the page offers one", () => {
+    render(<ReadOnlyImportPanel dict={dict} body={dict.roImportBodyTrade} howOpen={false} onToggleHow={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: dict.wealthImportDownload })).toBeNull();
+  });
+
+  it("offers the template beside the toggle when the page has one", () => {
+    const onDownload = vi.fn();
+    const onToggleHow = vi.fn();
+    render(<ReadOnlyImportPanel dict={dict} body={dict.roImportBodyWealth} howOpen={false} onToggleHow={onToggleHow} onDownload={onDownload} />);
+    fireEvent.click(screen.getByRole("button", { name: dict.wealthImportDownload }));
+    expect(onDownload).toHaveBeenCalledTimes(1);
+    expect(onToggleHow).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: dict.roHow }));
+    expect(onToggleHow).toHaveBeenCalledTimes(1);
+  });
 });

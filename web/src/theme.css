@@ -3024,6 +3024,237 @@ th {
   margin: 8px 0;
 }
 
+/* /w/import (the template's isWImport card): the column guide, the editor and
+   the row-by-row result. */
+.wimp-instructions {
+  color: var(--ink-2);
+  font-size: 12.5px;
+  margin-top: 6px;
+  text-wrap: pretty;
+}
+
+.wimp-hint {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-top: 10px;
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.wimp-guide {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 6px 18px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.wimp-guide-item {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.wimp-guide-item.wide {
+  grid-column: 1 / -1;
+}
+
+/* Wider than the template's 56px: this format's column names run to 24
+   characters (fundNextContributionDate). */
+.wimp-guide-code {
+  font-family: var(--font-mono);
+  color: var(--accent);
+  min-width: 170px;
+  flex-shrink: 0;
+}
+
+.wimp-textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+/* This app's own addition (the template has no such check): the server drops
+   line 1 whatever it is, so a CSV pasted without a header loses a row. */
+.wimp-note {
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: #f59e0b;
+  text-wrap: pretty;
+}
+
+.wimp-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.wimp-btn {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  padding: 7px 13px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.wimp-btn:hover {
+  color: var(--ink);
+}
+
+.wimp-btn:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.wimp-btn-preview {
+  font-weight: 600;
+  padding: 7px 15px;
+  color: var(--ink);
+}
+
+.wimp-btn-confirm {
+  font-weight: 700;
+  padding: 7px 15px;
+  border-color: var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+.wimp-btn-confirm:hover {
+  color: var(--accent);
+}
+
+.wimp-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.wimp-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.wimp-count-ok {
+  color: var(--accent);
+}
+
+.wimp-count-error {
+  color: var(--loss);
+}
+
+.wimp-count-applied {
+  color: var(--profit);
+}
+
+.wimp-count-warning {
+  color: #f59e0b;
+}
+
+/* "errors 0" is quiet; "ready 0" stays accent, as in the template. */
+.wimp-count-error.none {
+  color: var(--ink-3);
+}
+
+.wimp-table {
+  font-variant-numeric: tabular-nums;
+}
+
+.wimp-line {
+  color: var(--ink-3);
+}
+
+/* The template's text columns: left-aligned, in the body font. Prefixed with
+   the table's class to outrank table.mono's right-aligned mono cells. */
+.wimp-table .wimp-left {
+  text-align: left;
+}
+
+.wimp-table .wimp-kind {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  text-align: left;
+  color: var(--ink-2);
+}
+
+.wimp-table .wimp-name {
+  font-family: var(--font-sans);
+  text-align: left;
+}
+
+.wimp-table .wimp-group {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  text-align: left;
+  color: var(--ink-3);
+}
+
+.wimp-table .wimp-msg {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  text-align: left;
+  color: var(--ink-2);
+}
+
+.wimp-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+.wimp-tag-ok {
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+.wimp-tag-error {
+  background: rgba(239, 68, 68, 0.14);
+  color: var(--loss);
+}
+
+.wimp-tag-applied {
+  background: rgba(16, 185, 129, 0.14);
+  color: var(--profit);
+}
+
+.wimp-tag-warning {
+  background: rgba(245, 158, 11, 0.14);
+  color: #f59e0b;
+}
+
+.wimp-tag-duplicate {
+  background: var(--border);
+  color: var(--ink-3);
+}
+
 .btn-sm {
   font-family: var(--font-sans);
   font-size: 12px;
@@ -6263,6 +6494,25 @@ a.snap-news-head:hover {
   line-height: 1.7;
   color: var(--ink-2);
   text-wrap: pretty;
+}
+
+.ro-import-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* The wealth import page's 下載範本 (the template's tinted accent button). */
+.ro-import-download {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+  cursor: pointer;
 }
 
 .ro-import-how {
