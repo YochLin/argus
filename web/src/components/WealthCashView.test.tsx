@@ -21,7 +21,8 @@ const m = vi.mocked(api);
 const dict = getDictionary("zh");
 
 function item(over: Partial<CashflowItem> & Pick<CashflowItem, "id" | "name" | "direction" | "amount">): CashflowItem {
-  return { currency: "TWD", active: true, valueTwd: over.active === false ? undefined : over.amount, ...over };
+  // The server prices every item in TWD, a paused one included.
+  return { currency: "TWD", active: true, valueTwd: over.amount, ...over };
 }
 
 const cash: WealthCash = {
@@ -64,8 +65,8 @@ async function setup(writable = true, data: WealthCash = cash) {
       <WealthCashView dict={dict} writable={writable} onUnauthorized={onUnauthorized} />
     </FlashProvider>,
   );
-  await screen.findByText(dict.wealthCashInBreakdownTitle);
-  await screen.findByText("房貸"); // the list arrived
+  await screen.findByText(dict.wealthCashInBreakdownTitle, { selector: ".eyebrow" }); // the card title, not the net card's "月收入" label
+  await screen.findByText(data.items.find((i) => i.active)!.name); // the list arrived
   return { onUnauthorized };
 }
 
@@ -117,13 +118,26 @@ describe("WealthCashView: the paused card", () => {
     expect(card.getByText(dict.wealthCashPausedSince.replace("%s", "2026-05-01"))).not.toBeNull();
     expect(card.getByText(`NT$1,800${dict.wealthCashPerMonth}`)).not.toBeNull();
     // Income vs expense tag per row.
-    expect(card.getAllByText(dict.wealthCashDirectionIn)).toHaveLength(1);
-    expect(card.getAllByText(dict.wealthCashDirectionOut)).toHaveLength(2);
+    expect(card.getAllByText(dict.wealthCashTagIn)).toHaveLength(1);
+    expect(card.getAllByText(dict.wealthCashTagOut)).toHaveLength(2);
     // A flow paused before the date was recorded just has no date, not "undefined".
     expect(card.queryByText(/undefined/)).toBeNull();
     expect(card.getAllByText(/暫停於/)).toHaveLength(2); // 3 paused, one of them undated
     // And it's not counted in the breakdown above: each name appears once.
     expect(screen.getAllByText("健身房月費")).toHaveLength(1);
+  });
+
+  it("tags a paused flow In / Out in English, as the design does (not Income / Expense)", async () => {
+    const en = getDictionary("en");
+    render(
+      <FlashProvider>
+        <WealthCashView dict={en} writable onUnauthorized={vi.fn()} />
+      </FlashProvider>,
+    );
+    const card = within((await screen.findByText(en.wealthCashPausedNote)).closest(".card") as HTMLElement);
+    expect(card.getAllByText("In")).toHaveLength(1);
+    expect(card.getAllByText("Out")).toHaveLength(2);
+    expect(card.queryByText("Income")).toBeNull();
   });
 
   it("is absent when nothing is paused", async () => {
@@ -187,5 +201,66 @@ describe("WealthCashView: read-only", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(m.resumeWealthCashflow).not.toHaveBeenCalled();
     expect(m.deleteWealthCashflow).not.toHaveBeenCalled();
+  });
+});
+
+describe("WealthCashView: every amount in TWD", () => {
+  const foreign: WealthCash = {
+    ...cash,
+    items: [
+      item({ id: 1, name: "薪資", direction: "in", amount: 80000 }),
+      item({ id: 2, name: "美股定期定額", direction: "out", amount: 1000, currency: "USD", valueTwd: 31800 }),
+      item({ id: 3, name: "美元股息", direction: "in", amount: 200, currency: "USD", valueTwd: 6360, active: false, pausedAt: "2026-05-01" }),
+    ],
+    monthlyIn: 80000,
+    monthlyOut: 31800,
+    events: [
+      { date: "2026-10-05", item: "美股定期定額", amount: 1000, currency: "USD", valueTwd: 31800, direction: "out" },
+      { date: "2026-10-06", item: "歐元費用", amount: 20, currency: "EUR", direction: "out" }, // no rate for EUR
+      { date: "2026-10-07", item: "美元股息", amount: 200, currency: "USD", valueTwd: 6360, direction: "in" },
+      { date: "2026-10-09", item: "選擇權到期", amount: null, direction: "event" },
+    ],
+  };
+
+  it("shows a foreign flow in TWD in the breakdown, the paused card and the events, the original in a tooltip", async () => {
+    await setup(true, foreign);
+    // The breakdown row and the event row both carry the original USD 1,000 as a tooltip.
+    const [row, eventCell] = screen.getAllByTitle("USD 1,000");
+    expect(row.textContent).toBe("NT$31,800");
+    expect(eventCell.textContent).toBe("-NT$31,800");
+    // The paused flow, which feeds no total, is priced too.
+    expect(within(pausedCard()).getByTitle("USD 200").textContent).toBe(`NT$6,360${dict.wealthCashPerMonth}`);
+    expect(screen.getByText("+NT$6,360")).not.toBeNull();
+    // Nothing is shown as a bare USD amount.
+    expect(screen.queryByText(/^USD /)).toBeNull();
+  });
+
+  it("falls back to the original amount, and says why, when there is no TWD value", async () => {
+    await setup(true, foreign);
+    const cell = screen.getByText("-EUR 20");
+    expect(cell.getAttribute("title")).toBe(dict.wealthCashNoRate.replace("%s", "EUR"));
+  });
+
+  it("still lists an active flow it can't price, in its own currency, and blanks the totals", async () => {
+    await setup(true, {
+      ...cash,
+      items: [
+        item({ id: 1, name: "薪資", direction: "in", amount: 80000 }),
+        item({ id: 2, name: "歐元租金", direction: "in", amount: 500, currency: "EUR", valueTwd: undefined }),
+      ],
+      monthlyIn: null,
+      monthlyOut: null,
+      monthlyNet: null,
+      events: [],
+    });
+    const eur = screen.getByText("EUR 500");
+    expect(eur.getAttribute("title")).toBe(dict.wealthCashNoRate.replace("%s", "EUR"));
+    expect(screen.getByRole("button", { name: `${dict.wealthCashPause} 歐元租金` })).not.toBeNull(); // and it can be paused
+    // No card total pretends to be NT$0, and the priced flow is listed before the unpriced one.
+    const header = screen.getByText(dict.wealthCashInBreakdownTitle, { selector: ".eyebrow" }).parentElement as HTMLElement;
+    expect(header.textContent).toContain("—");
+    expect(header.textContent).not.toContain("NT$0");
+    const names = screen.getAllByText(/^(薪資|歐元租金)$/).map((e) => e.textContent);
+    expect(names).toEqual(["薪資", "歐元租金"]);
   });
 });

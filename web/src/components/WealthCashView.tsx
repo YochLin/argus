@@ -26,6 +26,19 @@ interface Props {
 
 const CURRENCY = "NT$"; // display currency fixed to TWD, same known gap as WealthHomeView/WealthBalanceView
 
+const isTWD = (currency?: string) => !currency || currency === "TWD";
+
+// twdAmount is how every amount on this page is shown: converted to TWD (by the
+// server, at today's rate), with the original in a tooltip when it was foreign.
+// With no TWD value — no exchange rate to be had — it falls back to the original
+// amount and says why in the tooltip, rather than guessing a number.
+function twdAmount(dict: Dictionary, valueTwd: number | undefined, amount: number, currency?: string): { text: string; title?: string; priced: boolean } {
+  const original = isTWD(currency) ? undefined : `${currency} ${amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  if (valueTwd != null) return { text: fmtMoney(valueTwd, CURRENCY), title: original, priced: true };
+  if (original) return { text: original, title: dict.wealthCashNoRate.replace("%s", currency ?? ""), priced: false };
+  return { text: fmtMoney(amount, CURRENCY), priced: true };
+}
+
 // INCOME_CATEGORIES/EXPENSE_CATEGORIES mirror the design template's 收入五項/
 // 支出六項 (docs/phase-9-asset-platform.md §8.4) — a free-text `category`
 // column server-side, but the add form only ever offers these eleven so the
@@ -212,7 +225,7 @@ function BreakdownCard({
   dict: Dictionary;
   title: string;
   items: CashflowItem[];
-  total: number;
+  total: number | null; // null while some active flow can't be priced in TWD
   maxValue: number;
   positive: boolean;
   onPause?: (item: CashflowItem) => void;
@@ -222,23 +235,24 @@ function BreakdownCard({
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
         <span className="eyebrow">{title}</span>
         <span className={`mono ${positive ? "profit" : "loss"}`} style={{ marginLeft: "auto", fontSize: 13 }}>
-          {fmtMoney(total, CURRENCY)}
+          {total != null ? fmtMoney(total, CURRENCY) : "—"}
         </span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {items.map((item) => {
+          const amount = twdAmount(dict, item.valueTwd, item.amount, item.currency);
           const value = item.valueTwd ?? 0;
-          const pct = total > 0 ? (value / total) * 100 : 0;
+          const pct = total != null && total > 0 ? (value / total) * 100 : 0;
           const barPct = maxValue > 0 ? (value / maxValue) * 100 : 0;
           return (
             <div key={item.id} className="wealth-flow-row" style={{ display: "flex", flexDirection: "column", gap: 5 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontFamily: "var(--sans)", fontSize: 12.5 }}>{item.name}</span>
                 <span className="mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>
-                  {pct.toFixed(0)}%
+                  {amount.priced && total != null ? `${pct.toFixed(0)}%` : "—"}
                 </span>
-                <span className="mono" style={{ marginLeft: "auto", fontSize: 12.5 }}>
-                  {fmtMoney(value, CURRENCY)}
+                <span className="mono" style={{ marginLeft: "auto", fontSize: 12.5 }} title={amount.title}>
+                  {amount.text}
                 </span>
                 {onPause && (
                   <button
@@ -315,6 +329,16 @@ function ForecastChart({ dict, forecast, annualNet }: { dict: Dictionary; foreca
   );
 }
 
+function PausedValue({ dict, item }: { dict: Dictionary; item: CashflowItem }) {
+  const amount = twdAmount(dict, item.valueTwd, item.amount, item.currency);
+  return (
+    <span className="mono" style={{ fontSize: 12.5, color: "var(--ink-3)", textAlign: "right" }} title={amount.title}>
+      {amount.text}
+      {dict.wealthCashPerMonth}
+    </span>
+  );
+}
+
 // PausedCard mirrors the template's 已暫停 card (Argus Trading WebUI.dc.html's
 // wcm.pausedRows): flows left out of the monthly totals and forecast, each with
 // the day it was paused and the two ways out — 恢復, or 刪除 for good. Shown to
@@ -354,12 +378,9 @@ function PausedCard({
           >
             <span style={{ fontSize: 12.5, color: "var(--ink-2)" }}>{item.name}</span>
             <span className="mono" style={{ fontSize: 10.5, color: item.direction === "in" ? "var(--profit)" : "var(--loss)" }}>
-              {item.direction === "in" ? dict.wealthCashDirectionIn : dict.wealthCashDirectionOut}
+              {item.direction === "in" ? dict.wealthCashTagIn : dict.wealthCashTagOut}
             </span>
-            <span className="mono" style={{ fontSize: 12.5, color: "var(--ink-3)", textAlign: "right" }}>
-              {fmtMoney(item.amount, !item.currency || item.currency === "TWD" ? CURRENCY : item.currency)}
-              {dict.wealthCashPerMonth}
-            </span>
+            <PausedValue dict={dict} item={item} />
             <span className="mono" style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
               {item.pausedAt ? dict.wealthCashPausedSince.replace("%s", item.pausedAt) : ""}
             </span>
@@ -427,11 +448,13 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
     return <div className="error-message">{dict.error}</div>;
   }
 
+  // A flow with no TWD value (no exchange rate) is still listed, last, in its own
+  // currency — otherwise nothing on the page would say why the totals are "—".
   const inItems = (cash?.items ?? [])
-    .filter((i) => i.active && i.direction === "in" && i.valueTwd != null)
+    .filter((i) => i.active && i.direction === "in")
     .sort((a, b) => (b.valueTwd ?? 0) - (a.valueTwd ?? 0));
   const outItems = (cash?.items ?? [])
-    .filter((i) => i.active && i.direction === "out" && i.valueTwd != null)
+    .filter((i) => i.active && i.direction === "out")
     .sort((a, b) => (b.valueTwd ?? 0) - (a.valueTwd ?? 0));
   const maxRow = Math.max(inItems[0]?.valueTwd ?? 0, outItems[0]?.valueTwd ?? 0);
   // The design lists income before expense, each in the order they were added.
@@ -514,7 +537,7 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
           dict={dict}
           title={dict.wealthCashInBreakdownTitle}
           items={inItems}
-          total={cash?.monthlyIn ?? 0}
+          total={cash?.monthlyIn ?? null}
           maxValue={maxRow}
           positive
           onPause={writable ? pause : undefined}
@@ -523,7 +546,7 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
           dict={dict}
           title={dict.wealthCashOutBreakdownTitle}
           items={outItems}
-          total={cash?.monthlyOut ?? 0}
+          total={cash?.monthlyOut ?? null}
           maxValue={maxRow}
           positive={false}
           onPause={writable ? pause : undefined}
@@ -557,18 +580,19 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
               </tr>
             </thead>
             <tbody>
-              {cash.events.map((e, i) => (
-                <tr key={`${e.date}-${e.item}-${i}`}>
-                  <td>{mmdd(e.date)}</td>
-                  <td style={{ fontFamily: "var(--sans)" }}>{e.item}</td>
-                  <td style={{ fontFamily: "var(--sans)", fontSize: 12, color: "var(--ink-3)" }}>{e.venue || "—"}</td>
-                  <td className={e.direction === "in" ? "profit" : e.direction === "out" ? "loss" : undefined}>
-                    {e.amount != null
-                      ? `${e.direction === "in" ? "+" : "-"}${fmtMoney(e.amount, !e.currency || e.currency === "TWD" ? CURRENCY : e.currency)}`
-                      : "—"}
-                  </td>
-                </tr>
-              ))}
+              {cash.events.map((e, i) => {
+                const amount = e.amount != null ? twdAmount(dict, e.valueTwd, e.amount, e.currency) : null;
+                return (
+                  <tr key={`${e.date}-${e.item}-${i}`}>
+                    <td>{mmdd(e.date)}</td>
+                    <td style={{ fontFamily: "var(--sans)" }}>{e.item}</td>
+                    <td style={{ fontFamily: "var(--sans)", fontSize: 12, color: "var(--ink-3)" }}>{e.venue || "—"}</td>
+                    <td className={e.direction === "in" ? "profit" : e.direction === "out" ? "loss" : undefined} title={amount?.title}>
+                      {amount ? `${e.direction === "in" ? "+" : "-"}${amount.text}` : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         ) : (

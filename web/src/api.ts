@@ -2214,9 +2214,9 @@ export interface CashflowItem {
   // pausedAt is the day a paused flow was paused — absent while active, and
   // for one paused before the server started recording it.
   pausedAt?: string;
-  // valueTwd is amount converted to TWD as of today — absent for a paused
-  // item or one whose currency couldn't be priced. Backs the in/out
-  // breakdown's per-item bar.
+  // valueTwd is amount converted to TWD as of today — absent only when the
+  // currency couldn't be priced (a paused item has one too). Backs the in/out
+  // breakdown's per-item bar and every amount the page shows.
   valueTwd?: number;
 }
 
@@ -2226,6 +2226,9 @@ export interface CashEvent {
   venue?: string;
   amount: number | null;
   currency?: string;
+  // valueTwd is the amount's TWD magnitude (direction carries the sign) —
+  // absent for an event with no amount or an unpriceable currency.
+  valueTwd?: number;
   direction: CashflowDirection | "event";
 }
 
