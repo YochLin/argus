@@ -51,6 +51,19 @@ export interface Dictionary {
   endDate: string;
   open: string;
   noRounds: string;
+  roundsClosedSuffix: string;
+  roundsWon: string;
+  roundsNet: string;
+  roundsAll: string;
+  roundsStatusOpen: string;
+  roundsStatusClosed: string;
+  roundsExpandAll: string;
+  roundsCollapseAll: string;
+  roundsHeld: string;
+  roundsDaySuffix: string;
+  roundsCountSuffix: string;
+  roundsNoMatch: string;
+  roundsFootnote: string;
   back: string;
   navChart: string;
   support: string;
@@ -1240,6 +1253,20 @@ const en: Dictionary = {
   endDate: "End",
   open: "OPEN",
   noRounds: "No trade rounds yet.",
+  roundsClosedSuffix: "closed",
+  roundsWon: "won",
+  roundsNet: "net",
+  roundsAll: "All",
+  roundsStatusOpen: "Open",
+  roundsStatusClosed: "Closed",
+  roundsExpandAll: "Expand all",
+  roundsCollapseAll: "Collapse all",
+  roundsHeld: "Held",
+  roundsDaySuffix: "d",
+  roundsCountSuffix: "rounds",
+  roundsNoMatch: "No rounds match the filters.",
+  roundsFootnote:
+    "Closed rounds are grouped by the month they closed, matching the realized-P&L month in the calendar and reports.",
   back: "‹ Back",
   navChart: "Chart",
   support: "Support",
@@ -2332,6 +2359,19 @@ const zh: Dictionary = {
   endDate: "結束",
   open: "進行中",
   noRounds: "目前沒有交易回合。",
+  roundsClosedSuffix: "筆已平倉",
+  roundsWon: "勝",
+  roundsNet: "淨",
+  roundsAll: "全部",
+  roundsStatusOpen: "持有中",
+  roundsStatusClosed: "已平倉",
+  roundsExpandAll: "全部展開",
+  roundsCollapseAll: "全部收合",
+  roundsHeld: "持有",
+  roundsDaySuffix: " 天",
+  roundsCountSuffix: "筆",
+  roundsNoMatch: "沒有符合條件的回合",
+  roundsFootnote: "已平倉回合依平倉月份歸組，與月曆、績效報表的已實現損益月份一致。",
   back: "‹ 返回",
   navChart: "個股圖",
   support: "支撐",

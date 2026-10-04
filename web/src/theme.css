@@ -1425,12 +1425,253 @@ th {
   margin-left: 6px;
 }
 
-.round-row {
+/* /rounds list (design template's ROUNDS LIST). Every row, the column header
+   and the year headers share .rl-grid's 640px floor so the card scrolls
+   sideways as one piece on a narrow viewport. The chip is not .round-chip:
+   that one is the chart page's 20px-radius pill, this one is 6px. */
+.rl-card {
+  overflow-x: auto;
+}
+
+.rl-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.rl-summary {
+  display: flex;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.rl-filters {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.rl-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rl-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.rl-chip.active {
+  border-color: var(--accent);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+.rl-chip-n {
+  opacity: 0.6;
+}
+
+.rl-search {
+  flex: 0 1 180px;
+  min-width: 120px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--ink);
+  font-size: 12px;
+  outline: none;
+}
+
+.rl-toggles {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+  font-size: 11.5px;
+}
+
+.rl-toggles button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--ink-3);
   cursor: pointer;
 }
 
-.round-row:hover {
+.rl-toggles button:hover {
+  color: var(--accent);
+}
+
+.rl-grid {
+  display: grid;
+  grid-template-columns: minmax(130px, 1.6fr) repeat(3, minmax(84px, 1fr)) minmax(64px, 0.8fr) minmax(96px, 1fr);
+  gap: 12px;
+  min-width: 640px;
+}
+
+.rl-colhead {
+  padding: 10px 10px 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.rl-r {
+  text-align: right;
+}
+
+.rl-row {
+  padding: 9px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rl-row:hover {
   background: var(--bg);
+}
+
+.rl-days {
+  color: var(--ink-2);
+}
+
+.rl-dim {
+  color: var(--ink-3);
+}
+
+.rl-open-tag {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.rl-open-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 640px;
+  padding: 8px 10px;
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+
+.rl-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.rl-open-n {
+  opacity: 0.7;
+}
+
+.rl-year-wrap {
+  margin-top: 10px;
+  min-width: 640px;
+}
+
+.rl-year {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 16px auto 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  cursor: pointer;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  text-align: left;
+}
+
+.rl-year:hover {
+  border-color: var(--accent);
+}
+
+.rl-caret {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
+.rl-year-label {
+  font-size: 14px;
+}
+
+.rl-dim-3 {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.rl-year-win {
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+
+.rl-year-net {
+  min-width: 96px;
+  text-align: right;
+  font-size: 13px;
+}
+
+.rl-month {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 10px 4px;
+  border-bottom: 1px dashed var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.rl-month-label {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.rl-month-net {
+  margin-left: auto;
+}
+
+.rl-empty {
+  padding: 28px 10px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.rl-note {
+  margin-top: 14px;
+  font-size: 11px;
+  color: var(--ink-3);
 }
 
 .back-link {
