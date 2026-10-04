@@ -13,7 +13,7 @@ import {
   type WealthCash,
 } from "../api";
 import type { Dictionary } from "../i18n";
-import { fmtMoney, mmdd } from "./WealthHomeView";
+import { fmtMoney, mmdd, twdAmount } from "./WealthHomeView";
 import { shortTWD } from "../currency";
 import { useFlash } from "../flash";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -25,19 +25,6 @@ interface Props {
 }
 
 const CURRENCY = "NT$"; // display currency fixed to TWD, same known gap as WealthHomeView/WealthBalanceView
-
-const isTWD = (currency?: string) => !currency || currency === "TWD";
-
-// twdAmount is how every amount on this page is shown: converted to TWD (by the
-// server, at today's rate), with the original in a tooltip when it was foreign.
-// With no TWD value — no exchange rate to be had — it falls back to the original
-// amount and says why in the tooltip, rather than guessing a number.
-function twdAmount(dict: Dictionary, valueTwd: number | undefined, amount: number, currency?: string): { text: string; title?: string; priced: boolean } {
-  const original = isTWD(currency) ? undefined : `${currency} ${amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-  if (valueTwd != null) return { text: fmtMoney(valueTwd, CURRENCY), title: original, priced: true };
-  if (original) return { text: original, title: dict.wealthCashNoRate.replace("%s", currency ?? ""), priced: false };
-  return { text: fmtMoney(amount, CURRENCY), priced: true };
-}
 
 // INCOME_CATEGORIES/EXPENSE_CATEGORIES mirror the design template's 收入五項/
 // 支出六項 (docs/phase-9-asset-platform.md §8.4) — a free-text `category`

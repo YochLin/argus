@@ -1897,6 +1897,9 @@ export interface WealthAsset {
   value: number | null;
   cost?: number | null;
   asOf?: string;
+  // valueTwd is value in TWD at today's rate — absent when there is no value or
+  // its currency couldn't be priced. What the wealth pages show for a foreign asset.
+  valueTwd?: number;
 }
 
 export function fetchWealthAssets(includeArchived = false): Promise<{ assets: WealthAsset[] }> {

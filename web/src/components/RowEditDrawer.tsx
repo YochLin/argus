@@ -190,6 +190,10 @@ export function RowEditDrawer({ dict, asset, writable, onClose, onChanged, onUna
                   <span className="row-ed-name">{asset.name}</span>
                   <span className="row-ed-current">
                     <span className="row-ed-current-val">{latest ? fmtCur(latest.value) : "—"}</span>
+                    {/* A foreign value is also given in TWD (at the latest rate, like the preview below). */}
+                    {latest && cur !== "TWD" && rate != null && (
+                      <span className="row-ed-conv">{`≈ NT$ ${Math.round(latest.value * rate).toLocaleString("en-US")}`}</span>
+                    )}
                     <span className="row-ed-current-date">
                       {latest ? dict.wealthEdLastRecord.replace("%s", latest.date) : hist ? dict.wealthEdNoRecord : ""}
                     </span>

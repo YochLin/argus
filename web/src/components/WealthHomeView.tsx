@@ -122,6 +122,32 @@ export function fmtMoney(v: number, currency: string): string {
   return `${currency}${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
+// twdAmount is how every wealth page shows an amount that may be foreign: the
+// TWD value (converted by the server at today's rate, then by fmtMoney for the
+// 顯示幣別), with the original in a tooltip. With no TWD value — no exchange rate
+// to be had — it falls back to the original amount and says why in the tooltip,
+// rather than guessing a number.
+export function twdAmount(
+  dict: Dictionary,
+  valueTwd: number | null | undefined,
+  amount: number,
+  currency?: string,
+): { text: string; title?: string; priced: boolean } {
+  const foreign = !!currency && currency !== "TWD";
+  const original = foreign ? `${currency} ${amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : undefined;
+  if (valueTwd != null) return { text: fmtMoney(valueTwd, "NT$"), title: original, priced: true };
+  if (foreign) return { text: original!, title: dict.wealthNoRate.replace("%s", currency), priced: false };
+  return { text: fmtMoney(amount, "NT$"), priced: true };
+}
+
+// AssetValue is an asset's current value for a list: TWD, the original in a
+// tooltip (see twdAmount), "—" while it has no value yet.
+export function AssetValue({ dict, asset }: { dict: Dictionary; asset: WealthAsset }) {
+  if (asset.value == null) return <>—</>;
+  const v = twdAmount(dict, asset.valueTwd, asset.value, asset.currency);
+  return <span title={v.title}>{v.text}</span>;
+}
+
 // groupColorClass maps the four asset_group buckets onto the app's generic
 // four-way series palette (--s1..--s4, theme-invariant) for the allocation
 // bar/legend/dots — matches the design mock's per-group dot/segment color,
@@ -655,7 +681,7 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
                   <td>{groupLabel(dict, a.assetGroup)}</td>
                   <td>{a.venue || dict.wealthVenueUnset}</td>
                   <td className={a.side === "liability" ? "loss" : ""}>
-                    {a.value != null ? fmtMoney(a.value, a.currency === "TWD" ? currency : a.currency) : "—"}
+                    <AssetValue dict={dict} asset={a} />
                   </td>
                   {writable && (
                     <td className="row-actions">

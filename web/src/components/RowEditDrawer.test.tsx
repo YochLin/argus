@@ -179,6 +179,17 @@ describe("RowEditDrawer: logging a value", () => {
     expect(await screen.findByText("≈ NT$ 3,000")).not.toBeNull();
   });
 
+  it("gives a foreign current value in NT$ as well, and a TWD one nothing extra", async () => {
+    await setup({ asset: { ...asset, currency: "USD", value: 120000 } });
+    // The latest record is 120,000 in the asset's own currency; the rate is 30.
+    expect(screen.getByText("USD 120,000", { selector: ".row-ed-current-val" })).not.toBeNull();
+    expect(await screen.findByText("≈ NT$ 3,600,000", { selector: ".row-ed-current .row-ed-conv" })).not.toBeNull();
+    cleanup();
+
+    await setup();
+    expect(document.querySelector(".row-ed-current .row-ed-conv")).toBeNull();
+  });
+
   it("explains a server refusal of a closed day, and asks to log in again on a 401", async () => {
     const h = await setup();
     fireEvent.change(amountInput(), { target: { value: "5" } });
