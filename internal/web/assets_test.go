@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -19,7 +20,10 @@ type fakeWealthDB struct {
 	lastDeposit                           db.DepositDetails
 	lastLoan                              db.LoanDetails
 	lastSnapshot                          db.AssetSnapshot
-	lastArchiveID                         int64
+	lastArchiveID, lastUnarchiveID        int64
+	lastUpdateAssetID                     int64
+	lastAssetEdit                         db.AssetEdit
+	updateAssetErr                        error
 	lastSettingKey, lastSettingValue      string
 	lastNewCashflow                       db.NewRecurringCashflow
 	lastDeactivateID                      int64
@@ -78,6 +82,14 @@ func (f *fakeWealthDB) ArchiveAsset(id int64) error {
 	f.lastArchiveID = id
 	return f.archiveErr
 }
+func (f *fakeWealthDB) UnarchiveAsset(id int64) error {
+	f.lastUnarchiveID = id
+	return f.archiveErr
+}
+func (f *fakeWealthDB) UpdateAsset(id int64, e db.AssetEdit) error {
+	f.lastUpdateAssetID, f.lastAssetEdit = id, e
+	return f.updateAssetErr
+}
 func (f *fakeWealthDB) SetSetting(key, value string) error {
 	f.lastSettingKey, f.lastSettingValue = key, value
 	return f.settingErr
@@ -132,6 +144,8 @@ func newWealthTestServer(password string, wealthDB wealthWriter, dbr dbReader) *
 	s.mux.HandleFunc("POST /api/wealth/assets", s.requireWritable(s.requireAuth(s.handleWealthAssetCreate)))
 	s.mux.HandleFunc("POST /api/wealth/assets/snapshot", s.requireWritable(s.requireAuth(s.handleWealthAssetSnapshot)))
 	s.mux.HandleFunc("POST /api/wealth/assets/archive", s.requireWritable(s.requireAuth(s.handleWealthAssetArchive)))
+	s.mux.HandleFunc("POST /api/wealth/assets/unarchive", s.requireWritable(s.requireAuth(s.handleWealthAssetUnarchive)))
+	s.mux.HandleFunc("POST /api/wealth/assets/update", s.requireWritable(s.requireAuth(s.handleWealthAssetUpdate)))
 	s.mux.HandleFunc("GET /api/wealth/cash", s.handleWealthCashList)
 	s.mux.HandleFunc("POST /api/wealth/cash", s.requireWritable(s.requireAuth(s.handleWealthCashCreate)))
 	s.mux.HandleFunc("POST /api/wealth/cash/deactivate", s.requireWritable(s.requireAuth(s.handleWealthCashDeactivate)))
@@ -300,5 +314,110 @@ func TestHandleWealthAssetArchive(t *testing.T) {
 	}
 	if wealthDB.lastArchiveID != 42 {
 		t.Errorf("ArchiveAsset() id = %d, want 42", wealthDB.lastArchiveID)
+	}
+}
+
+func TestHandleWealthAssetUnarchive(t *testing.T) {
+	wealthDB := &fakeWealthDB{}
+	s := newWealthTestServer("secret", wealthDB, &fakeDB{})
+	cookie := loginAndGetCookie(t, s, "secret")
+
+	body, _ := json.Marshal(wealthArchiveRequest{AssetID: 42})
+	req := httptest.NewRequest(http.MethodPost, "/api/wealth/assets/unarchive", bytes.NewReader(body))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || wealthDB.lastUnarchiveID != 42 {
+		t.Fatalf("status = %d, UnarchiveAsset id = %d; want 200 and 42, body = %s", rec.Code, wealthDB.lastUnarchiveID, rec.Body.String())
+	}
+
+	// Without the auth cookie the write gate must reject it.
+	rec = httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/wealth/assets/unarchive", bytes.NewReader(body)))
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status without cookie = %d, want 401", rec.Code)
+	}
+}
+
+func postWealthUpdate(t *testing.T, s *Server, cookie *http.Cookie, payload any) *httptest.ResponseRecorder {
+	t.Helper()
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/wealth/assets/update", bytes.NewReader(body))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestHandleWealthAssetUpdate(t *testing.T) {
+	wealthDB := &fakeWealthDB{}
+	s := newWealthTestServer("secret", wealthDB, &fakeDB{})
+	cookie := loginAndGetCookie(t, s, "secret")
+
+	rate := 2.4
+	rec := postWealthUpdate(t, s, cookie, wealthAssetUpdateRequest{
+		AssetID: 5, Name: "  房貸  ", AssetGroup: "hard", Venue: " 國泰 ",
+		Loan: &wealthAssetLoanRequest{Lender: "國泰", RatePct: &rate},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	got := wealthDB.lastAssetEdit
+	if wealthDB.lastUpdateAssetID != 5 || got.Name != "房貸" || got.Venue != "國泰" || got.AssetGroup != "hard" {
+		t.Errorf("UpdateAsset(%d, %+v), want id 5 with trimmed name/venue", wealthDB.lastUpdateAssetID, got)
+	}
+	if got.Loan == nil || got.Loan.Lender != "國泰" || got.Loan.RatePct == nil || *got.Loan.RatePct != 2.4 || got.Deposit != nil {
+		t.Errorf("edit details = loan %+v deposit %+v, want only the loan block", got.Loan, got.Deposit)
+	}
+
+	rec = postWealthUpdate(t, s, cookie, wealthAssetUpdateRequest{AssetID: 6, Name: "活存", AssetGroup: "liquid"})
+	if rec.Code != http.StatusOK || wealthDB.lastAssetEdit.Deposit != nil || wealthDB.lastAssetEdit.Loan != nil {
+		t.Errorf("a details-less edit: status = %d, edit = %+v, want 200 with no detail blocks", rec.Code, wealthDB.lastAssetEdit)
+	}
+}
+
+func TestHandleWealthAssetUpdateRejectsBadInput(t *testing.T) {
+	self := int64(5)
+	for name, tc := range map[string]struct {
+		req  wealthAssetUpdateRequest
+		want int
+	}{
+		"no asset id":            {wealthAssetUpdateRequest{Name: "x", AssetGroup: "liquid"}, http.StatusBadRequest},
+		"blank name":             {wealthAssetUpdateRequest{AssetID: 5, Name: "  ", AssetGroup: "liquid"}, http.StatusBadRequest},
+		"unknown group":          {wealthAssetUpdateRequest{AssetID: 5, Name: "x", AssetGroup: "cash"}, http.StatusBadRequest},
+		"deposit and loan":       {wealthAssetUpdateRequest{AssetID: 5, Name: "x", AssetGroup: "liquid", Deposit: &wealthAssetDepositRequest{}, Loan: &wealthAssetLoanRequest{}}, http.StatusBadRequest},
+		"loan secured by itself": {wealthAssetUpdateRequest{AssetID: 5, Name: "x", AssetGroup: "hard", Loan: &wealthAssetLoanRequest{SecuredAssetID: &self}}, http.StatusBadRequest},
+	} {
+		t.Run(name, func(t *testing.T) {
+			wealthDB := &fakeWealthDB{}
+			s := newWealthTestServer("secret", wealthDB, &fakeDB{})
+			rec := postWealthUpdate(t, s, loginAndGetCookie(t, s, "secret"), tc.req)
+			if rec.Code != tc.want {
+				t.Errorf("status = %d, want %d, body = %s", rec.Code, tc.want, rec.Body.String())
+			}
+			if wealthDB.lastUpdateAssetID != 0 {
+				t.Errorf("UpdateAsset was called (id %d) for a rejected request", wealthDB.lastUpdateAssetID)
+			}
+		})
+	}
+}
+
+func TestHandleWealthAssetUpdateMapsDBErrors(t *testing.T) {
+	for name, tc := range map[string]struct {
+		err  error
+		want int
+	}{
+		"unknown asset":      {db.ErrAssetNotFound, http.StatusNotFound},
+		"wrong detail block": {db.ErrAssetNoDetails, http.StatusBadRequest},
+		"anything else":      {errors.New("disk full"), http.StatusInternalServerError},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := newWealthTestServer("secret", &fakeWealthDB{updateAssetErr: tc.err}, &fakeDB{})
+			rec := postWealthUpdate(t, s, loginAndGetCookie(t, s, "secret"), wealthAssetUpdateRequest{AssetID: 5, Name: "x", AssetGroup: "liquid"})
+			if rec.Code != tc.want {
+				t.Errorf("status = %d, want %d", rec.Code, tc.want)
+			}
+		})
 	}
 }

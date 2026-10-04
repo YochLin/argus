@@ -39,6 +39,14 @@ var ErrNotLatestTransaction = errors.New("only the most recent transaction for a
 // docs/phase-12-options.md §3.3).
 var ErrCrossesZero = errors.New("order crosses zero — close the position before reversing it")
 
+// ErrAssetNotFound is returned by UpdateAsset when id doesn't exist.
+var ErrAssetNotFound = errors.New("asset not found")
+
+// ErrAssetNoDetails is returned by UpdateAsset when the edit carries a
+// deposit/loan block but the asset has no matching detail row — i.e. the
+// caller tried to give an asset of one type another type's fields.
+var ErrAssetNoDetails = errors.New("asset has no such detail row")
+
 type DB struct {
 	conn *sql.DB
 }

@@ -300,6 +300,10 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("POST /api/wealth/assets", s.requireWritable(s.requireAuth(s.handleWealthAssetCreate)))
 	s.mux.HandleFunc("POST /api/wealth/assets/snapshot", s.requireWritable(s.requireAuth(s.handleWealthAssetSnapshot)))
 	s.mux.HandleFunc("POST /api/wealth/assets/archive", s.requireWritable(s.requireAuth(s.handleWealthAssetArchive)))
+	// unarchive/update have no UI yet (the edit-asset drawer is awaiting its
+	// design) — same "API first, route stays as surface" shape as goals/earmark.
+	s.mux.HandleFunc("POST /api/wealth/assets/unarchive", s.requireWritable(s.requireAuth(s.handleWealthAssetUnarchive)))
+	s.mux.HandleFunc("POST /api/wealth/assets/update", s.requireWritable(s.requireAuth(s.handleWealthAssetUpdate)))
 	// /api/wealth/balance (`/w/balance`, §8.3-3) — asset/liability grouping,
 	// health-metric ratios, quarterly net-worth trend. Read-only: editing
 	// values stays on `/w`'s asset list. /api/wealth/profile's GET is
