@@ -829,4 +829,10 @@ var migrations = []string{
 		UNIQUE (ticker, strategy, signal_date)
 	);
 	`,
+	// 38: /w/cash pause / resume / delete (Argus Trading WebUI.dc.html's
+	// wFlowPaused) — the paused list shows "暫停於 <date>", so pausing now
+	// records the day. NULL for a flow paused before this column existed (the
+	// date was never kept and can't be reconstructed) and for any active flow;
+	// resuming clears it again.
+	`ALTER TABLE recurring_cashflows ADD COLUMN paused_at TEXT;`,
 }

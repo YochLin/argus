@@ -1,6 +1,9 @@
 package db
 
-import "database/sql"
+import (
+	"database/sql"
+	"errors"
+)
 
 // RecurringCashflow is one recurring_cashflows row (migration 30, see
 // docs/phase-9-asset-platform.md §8.4) — a hand-maintained monthly amount,
@@ -18,6 +21,9 @@ type RecurringCashflow struct {
 	AssetID    *int64
 	Category   string
 	Active     bool
+	// PausedAt is the day the flow was paused ("2006-01-02"); "" while active,
+	// and for a flow paused before migration 38 (the day was never kept).
+	PausedAt string
 }
 
 // NewRecurringCashflow is the caller-supplied subset of RecurringCashflow's
@@ -81,7 +87,7 @@ func (d *DB) UpdateRecurringCashflow(id int64, e RecurringCashflowEdit) error {
 // activeOnly=true filters active = 1, the default for /w/cash's list and
 // monthly-total math — a paused flow shouldn't silently keep counting.
 func (d *DB) ListRecurringCashflows(activeOnly bool) ([]RecurringCashflow, error) {
-	query := `SELECT id, direction, name, amount, currency, day_of_month, asset_id, category, active FROM recurring_cashflows`
+	query := `SELECT id, direction, name, amount, currency, day_of_month, asset_id, category, active, paused_at FROM recurring_cashflows`
 	if activeOnly {
 		query += ` WHERE active = 1`
 	}
@@ -96,9 +102,9 @@ func (d *DB) ListRecurringCashflows(activeOnly bool) ([]RecurringCashflow, error
 	for rows.Next() {
 		var c RecurringCashflow
 		var dayOfMonth, assetID sql.NullInt64
-		var category sql.NullString
+		var category, pausedAt sql.NullString
 		var active int
-		if err := rows.Scan(&c.ID, &c.Direction, &c.Name, &c.Amount, &c.Currency, &dayOfMonth, &assetID, &category, &active); err != nil {
+		if err := rows.Scan(&c.ID, &c.Direction, &c.Name, &c.Amount, &c.Currency, &dayOfMonth, &assetID, &category, &active, &pausedAt); err != nil {
 			return nil, err
 		}
 		if dayOfMonth.Valid {
@@ -108,18 +114,70 @@ func (d *DB) ListRecurringCashflows(activeOnly bool) ([]RecurringCashflow, error
 			c.AssetID = &assetID.Int64
 		}
 		c.Category = category.String
+		c.PausedAt = pausedAt.String
 		c.Active = active != 0
 		out = append(out, c)
 	}
 	return out, rows.Err()
 }
 
-// DeactivateRecurringCashflow pauses a recurring cashflow (active = 0)
-// rather than deleting it — same soft-delete convention as ArchiveAsset, and
-// for the same reason: a paused flow (e.g. a SIP put on hold) is still
-// meaningful history, not garbage. A no-op on an already-inactive or
-// nonexistent id.
-func (d *DB) DeactivateRecurringCashflow(id int64) error {
-	_, err := d.conn.Exec(`UPDATE recurring_cashflows SET active = 0 WHERE id = ? AND active = 1`, id)
-	return err
+// DeactivateRecurringCashflow pauses a recurring cashflow (active = 0) and
+// stamps the day it was paused. A paused flow stays in the table — a SIP put on
+// hold is still meaningful, and ResumeRecurringCashflow brings it back — until
+// DeleteRecurringCashflow removes it for good. Pausing an already-paused flow
+// is a no-op that keeps its original date; an unknown id is ErrCashflowNotFound.
+func (d *DB) DeactivateRecurringCashflow(id int64, today string) error {
+	res, err := d.conn.Exec(`UPDATE recurring_cashflows SET active = 0, paused_at = ? WHERE id = ? AND active = 1`, today, id)
+	if err != nil {
+		return err
+	}
+	return d.cashflowTouched(res, id)
+}
+
+// ResumeRecurringCashflow puts a paused flow back into the monthly totals and
+// clears its paused date. Resuming an active flow is a no-op; an unknown id is
+// ErrCashflowNotFound.
+func (d *DB) ResumeRecurringCashflow(id int64) error {
+	res, err := d.conn.Exec(`UPDATE recurring_cashflows SET active = 1, paused_at = NULL WHERE id = ? AND active = 0`, id)
+	if err != nil {
+		return err
+	}
+	return d.cashflowTouched(res, id)
+}
+
+// DeleteRecurringCashflow removes a paused flow for good. An active one is
+// ErrCashflowActive (it still counts toward the totals and there is no undo, so
+// it has to be paused first); an unknown id is ErrCashflowNotFound.
+func (d *DB) DeleteRecurringCashflow(id int64) error {
+	res, err := d.conn.Exec(`DELETE FROM recurring_cashflows WHERE id = ? AND active = 0`, id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n > 0 {
+		return nil
+	}
+	if err := d.cashflowTouched(res, id); err != nil {
+		return err
+	}
+	return ErrCashflowActive
+}
+
+// cashflowTouched settles a conditional UPDATE/DELETE that matched no rows:
+// either the id doesn't exist (ErrCashflowNotFound) or the row was already in
+// the wanted state (nil).
+func (d *DB) cashflowTouched(res sql.Result, id int64) error {
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n > 0 {
+		return nil
+	}
+	var one int
+	switch err := d.conn.QueryRow(`SELECT 1 FROM recurring_cashflows WHERE id = ?`, id).Scan(&one); {
+	case errors.Is(err, sql.ErrNoRows):
+		return ErrCashflowNotFound
+	default:
+		return err
+	}
 }

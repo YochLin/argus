@@ -39,9 +39,13 @@ type wealthWriter interface {
 	// table/method service.PortfolioService's cash_balance uses.
 	SetSetting(key, value string) error
 	// CreateRecurringCashflow/DeactivateRecurringCashflow back
-	// wealth_cash.go's add-flow form and pause action (Phase 9 波次2 PR5).
+	// wealth_cash.go's add-flow form and pause action (Phase 9 波次2 PR5);
+	// Resume/Delete finish the pause → resume / delete lifecycle (a flow has to
+	// be paused before it can be deleted).
 	CreateRecurringCashflow(c db.NewRecurringCashflow) (int64, error)
-	DeactivateRecurringCashflow(id int64) error
+	DeactivateRecurringCashflow(id int64, today string) error
+	ResumeRecurringCashflow(id int64) error
+	DeleteRecurringCashflow(id int64) error
 	// UpdateRecurringCashflow backs wealth_cash.go's edit route (name/amount/
 	// day/category only — see db.RecurringCashflowEdit).
 	UpdateRecurringCashflow(id int64, e db.RecurringCashflowEdit) error

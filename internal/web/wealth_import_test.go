@@ -183,7 +183,9 @@ func (f *fakeWealthImportDB) SetSetting(key, value string) error         { retur
 func (f *fakeWealthImportDB) CreateRecurringCashflow(c db.NewRecurringCashflow) (int64, error) {
 	return 0, nil
 }
-func (f *fakeWealthImportDB) DeactivateRecurringCashflow(id int64) error { return nil }
+func (f *fakeWealthImportDB) DeactivateRecurringCashflow(id int64, today string) error { return nil }
+func (f *fakeWealthImportDB) ResumeRecurringCashflow(id int64) error                  { return nil }
+func (f *fakeWealthImportDB) DeleteRecurringCashflow(id int64) error                  { return nil }
 func (f *fakeWealthImportDB) UpdateRecurringCashflow(id int64, e db.RecurringCashflowEdit) error {
 	return nil
 }

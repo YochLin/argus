@@ -26,9 +26,14 @@ var ErrInsufficientShares = errors.New("insufficient shares for sell")
 // exist.
 var ErrTransactionNotFound = errors.New("transaction not found")
 
-// ErrCashflowNotFound is returned by UpdateRecurringCashflow when id doesn't
-// exist.
+// ErrCashflowNotFound is returned by the recurring-cashflow update, pause,
+// resume and delete methods when id doesn't exist.
 var ErrCashflowNotFound = errors.New("recurring cashflow not found")
+
+// ErrCashflowActive is returned by DeleteRecurringCashflow for a flow that
+// isn't paused: it still counts toward the monthly totals, and deleting is
+// irreversible, so it has to be paused first.
+var ErrCashflowActive = errors.New("pause the cash flow before deleting it")
 
 // ErrNotLatestTransaction is returned by DeleteTransaction when id isn't the
 // most recently recorded transaction for its ticker — see that function's
