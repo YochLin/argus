@@ -1045,6 +1045,9 @@ export interface Dictionary {
   wealthCashPausedNote: string;
   wealthCashPausedSince: string; // %s = date
   wealthCashPerMonth: string;
+  wealthCashTagIn: string; // the paused card's per-row direction tag
+  wealthCashTagOut: string;
+  wealthCashNoRate: string; // %s = currency code
   wealthCashResume: string;
   wealthCashDelete: string;
   wealthCashDeleteTitle: string; // %s = name
@@ -2256,8 +2259,8 @@ const en: Dictionary = {
   wealthCashFixedShareLabel: "Fixed / income",
   wealthCashAnnualNetLabel: "Full-year surplus",
   wealthCashNet90Label: "Net over period",
-  wealthCashInBreakdownTitle: "Income sources",
-  wealthCashOutBreakdownTitle: "Expense breakdown",
+  wealthCashInBreakdownTitle: "MONTHLY INCOME",
+  wealthCashOutBreakdownTitle: "MONTHLY OUTFLOW",
   wealthCashEventsTitle: "Next 90 days",
   wealthCashNoItems: "No recurring cash flows yet.",
   wealthCashNoEvents: "No cash events in the next 90 days.",
@@ -2275,6 +2278,9 @@ const en: Dictionary = {
   wealthCashPausedNote: "Not counted in monthly totals or the forecast. Counting starts again from the next cycle once resumed.",
   wealthCashPausedSince: "paused %s",
   wealthCashPerMonth: " /mo",
+  wealthCashTagIn: "In",
+  wealthCashTagOut: "Out",
+  wealthCashNoRate: "No %s exchange rate available — can't convert to TWD",
   wealthCashResume: "Resume",
   wealthCashDelete: "Delete",
   wealthCashDeleteTitle: "Delete “%s”?",
@@ -3430,8 +3436,8 @@ const zh: Dictionary = {
   wealthCashFixedShareLabel: "固定支出佔收入",
   wealthCashAnnualNetLabel: "全年累計結餘",
   wealthCashNet90Label: "期間淨額",
-  wealthCashInBreakdownTitle: "收入來源",
-  wealthCashOutBreakdownTitle: "支出分佈",
+  wealthCashInBreakdownTitle: "月收入",
+  wealthCashOutBreakdownTitle: "月支出",
   wealthCashEventsTitle: "未來 90 天",
   wealthCashNoItems: "尚無經常性收支項目。",
   wealthCashNoEvents: "未來 90 天沒有現金事件。",
@@ -3449,6 +3455,9 @@ const zh: Dictionary = {
   wealthCashPausedNote: "不計入每月收支與預測。恢復後從下個週期開始計算。",
   wealthCashPausedSince: "暫停於 %s",
   wealthCashPerMonth: " / 月",
+  wealthCashTagIn: "收入",
+  wealthCashTagOut: "支出",
+  wealthCashNoRate: "目前查不到 %s 匯率，無法換算成新台幣",
   wealthCashResume: "恢復",
   wealthCashDelete: "刪除",
   wealthCashDeleteTitle: "刪除「%s」？",
