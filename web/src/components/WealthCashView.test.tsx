@@ -238,7 +238,7 @@ describe("WealthCashView: every amount in TWD", () => {
   it("falls back to the original amount, and says why, when there is no TWD value", async () => {
     await setup(true, foreign);
     const cell = screen.getByText("-EUR 20");
-    expect(cell.getAttribute("title")).toBe(dict.wealthCashNoRate.replace("%s", "EUR"));
+    expect(cell.getAttribute("title")).toBe(dict.wealthNoRate.replace("%s", "EUR"));
   });
 
   it("still lists an active flow it can't price, in its own currency, and blanks the totals", async () => {
@@ -254,7 +254,7 @@ describe("WealthCashView: every amount in TWD", () => {
       events: [],
     });
     const eur = screen.getByText("EUR 500");
-    expect(eur.getAttribute("title")).toBe(dict.wealthCashNoRate.replace("%s", "EUR"));
+    expect(eur.getAttribute("title")).toBe(dict.wealthNoRate.replace("%s", "EUR"));
     expect(screen.getByRole("button", { name: `${dict.wealthCashPause} 歐元租金` })).not.toBeNull(); // and it can be paused
     // No card total pretends to be NT$0, and the priced flow is listed before the unpriced one.
     const header = screen.getByText(dict.wealthCashInBreakdownTitle, { selector: ".eyebrow" }).parentElement as HTMLElement;

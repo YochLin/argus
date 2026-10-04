@@ -15,7 +15,7 @@ import {
   type WealthAsset,
 } from "../api";
 import type { Dictionary } from "../i18n";
-import { AddAssetModal, MONO_LABEL, fmtMoney, groupLabel, liabilityNote } from "./WealthHomeView";
+import { AddAssetModal, AssetValue, MONO_LABEL, fmtMoney, groupLabel, liabilityNote } from "./WealthHomeView";
 import { CATEGORY_COLOR } from "../wealthCategory";
 import { useFlash } from "../flash";
 import { BalanceRow } from "./BalanceRow";
@@ -485,7 +485,9 @@ function ArchivedCard({
             <span className="wealth-arc-kind">{a.side === "asset" ? dict.wealthSideAsset : dict.wealthSideLiability}</span>
             <span className="wealth-arc-inst">{a.venue || "—"}</span>
             <span className="wealth-arc-date">{(a.archivedAt ?? "").slice(0, 10)}</span>
-            <span className="wealth-arc-val">{a.value != null ? fmtMoney(a.value, a.currency === "TWD" ? CURRENCY : a.currency) : "—"}</span>
+            <span className="wealth-arc-val">
+              <AssetValue dict={dict} asset={a} />
+            </span>
             <button type="button" className="wealth-arc-restore" onClick={() => onRestore(a)}>
               {dict.wealthRestore}
             </button>

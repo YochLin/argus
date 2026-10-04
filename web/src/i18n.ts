@@ -1047,7 +1047,7 @@ export interface Dictionary {
   wealthCashPerMonth: string;
   wealthCashTagIn: string; // the paused card's per-row direction tag
   wealthCashTagOut: string;
-  wealthCashNoRate: string; // %s = currency code
+  wealthNoRate: string; // %s = currency code; tooltip on an amount that couldn't be converted to TWD
   wealthCashResume: string;
   wealthCashDelete: string;
   wealthCashDeleteTitle: string; // %s = name
@@ -2280,7 +2280,7 @@ const en: Dictionary = {
   wealthCashPerMonth: " /mo",
   wealthCashTagIn: "In",
   wealthCashTagOut: "Out",
-  wealthCashNoRate: "No %s exchange rate available — can't convert to TWD",
+  wealthNoRate: "No %s exchange rate available — can't convert to TWD",
   wealthCashResume: "Resume",
   wealthCashDelete: "Delete",
   wealthCashDeleteTitle: "Delete “%s”?",
@@ -3457,7 +3457,7 @@ const zh: Dictionary = {
   wealthCashPerMonth: " / 月",
   wealthCashTagIn: "收入",
   wealthCashTagOut: "支出",
-  wealthCashNoRate: "目前查不到 %s 匯率，無法換算成新台幣",
+  wealthNoRate: "目前查不到 %s 匯率，無法換算成新台幣",
   wealthCashResume: "恢復",
   wealthCashDelete: "刪除",
   wealthCashDeleteTitle: "刪除「%s」？",
