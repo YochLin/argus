@@ -983,11 +983,6 @@ export interface Dictionary {
   wealthNoOrders: string;
   wealthLockedTitle: string;
   wealthVenueLabel: string;
-  // Generic disclosure label for a wealth page's collapsed write-affordance
-  // section (a <details>/<summary>, not shown in the design template) — see
-  // [[verify-ui-against-design-template]] for why write UI lives behind
-  // this rather than always on screen.
-  wealthManageLabel: string;
   wealthRiskTitle: string;
   wealthRiskBand: string;
   wealthFxExposure: string;
@@ -1033,7 +1028,6 @@ export interface Dictionary {
   wealthCashNet90Label: string;
   wealthCashInBreakdownTitle: string;
   wealthCashOutBreakdownTitle: string;
-  wealthCashItemsTitle: string;
   wealthCashEventsTitle: string;
   wealthCashNoItems: string;
   wealthCashNoEvents: string;
@@ -1046,7 +1040,17 @@ export interface Dictionary {
   wealthCashCategoryLabel: string;
   wealthCashAdd: string;
   wealthCashPause: string;
+  wealthCashPauseTitle: string; // tooltip on a row's pause button
   wealthCashPaused: string;
+  wealthCashPausedNote: string;
+  wealthCashPausedSince: string; // %s = date
+  wealthCashPerMonth: string;
+  wealthCashResume: string;
+  wealthCashDelete: string;
+  wealthCashDeleteTitle: string; // %s = name
+  wealthCashDeleteBody: string;
+  wealthFlashResumed: string; // %s = name
+  wealthFlashDeleted: string; // %s = name
   wealthCashDateLabel: string;
   wealthCashCatSalary: string;
   wealthCashCatRent: string;
@@ -2213,7 +2217,6 @@ const en: Dictionary = {
   wealthNoOrders: "Every adjustable class sits inside the tolerance band.",
   wealthLockedTitle: "OFF TARGET BUT LOCKED",
   wealthVenueLabel: "via",
-  wealthManageLabel: "Manage",
   wealthRiskTitle: "RISK EXPOSURE",
   wealthRiskBand: "target band",
   wealthFxExposure: "CURRENCY EXPOSURE",
@@ -2255,7 +2258,6 @@ const en: Dictionary = {
   wealthCashNet90Label: "Net over period",
   wealthCashInBreakdownTitle: "Income sources",
   wealthCashOutBreakdownTitle: "Expense breakdown",
-  wealthCashItemsTitle: "Recurring cash flows",
   wealthCashEventsTitle: "Next 90 days",
   wealthCashNoItems: "No recurring cash flows yet.",
   wealthCashNoEvents: "No cash events in the next 90 days.",
@@ -2268,7 +2270,17 @@ const en: Dictionary = {
   wealthCashCategoryLabel: "Category",
   wealthCashAdd: "Add",
   wealthCashPause: "Pause",
+  wealthCashPauseTitle: "Excluded from monthly totals and forecast until resumed",
   wealthCashPaused: "Paused",
+  wealthCashPausedNote: "Not counted in monthly totals or the forecast. Counting starts again from the next cycle once resumed.",
+  wealthCashPausedSince: "paused %s",
+  wealthCashPerMonth: " /mo",
+  wealthCashResume: "Resume",
+  wealthCashDelete: "Delete",
+  wealthCashDeleteTitle: "Delete “%s”?",
+  wealthCashDeleteBody: "It will no longer appear in cash flow or the forecast. Past actual transactions are not affected. This can't be undone.",
+  wealthFlashResumed: "Resumed “%s”",
+  wealthFlashDeleted: "Deleted “%s”",
   wealthCashDateLabel: "Date",
   wealthCashCatSalary: "Salary",
   wealthCashCatRent: "Rental income",
@@ -3379,7 +3391,6 @@ const zh: Dictionary = {
   wealthNoOrders: "目前所有可調整項目都在容忍區間內。",
   wealthLockedTitle: "偏離但不可調整",
   wealthVenueLabel: "經由",
-  wealthManageLabel: "管理",
   wealthRiskTitle: "風險曝險",
   wealthRiskBand: "目標區間",
   wealthFxExposure: "幣別曝險",
@@ -3421,7 +3432,6 @@ const zh: Dictionary = {
   wealthCashNet90Label: "期間淨額",
   wealthCashInBreakdownTitle: "收入來源",
   wealthCashOutBreakdownTitle: "支出分佈",
-  wealthCashItemsTitle: "經常性收支",
   wealthCashEventsTitle: "未來 90 天",
   wealthCashNoItems: "尚無經常性收支項目。",
   wealthCashNoEvents: "未來 90 天沒有現金事件。",
@@ -3434,7 +3444,17 @@ const zh: Dictionary = {
   wealthCashCategoryLabel: "類別",
   wealthCashAdd: "新增",
   wealthCashPause: "暫停",
+  wealthCashPauseTitle: "暫停後不計入每月收支與預測，可隨時恢復",
   wealthCashPaused: "已暫停",
+  wealthCashPausedNote: "不計入每月收支與預測。恢復後從下個週期開始計算。",
+  wealthCashPausedSince: "暫停於 %s",
+  wealthCashPerMonth: " / 月",
+  wealthCashResume: "恢復",
+  wealthCashDelete: "刪除",
+  wealthCashDeleteTitle: "刪除「%s」？",
+  wealthCashDeleteBody: "刪除後不再出現在現金流與預測。過去已發生的實際收支紀錄不受影響。這個動作無法復原。",
+  wealthFlashResumed: "已恢復「%s」",
+  wealthFlashDeleted: "已刪除「%s」",
   wealthCashDateLabel: "日期",
   wealthCashCatSalary: "薪資",
   wealthCashCatRent: "租金收入",
