@@ -3902,18 +3902,242 @@ th {
 /* /w/balance's click-to-edit value cells (design mock: isWBalance's
    i.notEditing style — a transparent-bordered chip that reveals its border
    on hover, cursor:text as the edit hint). */
-.wealth-value-editable {
+.wealth-value-editable,
+.wealth-value-open {
   cursor: text;
   padding: 2px 6px;
   margin-right: -6px;
-  border-radius: 5px;
-  border: 1px solid transparent;
+  border-radius: 5px 5px 0 0;
+  border: 0;
+  border-bottom: 1px dashed var(--ink-3);
+  background: none;
 }
 
 .wealth-value-editable:hover {
-  border-color: var(--border);
+  border-bottom-color: var(--accent);
   background: var(--bg);
+}
+
+.wealth-value-editable:not(.loss):hover {
   color: var(--ink);
+}
+
+/* A value that can't be typed over in place (not manual, not TWD, or the
+   read-only mode) opens the row editor drawer instead; the equity row, which
+   is synced from the trading account, links there. */
+.wealth-value-open {
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+}
+
+.wealth-value-open:hover {
+  background: var(--bg);
+}
+
+/* <button>s used as the value cell inherit the row's colour, but with zero
+   specificity so .loss still wins on a liability. */
+:where(button.wealth-item-row-value) {
+  color: inherit;
+}
+
+/* The inline editor that replaces the value cell (design: i.editing). */
+.wealth-value-editing {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wealth-value-editing-cur {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+}
+
+.wealth-value-editing input {
+  width: 104px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  padding: 2px 6px;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The ⋯ button (design: i.rmStyle) shows on hover/focus or while its drawer
+   is open — and always on touch screens, which have no hover. */
+.wealth-row-more {
+  flex-shrink: 0;
+  margin-left: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--ink-3);
+  opacity: 0;
+}
+
+.wealth-item-row:hover .wealth-row-more,
+.wealth-item-row:focus-within .wealth-row-more,
+.wealth-row-more.open,
+.wealth-row-more:hover {
+  opacity: 1;
+}
+
+.wealth-row-more:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+@media (hover: none) {
+  .wealth-row-more {
+    opacity: 1;
+  }
+}
+
+/* /w/balance's 使用中 / 已封存 switch (design: wae.tabs). */
+.wealth-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.wealth-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 5px 11px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: var(--ink-3);
+}
+
+.wealth-tab.active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.wealth-tab-n {
+  opacity: 0.6;
+}
+
+/* The archived table card (design: wae.rows). */
+.wealth-arc {
+  overflow-x: auto;
+}
+
+.wealth-arc-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.wealth-arc-desc {
+  font-size: 12px;
+  color: var(--ink-3);
+  text-wrap: pretty;
+}
+
+.wealth-arc-table {
+  min-width: 560px;
+}
+
+.wealth-arc-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 2fr) 64px minmax(90px, 1fr) 96px minmax(110px, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wealth-arc-row.head {
+  padding: 0 10px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.wealth-arc-name {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.wealth-arc-name:hover {
+  color: var(--accent);
+}
+
+.wealth-arc-kind {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.wealth-arc-inst {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.wealth-arc-date {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.wealth-arc-val {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+
+.wealth-arc-restore {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  padding: 5px 11px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.wealth-arc-restore:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.wealth-arc-none {
+  padding: 26px 10px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--ink-3);
 }
 
 /* AddAssetModal's quick-add drawer (design mock: the "＋ new" buttons'
@@ -3981,6 +4205,8 @@ th {
   font-weight: 600;
   padding: 9px 17px;
   border-radius: 8px;
+  border-width: 1px;
+  border-style: solid;
   cursor: pointer;
 }
 
@@ -5857,4 +6083,402 @@ a.snap-news-head:hover {
   background: none;
   color: var(--ink-2);
   cursor: pointer;
+}
+
+/* Row editor drawer (RowEditDrawer.tsx; design: rowEdModel's drawer). Reuses
+   the quick-add drawer's .wealth-drawer-* shell, a step wider (440 vs 420)
+   and above it (132 vs 130) like the template. */
+.wealth-drawer-overlay.row-ed-overlay {
+  z-index: 132;
+}
+
+.wealth-drawer-panel.row-ed {
+  width: min(440px, 100%);
+}
+
+.row-ed .wealth-drawer-body {
+  gap: 20px;
+}
+
+.row-ed-title {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.row-ed-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.row-ed-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.row-ed-current {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.row-ed-current-val {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+.row-ed-current-date {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.row-ed-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.row-ed-note--archived {
+  display: block;
+  background: none;
+  border-style: dashed;
+  line-height: 1.6;
+}
+
+.row-ed-locked-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row-ed-locked {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.row-ed-locked-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 11px;
+  background: var(--bg);
+}
+
+.row-ed-locked-k {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+.row-ed-locked-v {
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.row-ed-hint {
+  font-size: 11px;
+  color: var(--ink-3);
+  text-wrap: pretty;
+}
+
+.row-ed-hint--loose {
+  line-height: 1.6;
+}
+
+.row-ed-err {
+  font-size: 11.5px;
+  color: var(--loss);
+}
+
+.row-ed-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.row-ed-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.row-ed-field input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 9px 11px;
+  color: var(--ink);
+  font-size: 13px;
+  font-family: var(--font-sans);
+}
+
+.row-ed-log {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.row-ed-log-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.row-ed-section {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.row-ed-log .row-ed-section {
+  color: var(--ink-2);
+}
+
+.row-ed-linkbtn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.row-ed-log-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px;
+  gap: 8px;
+}
+
+.row-ed-amount {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.row-ed-amount-cur {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  padding: 0 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.row-ed-amount input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  padding: 9px 11px;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.row-ed-date {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 8px 9px;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.row-ed-log-hint {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.row-ed-conv {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+}
+
+.row-ed-record {
+  align-self: flex-end;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.row-ed-record:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+
+.row-ed-hist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.row-ed-hist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.row-ed-hist-row {
+  display: grid;
+  grid-template-columns: 92px 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 7px;
+}
+
+.row-ed-hist-row.current {
+  background: var(--bg);
+}
+
+.row-ed-hist-row.fixing {
+  background: var(--accent-tint-bg);
+}
+
+.row-ed-hist-date {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.row-ed-hist-val {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--ink-2);
+}
+
+.row-ed-hist-row.current .row-ed-hist-val {
+  color: var(--ink);
+}
+
+.row-ed-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 5px;
+  white-space: nowrap;
+  color: var(--ink-3);
+  background: var(--bg);
+}
+
+.row-ed-tag.mine {
+  color: var(--accent);
+  background: var(--accent-tint-bg);
+}
+
+.row-ed-hist-actions {
+  display: flex;
+  gap: 8px;
+  min-width: 58px;
+  justify-content: flex-end;
+}
+
+.row-ed-fix,
+.row-ed-del {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 11.5px;
+}
+
+.row-ed-fix {
+  color: var(--accent);
+}
+
+.row-ed-del {
+  color: var(--ink-3);
+}
+
+.row-ed-del:hover:not(:disabled) {
+  color: var(--loss);
+}
+
+.row-ed-footer {
+  align-items: center;
+}
+
+.row-ed-archive {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.row-ed-archive:hover {
+  color: var(--loss);
+  border-color: var(--loss);
+}
+
+.row-ed-restore {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  padding: 8px 13px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.row-ed-restore:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
 }

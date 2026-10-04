@@ -301,6 +301,7 @@ export default function App() {
         dict={dict}
         writable={status?.writable ?? false}
         onUnauthorized={(retry) => setAuthRetry(() => retry)}
+        onNavigate={navigate}
       />
     );
   } else if (path === "/w/funds") {

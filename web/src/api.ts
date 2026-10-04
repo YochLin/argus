@@ -1965,6 +1965,39 @@ export function archiveWealthAsset(assetId: number): Promise<TradeResponse> {
   return postJSON("/api/wealth/assets/archive", { assetId });
 }
 
+export function unarchiveWealthAsset(assetId: number): Promise<TradeResponse> {
+  return postJSON("/api/wealth/assets/unarchive", { assetId });
+}
+
+// updateWealthAsset changes only the descriptive fields — side, type, currency
+// and value are never editable (see db.AssetEdit). Details are left alone.
+export function updateWealthAsset(req: {
+  assetId: number;
+  name: string;
+  assetGroup: AssetGroup;
+  venue: string;
+}): Promise<TradeResponse> {
+  return postJSON("/api/wealth/assets/update", req);
+}
+
+export interface WealthSnapshotRow {
+  date: string;
+  value: number; // in the asset's own currency
+  source: "manual" | "import" | "sync";
+}
+
+// fetchWealthAssetHistory returns one asset's value records newest first, plus
+// the server's today — the date the write routes judge "today's record" by.
+export function fetchWealthAssetHistory(assetId: number): Promise<{ today: string; snapshots: WealthSnapshotRow[] }> {
+  return getJSON(`/api/wealth/assets/history?assetId=${assetId}`);
+}
+
+// deleteWealthAssetSnapshot undoes a record logged today (the server refuses
+// any other date).
+export function deleteWealthAssetSnapshot(assetId: number, date: string): Promise<TradeResponse> {
+  return postJSON("/api/wealth/assets/snapshot/delete", { assetId, date });
+}
+
 // --- Phase 9 PR2: balance sheet / health metrics / debt payoff ---
 // Mirrors internal/web/wealth_balance.go.
 
