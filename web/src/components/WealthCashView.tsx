@@ -17,7 +17,7 @@ import { fmtMoney, mmdd, twdAmount } from "./WealthHomeView";
 import { shortTWD } from "../currency";
 import { useFlash } from "../flash";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { WealthEmptyCard } from "./WealthOnboarding";
+import { WealthEmptyCard, useGateAdd } from "./WealthOnboarding";
 
 interface Props {
   dict: Dictionary;
@@ -394,6 +394,7 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<CashflowItem | null>(null);
   const flash = useFlash();
+  const gateAdd = useGateAdd(dict, writable);
 
   useEffect(() => {
     setError(false);
@@ -462,11 +463,9 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
         <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: "var(--ink)" }}>
           {dict.navWealthCash}
         </span>
-        {writable && (
-          <button className="btn-tint" style={{ marginLeft: "auto" }} onClick={() => setShowAddForm(true)}>
-            + {dict.wealthCashAdd}
-          </button>
-        )}
+        <button className="btn-tint" style={{ marginLeft: "auto" }} onClick={gateAdd(() => setShowAddForm(true))}>
+          + {dict.wealthCashAdd}
+        </button>
       </div>
 
       {writable && showAddForm && (
@@ -481,7 +480,7 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
         />
       )}
 
-      {empty && <WealthEmptyCard dict={dict} line={dict.wealthEmptyCash} onAdd={writable ? () => setShowAddForm(true) : undefined} />}
+      {empty && <WealthEmptyCard dict={dict} line={dict.wealthEmptyCash} onAdd={gateAdd(() => setShowAddForm(true))} />}
 
       {!empty && (
         <>

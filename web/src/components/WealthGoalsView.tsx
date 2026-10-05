@@ -4,6 +4,7 @@ import { ApiError, createWealthGoal, deleteWealthGoal, fetchWealthGoals, updateW
 import type { Dictionary } from "../i18n";
 import { shortTWD } from "../currency";
 import { fmtMoney } from "./WealthHomeView";
+import { useGateAdd } from "./WealthOnboarding";
 
 interface Props {
   dict: Dictionary;
@@ -343,6 +344,7 @@ export function WealthGoalsView({ dict, writable, onUnauthorized, onNavigate }: 
   const [refreshSignal, setRefreshSignal] = useState(0);
   // drawer: undefined = closed, null = add, Goal = edit.
   const [drawer, setDrawer] = useState<Goal | null | undefined>(undefined);
+  const gateAdd = useGateAdd(dict, writable);
 
   useEffect(() => {
     setError(false);
@@ -378,14 +380,12 @@ export function WealthGoalsView({ dict, writable, onUnauthorized, onNavigate }: 
         <a href="#" style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)", textDecoration: "none" }} onClick={(e) => { e.preventDefault(); onNavigate("/w/retire"); }}>
           {dict.wealthGoalsSeeRetireLink}
         </a>
-        {writable && (
-          <button className="goal-add-btn" onClick={() => setDrawer(null)}>
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-              <path d="M8 3v10M3 8h10" />
-            </svg>
-            <span>{dict.wealthGoalsAddBtn}</span>
-          </button>
-        )}
+        <button className="goal-add-btn" onClick={gateAdd(() => setDrawer(null))}>
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+            <path d="M8 3v10M3 8h10" />
+          </svg>
+          <span>{dict.wealthGoalsAddBtn}</span>
+        </button>
       </div>
 
       {goals && goals.length === 0 && <div className="card empty-message">{dict.wealthGoalsNoGoals}</div>}

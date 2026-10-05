@@ -15,7 +15,7 @@ import type { Dictionary } from "../i18n";
 import { DOTTED, fmtMoney } from "./WealthHomeView";
 import { srcLabel } from "./WealthBalanceView";
 import { useFlash } from "../flash";
-import { WealthEmptyCard } from "./WealthOnboarding";
+import { WealthEmptyCard, useGateAdd } from "./WealthOnboarding";
 
 interface Props {
   dict: Dictionary;
@@ -346,6 +346,7 @@ export function WealthInsureView({ dict, writable, onUnauthorized }: Props) {
   const [error, setError] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
   const [showAddForm, setShowAddForm] = useState(false);
+  const gateAdd = useGateAdd(dict, writable);
 
   useEffect(() => {
     setError(false);
@@ -377,11 +378,9 @@ export function WealthInsureView({ dict, writable, onUnauthorized }: Props) {
         <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: "var(--ink)" }}>
           {dict.navWealthInsure}
         </span>
-        {writable && (
-          <button className="btn-tint" style={{ marginLeft: "auto" }} onClick={() => setShowAddForm(true)}>
-            + {dict.wealthInsureAdd}
-          </button>
-        )}
+        <button className="btn-tint" style={{ marginLeft: "auto" }} onClick={gateAdd(() => setShowAddForm(true))}>
+          + {dict.wealthInsureAdd}
+        </button>
       </div>
 
       {writable && showAddForm && (
@@ -396,7 +395,7 @@ export function WealthInsureView({ dict, writable, onUnauthorized }: Props) {
         />
       )}
 
-      {empty && <WealthEmptyCard dict={dict} line={dict.wealthEmptyInsure} onAdd={writable ? () => setShowAddForm(true) : undefined} />}
+      {empty && <WealthEmptyCard dict={dict} line={dict.wealthEmptyInsure} onAdd={gateAdd(() => setShowAddForm(true))} />}
 
       {!empty && (
         <>

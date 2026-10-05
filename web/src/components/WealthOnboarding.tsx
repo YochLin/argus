@@ -1,21 +1,28 @@
 import { useEffect, useState } from "react";
 import { fetchWealthAssets, fetchWealthCash, fetchWealthInsure, fetchWealthProfile } from "../api";
 import type { Dictionary } from "../i18n";
+import { useFlash } from "../flash";
 import { hasPickedModel } from "../wealthCategory";
+
+// useGateAdd is what an add button does. The design keeps the button on a
+// read-only server and answers the click with a toast saying why nothing opens
+// (its `open`/`openFlow`/`openPolicy`) — a button that isn't there says nothing.
+export function useGateAdd(dict: Dictionary, writable: boolean) {
+  const flash = useFlash();
+  return (open: () => void) => (writable ? open : () => flash(dict.wealthRoNoAdd));
+}
 
 // WealthEmptyCard is what a wealth page shows in place of its body while it has
 // nothing to show (Argus Trading WebUI.dc.html's wes.on): one line and an add
-// button. No button when onAdd is missing — a read-only server can't add.
-export function WealthEmptyCard({ dict, line, onAdd }: { dict: Dictionary; line: string; onAdd?: () => void }) {
+// button.
+export function WealthEmptyCard({ dict, line, onAdd }: { dict: Dictionary; line: string; onAdd: () => void }) {
   return (
     <div className="card wealth-empty">
       <span className="wealth-empty-line">{line}</span>
-      {onAdd && (
-        <button className="wealth-empty-add" onClick={onAdd}>
-          <span style={{ fontSize: 14, lineHeight: 1 }}>＋</span>
-          {dict.wealthHomeAddNew}
-        </button>
-      )}
+      <button className="wealth-empty-add" onClick={onAdd}>
+        <span style={{ fontSize: 14, lineHeight: 1 }}>＋</span>
+        {dict.wealthHomeAddNew}
+      </button>
     </div>
   );
 }
