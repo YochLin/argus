@@ -930,7 +930,42 @@ export interface Dictionary {
   wealthOriginalPrincipal: string;
   wealthRemainingMonths: string;
   wealthAddTitle: string;
+  wealthAddStep: string; // %s = 1 or 2
+  wealthAddSave: string;
   wealthAddChange: string;
+  wealthAddPickHint: string;
+  wealthKindNoteDeposit: string;
+  wealthKindNoteLoan: string;
+  wealthKindNoteFund: string;
+  wealthKindNoteBond: string;
+  wealthKindNoteEstate: string;
+  wealthKindNoteGold: string;
+  wealthKindNoteCrypto: string;
+  wealthKindNotePension: string;
+  wealthKindNoteOther: string;
+  wealthKindFlow: string;
+  wealthKindNoteFlow: string;
+  wealthKindNotePolicy: string;
+  wealthKindImport: string;
+  wealthKindNoteImport: string;
+  wealthClassNoteLiquid: string;
+  wealthClassNoteGrowth: string;
+  wealthClassNoteIncome: string;
+  wealthClassNoteHard: string;
+  wealthFValue: string;
+  wealthFBalance: string;
+  wealthFInst: string;
+  wealthPhAssetName: string;
+  wealthPhLoanName: string;
+  wealthPhInst: string;
+  wealthLoanHint: string;
+  wealthErrRequired: string;
+  wealthErrAmount: string;
+  wealthErrBlocked: string;
+  wealthAddHintLive: string;
+  wealthWarnDup: string;
+  wealthWarnDupMsg: string;
+  wealthAddedToast: string;
   wealthInitialValue: string;
   wealthEditValueTitle: string;
   // Phase 9 PR2 (partial): balance sheet page (/w/balance), health-metric
@@ -2203,8 +2238,43 @@ const en: Dictionary = {
   wealthRatePct: "Rate %",
   wealthOriginalPrincipal: "Original principal",
   wealthRemainingMonths: "Remaining months",
-  wealthAddTitle: "Add Asset",
+  wealthAddTitle: "Add Entry",
+  wealthAddStep: "Step %s / 2",
+  wealthAddSave: "Save",
   wealthAddChange: "‹ Change",
+  wealthAddPickHint: "Pick a type first — you only get the fields that type needs. Equities come from the trading account automatically.",
+  wealthKindNoteDeposit: "Savings, time deposits, foreign-currency accounts",
+  wealthKindNoteLoan: "Mortgage, personal loan, card balance",
+  wealthKindNoteFund: "Mutual funds and monthly fund plans",
+  wealthKindNoteBond: "Bonds and income-paying fixed income",
+  wealthKindNoteEstate: "Estimated value of a home or investment property",
+  wealthKindNoteGold: "Gold passbook, bullion, other physical assets",
+  wealthKindNoteCrypto: "Crypto held on an exchange or in a wallet",
+  wealthKindNotePension: "Labor insurance and pension accounts, filed under Retirement",
+  wealthKindNoteOther: "Anything that fits none of the above",
+  wealthKindFlow: "Cash-flow item",
+  wealthKindNoteFlow: "Income, expenses, recurring investing",
+  wealthKindNotePolicy: "Coverage, premium, payment term",
+  wealthKindImport: "Import from CSV",
+  wealthKindNoteImport: "Create many assets, liabilities or flows at once",
+  wealthClassNoteLiquid: "Available any time: savings, time deposits, money-market funds.\nBalance sheet → Liquid assets · Overview mix → Liquid",
+  wealthClassNoteGrowth: "Stocks, ETFs, equity funds, crypto. 0050 is a stock, not a fund.\nBalance sheet → Investments · Overview mix → Growth",
+  wealthClassNoteIncome: "Bonds, dividend funds, savings policies.\nBalance sheet → Investments · Overview mix → Income",
+  wealthClassNoteHard: "Property, gold — hard to turn into cash quickly.\nBalance sheet → Hard assets · Overview mix → Hard\nPension accounts go to Retirement automatically by type.",
+  wealthFValue: "Current value",
+  wealthFBalance: "Outstanding",
+  wealthFInst: "Institution",
+  wealthPhAssetName: "e.g. Time deposit — Bank X",
+  wealthPhLoanName: "e.g. Renovation loan",
+  wealthPhInst: "e.g. Bank of Taiwan",
+  wealthLoanHint: "With a rate and remaining months, the monthly payment is estimated (equal instalments). Over 60 months left counts as long-term; blank counts as short-term.",
+  wealthErrRequired: "required",
+  wealthErrAmount: "enter an amount above 0",
+  wealthErrBlocked: "Some required fields are empty",
+  wealthAddHintLive: "Saves flow into net worth on every page",
+  wealthWarnDup: "DUPLICATE",
+  wealthWarnDupMsg: "Similar entry exists: ",
+  wealthAddedToast: " added",
   wealthInitialValue: "Starting value",
   wealthEditValueTitle: "Update value",
   navWealthBalance: "Balance Sheet",
@@ -3439,8 +3509,43 @@ const zh: Dictionary = {
   wealthRatePct: "利率 %",
   wealthOriginalPrincipal: "原始本金",
   wealthRemainingMonths: "剩餘月數",
-  wealthAddTitle: "新增資產",
+  wealthAddTitle: "新增項目",
+  wealthAddStep: "步驟 %s / 2",
+  wealthAddSave: "儲存",
   wealthAddChange: "‹ 更改",
+  wealthAddPickHint: "先選類型，再填欄位。只會問這個類型需要的資料。股票由交易帳戶自動帶入，不用在這裡新增。",
+  wealthKindNoteDeposit: "活存、定存、外幣存款",
+  wealthKindNoteLoan: "房貸、信貸、卡循環",
+  wealthKindNoteFund: "共同基金、基金定期定額",
+  wealthKindNoteBond: "債券、配息型固定收益",
+  wealthKindNoteEstate: "自住或投資用不動產的估值",
+  wealthKindNoteGold: "黃金存摺、金條、其他實體資產",
+  wealthKindNoteCrypto: "交易所或錢包裡的加密貨幣",
+  wealthKindNotePension: "勞保年金、勞退個人專戶，自動歸入退休資產",
+  wealthKindNoteOther: "不屬於上面任何一類的項目",
+  wealthKindFlow: "現金流項目",
+  wealthKindNoteFlow: "收入、支出、定期定額",
+  wealthKindNotePolicy: "保額、保費、繳費期間",
+  wealthKindImport: "從 CSV 匯入",
+  wealthKindNoteImport: "一次建立多筆資產、負債或現金流",
+  wealthClassNoteLiquid: "隨時可動用：活存、定存、貨幣基金。\n資產負債表 → 流動資產　淨值總覽大類配置 → 流動",
+  wealthClassNoteGrowth: "股票、ETF、股票型基金、加密貨幣。0050 歸股票，不是基金。\n資產負債表 → 投資資產　淨值總覽大類配置 → 成長",
+  wealthClassNoteIncome: "債券、配息基金、儲蓄險。\n資產負債表 → 投資資產　淨值總覽大類配置 → 收益",
+  wealthClassNoteHard: "不動產、黃金等不易變現的資產。\n資產負債表 → 實體資產　淨值總覽大類配置 → 實體\n勞保・勞退依類型自動歸入「退休資產」，不需選擇。",
+  wealthFValue: "目前市值",
+  wealthFBalance: "剩餘本金",
+  wealthFInst: "所在機構",
+  wealthPhAssetName: "例：定存 · 台銀",
+  wealthPhLoanName: "例：裝修貸款",
+  wealthPhInst: "例：台灣銀行",
+  wealthLoanHint: "填了利率和剩餘月數，會依等額本息估算月付金。剩餘超過 60 個月歸長期負債，留空歸短期負債。",
+  wealthErrRequired: "必填",
+  wealthErrAmount: "請填大於 0 的金額",
+  wealthErrBlocked: "有欄位未填完",
+  wealthAddHintLive: "儲存後即時反映在淨值與所有頁面",
+  wealthWarnDup: "重複",
+  wealthWarnDupMsg: "已有類似項目：",
+  wealthAddedToast: " 已新增",
   wealthInitialValue: "起始金額",
   wealthEditValueTitle: "更新現值",
   navWealthBalance: "資產負債表",

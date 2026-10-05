@@ -434,6 +434,7 @@ export function WealthBalanceView({ dict, writable, onUnauthorized, onNavigate }
             refresh();
           }}
           onUnauthorized={onUnauthorized}
+          onNavigate={onNavigate}
         />
       )}
       {drawer && (

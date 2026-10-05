@@ -494,7 +494,7 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
       )}
 
       {noAssets && (
-        <WealthEmptyAssets dict={dict} line={dict.wealthEmptyRetire} writable={writable} onUnauthorized={onUnauthorized} onAdded={() => setRefreshSignal((n) => n + 1)} />
+        <WealthEmptyAssets dict={dict} line={dict.wealthEmptyRetire} writable={writable} onUnauthorized={onUnauthorized} onAdded={() => setRefreshSignal((n) => n + 1)} onNavigate={onNavigate} />
       )}
 
       {!noAssets && (
