@@ -716,6 +716,7 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
             refresh();
           }}
           onUnauthorized={onUnauthorized}
+          onNavigate={onNavigate}
         />
       )}
       {editing && (
@@ -756,12 +757,14 @@ export function WealthEmptyAssets({
   writable,
   onUnauthorized,
   onAdded,
+  onNavigate,
 }: {
   dict: Dictionary;
   line: string;
   writable: boolean;
   onUnauthorized: (retry: () => void) => void;
   onAdded: () => void;
+  onNavigate?: (path: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
   return (
@@ -776,38 +779,92 @@ export function WealthEmptyAssets({
             onAdded();
           }}
           onUnauthorized={onUnauthorized}
+          onNavigate={onNavigate}
         />
       )}
     </>
   );
 }
 
-// AddAssetModal matches the design template's shared "quick-add drawer"
-// (Argus Trading WebUI.dc.html lines 3304-3438, dw.*) as closely as this
-// app's data model allows: a right-side sliding panel, step 1 picks a kind,
-// step 2 is that kind's form. The template's drawer actually picks from
-// FOUR top-level kinds (asset/liability/cash-flow-item/insurance policy) —
-// "policy" has no backend yet (insurance_details is a future phase) and
-// "flow" already has its own dedicated add flow on /w/cash, so this drawer
-// only ever creates assets/liabilities, and its own step-1 list is this
-// app's finer asset `type` taxonomy (KINDS) instead of the template's
-// coarse kind split — "side" is then implied by which KIND was picked,
-// same as the template implies it by which top-level kind bucket you're in,
-// so there's no separate side selector. Skipped: the duplicate-name/
-// LTV-conflict warning banners and the recurring-contribution toggle — both
-// need data (existing asset names, cash-flow context) this modal doesn't
-// have wired in, and a live FX-conversion preview line, since the frontend
-// has no FX rate to show one with (conversion happens server-side only).
+// ASSET_KINDS is what step 1 lists as assets, in the design's order; the loan
+// follows, then the three things this drawer hands over to their own page.
+// (A bare "insurance" asset made here would have no coverage rows, so 保單 goes
+// to /w/insure like the design's policy kind.)
+const ASSET_KINDS: Kind[] = ["deposit", "fund", "bond", "estate", "gold", "crypto", "pension", "other"];
+
+function kindNote(dict: Dictionary, k: Kind): string {
+  switch (k) {
+    case "deposit":
+      return dict.wealthKindNoteDeposit;
+    case "loan":
+      return dict.wealthKindNoteLoan;
+    case "fund":
+      return dict.wealthKindNoteFund;
+    case "bond":
+      return dict.wealthKindNoteBond;
+    case "estate":
+      return dict.wealthKindNoteEstate;
+    case "gold":
+      return dict.wealthKindNoteGold;
+    case "crypto":
+      return dict.wealthKindNoteCrypto;
+    case "pension":
+      return dict.wealthKindNotePension;
+    case "other":
+      return dict.wealthKindNoteOther;
+    default:
+      return "";
+  }
+}
+
+// classNote is the design's wClassNotes: what the chosen 分組 means and which
+// balance-sheet / overview rows it lands in.
+function classNote(dict: Dictionary, g: AssetGroup): string {
+  return g === "liquid"
+    ? dict.wealthClassNoteLiquid
+    : g === "growth"
+      ? dict.wealthClassNoteGrowth
+      : g === "income"
+        ? dict.wealthClassNoteIncome
+        : dict.wealthClassNoteHard;
+}
+
+// similarName is the design's duplicate check: same name, or one contains the
+// other (only once it's longer than 2 characters, so "貸" doesn't match "房貸").
+function similarName(name: string, existing: string[]): string | undefined {
+  const n = name.trim().toLowerCase();
+  if (!n) return undefined;
+  return existing.find((x) => {
+    const l = x.toLowerCase();
+    return l === n || (n.length > 2 && l.includes(n)) || (l.length > 2 && n.includes(l));
+  });
+}
+
+// AddAssetModal follows the design template's shared "quick-add drawer"
+// (Argus Trading WebUI.dc.html, dw.*): a right-side panel, step 1 picks a type
+// (each with a one-line note), step 2 is that type's form with inline required
+// errors, a duplicate-name warning and a footer hint. The design's four coarse
+// kinds are this app's finer asset `type` taxonomy (Kind) instead — the type
+// feeds the nine-way allocation split — and "side" is implied by which kind
+// was picked, so there's no separate side selector. A loan has no 分組 chip:
+// it keeps its default group, which only the net-worth drift reads.
+// Handed over: 現金流項目, 保單 and CSV import each have their own page.
+// Not here: the monthly-payment input (the app derives it from rate and
+// remaining months, it isn't stored), rate type, secured-by with its LTV
+// warning (no column yet), the recurring-contribution toggle, and the live
+// FX-conversion and amount preview lines.
 export function AddAssetModal({
   dict,
   onClose,
   onSuccess,
   onUnauthorized,
+  onNavigate,
 }: {
   dict: Dictionary;
   onClose: () => void;
   onSuccess: () => void;
   onUnauthorized: (retry: () => void) => void;
+  onNavigate?: (path: string) => void;
 }) {
   const [step, setStep] = useState<"pick" | "form">("pick");
   const [kind, setKind] = useState<Kind>("deposit");
@@ -816,14 +873,22 @@ export function AddAssetModal({
   const [venue, setVenue] = useState("");
   const [currency, setCurrency] = useState("TWD");
   const [initialValue, setInitialValue] = useState("");
-  const [bank, setBank] = useState("");
   const [accountNote, setAccountNote] = useState("");
   const [lender, setLender] = useState("");
   const [ratePct, setRatePct] = useState("");
   const [originalPrincipal, setOriginalPrincipal] = useState("");
   const [remainingMonths, setRemainingMonths] = useState("");
+  const [errors, setErrors] = useState<{ name?: string; value?: string }>({});
+  const [existing, setExisting] = useState<WealthAsset[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const flash = useFlash();
+
+  useEffect(() => {
+    fetchWealthAssets()
+      .then((r) => setExisting(r.assets))
+      .catch(() => {});
+  }, []);
 
   function pickKind(next: Kind) {
     setKind(next);
@@ -834,31 +899,61 @@ export function AddAssetModal({
     setStep("form");
   }
 
+  function hand(path: string) {
+    onClose();
+    onNavigate?.(path);
+  }
+
   const side: AssetSide = kind === "loan" ? "liability" : "asset";
+  const dup = similarName(
+    name,
+    existing.filter((a) => a.side === side).map((a) => a.name),
+  );
+  const blocked = !!(errors.name || errors.value);
+  const picks: { key: string; label: string; note: string; go: () => void }[] = [
+    ...ASSET_KINDS.map((k) => ({ key: k, label: kindLabel(dict, k), note: kindNote(dict, k), go: () => pickKind(k) })),
+    { key: "loan", label: kindLabel(dict, "loan"), note: kindNote(dict, "loan"), go: () => pickKind("loan") },
+    ...(onNavigate
+      ? [
+          { key: "flow", label: dict.wealthKindFlow, note: dict.wealthKindNoteFlow, go: () => hand("/w/cash") },
+          { key: "policy", label: dict.wealthKindInsurance, note: dict.wealthKindNotePolicy, go: () => hand("/w/insure") },
+          { key: "csv", label: dict.wealthKindImport, note: dict.wealthKindNoteImport, go: () => hand("/w/import") },
+        ]
+      : []),
+  ];
 
   async function submit() {
+    const e: typeof errors = {};
+    if (!name.trim()) e.name = dict.wealthErrRequired;
+    if (!(Number(initialValue) > 0)) e.value = dict.wealthErrAmount;
+    setErrors(e);
+    if (e.name || e.value) return;
     setSubmitting(true);
     setError(null);
+    // One institution field for the user: a loan's lender, otherwise the venue
+    // (which a deposit also files as its bank).
+    const inst = (kind === "loan" ? lender : venue).trim() || undefined;
     try {
       await createWealthAsset({
         side,
         type: kind,
         name: name.trim(),
         assetGroup: group,
-        venue: venue.trim() || undefined,
+        venue: inst,
         currency,
         initialValue: Number(initialValue),
-        deposit: kind === "deposit" ? { bank: bank.trim() || undefined, accountNote: accountNote.trim() || undefined } : undefined,
+        deposit: kind === "deposit" ? { bank: inst, accountNote: accountNote.trim() || undefined } : undefined,
         loan:
           kind === "loan"
             ? {
-                lender: lender.trim() || undefined,
+                lender: inst,
                 ratePct: ratePct ? Number(ratePct) : undefined,
                 originalPrincipal: originalPrincipal ? Number(originalPrincipal) : undefined,
                 remainingMonths: remainingMonths ? Number(remainingMonths) : undefined,
               }
             : undefined,
       });
+      flash(`${name.trim()}${dict.wealthAddedToast}`);
       onSuccess();
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
@@ -871,7 +966,9 @@ export function AddAssetModal({
     }
   }
 
-  const canSubmit = name.trim() !== "" && Number(initialValue) !== 0 && !Number.isNaN(Number(initialValue));
+  const bad = (on?: string): React.CSSProperties => (on ? { borderColor: "var(--loss)" } : {});
+  const errTag = (on?: string) =>
+    on && <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--loss)" }}>{on}</span>;
 
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
@@ -882,7 +979,7 @@ export function AddAssetModal({
               <Dialog.Title style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11 }}>
                 {step === "pick" ? dict.wealthAddTitle : kindLabel(dict, kind)}
               </Dialog.Title>
-              <span className="wealth-drawer-step">{step === "pick" ? "1/2" : "2/2"}</span>
+              <span className="wealth-drawer-step">{dict.wealthAddStep.replace("%s", step === "pick" ? "1" : "2")}</span>
               <Dialog.Close className="modal-close" style={{ marginLeft: "auto" }} aria-label="close">
                 ×
               </Dialog.Close>
@@ -890,9 +987,13 @@ export function AddAssetModal({
             <div className="wealth-drawer-body">
               {step === "pick" ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-                  {KINDS.map((k) => (
-                    <button key={k} className="wealth-kind-btn" onClick={() => pickKind(k)}>
-                      <span className="wealth-kind-btn-label">{kindLabel(dict, k)}</span>
+                  <span style={{ fontSize: 12, color: "var(--ink-3)" }}>{dict.wealthAddPickHint}</span>
+                  {picks.map((p) => (
+                    <button key={p.key} className="wealth-kind-btn" onClick={p.go}>
+                      <span style={{ display: "flex", flexDirection: "column", gap: 3, textAlign: "left" }}>
+                        <span className="wealth-kind-btn-label">{p.label}</span>
+                        <span style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 400 }}>{p.note}</span>
+                      </span>
                       <span className="wealth-kind-btn-chevron">›</span>
                     </button>
                   ))}
@@ -910,22 +1011,37 @@ export function AddAssetModal({
                     <span className="wealth-drawer-field-label">
                       {dict.wealthName}
                       <span className="wealth-drawer-required">*</span>
+                      {errTag(errors.name)}
                     </span>
-                    <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+                    <input
+                      value={name}
+                      placeholder={side === "liability" ? dict.wealthPhLoanName : dict.wealthPhAssetName}
+                      style={bad(errors.name)}
+                      onChange={(e) => {
+                        setName(e.target.value);
+                        setErrors((p) => ({ ...p, name: undefined }));
+                      }}
+                      autoFocus
+                    />
                   </div>
 
                   <div className="wealth-drawer-field">
                     <span className="wealth-drawer-field-label">
-                      {dict.wealthInitialValue}
+                      {side === "liability" ? dict.wealthFBalance : dict.wealthFValue}
                       <span className="wealth-drawer-required">*</span>
+                      {errTag(errors.value)}
                     </span>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <input
                         className="mono"
                         type="number"
+                        placeholder="0"
                         value={initialValue}
-                        onChange={(e) => setInitialValue(e.target.value)}
-                        style={{ flex: 1, minWidth: 0 }}
+                        onChange={(e) => {
+                          setInitialValue(e.target.value);
+                          setErrors((p) => ({ ...p, value: undefined }));
+                        }}
+                        style={{ flex: 1, minWidth: 0, textAlign: "right", ...bad(errors.value) }}
                       />
                       <div className="wealth-chip-row" style={{ flexShrink: 0 }}>
                         {CURRENCIES.map((c) => (
@@ -942,51 +1058,48 @@ export function AddAssetModal({
                     </div>
                   </div>
 
-                  <div className="wealth-drawer-field">
-                    <span className="wealth-drawer-field-label">
-                      {dict.wealthGroupLabel}
-                      <span className="wealth-drawer-required">*</span>
-                    </span>
-                    <div className="wealth-chip-row">
-                      {GROUPS.map((g) => (
-                        <button
-                          key={g}
-                          type="button"
-                          className={`wealth-chip${group === g ? " active" : ""}`}
-                          onClick={() => setGroup(g)}
-                        >
-                          {groupLabel(dict, g)}
-                        </button>
-                      ))}
+                  {side === "asset" && (
+                    <div className="wealth-drawer-field">
+                      <span className="wealth-drawer-field-label">
+                        {dict.wealthGroupLabel}
+                        <span className="wealth-drawer-required">*</span>
+                      </span>
+                      <div className="wealth-chip-row">
+                        {GROUPS.map((g) => (
+                          <button
+                            key={g}
+                            type="button"
+                            className={`wealth-chip${group === g ? " active" : ""}`}
+                            onClick={() => setGroup(g)}
+                          >
+                            {groupLabel(dict, g)}
+                          </button>
+                        ))}
+                      </div>
+                      <span style={{ fontSize: 12, color: "var(--ink-3)", lineHeight: 1.6, whiteSpace: "pre-line" }}>{classNote(dict, group)}</span>
                     </div>
-                  </div>
+                  )}
 
                   <div className="wealth-drawer-field">
-                    <span className="wealth-drawer-field-label">{dict.wealthVenue}</span>
-                    <input value={venue} onChange={(e) => setVenue(e.target.value)} />
+                    <span className="wealth-drawer-field-label">{kind === "loan" ? dict.wealthLender : dict.wealthFInst}</span>
+                    <input
+                      value={kind === "loan" ? lender : venue}
+                      placeholder={dict.wealthPhInst}
+                      onChange={(e) => (kind === "loan" ? setLender(e.target.value) : setVenue(e.target.value))}
+                    />
                   </div>
 
                   {kind === "deposit" && (
-                    <>
-                      <div className="wealth-drawer-field">
-                        <span className="wealth-drawer-field-label">{dict.wealthBank}</span>
-                        <input value={bank} onChange={(e) => setBank(e.target.value)} />
-                      </div>
-                      <div className="wealth-drawer-field">
-                        <span className="wealth-drawer-field-label">{dict.wealthAccountNote}</span>
-                        <input value={accountNote} onChange={(e) => setAccountNote(e.target.value)} />
-                      </div>
-                    </>
+                    <div className="wealth-drawer-field">
+                      <span className="wealth-drawer-field-label">{dict.wealthAccountNote}</span>
+                      <input value={accountNote} onChange={(e) => setAccountNote(e.target.value)} />
+                    </div>
                   )}
                   {kind === "loan" && (
                     <>
                       <div className="wealth-drawer-field">
-                        <span className="wealth-drawer-field-label">{dict.wealthLender}</span>
-                        <input value={lender} onChange={(e) => setLender(e.target.value)} />
-                      </div>
-                      <div className="wealth-drawer-field">
                         <span className="wealth-drawer-field-label">{dict.wealthRatePct}</span>
-                        <input className="mono" type="number" value={ratePct} onChange={(e) => setRatePct(e.target.value)} />
+                        <input className="mono" type="number" placeholder="2.5" value={ratePct} onChange={(e) => setRatePct(e.target.value)} />
                       </div>
                       <div className="wealth-drawer-field">
                         <span className="wealth-drawer-field-label">{dict.wealthOriginalPrincipal}</span>
@@ -1005,8 +1118,27 @@ export function AddAssetModal({
                           value={remainingMonths}
                           onChange={(e) => setRemainingMonths(e.target.value)}
                         />
+                        <span style={{ fontSize: 11, color: "var(--ink-3)", lineHeight: 1.6 }}>{dict.wealthLoanHint}</span>
                       </div>
                     </>
+                  )}
+
+                  {dup && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 9,
+                        alignItems: "flex-start",
+                        padding: "10px 12px",
+                        borderRadius: 9,
+                        background: "rgba(245,158,11,.1)",
+                        border: "1px solid rgba(245,158,11,.35)",
+                        color: "#f59e0b",
+                      }}
+                    >
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: ".06em", flexShrink: 0 }}>{dict.wealthWarnDup}</span>
+                      <span style={{ fontSize: 11.5, lineHeight: 1.45 }}>{dict.wealthWarnDupMsg + dup}</span>
+                    </div>
                   )}
                   {error && <div className="error-message">{error}</div>}
                 </>
@@ -1014,11 +1146,14 @@ export function AddAssetModal({
             </div>
             {step === "form" && (
               <div className="wealth-drawer-footer">
-                <button className="wealth-drawer-cancel" onClick={onClose}>
+                <span style={{ fontSize: 11.5, alignSelf: "center", maxWidth: 150, color: blocked ? "var(--loss)" : "var(--ink-3)" }}>
+                  {blocked ? dict.wealthErrBlocked : dict.wealthAddHintLive}
+                </span>
+                <button className="wealth-drawer-cancel" style={{ marginLeft: "auto" }} onClick={onClose}>
                   {dict.cancel}
                 </button>
-                <button className="btn-primary" style={{ marginLeft: "auto" }} disabled={!canSubmit || submitting} onClick={submit}>
-                  {dict.wealthAddAsset}
+                <button className="btn-primary" disabled={submitting} onClick={submit}>
+                  {dict.wealthAddSave}
                 </button>
               </div>
             )}

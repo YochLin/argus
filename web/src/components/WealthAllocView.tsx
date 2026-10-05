@@ -10,6 +10,7 @@ interface Props {
   dict: Dictionary;
   writable: boolean;
   onUnauthorized: (retry: () => void) => void;
+  onNavigate?: (path: string) => void;
 }
 
 const MODELS: AllocationModel[] = ["conserv", "balanced", "growth"];
@@ -48,7 +49,7 @@ function donutGradient(rows: WealthAllocRow[]): string {
   return `conic-gradient(${stops.join(", ")})`;
 }
 
-export function WealthAllocView({ dict, writable, onUnauthorized }: Props) {
+export function WealthAllocView({ dict, writable, onUnauthorized, onNavigate }: Props) {
   const [model, setModel] = useState<AllocationModel>(loadModel);
   const [alloc, setAlloc] = useState<WealthAlloc | null>(null);
   const [error, setError] = useState(false);
@@ -98,7 +99,7 @@ export function WealthAllocView({ dict, writable, onUnauthorized }: Props) {
       </div>
 
       {noAssets && (
-        <WealthEmptyAssets dict={dict} line={dict.wealthEmptyAlloc} writable={writable} onUnauthorized={onUnauthorized} onAdded={() => setRefreshSignal((n) => n + 1)} />
+        <WealthEmptyAssets dict={dict} line={dict.wealthEmptyAlloc} writable={writable} onUnauthorized={onUnauthorized} onAdded={() => setRefreshSignal((n) => n + 1)} onNavigate={onNavigate} />
       )}
 
       {!noAssets && (
