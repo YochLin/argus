@@ -24,7 +24,7 @@ import { convertTWD, shortTWD } from "../currency";
 import { CATEGORY_COLOR, categoryLabel, loadModel } from "../wealthCategory";
 import { useFlash } from "../flash";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { WealthEmptyCard, WealthGuide } from "./WealthOnboarding";
+import { WealthEmptyCard, WealthGuide, useGateAdd } from "./WealthOnboarding";
 
 interface Props {
   dict: Dictionary;
@@ -241,6 +241,7 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
   const [editing, setEditing] = useState<WealthAsset | null>(null);
   const [archiving, setArchiving] = useState<WealthAsset | null>(null);
   const flash = useFlash();
+  const gateAdd = useGateAdd(dict, writable);
 
   useEffect(() => {
     setError(false);
@@ -432,15 +433,13 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
             </button>
           ))}
         </div>
-        {writable && (
-          <button className="home-add-btn" onClick={() => setShowAdd(true)}>
-            <span style={{ fontSize: 14, lineHeight: 1 }}>＋</span>
-            {dict.wealthHomeAddNew}
-          </button>
-        )}
+        <button className="home-add-btn" onClick={gateAdd(() => setShowAdd(true))}>
+          <span style={{ fontSize: 14, lineHeight: 1 }}>＋</span>
+          {dict.wealthHomeAddNew}
+        </button>
       </div>
 
-      {empty && <WealthEmptyCard dict={dict} line={dict.wealthEmptyNet} onAdd={writable ? () => setShowAdd(true) : undefined} />}
+      {empty && <WealthEmptyCard dict={dict} line={dict.wealthEmptyNet} onAdd={gateAdd(() => setShowAdd(true))} />}
       {assets && <WealthGuide dict={dict} hasAssets={!empty} onNavigate={onNavigate} />}
 
       {!empty && (
@@ -764,9 +763,10 @@ export function WealthEmptyAssets({
   onAdded: () => void;
 }) {
   const [adding, setAdding] = useState(false);
+  const gateAdd = useGateAdd(dict, writable);
   return (
     <>
-      <WealthEmptyCard dict={dict} line={line} onAdd={writable ? () => setAdding(true) : undefined} />
+      <WealthEmptyCard dict={dict} line={line} onAdd={gateAdd(() => setAdding(true))} />
       {adding && (
         <AddAssetModal
           dict={dict}

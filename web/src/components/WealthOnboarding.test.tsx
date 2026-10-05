@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { WealthEmptyCard, WealthGuide, useNoAssets } from "./WealthOnboarding";
+import { WealthEmptyCard, WealthGuide, useGateAdd, useNoAssets } from "./WealthOnboarding";
+import { FlashProvider } from "../flash";
 import { getDictionary } from "../i18n";
 import * as api from "../api";
 
@@ -71,10 +72,34 @@ describe("WealthEmptyCard", () => {
     expect(onAdd).toHaveBeenCalledTimes(1);
   });
 
-  it("has no button when it can't add (read-only)", () => {
-    render(<WealthEmptyCard dict={dict} line="還沒有資料" />);
-    expect(screen.getByText("還沒有資料")).not.toBeNull();
-    expect(screen.queryByRole("button")).toBeNull();
+});
+
+describe("useGateAdd", () => {
+  function Add({ writable, open }: { writable: boolean; open: () => void }) {
+    const gateAdd = useGateAdd(dict, writable);
+    return <button onClick={gateAdd(open)}>add</button>;
+  }
+  const click = (writable: boolean, open: () => void) => {
+    render(
+      <FlashProvider>
+        <Add writable={writable} open={open} />
+      </FlashProvider>,
+    );
+    fireEvent.click(screen.getByText("add"));
+  };
+
+  it("opens the form on a writable server", () => {
+    const open = vi.fn();
+    click(true, open);
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(dict.wealthRoNoAdd)).toBeNull();
+  });
+
+  it("opens nothing read-only, and says why", () => {
+    const open = vi.fn();
+    click(false, open);
+    expect(open).not.toHaveBeenCalled();
+    expect(screen.getByText(dict.wealthRoNoAdd)).not.toBeNull();
   });
 });
 

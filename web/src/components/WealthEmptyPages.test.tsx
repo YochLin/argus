@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { WealthHomeView } from "./WealthHomeView";
 import { WealthBalanceView } from "./WealthBalanceView";
 import { WealthCashView } from "./WealthCashView";
@@ -92,10 +92,26 @@ describe.each(cases)("$view page", ({ view, line, give, body }) => {
     expect(screen.getAllByText(body()).length).toBeGreaterThan(0);
   });
 
-  it("offers no add button read-only", async () => {
+  it("keeps the add button read-only, and a click says why instead of opening a form", async () => {
     await show(view, false);
     expect(screen.getByText(line())).not.toBeNull();
-    expect(addButton()).toBeNull();
+    fireEvent.click(addButton()!);
+    expect(screen.getByText(dict.wealthRoNoAdd)).not.toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+// The page header's own add button (/w/alloc and /w/retire only have the card's).
+describe.each([
+  { view: "home", button: () => document.querySelector(".home-add-btn") },
+  { view: "balance", button: () => screen.getByText(dict.wealthAddAsset) },
+  { view: "cash", button: () => screen.getByText(`+ ${dict.wealthCashAdd}`) },
+  { view: "insure", button: () => screen.getByText(`+ ${dict.wealthInsureAdd}`) },
+] as const)("$view page header", ({ view, button }) => {
+  it("keeps its add button read-only, and a click says why", async () => {
+    await show(view, false);
+    fireEvent.click(button()!);
+    expect(screen.getByText(dict.wealthRoNoAdd)).not.toBeNull();
   });
 });
 

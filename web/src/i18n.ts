@@ -850,6 +850,7 @@ export interface Dictionary {
   wealthRestore: string;
   wealthFlashRestored: string; // %s = name
   wealthRoNoChange: string;
+  wealthRoNoAdd: string;
   wealthSideAsset: string;
   wealthSideLiability: string;
   // A balance-sheet row's ⋯ button and click-to-edit value.
@@ -2119,6 +2120,7 @@ const en: Dictionary = {
   wealthRestore: "Restore",
   wealthFlashRestored: "Restored “%s”",
   wealthRoNoChange: "Read-only: set a password to make changes",
+  wealthRoNoAdd: "Read-only: set WEB_PASSWORD to add entries",
   wealthSideAsset: "Asset",
   wealthSideLiability: "Liability",
   wealthRowMore: "Edit · history · archive",
@@ -3353,6 +3355,7 @@ const zh: Dictionary = {
   wealthRestore: "取消封存",
   wealthFlashRestored: "已取消封存「%s」",
   wealthRoNoChange: "唯讀模式：設定密碼後才能變更",
+  wealthRoNoAdd: "唯讀模式：設定 WEB_PASSWORD 後才能新增",
   wealthSideAsset: "資產",
   wealthSideLiability: "負債",
   wealthRowMore: "編輯 · 紀錄 · 封存",
