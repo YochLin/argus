@@ -6,6 +6,10 @@
    working light mode (values ported from the same Figma reference's own
    light-mode branch, not eyeballed) toggled by App.tsx's theme switch. */
 :root {
+  /* Tells the browser which palette to draw its own controls in — a <select>'s
+     arrow and dropdown list, date pickers, scrollbars — otherwise a dark page
+     gets a bright white option list. */
+  color-scheme: dark;
   --bg: #0f172a;
   --surface: #1e293b;
   --surface-2: #182033; /* .card's gradient's second stop (dark only — flat in light mode) */
@@ -44,6 +48,7 @@
    ponytail note on those files: their grid/axis colors stay fixed to the
    dark palette regardless of this toggle. */
 :root.light {
+  color-scheme: light;
   --bg: #f8fafc;
   --surface: #ffffff;
   --surface-2: #ffffff;
@@ -4573,7 +4578,8 @@ th {
   font-size: 13px;
 }
 
-.wealth-drawer-field input {
+.wealth-drawer-field input,
+.wealth-drawer-field select {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 7px;

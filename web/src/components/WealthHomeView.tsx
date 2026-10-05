@@ -115,12 +115,14 @@ export function groupLabel(dict: Dictionary, g: AssetGroup): string {
 // currency is the caller's own prefix; "NT$" marks a TWD-denominated wealth
 // value, the only kind the 顯示幣別 selector converts (foreign-currency rows
 // like a USD cash event keep their own symbol).
+//
+// A negative sign goes before the symbol ("−NT$2,500,000", like shortTWD), not
+// between the symbol and the digits; an amount that rounds to 0 carries none.
 export function fmtMoney(v: number, currency: string): string {
-  if (currency === "NT$") {
-    const c = convertTWD(v);
-    return `${c.symbol}${c.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-  }
-  return `${currency}${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  const c = currency === "NT$" ? convertTWD(v) : { symbol: currency, value: v };
+  const abs = Math.abs(c.value);
+  const sign = c.value < 0 && Math.round(abs) > 0 ? "−" : "";
+  return `${sign}${c.symbol}${abs.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
 // twdAmount is how every wealth page shows an amount that may be foreign: the
