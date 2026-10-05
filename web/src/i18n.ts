@@ -794,6 +794,10 @@ export interface Dictionary {
   wealthHomeHeadOk: string;
   wealthHomeThinShort: string;
   wealthHomeNeedAssets: string;
+  wealthNeedModel: string;
+  wealthNeedSpend: string;
+  wealthNeedHist: string;
+  wealthOrdersThin: string; // %s = why
   wealthHomeAllocTitle: string;
   wealthHomeClass: string;
   wealthHomeCurrent: string;
@@ -2065,6 +2069,10 @@ const en: Dictionary = {
   wealthHomeHeadOk: "On target",
   wealthHomeThinShort: "not enough data",
   wealthHomeNeedAssets: "only %s assets — need at least 3",
+  wealthNeedModel: "no target model picked",
+  wealthNeedSpend: "monthly spending not entered",
+  wealthNeedHist: "under a month of history — nothing to compare yet",
+  wealthOrdersThin: "No rebalance orders yet: %s. They'll compute once that's filled in.",
   wealthHomeAllocTitle: "ALLOCATION VS TARGET",
   wealthHomeClass: "Asset class",
   wealthHomeCurrent: "Current",
@@ -3301,6 +3309,10 @@ const zh: Dictionary = {
   wealthHomeHeadOk: "配置符合目標",
   wealthHomeThinShort: "資料不足",
   wealthHomeNeedAssets: "資產僅 %s 筆，至少需 3 筆",
+  wealthNeedModel: "尚未選目標模型",
+  wealthNeedSpend: "尚未填每月支出",
+  wealthNeedHist: "建檔未滿一個月，尚無比較基準",
+  wealthOrdersThin: "暫不產生再平衡指令：%s。補齊後才會計算。",
   wealthHomeAllocTitle: "資產配置 vs 目標",
   wealthHomeClass: "資產類別",
   wealthHomeCurrent: "現在",

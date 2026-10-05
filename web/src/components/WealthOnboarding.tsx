@@ -27,19 +27,41 @@ export function WealthEmptyCard({ dict, line, onAdd }: { dict: Dictionary; line:
   );
 }
 
-// useNoAssets is true once the asset list has loaded and holds no asset — a
-// liability alone doesn't count, allocation and retirement both work off assets.
-// Asked of the list itself because those pages' own totals are also null when a
-// currency has no rate, which is not "nothing recorded". False until loaded.
-export function useNoAssets(refreshSignal: number): boolean {
-  const [none, setNone] = useState(false);
+// useAssetCount is the number of recorded assets (liabilities don't count —
+// allocation and retirement both work off assets), null until the list has
+// loaded. Asked of the list itself because those pages' own totals are also
+// null when a currency has no rate, which is not "nothing recorded".
+export function useAssetCount(refreshSignal: number): number | null {
+  const [n, setN] = useState<number | null>(null);
   useEffect(() => {
     fetchWealthAssets()
-      .then((r) => setNone(!r.assets.some((a) => a.side === "asset")))
+      .then((r) => setN(r.assets.filter((a) => a.side === "asset").length))
       .catch(() => {});
   }, [refreshSignal]);
-  return none;
+  return n;
 }
+
+// useNoAssets is true once the asset list has loaded and holds no asset.
+export function useNoAssets(refreshSignal: number): boolean {
+  return useAssetCount(refreshSignal) === 0;
+}
+
+// wealthReadiness is the design's wReady(): why a metric reads "—" instead of
+// a number. whyFewA (fewer than 3 assets) blocks anything computed from the
+// mix; whyDrift adds "no target model picked yet", since drift and rebalance
+// orders are measured against it; whySpend is "no monthly spending", which the
+// liquidity months need. "" means that reason doesn't apply.
+export function wealthReadiness(dict: Dictionary, assetCount: number, spendKnown: boolean) {
+  const whyFewA = assetCount < 3 ? dict.wealthHomeNeedAssets.replace("%s", String(assetCount)) : "";
+  return {
+    whyFewA,
+    whyDrift: hasPickedModel() ? whyFewA : dict.wealthNeedModel,
+    whySpend: spendKnown ? "" : dict.wealthNeedSpend,
+  };
+}
+
+// thinNote is the design's "資料不足 · reason" line under a metric.
+export const thinNote = (dict: Dictionary, why: string) => (why ? `${dict.wealthHomeThinShort} · ${why}` : "");
 
 // "Hide" is this app's own addition: the design's guide is part of an
 // empty-account demo, but a real account that never takes the optional
