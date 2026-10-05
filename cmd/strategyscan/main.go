@@ -65,7 +65,18 @@ var sp600TickersRaw string
 // twStrategies adds Phase 15's 網 5 (TW only — no US equivalent, see
 // docs/phase-15-trust-follow.md §6). Order is shared by the hit map, the
 // record loop and the summary printout.
-var baseStrategies = []string{"squeeze_breakout", "box_bottom", "trend_breakout", "trend_pullback", gapDriftStrategy, gapDriftT1Strategy, emaCrossStrategy, emaCrossUpStrategy}
+var baseStrategies = []string{"squeeze_breakout", "box_bottom", "trend_breakout", "trend_pullback", gapDriftStrategy, gapDriftT1Strategy, emaCrossStrategy, emaCrossUpStrategy, kdjOversoldStrategy, kdjPullbackStrategy}
+
+// kdjOversoldStrategy and kdjPullbackStrategy are the two entries of the
+// 2026-09-19 request (signals.CheckKDJAboveMA100Exact and
+// signals.CheckKDJPullback50Exact). Both are meant to be run under
+// -support-ma-exit, which is that request's exit half; without it they are
+// scored on paper.DefaultExits like every other screen, which answers a
+// different question (is the ENTRY any good on its own) and is worth having.
+const (
+	kdjOversoldStrategy = "kdj_oversold_ma100"
+	kdjPullbackStrategy = "kdj_pullback50_ma100"
+)
 
 // emaCrossStrategy is the plain EMA10 reclaim (see
 // signals.CheckEMACrossExact), exited through paper.DefaultExits like every
@@ -218,6 +229,29 @@ type TriggerRecord struct {
 	BeatBench5d  bool
 	BeatBench10d bool
 	BeatBench20d bool
+
+	// Max favourable / adverse excursion over the same 20 bars, in % of the
+	// entry close. Unlike every trade column below, these depend on NO exit
+	// rule at all — they are how far the position ever ran up and how far it
+	// ever sank while it was open, which is the question "is this a good
+	// place to buy" asked without answering "when would you sell". Only set
+	// when Has20d is (same 20 bars must exist).
+	MFE20 float64
+	MAE20 float64
+
+	// Which of +x% and -x% the next 20 bars touched first: +1 up, -1 down,
+	// 0 neither. See race().
+	Race5  int
+	Race10 int
+	Race15 int
+
+	// The same race with the levels set at +/-2 and +/-3 ATR(14) of the
+	// entry bar instead of a fixed %, which asks the question a fixed % can
+	// not: is this a better place to buy THAN A RANDOM DAY IN A STOCK THIS
+	// VOLATILE. 0 also means "ATR unavailable" — indistinguishable from
+	// "neither level touched", and both are dropped by the same reader.
+	RaceATR2 int
+	RaceATR3 int
 
 	// §11.9 full-trade replay (strategy hits only, not baseline — see
 	// simulateTrade doc comment).
@@ -439,6 +473,13 @@ func main() {
 	// take-profit sweep taught (see paper.DefaultExits): here too, win rate
 	// and expected value point in opposite directions, and win rate is the
 	// one that can be bought.
+	// The 2026-09-19 request's own exit rules, replacing paper.DefaultExits
+	// for the whole run — screens and random-entry control alike, which is
+	// the only reason a number produced under it can be read at all (see
+	// support_ma_exit.go). The value IS the KD level the exit watches, so a
+	// run measures exactly one of the request's two exits.
+	supportMAExitFlag := flag.Float64("support-ma-exit", 0, "full-trade replay: use the 2026-09-19 request's exit rules instead of paper.DefaultExits — stop at the trailing-low support, exit when the close loses its MA20 while K is below THIS level (20 for the oversold-turn entry, 50 for the pullback entry); 0 = off (default)")
+	supportLookbackFlag := flag.Int("support-lookback", 20, "-support-ma-exit: how many trailing bars (signal bar included) the support low is taken from; 20 ~= 「近期低點」 over the last month")
 	maxHoldDaysFlag := flag.Int("max-hold-days", 60, "full-trade replay: max holding days before a timeout exit (§11.9/PR3: 20 -> 60, matching the 數週到數月 position style; annualized return is flat from 20 to 120, see the doc comment)")
 	// The time stop is the one exit rule that exists ONLY in this tool —
 	// paper.Config has no max-holding-period field, so the live paper
@@ -649,6 +690,14 @@ func main() {
 	}
 	if *regimeGateFlag != "off" && !*portfolioBacktestFlag {
 		fmt.Printf("Error: -regime-gate requires -portfolio-backtest (it has nothing to gate otherwise)\n")
+		os.Exit(1)
+	}
+
+	// The sweeps replay the ATR stop / holding period the support-MA exit
+	// replaces, so under it they would write rows labelled with a stop width
+	// no trade in the run actually used.
+	if *supportMAExitFlag > 0 && (*holdSweepFlag != "" || *stopSweepFlag != "" || *portfolioBacktestFlag) {
+		fmt.Printf("Error: -support-ma-exit replaces the exit engine those runs sweep/replay (-hold-sweep, -stop-sweep, -portfolio-backtest)\n")
 		os.Exit(1)
 	}
 
@@ -1083,6 +1132,9 @@ func main() {
 	// byte-identical to a run without the sweep.
 	sweepHolds := append(append([]int{}, holdSweep...), *maxHoldDaysFlag)
 	replay := func(strat, ticker string, candles []data.Candle, t int) (TradeOutcome, bool) {
+		if *supportMAExitFlag > 0 {
+			return simulateTradeSupportMA(candles, t, exitCfg, *slippagePctFlag, *maxHoldDaysFlag, *supportLookbackFlag, *supportMAExitFlag)
+		}
 		if holdW == nil {
 			return simulateTrade(candles, t, exitCfg, *slippagePctFlag, *maxHoldDaysFlag)
 		}
@@ -1269,6 +1321,9 @@ func main() {
 				gapDriftStrategy:   signals.CheckPostGapDriftExact(sub, screenParams),
 				emaCrossStrategy:   signals.CheckEMACrossExact(sub),
 				emaCrossUpStrategy: signals.CheckEMACrossUpExact(sub),
+
+				kdjOversoldStrategy: signals.CheckKDJAboveMA100Exact(sub),
+				kdjPullbackStrategy: signals.CheckKDJPullback50Exact(sub),
 			}
 			// Same signal, different entry bar — never re-screened, so the
 			// two variants can only ever differ by the entry.
@@ -1411,6 +1466,8 @@ func main() {
 	printSummary(benchTicker, "Post-Gap Drift (網 6，延一日進場)", filterByStrategy(records, gapDriftT1Strategy), &ctrl)
 	printSummary(benchTicker, "EMA10 站上（實驗）", filterByStrategy(records, emaCrossStrategy), &ctrl)
 	printSummary(benchTicker, "EMA10 站上＋均線向上（實驗）", filterByStrategy(records, emaCrossUpStrategy), &ctrl)
+	printSummary(benchTicker, "MA100 之上，K 突破 20（實驗）", filterByStrategy(records, kdjOversoldStrategy), &ctrl)
+	printSummary(benchTicker, "MA100 之上，K 二次回踩 50（實驗）", filterByStrategy(records, kdjPullbackStrategy), &ctrl)
 	if earningsDates != nil {
 		printSummary(benchTicker, "Post-Gap Drift Confirmed (網 6 + SEC filed 日期 ±1 交易日)", filterByStrategy(records, gapDriftConfirmedStrategy), &ctrl)
 	}
@@ -1550,7 +1607,72 @@ func fillForwardReturns(rec *TriggerRecord, idx int, candles, benchCandles []dat
 	}
 	if r, b, ok := calcForwardReturn(idx, 20, candles, benchCandles, benchDateIdx); ok {
 		rec.Ret20d, rec.BenchRet20d, rec.Has20d, rec.BeatBench20d = r, b, true, r > b
+		rec.MFE20, rec.MAE20 = excursion(candles, idx, 20)
+		rec.Race5 = race(candles, idx, 20, 5)
+		rec.Race10 = race(candles, idx, 20, 10)
+		rec.Race15 = race(candles, idx, 20, 15)
+		if atr := signals.ATR(data.Highs(candles[:idx+1]), data.Lows(candles[:idx+1]), data.Closes(candles[:idx+1]), 14); atr > 0 && candles[idx].Close > 0 {
+			atrPct := atr / candles[idx].Close * 100
+			rec.RaceATR2 = race(candles, idx, 20, 2*atrPct)
+			rec.RaceATR3 = race(candles, idx, 20, 3*atrPct)
+		}
 	}
+}
+
+// race reports which of +pct% and -pct% the price touched FIRST over the
+// next days bars: +1 up, -1 down, 0 neither. It is the question a
+// discretionary exit actually asks — MFE and MAE carry no order, so an entry
+// that sank 9% and then ran 20% looks identical there to one that ran 20%
+// clean.
+//
+// A bar that touches both levels is counted as DOWN: daily bars carry no
+// intrabar order, and for a long entry that is the assumption that cannot
+// flatter the result. It applies to the screen and the control alike.
+func race(candles []data.Candle, idx, days int, pct float64) int {
+	entry := candles[idx].Close
+	if entry <= 0 {
+		return 0
+	}
+	up, down := entry*(1+pct/100), entry*(1-pct/100)
+	for _, c := range candles[idx : idx+days+1] {
+		if c.Low > 0 && c.Low <= down {
+			return -1
+		}
+		if c.High >= up {
+			return 1
+		}
+	}
+	return 0
+}
+
+// excursion is the best and worst the position ever got to over the next
+// days bars, in % of the entry close — the intrabar high and low, not the
+// close, since a stop or a nerve gives way to a price that was touched, not
+// to one that was printed at 4pm.
+//
+// A local copy of internal/receval's mfeMae rather than an import: same
+// kept boundary between this research tool and the live path that
+// maxDrawdownPct already has three copies of (AGENTS.md), and the shapes
+// differ — that one starts from a recommendation row, this one from an
+// index into a cache.
+func excursion(candles []data.Candle, idx, days int) (mfe, mae float64) {
+	entry := candles[idx].Close
+	if entry <= 0 {
+		return 0, 0
+	}
+	for _, c := range candles[idx : idx+days+1] {
+		if c.High > 0 {
+			if up := (c.High - entry) / entry * 100; up > mfe {
+				mfe = up
+			}
+		}
+		if c.Low > 0 {
+			if down := (c.Low - entry) / entry * 100; down < mae {
+				mae = down
+			}
+		}
+	}
+	return mfe, mae
 }
 
 func calcForwardReturn(t, days int, stockCandles, benchCandles []data.Candle, benchDateIdx map[string]int) (stockRet, benchRet float64, ok bool) {
@@ -1938,6 +2060,7 @@ func writeCSV(path string, recs []TriggerRecord) {
 		"Ret20d", "BenchRet20d", "BeatBench20d", "Has20d",
 		"TradeExitRet", "TradeExitReason", "TradeHoldDays", "HasTrade",
 		"TradeStop", "TradeExitDate", "TradeExitPrice",
+		"MFE20", "MAE20", "Race5", "Race10", "Race15", "RaceATR2", "RaceATR3",
 	})
 
 	for _, r := range recs {
@@ -1969,6 +2092,10 @@ func writeCSV(path string, recs []TriggerRecord) {
 			fmt.Sprintf("%.2f", r.TradeStop),
 			r.TradeExitDate,
 			fmt.Sprintf("%.2f", r.TradeExitPrice),
+			fmt.Sprintf("%.4f", r.MFE20),
+			fmt.Sprintf("%.4f", r.MAE20),
+			strconv.Itoa(r.Race5), strconv.Itoa(r.Race10), strconv.Itoa(r.Race15),
+			strconv.Itoa(r.RaceATR2), strconv.Itoa(r.RaceATR3),
 		})
 	}
 	fmt.Printf("Saved CSV report to %s\n", path)
@@ -1998,6 +2125,7 @@ func writeTradeDumpCSV(path string, recs []TriggerRecord) {
 	if err := w.Write([]string{
 		"Date", "Ticker", "ExitRet", "ExitReason", "HoldDays",
 		"RS63", "RS252", "Mom12_1", "DollarVol20", "SupportDist", "AbsLevelDist",
+		"Ret5d", "Ret10d", "Ret20d", "Has20d", "MFE20", "MAE20", "Race5", "Race10", "Race15", "RaceATR2", "RaceATR3",
 	}); err != nil {
 		fmt.Printf("Error writing trade dump: %v\n", err)
 		return
@@ -2018,6 +2146,14 @@ func writeTradeDumpCSV(path string, recs []TriggerRecord) {
 			fmtFactor(r.Factors.DollarVol20),
 			fmtFactor(r.Factors.SupportDist),
 			fmtFactor(r.Factors.AbsLevelDist),
+			strconv.FormatFloat(r.Ret5d, 'f', 4, 64),
+			strconv.FormatFloat(r.Ret10d, 'f', 4, 64),
+			strconv.FormatFloat(r.Ret20d, 'f', 4, 64),
+			strconv.FormatBool(r.Has20d),
+			strconv.FormatFloat(r.MFE20, 'f', 4, 64),
+			strconv.FormatFloat(r.MAE20, 'f', 4, 64),
+			strconv.Itoa(r.Race5), strconv.Itoa(r.Race10), strconv.Itoa(r.Race15),
+			strconv.Itoa(r.RaceATR2), strconv.Itoa(r.RaceATR3),
 		}); err != nil {
 			fmt.Printf("Error writing trade dump: %v\n", err)
 			return

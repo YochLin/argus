@@ -1273,3 +1273,272 @@ func emaCross(candles []data.Candle, requireRising bool) bool {
 	}
 	return true
 }
+
+// KDJ-above-MA100 (user request, 2026-09-19). Fixed constants, not
+// ScreenParams knobs, for the same reason CheckEMACrossExact's are: the
+// numbers ARE the hypothesis under test, and a knob would invite re-tuning
+// them against the same two splits the answer came from.
+const (
+	kdjTrendMA      = 100 // 「MA100 以上的 K 線才考慮」
+	kdjBreakoutTrig = 20  // 「K 突破 20」
+)
+
+// CheckKDJAboveMA100Exact evaluates candles' last bar against "a KD(9,3)
+// oversold turn, but only while the stock is in an uptrend":
+//
+//  1. close is above its MA100 (trend gate),
+//  2. K crossed up through 20 on this bar — yesterday's K at or below 20,
+//     today's above it,
+//  3. D is rising on the same bar.
+//
+// (2) already implies K is rising, so (3) is what "KD 的線是向上" adds beyond
+// the cross: the slower line has to be turning with it, not still falling
+// while K pops on a single strong close.
+//
+// It is an EVENT (the cross), like CheckEMACrossExact and unlike
+// CheckMTFCrossExact's state — the 5-bar dedup above it only ever suppresses
+// a second cross inside a week, which is a whipsaw and the thing to suppress.
+//
+// Deliberately bare beyond those three conditions: no volume gate, no
+// pattern filter. Every added condition would make a negative answer
+// unattributable. cmd/strategyscan applies its -min-avg-volume floor to the
+// control population too, so the liquidity screen is common to both sides
+// rather than an edge handed to this one.
+//
+// # Result: measured 2026-09-19 — negative on US, tail-only on TW, NO-SHIP
+//
+// Per-trade excess exit return vs. the random-entry control replayed through
+// identical exit rules in the same run, date-clustered bootstrap (400
+// resamples of dates), split 2021-11-01. The request's own exit rules are
+// cmd/strategyscan's -support-ma-exit (support low stop + 「KD 跌破 X 且跌破
+// MA20」), and they apply to the control too, so the rows differ by the entry
+// alone. The third row swaps in paper.DefaultExits to ask whether the ENTRY
+// is any good under an exit that is already calibrated:
+//
+//	exit config                       US in-samp   US holdout   TW in-samp   TW holdout
+//	support+MA20, K<20 (the request)  -2.70 1.7o   -0.73 1.5o   +0.96 0.9o   +1.14 1.1o
+//	support+MA20, K<50               -2.21 1.6o   -0.45 1.2o   +1.13 1.1o   +0.39 0.5o
+//	paper.DefaultExits               -1.97 1.1o   -0.97 1.7o   +1.07 0.7o   +2.03 1.7o
+//
+// US is negative in all six cells, and not for want of power (1,700 trades
+// in-sample, 2,264 in the holdout, SE 0.37-1.85). TW is positive but never
+// clears §4.4's 1 SE in BOTH splits under any one exit — and the sign of the
+// miss moves with the exit, which is what a sample with no effect in it
+// looks like.
+//
+// TW's one genuinely interesting reading is the date-matched column (control
+// restricted to the days the screen fired): +2.53/2.1o and +1.45/1.3o under
+// the request's exit, +3.03/2.1o and +2.45/1.8o under DefaultExits — over 1
+// SE in both splits, in all three exit configs. That says the screen beats
+// its SAME-DAY peers by more than it beats the window average, i.e. it fires
+// on days that were bad for everything. It is not enough to ship on:
+//
+//   - The pre-registered number is the overall column (§2.5), and it fails.
+//   - The edge is a thin right tail, the same way the 2026-09-19
+//     trend_breakout re-verification failed. Dropping the best 5% of trades
+//     from both sides leaves +0.06pp (TW in-samp) and +0.02pp (holdout)
+//     under the request's exit, and the MEDIAN excess is negative in every
+//     TW cell (-0.36 to -0.66pp). The typical trigger loses to a random day.
+//   - The TW sample here is tw150 over Yahoo — today's index membership, so
+//     survivorship-biased, and 116 names. It is not the whole-market
+//     point-in-time cache the TW numbers elsewhere in this file were
+//     measured on (no Shioaji daemon was reachable for this run), so a
+//     borderline TW-only positive is exactly the kind of result that sample
+//     manufactures. Re-run it there before believing it.
+//
+// # Is the ENTRY BAR itself a good place to buy, exit rules aside?
+//
+// Asked separately (2026-09-19) because a trade number can only ever answer
+// "entry + exit", and the request's premise was that the exit is
+// discretionary. These are properties of the next 20 bars of tape and depend
+// on no exit rule at all — cmd/strategyscan's MFE20/MAE20 and Race* columns,
+// screen minus the same random-entry control, same bootstrap:
+//
+//	                    US in-samp   US holdout   TW in-samp   TW holdout
+//	mean 20d return     -1.15 0.8o   +0.07 0.1o   +0.40 0.5o   +1.07 1.5o
+//	MFE (ran up to)     -1.90 1.4o   -0.46 1.3o   +0.58 1.0o   +1.46 2.3o
+//	MAE (sank to)       -0.07 0.1o   -0.25 0.7o   -0.60 1.3o   -0.56 1.3o
+//
+// US: less upside offered, no less downside — a worse place to buy on every
+// horizon measured. TW: BOTH excursions bigger, mean return ~0.
+//
+// The TW shape is scale-dependent, and consistently so across both splits
+// and both entries — share of entries where the level was touched FIRST,
+// screen minus control:
+//
+//	                     +-5%              +-10%             +-15%
+//	TW in-samp  ①   up -4.8 / down +11.0   up +2.7 / +3.0   up +2.2 / +0.0
+//	TW holdout  ①   up -3.1 / down  +6.7   up +4.8 / +2.0   up +4.0 / +1.9
+//	TW in-samp  ②   up -4.3 / down  +8.2   up +4.6 / +3.0   up +4.4 / +0.9
+//	TW holdout  ②   up -4.1 / down  +7.2   up +4.8 / +3.1   up +3.2 / +2.1
+//
+// Read naively that says "bad for a 5% stop, good for a 10-15% target" — and
+// it is an artifact. Re-run the same race with the levels at +/-2 and +/-3
+// ATR(14) of the entry bar, i.e. measured in units of the stock's own
+// volatility, and the advantage is gone: net (up minus down) is -6.2/-1.9
+// and -6.1/-1.7pp in TW in-sample, -5.7/+0.8pp for ② in the holdout, with no
+// up-leg past 0.9 sigma anywhere. These entries fire on stocks that are
+// simply moving more, so a FIXED percentage is reached more often in both
+// directions; the fixed-% table above is measuring volatility selection, not
+// position quality. US stays negative under the ATR race too (-3.1 to
+// -9.4pp net at 2 ATR).
+//
+// So: not a good entry location, in either market, once what it selects for
+// is controlled. The practical corollary, if anyone tries this by hand
+// anyway: a fixed 5% stop is strictly worse here than on a random day (TW
+// gets tagged 6.7-11.0pp more often), and widening the stop to ATR terms
+// removes the apparent upside along with it.
+//
+// The exit half of the request loses on its own terms, independent of the
+// entries. Paired on IDENTICAL control entries (the control is every 10th
+// evaluated bar, so two runs over the same cache sample the same entries),
+// the request's exit vs. paper.DefaultExits, mean per-trade difference:
+//
+//	                   US in-samp   US holdout   TW in-samp   TW holdout
+//	support+MA20, K<20  -0.54 0.7o   -0.23 1.7o   -0.89 4.7o   -0.68 3.1o
+//	support+MA20, K<50  -2.04 2.2o   -0.64 2.4o   -2.01 5.5o   -1.75 4.3o
+//
+// Worse in all eight cells, significantly so in six. It cuts the holding
+// period hard (US 33d -> 13d at K<50) and the win rate with it (33.8% ->
+// 34.3% US, 34.1% -> 29.2% TW), which is the shape of an exit that sells the
+// right tail to avoid the left. Same lesson as the 2026-08-26 ATR
+// trailing-stop finding recorded in paper.DefaultExits: tightening the exit
+// is not free, and here it is not even cheap.
+//
+// Reproduce (US cache as CheckTrendPullbackExact's doc comment; TW is the
+// Yahoo tw150 path, no -history-file):
+//
+//	strategyscan -market=us -range=10y -history-file=sp400_daily.csv -universe=sp400 -support-ma-exit=20 -date-from=2016-11-01 -date-to=2021-10-31 -dump-trades=dump.csv
+//	strategyscan -market=us -range=10y -history-file=sp400_daily.csv -universe=sp400 -support-ma-exit=20 -date-from=2021-11-01                     -dump-trades=dump.csv
+//	strategyscan -market=tw -range=10y -skip-trust                                   -support-ma-exit=20 -date-from=2016-11-01 -date-to=2021-10-31 -dump-trades=dump.csv
+//	strategyscan -market=tw -range=10y -skip-trust                                   -support-ma-exit=20 -date-from=2021-11-01                     -dump-trades=dump.csv
+//	python3 pead_study.py "LABEL=strategyscan_results_<market>.csv,dump.csv" ...  (kdj_oversold_ma100 row)
+//
+// Repeat with -support-ma-exit=50, and with the flag dropped entirely, for
+// the other two rows.
+//
+// Not wired into service.CheckStatefulSignals, i18n, or the recommendation
+// prompt — it exists in this package only so the result stays reproducible.
+func CheckKDJAboveMA100Exact(candles []data.Candle) bool {
+	n := len(candles)
+	if n < kdjTrendMA+2 {
+		return false
+	}
+	closes := data.Closes(candles)
+
+	// Trend gate first: it is O(100) against StochasticSeries' O(n), and it
+	// rejects roughly half the bars before the expensive part runs.
+	ma := MA(closes, kdjTrendMA)
+	if ma == 0 || closes[n-1] <= ma {
+		return false
+	}
+
+	k, d := KDSeries(candles, 2)
+	if k == nil {
+		return false
+	}
+	if k[0] > kdjBreakoutTrig || k[1] <= kdjBreakoutTrig {
+		return false
+	}
+	return d[1] > d[0]
+}
+
+// The second half of the same 2026-09-19 request: 「KD 都維持在 20 以上且出現
+// 兩次回踩到 50」. Same fixed-not-ScreenParams rule as above.
+const (
+	kdjPullbackLevel  = 50  // 「回踩到 50」
+	kdjPullbackCount  = 2   // 「出現兩次」
+	kdjPullbackWindow = 120 // how far back the stretch above 20 is traced
+)
+
+// CheckKDJPullback50Exact evaluates candles' last bar against the request's
+// second entry: while the stock is above its MA100 and KD has held above 20,
+// K has now turned up off the 50 line for the SECOND time.
+//
+// A "touch" is a local minimum of K — k[i-1] > k[i] < k[i+1] — sitting in
+// (20, 50]. The turn-up bar is the signal, not the bar that reaches 50: a
+// pullback is only known to be over once it ends, and entering while K is
+// still falling is a different rule (catching it mid-pullback), not this one.
+//
+// The count is traced back to the last bar where K was at or below 20, which
+// is what 「維持在 20 以上」 delimits: a dip to oversold ends the stretch and
+// starts the count over, because that dip is CheckKDJAboveMA100Exact's setup
+// bar — the two entries are meant to be consecutive stages of one move, so
+// they must not be able to fire off the same stretch of tape twice.
+//
+// Exactly 2, not "2 or more": a third touch is a different (and, the rule
+// implies, worse) setup, and counting it here would quietly turn this into
+// "every pullback after the first", which is not what is being tested.
+//
+// kdjPullbackWindow bounds the trace. A stretch that has held above 20 for
+// more than ~6 months is not one swing any more, and without a bound this
+// would be O(n) per bar on top of the KD series itself.
+//
+// Same deliberate bareness as CheckKDJAboveMA100Exact: no volume gate, no
+// pattern filter, nothing that would make a negative answer unattributable.
+//
+// # Result: measured 2026-09-19 — no edge anywhere, NO-SHIP
+//
+// Same runs, same control, same bootstrap as CheckKDJAboveMA100Exact's doc
+// comment above (read it for the method and the sample caveats). The row
+// matching this entry's own exit is the K<50 one:
+//
+//	exit config                       US in-samp   US holdout   TW in-samp   TW holdout
+//	support+MA20, K<50 (the request)  -2.39 1.6o   -0.41 1.1o   +0.25 0.4o   -0.32 0.7o
+//	support+MA20, K<20               -2.54 1.5o   -0.86 1.7o   +0.10 0.1o   +0.36 0.4o
+//	paper.DefaultExits               -2.41 1.5o   -1.03 1.8o   -0.15 0.1o   +0.39 0.4o
+//
+// Negative on US in all six cells and indistinguishable from zero on TW in
+// all six — including the date-matched reading, which is where the ① entry
+// at least showed something (+0.01 to +1.84pp, 0.0-1.7o). Its win rate is
+// BELOW the control's in five of six cells (-1.0 to -4.8pp): waiting for a
+// second pullback does not select better trades, it just trades later.
+//
+// Worth stating plainly because the two entries were proposed as stages of
+// one move: ① is the half with any signal in it at all, and ② does not
+// inherit it. 2,343/2,635 US and 808/882 TW trades per slice, so this is a
+// measured zero, not an underpowered one.
+//
+// Not wired into service.CheckStatefulSignals, i18n, or the recommendation
+// prompt — it exists in this package only so the result stays reproducible.
+func CheckKDJPullback50Exact(candles []data.Candle) bool {
+	n := len(candles)
+	if n < kdjTrendMA+2 {
+		return false
+	}
+	closes := data.Closes(candles)
+	ma := MA(closes, kdjTrendMA)
+	if ma == 0 || closes[n-1] <= ma {
+		return false
+	}
+
+	k, _ := KDSeries(candles, kdjPullbackWindow)
+	if len(k) < 4 {
+		return false
+	}
+	// Yesterday is the local low of the pullback that today turns up from
+	// (isKDTouch's k[i+1] > k[i] leg IS today's turn up).
+	low := len(k) - 2
+	if !isKDTouch(k, low) {
+		return false
+	}
+	touches := 1
+	for i := low - 1; i >= 1; i-- {
+		if k[i] <= kdjBreakoutTrig {
+			break
+		}
+		if isKDTouch(k, i) {
+			touches++
+		}
+	}
+	return touches == kdjPullbackCount
+}
+
+// isKDTouch reports whether k[i] is a local minimum that pulled back to the
+// 50 line without giving up 20. i must be an interior index.
+func isKDTouch(k []float64, i int) bool {
+	if i < 1 || i+1 >= len(k) {
+		return false
+	}
+	return k[i] <= kdjPullbackLevel && k[i] > kdjBreakoutTrig && k[i-1] > k[i] && k[i+1] > k[i]
+}
