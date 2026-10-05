@@ -532,11 +532,18 @@ function PayoffRow({ label, plan }: { label: string; plan: DebtPayoffPlan }) {
 // every other bar to near-zero the moment one quarter goes negative. Sign
 // is instead shown by color (loss red vs. accent), matching the rest of the
 // app's P&L convention.
-function QuarterlyBars({ points }: { points: QuarterPoint[] }) {
-  const maxAbs = Math.max(1, ...points.map((p) => Math.abs(p.netWorth ?? 0)));
+//
+// The server answers every past quarter, and one from before the first asset
+// existed comes back as 0 — a bar reading "NT$0" for a time nobody recorded.
+// That empty lead-in is dropped (the template draws just the current quarter
+// for a new account); the current quarter always stays.
+export function QuarterlyBars({ points }: { points: QuarterPoint[] }) {
+  const first = points.findIndex((p) => p.netWorth);
+  const shown = points.slice(first === -1 ? points.length - 1 : first);
+  const maxAbs = Math.max(1, ...shown.map((p) => Math.abs(p.netWorth ?? 0)));
   return (
     <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 150, marginTop: 12 }}>
-      {points.map((p) => {
+      {shown.map((p) => {
         const height = p.netWorth != null ? Math.max(2, (Math.abs(p.netWorth) / maxAbs) * 100) : 2;
         const negative = (p.netWorth ?? 0) < 0;
         return (
