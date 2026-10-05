@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { fetchWealthAlloc, type AllocationModel, type WealthAlloc, type WealthAllocRow } from "../api";
 import type { Dictionary } from "../i18n";
 import { fmtMoney, DOTTED, MONO_LABEL, WealthEmptyAssets } from "./WealthHomeView";
-import { useNoAssets } from "./WealthOnboarding";
+import { thinNote, useAssetCount, wealthReadiness } from "./WealthOnboarding";
 import { CATEGORY_COLOR, categoryLabel, loadModel, saveModel } from "../wealthCategory";
 import { shortTWD } from "../currency";
 
@@ -53,7 +53,8 @@ export function WealthAllocView({ dict, writable, onUnauthorized }: Props) {
   const [alloc, setAlloc] = useState<WealthAlloc | null>(null);
   const [error, setError] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
-  const noAssets = useNoAssets(refreshSignal);
+  const assetCount = useAssetCount(refreshSignal);
+  const noAssets = assetCount === 0;
 
   useEffect(() => {
     setError(false);
@@ -68,11 +69,16 @@ export function WealthAllocView({ dict, writable, onUnauthorized }: Props) {
 
   const hasData = alloc != null && alloc.totalAssets != null;
   const rows = hasData ? alloc!.allocation : [];
-  const orders = hasData ? alloc!.orders : [];
+  // Too little to measure against (the design's wReady): no orders, grey drift, no band.
+  const rd = wealthReadiness(dict, assetCount ?? 3, true);
+  const thin = !!rd.whyDrift;
+  const orders = hasData && !thin ? alloc!.orders : [];
+  const drift = (d: number) => (thin ? "var(--ink-3)" : driftColor(d));
+  const thinA = thinNote(dict, rd.whyFewA);
   const riskPct = hasData ? alloc!.riskPct : null;
   // The design's band words: >40% aggressive, >25% balanced-growth, else conservative.
   const riskBand =
-    riskPct == null ? "—" : riskPct > 40 ? dict.wealthRiskAggressive : riskPct > 25 ? dict.wealthRiskBalanced : dict.wealthRiskConservative;
+    riskPct == null ? "—" : thinA ? dict.wealthHomeThinShort : riskPct > 40 ? dict.wealthRiskAggressive : riskPct > 25 ? dict.wealthRiskBalanced : dict.wealthRiskConservative;
 
   return (
     <>
@@ -89,6 +95,9 @@ export function WealthAllocView({ dict, writable, onUnauthorized }: Props) {
               onClick={() => {
                 setModel(m);
                 saveModel(m);
+                // Picking the model that's already showing changes no state, but it
+                // does clear "no target model picked" (read from storage at render).
+                setRefreshSignal((n) => n + 1);
               }}
             >
               {modelLabel(dict, m)}
@@ -158,7 +167,7 @@ export function WealthAllocView({ dict, writable, onUnauthorized }: Props) {
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
                 <span style={MONO_LABEL}>{dict.wealthOrdersTitle}</span>
                 <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>
-                  {orders.length} · {hasData ? shortTWD(alloc!.rebalTotal) : "—"}
+                  {orders.length} · {hasData && !thin ? shortTWD(alloc!.rebalTotal) : "—"}
                 </span>
               </div>
               {orders.length > 0 ? (
@@ -192,7 +201,7 @@ export function WealthAllocView({ dict, writable, onUnauthorized }: Props) {
                         <span className="mono" style={{ fontSize: 13 }}>
                           {shortTWD(o.amount)}
                         </span>
-                        <span className="mono" style={{ fontSize: 10, color: driftColor(o.deviationPt) }}>
+                        <span className="mono" style={{ fontSize: 10, color: drift(o.deviationPt) }}>
                           {fmtDrift(o.deviationPt)}
                         </span>
                       </span>
@@ -200,9 +209,11 @@ export function WealthAllocView({ dict, writable, onUnauthorized }: Props) {
                   ))}
                 </div>
               ) : (
-                <div style={{ fontSize: 12.5, lineHeight: 1.6, color: "var(--ink-2)" }}>{dict.wealthNoOrders}</div>
+                <div style={{ fontSize: 12.5, lineHeight: 1.6, color: thin ? "var(--ink-3)" : "var(--ink-2)" }}>
+                  {thin ? dict.wealthOrdersThin.replace("%s", rd.whyDrift) : dict.wealthNoOrders}
+                </div>
               )}
-              {hasData && alloc!.locked.length > 0 && (
+              {hasData && !thin && alloc!.locked.length > 0 && (
                 <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
                   <div className="mono" style={{ fontSize: 10, letterSpacing: "0.06em", color: "var(--ink-3)", marginBottom: 7 }}>
                     {dict.wealthLockedTitle}
@@ -268,7 +279,7 @@ export function WealthAllocView({ dict, writable, onUnauthorized }: Props) {
                         </td>
                         <td>{row.currentPct.toFixed(1)}%</td>
                         <td style={{ color: "var(--ink-3)" }}>{Math.round(row.targetPct)}%</td>
-                        <td style={{ color: driftColor(row.deviationPt) }}>{fmtDrift(row.deviationPt)}</td>
+                        <td style={{ color: drift(row.deviationPt) }}>{fmtDrift(row.deviationPt)}</td>
                         <td style={{ fontFamily: "var(--font-sans)", fontSize: 12, color: "var(--ink-3)" }}>{row.venue || "—"}</td>
                         <td>{fmtMoney(row.marketValue, currency)}</td>
                       </tr>
@@ -293,6 +304,7 @@ export function WealthAllocView({ dict, writable, onUnauthorized }: Props) {
                 </span>{" "}
                 · {riskBand}
               </div>
+              {thinA && <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 4 }}>{thinA}</div>}
               <div style={{ marginTop: 14, background: "var(--bg)", borderRadius: 3 }}>
                 <div style={{ height: 6, borderRadius: 3, background: "var(--accent)", width: `${Math.min((riskPct ?? 0) * 2, 100).toFixed(1)}%` }} />
               </div>
@@ -304,6 +316,7 @@ export function WealthAllocView({ dict, writable, onUnauthorized }: Props) {
                   {dict.wealthFxExposure}
                 </span>
               </div>
+              {thinA && <div style={{ fontSize: 11, color: "var(--ink-3)", margin: "-4px 0 10px" }}>{thinA}</div>}
               <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
                 {(hasData ? alloc!.currencyExposure : []).map((e) => (
                   <div key={e.currency} style={{ display: "flex", alignItems: "center", gap: 10 }}>

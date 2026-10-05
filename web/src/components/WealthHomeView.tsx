@@ -24,7 +24,7 @@ import { convertTWD, shortTWD } from "../currency";
 import { CATEGORY_COLOR, categoryLabel, loadModel } from "../wealthCategory";
 import { useFlash } from "../flash";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { WealthEmptyCard, WealthGuide } from "./WealthOnboarding";
+import { WealthEmptyCard, WealthGuide, thinNote, wealthReadiness } from "./WealthOnboarding";
 
 interface Props {
   dict: Dictionary;
@@ -299,7 +299,8 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
 
   // --- derived, all from data the three endpoints already send ------------
   const assetCount = assets ? assets.filter((a) => a.side === "asset").length : 3;
-  const thin = assetCount < 3 || !alloc || alloc.allocation.length === 0;
+  const rd = wealthReadiness(dict, assetCount, balance ? balance.liquidityMonths != null : true);
+  const thin = !!rd.whyDrift || !alloc || alloc.allocation.length === 0;
   const total = alloc?.totalAssets ?? 0;
   const rows: HomeRow[] = (alloc?.allocation ?? []).map((r) => {
     const drift = r.deviationPt;
@@ -325,7 +326,7 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
   const driftN = off.length;
   const heroDriftColor = thin ? "var(--ink-3)" : driftN > 2 ? "var(--loss)" : driftN > 0 ? "#f59e0b" : "var(--profit)";
   const rebalance = thin ? "—" : shortTWD(off.reduce((s, r) => s + (Math.abs(r.drift) / 100) * total, 0) / 2);
-  const thinReason = thin ? dict.wealthHomeNeedAssets.replace("%s", String(assetCount)) : "";
+  const thinReason = rd.whyDrift;
   const groupOrder: AssetGroup[] = ["growth", "income", "hard", "liquid"];
   // 大類配置 is the share of total *assets* per asset_group (balance's
   // pctOfAssets), against the model's group target; home.allocation itself
@@ -505,8 +506,8 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(45%,1fr))", gap: 16, marginBottom: 16 }}>
                 {kpiCard(dict.wealthTotalAssets, home?.totalAssets != null ? fmtMoney(home.totalAssets, currency) : "—")}
                 {kpiCard(dict.wealthTotalLiabilities, home?.totalLiabilities != null ? fmtMoney(home.totalLiabilities, currency) : "—", { color: "var(--loss)" })}
-                {kpiCard(<span title={dict.wealthHomeTipDebt} style={DOTTED}>{dict.wealthDebtRatio}</span>, debtRatio, { note: "" })}
-                {kpiCard(<span title={dict.wealthHomeTipLiquid} style={DOTTED}>{dict.wealthHomeLiquidLabel}</span>, liquidMonths, { note: "" })}
+                {kpiCard(<span title={dict.wealthHomeTipDebt} style={DOTTED}>{dict.wealthDebtRatio}</span>, debtRatio, { note: thinNote(dict, rd.whyFewA) })}
+                {kpiCard(<span title={dict.wealthHomeTipLiquid} style={DOTTED}>{dict.wealthHomeLiquidLabel}</span>, liquidMonths, { note: thinNote(dict, rd.whySpend) })}
               </div>
 
               <div className="card" style={{ ...CARD_BASE, overflowX: "auto" }}>
@@ -542,6 +543,7 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 16, marginBottom: 16 }}>
                 <div className="card" style={{ margin: 0 }}>
                   <div style={{ ...MONO_LABEL, marginBottom: 10 }}>{dict.wealthHomeGroupTitle}</div>
+                  {groups.length === 0 && <div style={{ fontSize: 12, color: "var(--ink-3)", lineHeight: 1.6 }}>{thinNote(dict, rd.whyDrift) || dict.noData}</div>}
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {groups.map((g) => (
                       <div key={g.group} style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
@@ -574,6 +576,7 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
                   <span>
                     {dict.wealthHomeMom} <span style={{ color: signColor(home?.momPct) }}>{pctText(home?.momPct)}</span>
                   </span>
+                  {home && home.ytdPct == null && <span style={{ fontSize: 11 }}>{dict.wealthNeedHist}</span>}
                   <span>
                     {dict.wealthTotalAssets}{" "}
                     <span style={{ color: "var(--ink)" }}>{home?.totalAssets != null ? fmtMoney(home.totalAssets, currency) : "—"}</span>
@@ -631,6 +634,9 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
                         <span title={dict.wealthHomeTipLiquid} style={DOTTED}>{dict.wealthHomeLiquidLabel}</span>
                       </span>
                       <span style={{ fontFamily: "var(--font-mono)", fontSize: 15 }}>{liquidMonths}</span>
+                    </div>
+                    <div style={{ fontSize: 10.5, color: "var(--ink-3)" }}>
+                      {[rd.whyFewA && `${dict.wealthDebtRatio}：${rd.whyFewA}`, rd.whySpend && `${dict.wealthHomeLiquidLabel}：${rd.whySpend}`].filter(Boolean).join(" · ")}
                     </div>
                   </div>
                 </div>
