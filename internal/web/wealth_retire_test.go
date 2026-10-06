@@ -18,7 +18,24 @@ func newWealthRetireTestServer(password string, fake *fakeDB, wealthDB wealthWri
 	s.mux.HandleFunc("POST /api/login", s.requireWritable(s.handleLogin))
 	s.mux.HandleFunc("GET /api/wealth/retire", s.handleWealthRetireGet)
 	s.mux.HandleFunc("POST /api/wealth/retire", s.requireWritable(s.requireAuth(s.handleWealthRetireSave)))
+	s.mux.HandleFunc("POST /api/wealth/retire/assign", s.requireWritable(s.requireAuth(s.handleWealthRetireAssign)))
 	return s
+}
+
+// assignRetire posts body to /api/wealth/retire/assign as a logged-in user.
+func assignRetire(t *testing.T, s *Server, body map[string]any) *httptest.ResponseRecorder {
+	t.Helper()
+	cookie := loginAndGetCookie(t, s, "secret")
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/wealth/retire/assign", bytes.NewReader(raw))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, req)
+	return rec
+}
+
+func wealthAsset(id int64, side string) db.AssetWithValue {
+	return db.AssetWithValue{Asset: db.Asset{ID: id, Side: side, Type: "deposit", Name: "a"}}
 }
 
 // TestHandleWealthRetireGetNoBirthYearRendersSample pins the sample-mode
@@ -222,5 +239,128 @@ func TestHandleWealthRetireSaveRequiresBirthYearThenUpsertsGoal(t *testing.T) {
 	wantAmount := 90000.0 * 12 * 25
 	if wealthDB.lastRetirementGoalTargetAmount != wantAmount {
 		t.Errorf("lastRetirementGoalTargetAmount = %v, want %v", wealthDB.lastRetirementGoalTargetAmount, wantAmount)
+	}
+}
+
+// A new account has no retirement goal and usually no birth year: assigning
+// must still work, creating the goal (without a date) and the earmarks.
+func TestHandleWealthRetireAssignCreatesGoalWithoutBirthYear(t *testing.T) {
+	wealthDB := &fakeWealthDB{}
+	fake := &fakeDB{wealthAssets: []db.AssetWithValue{wealthAsset(7, "asset"), wealthAsset(8, "asset")}}
+	s := newWealthRetireTestServer("secret", fake, wealthDB)
+
+	rec := assignRetire(t, s, map[string]any{
+		"name": "退休規劃", "retirementAge": 60, "monthlySpend": 90000,
+		"assets": []map[string]any{{"assetId": 7, "ratio": 1}, {"assetId": 8, "ratio": 0.3}},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	if wealthDB.lastRetirementGoalName != "退休規劃" || wealthDB.lastRetirementGoalTargetDate != "" {
+		t.Errorf("goal created as (%q, date %q), want (退休規劃, no date)", wealthDB.lastRetirementGoalName, wealthDB.lastRetirementGoalTargetDate)
+	}
+	if wealthDB.lastRetirementGoalTargetAmount != 90000.0*12*25 {
+		t.Errorf("target amount = %v, want %v", wealthDB.lastRetirementGoalTargetAmount, 90000.0*12*25)
+	}
+	if wealthDB.lastGoalAssetsGoalID != wealthDB.nextGoalID || len(wealthDB.lastGoalAssets) != 2 {
+		t.Errorf("earmarks = goal %d %+v, want 2 rows on the goal just created (%d)", wealthDB.lastGoalAssetsGoalID, wealthDB.lastGoalAssets, wealthDB.nextGoalID)
+	}
+}
+
+// An existing goal is never rewritten by an assign — its target and date came
+// from the quick-switch buttons, not from this drawer.
+func TestHandleWealthRetireAssignLeavesExistingGoalAlone(t *testing.T) {
+	wealthDB := &fakeWealthDB{}
+	fake := &fakeDB{
+		goals:        []db.Goal{{ID: 5, Kind: "retirement", Name: "退休", TargetAmount: 1}},
+		wealthAssets: []db.AssetWithValue{wealthAsset(7, "asset")},
+	}
+	s := newWealthRetireTestServer("secret", fake, wealthDB)
+
+	rec := assignRetire(t, s, map[string]any{"assets": []map[string]any{{"assetId": 7, "ratio": 0.5}}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	if wealthDB.lastRetirementGoalName != "" {
+		t.Errorf("UpsertRetirementGoal ran for an existing goal (name %q)", wealthDB.lastRetirementGoalName)
+	}
+	if wealthDB.lastGoalAssetsGoalID != 5 || len(wealthDB.lastGoalAssets) != 1 || wealthDB.lastGoalAssets[0].Ratio != 0.5 {
+		t.Errorf("earmarks = goal %d %+v, want one row at 0.5 on goal 5", wealthDB.lastGoalAssetsGoalID, wealthDB.lastGoalAssets)
+	}
+}
+
+// Another goal already holds 70% of asset 7: 40% more would double-count it.
+// The request is rejected before anything is written — no goal, no earmarks.
+func TestHandleWealthRetireAssignRejectsOver100AndWritesNothing(t *testing.T) {
+	wealthDB := &fakeWealthDB{}
+	fake := &fakeDB{
+		goals:        []db.Goal{{ID: 9, Kind: "general", Name: "換屋頭期款"}},
+		goalAssets:   []db.GoalAsset{{GoalID: 9, AssetID: 7, Ratio: 0.7}},
+		wealthAssets: []db.AssetWithValue{wealthAsset(7, "asset")},
+	}
+	s := newWealthRetireTestServer("secret", fake, wealthDB)
+
+	body := func(ratio float64) map[string]any {
+		return map[string]any{"name": "退休規劃", "retirementAge": 60, "monthlySpend": 90000,
+			"assets": []map[string]any{{"assetId": 7, "ratio": ratio}}}
+	}
+	if rec := assignRetire(t, s, body(0.4)); rec.Code != http.StatusBadRequest {
+		t.Fatalf("0.4 over a 0.7 holder: status = %d, want 400, body = %s", rec.Code, rec.Body.String())
+	}
+	if wealthDB.lastRetirementGoalName != "" || wealthDB.lastGoalAssets != nil {
+		t.Errorf("a rejected request still wrote: goal %q, earmarks %+v", wealthDB.lastRetirementGoalName, wealthDB.lastGoalAssets)
+	}
+	// Exactly what's left (0.3, noisy as a float) is accepted.
+	if rec := assignRetire(t, s, body(1-0.7)); rec.Code != http.StatusOK {
+		t.Fatalf("the remaining 30%%: status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleWealthRetireAssignRejectsBadInput(t *testing.T) {
+	fake := &fakeDB{wealthAssets: []db.AssetWithValue{wealthAsset(7, "asset"), wealthAsset(8, "liability")}}
+	base := map[string]any{"name": "退休規劃", "retirementAge": 60, "monthlySpend": 90000}
+	one := func(id int64, ratio float64) []map[string]any { return []map[string]any{{"assetId": id, "ratio": ratio}} }
+	for name, assets := range map[string][]map[string]any{
+		"unknown asset":      one(99, 1),
+		"a liability":        one(8, 1),
+		"zero ratio":         one(7, 0),
+		"ratio above 1":      one(7, 1.5),
+		"duplicate asset id": {{"assetId": 7, "ratio": 0.5}, {"assetId": 7, "ratio": 0.5}},
+	} {
+		wealthDB := &fakeWealthDB{}
+		s := newWealthRetireTestServer("secret", fake, wealthDB)
+		body := map[string]any{"assets": assets}
+		for k, v := range base {
+			body[k] = v
+		}
+		if rec := assignRetire(t, s, body); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400, body = %s", name, rec.Code, rec.Body.String())
+		}
+		if wealthDB.lastRetirementGoalName != "" || wealthDB.lastGoalAssets != nil {
+			t.Errorf("%s: a rejected request still wrote", name)
+		}
+	}
+
+	// With no goal yet, creating one needs a name and a spend.
+	s := newWealthRetireTestServer("secret", fake, &fakeWealthDB{})
+	if rec := assignRetire(t, s, map[string]any{"assets": one(7, 1)}); rec.Code != http.StatusBadRequest {
+		t.Errorf("no name/spend and no goal: status = %d, want 400", rec.Code)
+	}
+}
+
+// An empty list is a real request: "nothing is set aside for retirement".
+func TestHandleWealthRetireAssignEmptyListClearsEarmarks(t *testing.T) {
+	wealthDB := &fakeWealthDB{}
+	fake := &fakeDB{
+		goals:      []db.Goal{{ID: 5, Kind: "retirement", Name: "退休", TargetAmount: 1}},
+		goalAssets: []db.GoalAsset{{GoalID: 5, AssetID: 7, Ratio: 1}},
+	}
+	s := newWealthRetireTestServer("secret", fake, wealthDB)
+	rec := assignRetire(t, s, map[string]any{"assets": []map[string]any{}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	if wealthDB.lastGoalAssetsGoalID != 5 || len(wealthDB.lastGoalAssets) != 0 {
+		t.Errorf("earmarks = goal %d %+v, want goal 5 with none", wealthDB.lastGoalAssetsGoalID, wealthDB.lastGoalAssets)
 	}
 }

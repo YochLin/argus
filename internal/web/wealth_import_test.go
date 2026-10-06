@@ -195,6 +195,7 @@ func (f *fakeWealthImportDB) DeleteGoal(id int64) error               { return n
 func (f *fakeWealthImportDB) SetGoalAsset(goalID, assetID int64, ratio float64) error {
 	return nil
 }
+func (f *fakeWealthImportDB) SetGoalAssets(goalID int64, set []db.GoalAsset) error { return nil }
 func (f *fakeWealthImportDB) UpsertRetirementGoal(name string, targetAmount float64, targetDate string) (int64, error) {
 	return 0, nil
 }

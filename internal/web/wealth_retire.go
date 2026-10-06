@@ -412,3 +412,125 @@ func (s *Server) handleWealthRetireSave(w http.ResponseWriter, r *http.Request) 
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
+
+type retireAssignItem struct {
+	AssetID int64   `json:"assetId"`
+	Ratio   float64 `json:"ratio"`
+}
+
+// wealthRetireAssignRequest is the 指定退休資產 drawer's whole state: the
+// complete list of assets earmarked for retirement (anything not listed is
+// un-earmarked), plus the page's current settings — only used to create the
+// retirement goal when there isn't one yet, never to change an existing one.
+type wealthRetireAssignRequest struct {
+	Name          string             `json:"name"`
+	RetirementAge int                `json:"retirementAge"`
+	MonthlySpend  float64            `json:"monthlySpend"`
+	Assets        []retireAssignItem `json:"assets"`
+}
+
+// handleWealthRetireAssign backs POST /api/wealth/retire/assign. It replaces
+// the retirement goal's earmarks with exactly req.Assets in one transaction,
+// creating the goal first when none exists (so a new account can assign
+// before it has ever touched a quick-switch button). Everything is validated
+// before anything is written: a rejected request leaves no goal behind.
+func (s *Server) handleWealthRetireAssign(w http.ResponseWriter, r *http.Request) {
+	var req wealthRetireAssignRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	set := make([]db.GoalAsset, 0, len(req.Assets))
+	seen := make(map[int64]bool, len(req.Assets))
+	for _, it := range req.Assets {
+		if it.AssetID <= 0 || seen[it.AssetID] {
+			writeError(w, http.StatusBadRequest, "assetId must be set once per asset")
+			return
+		}
+		if it.Ratio <= 0 || it.Ratio > 1 {
+			writeError(w, http.StatusBadRequest, "ratio must be above 0 and at most 1")
+			return
+		}
+		seen[it.AssetID] = true
+		set = append(set, db.GoalAsset{AssetID: it.AssetID, Ratio: it.Ratio})
+	}
+
+	goals, err := s.db.ListGoals()
+	if err != nil {
+		logger.Errorf("web: retire assign: list goals: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to save")
+		return
+	}
+	var goalID int64 // 0 until a retirement goal exists
+	for _, g := range goals {
+		if g.Kind == "retirement" {
+			goalID = g.ID
+			break
+		}
+	}
+	earmarks, err := s.db.ListAllGoalAssets()
+	if err != nil {
+		logger.Errorf("web: retire assign: list earmarks: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to save")
+		return
+	}
+	assetList, err := s.db.ListAssetsWithValue(false)
+	if err != nil {
+		logger.Errorf("web: retire assign: list assets: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to save")
+		return
+	}
+	isAsset := make(map[int64]bool, len(assetList))
+	for _, a := range assetList {
+		isAsset[a.ID] = a.Side == "asset"
+	}
+	for _, ga := range set {
+		if !isAsset[ga.AssetID] {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("asset %d not found", ga.AssetID))
+			return
+		}
+		if room := earmarkRoom(earmarks, goalID, ga.AssetID); ga.Ratio > room+earmarkEpsilon {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("asset %d: only %.0f%% is left to assign", ga.AssetID, room*100))
+			return
+		}
+	}
+
+	if goalID == 0 {
+		name := strings.TrimSpace(req.Name)
+		if name == "" || req.MonthlySpend <= 0 {
+			writeError(w, http.StatusBadRequest, "name and a positive monthlySpend are needed to create the retirement goal")
+			return
+		}
+		// Unlike the quick-switch save, a missing birth year is fine here: the
+		// goal is created without a date (the page keeps showing its sample
+		// age) and the date arrives with the first quick-switch save.
+		targetDate := ""
+		if raw, ok, gerr := s.db.GetSetting(birthYearSettingKey); gerr == nil && ok {
+			if birthYear, perr := strconv.Atoi(raw); perr == nil {
+				if req.RetirementAge <= time.Now().Year()-birthYear || req.RetirementAge > service.RetirementHorizonAge {
+					writeError(w, http.StatusBadRequest, "retirementAge must be between your current age and the simulation horizon")
+					return
+				}
+				targetDate = fmt.Sprintf("%04d-01-01", birthYear+req.RetirementAge)
+			}
+		}
+		goalID, err = s.wealthDB.UpsertRetirementGoal(name, req.MonthlySpend*12*service.RetirementWithdrawalMultiple, targetDate)
+		if err != nil {
+			logger.Errorf("web: retire assign: create goal: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to save")
+			return
+		}
+	}
+	if err := s.wealthDB.SetGoalAssets(goalID, set); err != nil {
+		logger.Errorf("web: retire assign: set earmarks: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to save")
+		return
+	}
+
+	resp, err := s.buildRetirementResponse(r)
+	if err != nil {
+		logger.Errorf("web: wealth retire: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to load retirement plan")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}

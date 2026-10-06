@@ -2462,6 +2462,19 @@ export function saveWealthRetire(name: string, retirementAge: number, monthlySpe
   return postJSON("/api/wealth/retire", { name, retirementAge, monthlySpend });
 }
 
+// assignRetirementAssets saves the 指定退休資產 drawer: `assets` is the whole
+// list set aside for retirement (anything left out is un-assigned). name/age/
+// spend are only used when there is no retirement goal yet, so one gets created
+// from the page's current settings. Returns the recomputed plan.
+export function assignRetirementAssets(
+  name: string,
+  retirementAge: number,
+  monthlySpend: number,
+  assets: { assetId: number; ratio: number }[],
+): Promise<WealthRetire> {
+  return postJSON("/api/wealth/retire/assign", { name, retirementAge, monthlySpend, assets });
+}
+
 // InsuranceKind/InsurancePerPeriod/InsuranceCoverageRow/InsurancePolicyItem/
 // WealthInsure mirror wealth_insure.go's response shapes (Phase 9 波次3 PR8,
 // §8.6/§8.16.1) — the six-coverage-kind have/need gap table plus the policy

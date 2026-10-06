@@ -86,6 +86,59 @@ func TestSetGoalAsset(t *testing.T) {
 	}
 }
 
+func TestSetGoalAssetsReplacesOnlyThatGoalsList(t *testing.T) {
+	d := newTestDB(t)
+
+	retire, _ := d.CreateGoal(NewGoal{Name: "退休", Kind: "retirement", TargetAmount: 1})
+	house, _ := d.CreateGoal(NewGoal{Name: "換屋頭期款", TargetAmount: 2000000})
+	var ids [3]int64
+	for i := range ids {
+		id, err := d.CreateAsset(NewAsset{Side: "asset", Type: "deposit", Name: "a"})
+		if err != nil {
+			t.Fatalf("CreateAsset: %v", err)
+		}
+		ids[i] = id
+	}
+	if err := d.SetGoalAsset(house, ids[0], 0.3); err != nil {
+		t.Fatalf("SetGoalAsset: %v", err)
+	}
+	if err := d.SetGoalAssets(retire, []GoalAsset{{AssetID: ids[0], Ratio: 0.7}, {AssetID: ids[1], Ratio: 1}}); err != nil {
+		t.Fatalf("SetGoalAssets: %v", err)
+	}
+
+	// A second save is the whole new list: ids[1] is dropped, ids[2] added,
+	// ids[0]'s ratio changes — and the other goal's earmark is untouched.
+	if err := d.SetGoalAssets(retire, []GoalAsset{{AssetID: ids[0], Ratio: 0.5}, {AssetID: ids[2], Ratio: 1}}); err != nil {
+		t.Fatalf("SetGoalAssets again: %v", err)
+	}
+	got := map[[2]int64]float64{}
+	all, err := d.ListAllGoalAssets()
+	if err != nil {
+		t.Fatalf("ListAllGoalAssets: %v", err)
+	}
+	for _, ga := range all {
+		got[[2]int64{ga.GoalID, ga.AssetID}] = ga.Ratio
+	}
+	want := map[[2]int64]float64{{retire, ids[0]}: 0.5, {retire, ids[2]}: 1, {house, ids[0]}: 0.3}
+	if len(got) != len(want) {
+		t.Fatalf("earmarks = %v, want %v", got, want)
+	}
+	for k, r := range want {
+		if got[k] != r {
+			t.Errorf("earmark %v = %v, want %v (all: %v)", k, got[k], r, got)
+		}
+	}
+
+	// An empty list clears the goal's earmarks and nothing else.
+	if err := d.SetGoalAssets(retire, nil); err != nil {
+		t.Fatalf("SetGoalAssets empty: %v", err)
+	}
+	all, _ = d.ListAllGoalAssets()
+	if len(all) != 1 || all[0].GoalID != house {
+		t.Fatalf("after clearing retirement, earmarks = %+v, want only the house goal's row", all)
+	}
+}
+
 func TestUpdateGoalPersistsDrawerFields(t *testing.T) {
 	d := newTestDB(t)
 	id, err := d.CreateGoal(NewGoal{Name: "旅行基金", TargetAmount: 600000, TargetDate: "2028-12-31"})

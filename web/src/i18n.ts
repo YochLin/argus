@@ -1233,6 +1233,32 @@ export interface Dictionary {
   wealthRetireCfgEdited: string;
   wealthRetireCfgReset: string;
   wealthRetireCfgDone: string;
+  wealthRetireAssignEmptyTitle: string;
+  wealthRetireAssignEmptyBody: string;
+  wealthRetireAssignBtn: string;
+  wealthRetireAdjustBtn: string;
+  wealthRetireAssignedCount: string;
+  wealthRetireAssignPoolHint: string;
+  wealthRetireAssignTitle: string;
+  wealthRetireAssignIntro: string;
+  wealthRetireAssignNoGoal: string;
+  wealthRetireAssignAdvLabel: string;
+  wealthRetireAssignAdvHint: string;
+  wealthRetireAssignNoAssets: string;
+  wealthRetireAssignGoBalance: string;
+  wealthRetireAssignSuggested: string;
+  wealthRetireAssignOtherFull: string;
+  wealthRetireAssignOtherPart: string;
+  wealthRetireAssignMax: string;
+  wealthRetireAssignCounts: string;
+  wealthRetireAssignCountsRemain: string;
+  wealthRetireAssignOverAlone: string;
+  wealthRetireAssignOverWith: string;
+  wealthRetireAssignSumLabel: string;
+  wealthRetireAssignSumCount: string;
+  wealthRetireAssignOverMsg: string;
+  wealthRetireAssignReadOnly: string;
+  wealthRetireAssignSave: string;
   wealthRetireCfgSecTime: string;
   wealthRetireCfgSecFlow: string;
   wealthRetireCfgSecAssume: string;
@@ -2545,6 +2571,32 @@ const en: Dictionary = {
   wealthRetireCfgEdited: "CUSTOM",
   wealthRetireCfgReset: "Reset",
   wealthRetireCfgDone: "Done",
+  wealthRetireAssignEmptyTitle: "No assets assigned to retirement yet",
+  wealthRetireAssignEmptyBody: "Funded %, gap and depletion age only count assets you assign to this goal, so they show — for now. Pension accounts count too, but only once assigned.",
+  wealthRetireAssignBtn: "Assign assets",
+  wealthRetireAdjustBtn: "Adjust",
+  wealthRetireAssignedCount: "{n} assets assigned",
+  wealthRetireAssignPoolHint: "Earmarked = assigned assets × share. Set it by assigning assets, not here.",
+  wealthRetireAssignTitle: "ASSIGN RETIREMENT ASSETS",
+  wealthRetireAssignIntro: "Tick the assets set aside for retirement. Only these count toward funded %, gap and depletion age — the assets themselves aren't moved or re-typed.",
+  wealthRetireAssignNoGoal: "No retirement goal yet — saving creates one with the current settings (retire at {age}).",
+  wealthRetireAssignAdvLabel: "Count a percentage",
+  wealthRetireAssignAdvHint: "Advanced · e.g. count 30% of a property",
+  wealthRetireAssignNoAssets: "No assets on the balance sheet yet — add some first.",
+  wealthRetireAssignGoBalance: "Go to balance sheet →",
+  wealthRetireAssignSuggested: "Suggested · retirement type",
+  wealthRetireAssignOtherFull: "Fully assigned to {goal}",
+  wealthRetireAssignOtherPart: "{goal} has {pct}",
+  wealthRetireAssignMax: "max {pct}",
+  wealthRetireAssignCounts: "Counts {amount}",
+  wealthRetireAssignCountsRemain: "Counts {amount} (remaining {pct})",
+  wealthRetireAssignOverAlone: "Can't exceed 100%.",
+  wealthRetireAssignOverWith: "With {goal} this totals {total} — over 100%. You can assign at most {left}.",
+  wealthRetireAssignSumLabel: "EARMARKED",
+  wealthRetireAssignSumCount: "{n} assets",
+  wealthRetireAssignOverMsg: "{n} asset(s) exceed 100% in total — adjust before saving.",
+  wealthRetireAssignReadOnly: "Read-only — assignments can't be saved.",
+  wealthRetireAssignSave: "Save",
   wealthRetireCfgSecTime: "TIMELINE",
   wealthRetireCfgSecFlow: "CASH FLOW & PRINCIPAL",
   wealthRetireCfgSecAssume: "RETURN & WITHDRAWAL",
@@ -3814,6 +3866,32 @@ const zh: Dictionary = {
   wealthRetireCfgEdited: "已自訂",
   wealthRetireCfgReset: "恢復預設",
   wealthRetireCfgDone: "完成",
+  wealthRetireAssignEmptyTitle: "還沒有資產指定給退休目標",
+  wealthRetireAssignEmptyBody: "達成率、缺口和資產耗盡年齡只計入指定給退休目標的資產，所以目前顯示「—」。勞保 · 勞退這類退休資產也要指定後才會算入。",
+  wealthRetireAssignBtn: "指定資產",
+  wealthRetireAdjustBtn: "調整指定",
+  wealthRetireAssignedCount: "已指定 {n} 筆資產",
+  wealthRetireAssignPoolHint: "退休專用資產 = 指定資產 × 計入比例，由指定決定，不在這裡輸入。",
+  wealthRetireAssignTitle: "指定退休資產",
+  wealthRetireAssignIntro: "勾選要留給退休用的資產。只有勾選的資產會計入達成率、缺口和資產耗盡年齡；資產本身不會被移動或改變類型。",
+  wealthRetireAssignNoGoal: "退休目標還沒建立。儲存後會以目前設定（{age} 歲退休）一併建立。",
+  wealthRetireAssignAdvLabel: "依比例計入",
+  wealthRetireAssignAdvHint: "進階 · 例如房子只算 30%",
+  wealthRetireAssignNoAssets: "資產負債表還沒有資產，先新增資產才能指定。",
+  wealthRetireAssignGoBalance: "到資產負債表 →",
+  wealthRetireAssignSuggested: "建議 · 退休資產類型",
+  wealthRetireAssignOtherFull: "已全數指定給「{goal}」",
+  wealthRetireAssignOtherPart: "「{goal}」已指定 {pct}",
+  wealthRetireAssignMax: "最多 {pct}",
+  wealthRetireAssignCounts: "計入 {amount}",
+  wealthRetireAssignCountsRemain: "計入 {amount}（剩餘 {pct}）",
+  wealthRetireAssignOverAlone: "比例不能超過 100%。",
+  wealthRetireAssignOverWith: "與「{goal}」合計 {total}，超過 100%。這筆最多可再指定 {left}。",
+  wealthRetireAssignSumLabel: "退休專用資產",
+  wealthRetireAssignSumCount: "{n} 筆",
+  wealthRetireAssignOverMsg: "{n} 筆資產的指定比例加總超過 100%，調整後才能儲存。",
+  wealthRetireAssignReadOnly: "唯讀模式，無法儲存指定。",
+  wealthRetireAssignSave: "儲存指定",
   wealthRetireCfgSecTime: "時程",
   wealthRetireCfgSecFlow: "現金流與本金",
   wealthRetireCfgSecAssume: "報酬與提領假設",

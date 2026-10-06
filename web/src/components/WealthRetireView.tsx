@@ -12,6 +12,7 @@ import {
 import type { Dictionary } from "../i18n";
 import { DOTTED, WealthEmptyAssets, fmtMoney } from "./WealthHomeView";
 import { useNoAssets } from "./WealthOnboarding";
+import { RetireAssignDrawer } from "./WealthRetireAssign";
 import { shortTWD } from "../currency";
 import { useFlash } from "../flash";
 
@@ -225,6 +226,7 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
   const [contribInput, setContribInput] = useState("");
   const [savingSetup, setSavingSetup] = useState(false);
   const [cfgOpen, setCfgOpen] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
   const [cfg, setCfg] = useState<Record<string, string>>({});
   const [liveRetire, setLiveRetire] = useState<WealthRetire | null>(null);
   const isCustom = Object.keys(cfg).length > 0;
@@ -235,6 +237,18 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
   // never leak into the trustworthy "saved vs target" goal card, or get
   // persisted by a quick-switch click while the drawer happens to be open.
   const display = liveRetire ?? retire;
+  // The real pool (never the what-if): nothing assigned yet → the funded %, gap
+  // and depletion age have no basis and read "—", with a card saying why.
+  const hasPool = retire?.pool != null && retire.pool > 0;
+  const noPool = retire?.pool != null && retire.pool <= 0;
+  const assignLabel = hasPool ? dict.wealthRetireAdjustBtn : dict.wealthRetireAssignBtn;
+  function openAssign() {
+    setCfgOpen(false);
+    setAssignOpen(true);
+  }
+  // basis is the scenario the headline numbers read from: none while no asset
+  // is assigned, even though the server still projects the contributions alone.
+  const basis = noPool ? null : (display?.baseline ?? null);
 
   useEffect(() => {
     setError(false);
@@ -260,7 +274,7 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfg]);
+  }, [cfg, retire]); // retire: an assignment saved while a what-if is open re-previews
 
   const cfgFieldDefs: Record<string, CfgFieldDef> = {
     age: { label: dict.wealthRetireCurrentAgeLabel, unit: "歲", kind: "num" },
@@ -268,7 +282,6 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
     lifeAge: { label: dict.wealthRetireLifeLabel, unit: "歲", kind: "num" },
     spend: { label: dict.wealthRetireSpendLabel, unit: "NT$", kind: "num" },
     otherInc: { label: dict.wealthRetireOtherIncomeLabel, unit: "NT$", hint: dict.wealthRetireOtherIncomeHint, kind: "num" },
-    pool: { label: dict.wealthRetirePoolLabel, unit: "NT$", kind: "num" },
     contribMo: { label: dict.wealthRetireCfgContribLabel, unit: "NT$", kind: "num" },
     preR: { label: dict.wealthRetirePreRLabel, unit: "%", kind: "range", min: 0, max: 8, step: 0.1 },
     postR: { label: dict.wealthRetirePostRLabel, unit: "%", kind: "range", min: 0, max: 6, step: 0.1 },
@@ -276,7 +289,7 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
   };
   const cfgGroups: { title: string; keys: string[] }[] = [
     { title: dict.wealthRetireCfgSecTime, keys: ["age", "retAge", "lifeAge"] },
-    { title: dict.wealthRetireCfgSecFlow, keys: ["spend", "otherInc", "pool", "contribMo"] },
+    { title: dict.wealthRetireCfgSecFlow, keys: ["spend", "otherInc", "contribMo"] },
     { title: dict.wealthRetireCfgSecAssume, keys: ["preR", "postR", "swr"] },
   ];
 
@@ -293,8 +306,6 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
         return String(retire.monthlySpend);
       case "otherInc":
         return String(retire.otherIncome);
-      case "pool":
-        return String(retire.pool ?? 0);
       case "contribMo":
         return String(retire.monthlyContribution);
       case "preR":
@@ -446,6 +457,32 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
             </div>
             <div className="wealth-drawer-body">
               <div style={{ fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.6 }}>{dict.wealthRetireCfgNote}</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, borderRadius: 9, border: "1px solid var(--border)", background: "var(--bg)" }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                  <span style={{ fontSize: 11.5, color: "var(--ink-2)" }}>{dict.wealthRetirePoolLabel}</span>
+                  <span className="mono" style={{ marginLeft: "auto", fontSize: 14 }}>
+                    {retire.pool != null ? fmtMoney(retire.pool, CURRENCY) : "—"}
+                  </span>
+                </div>
+                <div style={{ fontSize: 10.5, color: "var(--ink-3)", lineHeight: 1.5 }}>{dict.wealthRetireAssignPoolHint}</div>
+                <button
+                  onClick={openAssign}
+                  style={{
+                    alignSelf: "flex-start",
+                    fontFamily: "var(--font-sans)",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    padding: "6px 12px",
+                    borderRadius: 7,
+                    cursor: "pointer",
+                    border: "1px solid var(--accent-tint-border)",
+                    background: "var(--accent-tint-bg)",
+                    color: "var(--accent)",
+                  }}
+                >
+                  {assignLabel} →
+                </button>
+              </div>
               {cfgGroups.map((g) => (
                 <div key={g.title} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   <div style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 10, color: "var(--ink-3)" }}>
@@ -464,7 +501,7 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                   <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: ".06em", color: "var(--ink-3)" }}>{dict.wealthRetireRateLabel}</span>
                   <span className="mono" style={{ fontSize: 21 }}>
-                    {display?.baseline ? `${Math.min(display.baseline.achievementPct, 999).toFixed(0)}%` : "—"}
+                    {basis ? `${Math.min(basis.achievementPct, 999).toFixed(0)}%` : "—"}
                   </span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -491,6 +528,19 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
             </div>
           </div>
         </div>
+      )}
+
+      {assignOpen && retire && (
+        <RetireAssignDrawer
+          dict={dict}
+          retire={retire}
+          cfg={cfg}
+          writable={writable}
+          onClose={() => setAssignOpen(false)}
+          onSaved={setRetire}
+          onUnauthorized={onUnauthorized}
+          onNavigate={onNavigate}
+        />
       )}
 
       {noAssets && (
@@ -543,21 +593,49 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
             </div>
           )}
 
+          {noPool && (
+            <div className="card wealth-empty">
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: "1 1 320px", maxWidth: 560 }}>
+                <span style={{ fontSize: 14, color: "var(--ink)" }}>{dict.wealthRetireAssignEmptyTitle}</span>
+                <span style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.7 }}>{dict.wealthRetireAssignEmptyBody}</span>
+              </div>
+              <button className="wealth-empty-add" onClick={openAssign}>
+                <span style={{ fontSize: 14, lineHeight: 1 }}>＋</span>
+                {assignLabel}
+              </button>
+            </div>
+          )}
+
           <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
             <div className="card card--glow" style={{ flex: "1.5 1 250px", padding: 19.2 }}>
               <div className="eyebrow">{dict.wealthRetireRateLabel}</div>
-              <div className="mono" style={{ fontSize: 40, lineHeight: 1.1, marginTop: 8, color: display?.baseline ? rateColor(display.baseline.achievementPct, display.baseline.funded) : undefined }}>
-                {display?.baseline ? `${Math.min(display.baseline.achievementPct, 999).toFixed(0)}%` : "—"}
+              <div className="mono" style={{ fontSize: 40, lineHeight: 1.1, marginTop: 8, color: basis ? rateColor(basis.achievementPct, basis.funded) : "var(--ink-3)" }}>
+                {basis ? `${Math.min(basis.achievementPct, 999).toFixed(0)}%` : "—"}
               </div>
               <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 4 }}>
                 {dict.wealthRetireGapLabel}{" "}
-                <span className="mono" style={{ color: display?.baseline == null ? undefined : display.baseline.funded ? "var(--profit)" : "var(--loss)" }}>
-                  {display?.baseline == null ? "—" : display.baseline.funded ? dict.wealthRetireFundedLabel : fmtMoney(display.baseline.gapAmount, CURRENCY)}
+                <span className="mono" style={{ color: basis == null ? "var(--ink-3)" : basis.funded ? "var(--profit)" : "var(--loss)" }}>
+                  {basis == null ? "—" : basis.funded ? dict.wealthRetireFundedLabel : fmtMoney(basis.gapAmount, CURRENCY)}
                 </span>
               </div>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-3)", marginTop: 8 }}>
-                {dict.wealthRetirePoolLabel} {display?.pool != null ? fmtMoney(display.pool, CURRENCY) : "—"} · {dict.wealthRetireContribLabel}{" "}
-                {display ? fmtMoney(display.monthlyContribution, CURRENCY) : "—"}
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-3)", marginTop: 8 }}>
+                <span>
+                  {dict.wealthRetirePoolLabel} {display?.pool != null ? fmtMoney(display.pool, CURRENCY) : "—"} · {dict.wealthRetireContribLabel}{" "}
+                  {display ? fmtMoney(display.monthlyContribution, CURRENCY) : "—"}
+                </span>
+                {hasPool && (
+                  <a
+                    href="#"
+                    className="accent-link"
+                    style={{ fontSize: 11 }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      openAssign();
+                    }}
+                  >
+                    {assignLabel} ›
+                  </a>
+                )}
               </div>
             </div>
             <div className="card" style={{ flex: "1 1 200px" }}>
@@ -582,10 +660,10 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
                 </span>
               </div>
               <div className="mono" style={{ fontSize: 19, marginTop: 10, lineHeight: 1.35 }}>
-                {display?.baseline == null
+                {basis == null || display == null
                   ? "—"
-                  : display.baseline.depletionAge != null
-                    ? `${display.baseline.depletionAge} 歲`
+                  : basis.depletionAge != null
+                    ? `${basis.depletionAge} 歲`
                     : dict.wealthRetireDepleteNeverWithAge.replace("{age}", String(display.horizonAge))}
               </div>
             </div>
@@ -625,7 +703,7 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
                   overlaid chart lines — the achievement%/depletion-age numbers
                   are the decision-relevant output; a third/fourth polyline on
                   top of the baseline path reads as clutter at this size. */}
-              {display.crash && display.lowReturn && (
+              {display.crash && display.lowReturn && !noPool && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
                   <ScenarioRow dict={dict} label={dict.wealthRetireScenarioBaseline} scenario={display.baseline} />
                   <ScenarioRow dict={dict} label={dict.wealthRetireScenarioCrash} scenario={display.crash} />
@@ -658,6 +736,28 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
                 <span>
                   {dict.wealthGoalsEtaLabel} <span style={{ color: "var(--ink)" }}>{retire.retirementAge} 歲</span>
                 </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 14, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+                <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>
+                  {dict.wealthRetireAssignedCount.replace("{n}", String(retire.goal.assets.length))} · {retire.pool != null ? fmtMoney(retire.pool, CURRENCY) : "—"}
+                </span>
+                <button
+                  onClick={openAssign}
+                  style={{
+                    marginLeft: "auto",
+                    fontFamily: "var(--font-sans)",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    padding: "6px 12px",
+                    borderRadius: 7,
+                    cursor: "pointer",
+                    border: "1px solid var(--accent-tint-border)",
+                    background: "var(--accent-tint-bg)",
+                    color: "var(--accent)",
+                  }}
+                >
+                  {assignLabel}
+                </button>
               </div>
             </div>
           )}
