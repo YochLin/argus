@@ -41,6 +41,8 @@ type fakeWealthDB struct {
 	updateGoalErr                         error
 	lastEarmarkGoalID, lastEarmarkAssetID int64
 	lastEarmarkRatio                      float64
+	lastGoalAssetsGoalID                  int64
+	lastGoalAssets                        []db.GoalAsset
 	lastRetirementGoalName                string
 	lastRetirementGoalTargetAmount        float64
 	lastRetirementGoalTargetDate          string
@@ -63,6 +65,7 @@ type fakeWealthDB struct {
 	goalErr           error
 	deleteGoalErr     error
 	earmarkErr        error
+	goalAssetsErr     error
 	retirementGoalErr error
 	insuranceErr      error
 	fundErr           error
@@ -160,6 +163,10 @@ func (f *fakeWealthDB) DeleteGoal(id int64) error {
 func (f *fakeWealthDB) SetGoalAsset(goalID, assetID int64, ratio float64) error {
 	f.lastEarmarkGoalID, f.lastEarmarkAssetID, f.lastEarmarkRatio = goalID, assetID, ratio
 	return f.earmarkErr
+}
+func (f *fakeWealthDB) SetGoalAssets(goalID int64, set []db.GoalAsset) error {
+	f.lastGoalAssetsGoalID, f.lastGoalAssets = goalID, set
+	return f.goalAssetsErr
 }
 func (f *fakeWealthDB) UpsertRetirementGoal(name string, targetAmount float64, targetDate string) (int64, error) {
 	f.lastRetirementGoalName, f.lastRetirementGoalTargetAmount, f.lastRetirementGoalTargetDate = name, targetAmount, targetDate

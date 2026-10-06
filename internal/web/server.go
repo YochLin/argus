@@ -352,6 +352,10 @@ func New(cfg Config) *Server {
 	// without it.
 	s.mux.HandleFunc("GET /api/wealth/retire", s.handleWealthRetireGet)
 	s.mux.HandleFunc("POST /api/wealth/retire", s.requireWritable(s.requireAuth(s.handleWealthRetireSave)))
+	// POST /api/wealth/retire/assign — the 指定退休資產 drawer: replaces the
+	// retirement goal's earmarks in one go (creating the goal when there is
+	// none), capped so an asset is never counted over 100% across goals.
+	s.mux.HandleFunc("POST /api/wealth/retire/assign", s.requireWritable(s.requireAuth(s.handleWealthRetireAssign)))
 	// /api/wealth/insure (`/w/insure`, §9.4 PR8) — insurance gap analysis
 	// (have vs a pure-function need estimate, §8.16.1). GET ungated; the
 	// add-policy form behind the usual write gate.

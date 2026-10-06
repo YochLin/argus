@@ -374,6 +374,24 @@ func (s *Server) handleWealthGoalDelete(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, tradeResponse{Message: "deleted"})
 }
 
+// earmarkEpsilon absorbs float noise in ratios that were typed as percentages
+// (70% → 0.7) and summed with others.
+const earmarkEpsilon = 1e-6
+
+// earmarkRoom is how much of an asset is still free to assign to goalID: 1
+// minus what every OTHER goal already takes. Without this cap an asset could
+// be counted at 100% by two goals at once, double-counting it in both
+// progress figures.
+func earmarkRoom(all []db.GoalAsset, goalID, assetID int64) float64 {
+	room := 1.0
+	for _, ga := range all {
+		if ga.AssetID == assetID && ga.GoalID != goalID {
+			room -= ga.Ratio
+		}
+	}
+	return math.Max(room, 0)
+}
+
 type wealthGoalEarmarkRequest struct {
 	GoalID  int64   `json:"goalId"`
 	AssetID int64   `json:"assetId"`
@@ -394,6 +412,18 @@ func (s *Server) handleWealthGoalEarmark(w http.ResponseWriter, r *http.Request)
 	if req.Ratio < 0 || req.Ratio > 1 {
 		writeError(w, http.StatusBadRequest, "ratio must be between 0 and 1")
 		return
+	}
+	if req.Ratio > 0 {
+		all, err := s.db.ListAllGoalAssets()
+		if err != nil {
+			logger.Errorf("web: list earmarks: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to update earmark")
+			return
+		}
+		if room := earmarkRoom(all, req.GoalID, req.AssetID); req.Ratio > room+earmarkEpsilon {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("only %.0f%% of this asset is left to assign", room*100))
+			return
+		}
 	}
 	if err := s.wealthDB.SetGoalAsset(req.GoalID, req.AssetID, req.Ratio); err != nil {
 		logger.Errorf("web: set goal earmark: %v", err)

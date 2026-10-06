@@ -194,6 +194,28 @@ func (d *DB) SetGoalAsset(goalID, assetID int64, ratio float64) error {
 	return err
 }
 
+// SetGoalAssets makes set the goal's whole earmark list in one transaction:
+// assets not in set lose their earmark, the rest are inserted — so a drawer
+// that shows "these are the assets for this goal" saves exactly that, with no
+// window where a half-applied list is visible. Ratios are the caller's to
+// validate (0 < ratio <= 1); each GoalAsset's GoalID is ignored.
+func (d *DB) SetGoalAssets(goalID int64, set []GoalAsset) error {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM goal_assets WHERE goal_id = ?`, goalID); err != nil {
+		return err
+	}
+	for _, ga := range set {
+		if _, err := tx.Exec(`INSERT INTO goal_assets (goal_id, asset_id, ratio) VALUES (?, ?, ?)`, goalID, ga.AssetID, ga.Ratio); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // nullableInt stores 0 as NULL — for start_year, 0 means "never typed".
 func nullableInt(i int) any {
 	if i == 0 {

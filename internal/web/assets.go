@@ -52,13 +52,17 @@ type wealthWriter interface {
 	UpdateRecurringCashflow(id int64, e db.RecurringCashflowEdit) error
 	// CreateGoal/DeleteGoal/SetGoalAsset back wealth_goals.go's
 	// create/delete/earmark write routes (Phase 9 波次3 PR6). The goals
-	// drawer calls create/update/delete; earmark has no UI, the route stays
-	// as API surface.
+	// drawer calls create/update/delete; the single-asset earmark route has no
+	// UI of its own — /w/retire's 指定退休資產 drawer saves through
+	// SetGoalAssets below instead.
 	CreateGoal(g db.NewGoal) (int64, error)
 	// UpdateGoal backs the goals drawer's edit path (general goals only).
 	UpdateGoal(id int64, g db.NewGoal) error
 	DeleteGoal(id int64) error
 	SetGoalAsset(goalID, assetID int64, ratio float64) error
+	// SetGoalAssets replaces a goal's whole earmark list in one transaction —
+	// wealth_retire.go's assign route.
+	SetGoalAssets(goalID int64, set []db.GoalAsset) error
 	// UpsertRetirementGoal backs wealth_retire.go's quick-switch save (Phase
 	// 9 波次3 PR7) — creates or updates the single kind="retirement" goal row.
 	UpsertRetirementGoal(name string, targetAmount float64, targetDate string) (int64, error)

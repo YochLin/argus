@@ -228,6 +228,33 @@ func TestHandleWealthGoalCreateDeleteEarmark(t *testing.T) {
 	}
 }
 
+// One asset can serve two goals, but only up to 100% between them: another
+// goal holding 70% leaves 30%, and re-saving the same goal's own row is not
+// counted against itself.
+func TestHandleWealthGoalEarmarkCapsAnAssetAt100PercentAcrossGoals(t *testing.T) {
+	wealthDB := &fakeWealthDB{}
+	fake := &fakeDB{goalAssets: []db.GoalAsset{{GoalID: 9, AssetID: 2, Ratio: 0.7}, {GoalID: 1, AssetID: 2, Ratio: 0.1}}}
+	s := newWealthGoalsTestServer("secret", fake, wealthDB)
+	cookie := loginAndGetCookie(t, s, "secret")
+	post := func(ratio float64) int {
+		body, _ := json.Marshal(map[string]any{"goalId": 1, "assetId": 2, "ratio": ratio})
+		req := httptest.NewRequest(http.MethodPost, "/api/wealth/goals/earmark", bytes.NewReader(body))
+		req.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if code := post(0.4); code != http.StatusBadRequest {
+		t.Errorf("0.4 with 0.7 held elsewhere: status = %d, want 400", code)
+	}
+	if code := post(0.3); code != http.StatusOK {
+		t.Errorf("0.3 (the 30%% left; its own 10%% row doesn't count): status = %d, want 200", code)
+	}
+	if code := post(0); code != http.StatusOK {
+		t.Errorf("removing an earmark: status = %d, want 200", code)
+	}
+}
+
 // TestHandleWealthGoalsListDrawerFields pins the hand-typed columns: a typed
 // 已累積 wins over the earmark sum, 每月投入 and 起始年 are echoed back for a
 // general goal, and 起始年 (not created_at) anchors the expected-progress mark.
