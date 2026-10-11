@@ -32,7 +32,7 @@ var twIndices = []service.IndexProxy{
 }
 
 // RunUSMorningBriefing is the 07:00 CST scheduler entry point (see
-// scheduler.AddMorningBriefing): a read-only narrative recap of the US
+// scheduler.MorningBriefing): a read-only narrative recap of the US
 // session that just closed — indices, macro news, watchlist/mover
 // highlights — distinct from runDailyReport's BUY/SELL/HOLD decision later
 // the same evening. Deliberately touches no signal_states/recommendations
@@ -94,7 +94,7 @@ func (b *Bot) RunUSMorningBriefing(ctx context.Context) {
 const twPreOpenStaleness = 72 * time.Hour
 
 // RunTWMorningBriefing is the 08:30 CST scheduler entry point (see
-// scheduler.AddTWMorningBriefing): a read-only narrative recap 30 minutes
+// scheduler.TWMorningBriefing): a read-only narrative recap 30 minutes
 // before TW's 09:00 open — the prior TW session's close, overnight US
 // performance, VIX, and TW market news — distinct from RunTWDailyReport's
 // BUY/SELL/HOLD decision later at 11:30. Deliberately touches no

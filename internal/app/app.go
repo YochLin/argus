@@ -434,10 +434,10 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 		// Phase 18's sector money-flow scan only has a consumer when the
 		// dashboard is running, so it's registered here rather than
 		// unconditionally alongside the other jobs below.
-		a.Scheduler.AddSectorFlowScan(ctx, func(ctx context.Context) {
+		a.Scheduler.Add(ctx, scheduler.SectorFlowScan, func(ctx context.Context) {
 			a.Web.RunSectorFlowScan(ctx, market.US)
 		})
-		a.Scheduler.AddTWSectorFlowScan(ctx, func(ctx context.Context) {
+		a.Scheduler.Add(ctx, scheduler.TWSectorFlowScan, func(ctx context.Context) {
 			a.Web.RunSectorFlowScan(ctx, market.TW)
 		})
 	}
@@ -451,7 +451,7 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 // headless when no token is configured, so each job below still computes and
 // persists its result and only its Telegram-shaped summary text goes
 // nowhere. That gate used to be the phase's worst functional hole —
-// AddClosingSnapshot's real job is writing daily_snapshots/benchmark rows,
+// scheduler.ClosingSnapshot's real job is writing daily_snapshots/benchmark rows,
 // which the dashboard's whole P&L curve replays, so a Telegram-less
 // cmd/server silently accumulated no history and the dashboard just looked
 // broken.
@@ -459,32 +459,32 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 // What's still true (Step 3.2's remaining structural work, see
 // docs/architecture/server-refactor-plan.md §4): these jobs compute and send
 // in one method on *bot.Bot rather than calling a service and publishing an
-// Event the way AddUniverseScan below does. That's now a code-shape debt,
+// Event the way scheduler.UniverseScan below does. That's now a code-shape debt,
 // not a behavioral one.
 func (a *App) registerJobs(ctx context.Context) {
 	b := a.Bot
-	a.Scheduler.AddDailyReport(ctx, func(ctx context.Context) {
+	a.Scheduler.Add(ctx, scheduler.DailyReport, func(ctx context.Context) {
 		b.RunDailyReport(ctx)
 	})
-	a.Scheduler.AddMorningBriefing(ctx, func(ctx context.Context) {
+	a.Scheduler.Add(ctx, scheduler.MorningBriefing, func(ctx context.Context) {
 		b.RunUSMorningBriefing(ctx)
 	})
-	a.Scheduler.AddTWDailyReport(ctx, func(ctx context.Context) {
+	a.Scheduler.Add(ctx, scheduler.TWDailyReport, func(ctx context.Context) {
 		b.RunTWDailyReport(ctx)
 	})
-	a.Scheduler.AddTWMorningBriefing(ctx, func(ctx context.Context) {
+	a.Scheduler.Add(ctx, scheduler.TWMorningBriefing, func(ctx context.Context) {
 		b.RunTWMorningBriefing(ctx)
 	})
-	a.Scheduler.AddClosingSnapshot(ctx, func(ctx context.Context) {
+	a.Scheduler.Add(ctx, scheduler.ClosingSnapshot, func(ctx context.Context) {
 		b.RunClosingSnapshot(ctx, market.US)
 	})
-	a.Scheduler.AddTWClosingSnapshot(ctx, func(ctx context.Context) {
+	a.Scheduler.Add(ctx, scheduler.TWClosingSnapshot, func(ctx context.Context) {
 		b.RunClosingSnapshot(ctx, market.TW)
 	})
-	a.Scheduler.AddWeeklyReview(ctx, func(ctx context.Context) {
+	a.Scheduler.Add(ctx, scheduler.WeeklyReview, func(ctx context.Context) {
 		b.RunWeeklyReview(ctx)
 	})
-	a.Scheduler.AddSinopacSync(ctx, func(ctx context.Context) {
+	a.Scheduler.Add(ctx, scheduler.SinopacSync, func(ctx context.Context) {
 		if a.cfg.ShioajiAddr == "" {
 			return
 		}
@@ -492,10 +492,10 @@ func (a *App) registerJobs(ctx context.Context) {
 			b.Send(msg)
 		}
 	})
-	a.Scheduler.AddMonthlyReport(ctx, func(ctx context.Context) {
+	a.Scheduler.Add(ctx, scheduler.MonthlyReport, func(ctx context.Context) {
 		b.RunMonthlyReport(ctx)
 	})
-	a.Scheduler.AddWealthHealthReport(ctx, func(ctx context.Context) {
+	a.Scheduler.Add(ctx, scheduler.WealthHealthReport, func(ctx context.Context) {
 		b.RunWealthHealthReport(ctx)
 	})
 
@@ -506,13 +506,13 @@ func (a *App) registerJobs(ctx context.Context) {
 	// it stays safe to run even when Telegram isn't configured — Publish
 	// just fans out to whatever Notifiers got registered, a no-op Telegram
 	// leg included, same as any other publishAlert call in that case.
-	a.Scheduler.AddUniverseScan(ctx, func(ctx context.Context) {
+	a.Scheduler.Add(ctx, scheduler.UniverseScan, func(ctx context.Context) {
 		a.runScan(ctx, market.US)
 	})
-	a.Scheduler.AddTWUniverseScan(ctx, func(ctx context.Context) {
+	a.Scheduler.Add(ctx, scheduler.TWUniverseScan, func(ctx context.Context) {
 		a.runScan(ctx, market.TW)
 	})
-	a.Scheduler.AddTWUniverseRefresh(ctx, func(ctx context.Context) {
+	a.Scheduler.Add(ctx, scheduler.TWUniverseRefresh, func(ctx context.Context) {
 		defer a.recoverJob("tw universe refresh")
 		added, dropped, err := a.Scan.RefreshTWUniverse(ctx)
 		if err != nil {
@@ -534,12 +534,12 @@ func (a *App) registerJobs(ctx context.Context) {
 		})
 	})
 
-	a.Scheduler.AddLogRotation(func() {
+	a.Scheduler.Add(ctx, scheduler.LogRotation, func(context.Context) {
 		if err := a.logFile.Rotate(); err != nil {
 			logger.Errorf("log rotation: %v", err)
 		}
 	})
-	a.Scheduler.AddBackup(func() {
+	a.Scheduler.Add(ctx, scheduler.Backup, func(context.Context) {
 		runBackup(a.DB, a.cfg.BackupDir, a.cfg.BackupRetentionDays, "argus")
 		if a.PaperDB != nil {
 			runBackup(a.PaperDB, a.cfg.BackupDir, a.cfg.BackupRetentionDays, "argus-paper")
