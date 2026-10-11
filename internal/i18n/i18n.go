@@ -465,6 +465,14 @@ const (
 const (
 	KeySystemPromptAnalyst Key = "system_prompt_analyst"
 	KeySystemPromptChat    Key = "system_prompt_chat"
+	// KeySystemPromptWealth is the web wealth assistant's (Phase 28). It must
+	// contain llm.WealthGoTradesMarker verbatim — the web strips that marker
+	// out of a reply and shows a "go to trades" button instead (checked by
+	// llm's TestWealthPromptHasMarker). KeyWealthTopicHint (%s = the page the
+	// assistant was opened from) is prepended to the first message after an
+	// entry point opens it.
+	KeySystemPromptWealth Key = "system_prompt_wealth"
+	KeyWealthTopicHint    Key = "wealth_topic_hint"
 
 	KeyRecPromptIntro Key = "rec_prompt_intro"
 	// KeyRecPromptIntroTW is KeyRecPromptIntro's Taiwan-market twin —

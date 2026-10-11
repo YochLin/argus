@@ -835,4 +835,20 @@ var migrations = []string{
 	// date was never kept and can't be reconstructed) and for any active flow;
 	// resuming clears it again.
 	`ALTER TABLE recurring_cashflows ADD COLUMN paused_at TEXT;`,
+	// 39: Phase 28 A3 — the web wealth assistant's conversation, kept only so
+	// the page can show it again after a reload or a restart; it is never
+	// replayed to the model (docs/phase-28-wealth-ai-chat.md §6), so its size
+	// is bounded by one conversation — 開新對話 deletes every row. There is
+	// one conversation at a time, hence no conversation id. role is
+	// 'user'|'ai'|'sys'|'div' (div = "the AI started over" divider); meta is a
+	// JSON object for what a role needs beyond text (an ai turn's action).
+	`
+	CREATE TABLE IF NOT EXISTS wealth_assistant_messages (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		role       TEXT NOT NULL,
+		text       TEXT NOT NULL DEFAULT '',
+		meta       TEXT NOT NULL DEFAULT '{}',
+		created_at TEXT NOT NULL
+	);
+	`,
 }

@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -127,6 +128,10 @@ type Config struct {
 	// time instead — a deploy-time env flag matches every other optional
 	// feature's presence-of-config convention (WEB_ADDR, Password, etc.).
 	LLMAudit bool
+	// Assistant is the wealth assistant's model seam (Phase 28, the process's
+	// *llm.Client). nil makes the assistant's write routes 409; its GET
+	// still answers with an empty conversation.
+	Assistant AssistantChatter
 }
 
 // Server is Argus's read-only web dashboard (Phase 5 PR1 — see
@@ -182,7 +187,13 @@ type Server struct {
 	// interface, not a concrete *db.DB.
 	apiDB  apiV1Store
 	events wsHub
-	mux    *http.ServeMux
+	// assistant/assistantDB back wealth_assistant.go; assistantMu lets one
+	// turn run at a time. assistantDB is set only when cfg.DB != nil, same
+	// typed-nil reason as apiDB.
+	assistant   AssistantChatter
+	assistantDB assistantStore
+	assistantMu sync.Mutex
+	mux         *http.ServeMux
 }
 
 func New(cfg Config) *Server {
@@ -221,7 +232,9 @@ func New(cfg Config) *Server {
 	}
 	if cfg.DB != nil {
 		s.apiDB = cfg.DB
+		s.assistantDB = cfg.DB
 	}
+	s.assistant = cfg.Assistant
 	s.recPerf = newRecPerfStore(s.db, s.history)
 	s.mux = http.NewServeMux()
 	s.mux.HandleFunc("GET /api/config", s.handleConfig)
@@ -366,6 +379,12 @@ func New(cfg Config) *Server {
 	// per-fund performance table. Read-only, GET only — the page has no add
 	// form (fund rows only ever arrive via /w/import's CSV path).
 	s.mux.HandleFunc("GET /api/wealth/funds", s.handleWealthFundsGet)
+	// /api/wealth/assistant (Phase 28) — the chat itself is a write (it
+	// stores the conversation and runs the model), so it carries the same
+	// gate as every other wealth write.
+	s.mux.HandleFunc("GET /api/wealth/assistant", s.handleWealthAssistantGet)
+	s.mux.HandleFunc("POST /api/wealth/assistant/chat", s.requireWritable(s.requireAuth(s.requireAssistant(s.handleWealthAssistantChat))))
+	s.mux.HandleFunc("POST /api/wealth/assistant/new", s.requireWritable(s.requireAuth(s.requireAssistant(s.handleWealthAssistantNew))))
 	// /api/settings (Phase 17 PR2) sits behind the same gate as every write
 	// route, GET included: the read side reports which credentials are
 	// configured, which is not something to hand out unauthenticated.

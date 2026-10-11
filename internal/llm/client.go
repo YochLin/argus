@@ -83,6 +83,18 @@ type ChatKey string
 // ChatTelegram is the Telegram bot's free-form chat.
 const ChatTelegram ChatKey = "telegram"
 
+// ChatWealth is the web dashboard's wealth assistant (Phase 28). Its state —
+// the user's records — lives in the DB and is read back through the
+// `argus mcp wealth` tools, so its session can be dropped when idle or long
+// without losing anything the next session can't look up again.
+const ChatWealth ChatKey = "wealth"
+
+// WealthGoTradesMarker is what KeySystemPromptWealth tells the model to end a
+// reply with when the user brings up stocks; internal/web strips it and shows
+// a "go to trades" button instead. Same in both languages, like
+// KeyMarketSummaryMarker.
+const WealthGoTradesMarker = "[[GO_TRADES]]"
+
 // chatSpec is what a ChatKey's session is opened with: its system prompt,
 // which argus MCP tool set it gets (mcpScope), and when it ages out. maxIdle/maxTurns are
 // when Chat drops the session and opens a fresh one; 0 never does. A key
@@ -100,6 +112,7 @@ type chatSpec struct {
 func defaultChatSpecs() map[ChatKey]chatSpec {
 	return map[ChatKey]chatSpec{
 		ChatTelegram: {systemPrompt: i18n.KeySystemPromptChat},
+		ChatWealth:   {systemPrompt: i18n.KeySystemPromptWealth, mcpScope: MCPWealth, maxIdle: 30 * time.Minute, maxTurns: 40},
 	}
 }
 
