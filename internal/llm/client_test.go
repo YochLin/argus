@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -23,7 +24,7 @@ func (f fakeReplyProvider) Prompt(ctx context.Context, systemPrompt, model, text
 	return f.reply, f.err
 }
 
-func (f fakeReplyProvider) NewChatSession(ctx context.Context, systemPrompt, model string) (ChatSession, error) {
+func (f fakeReplyProvider) NewChatSession(ctx context.Context, systemPrompt, model string, scope MCPScope) (ChatSession, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -91,7 +92,7 @@ func (f fakeChatProvider) Prompt(ctx context.Context, systemPrompt, model, text 
 	return "", errors.New("not implemented")
 }
 
-func (f fakeChatProvider) NewChatSession(ctx context.Context, systemPrompt, model string) (ChatSession, error) {
+func (f fakeChatProvider) NewChatSession(ctx context.Context, systemPrompt, model string, scope MCPScope) (ChatSession, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -182,7 +183,7 @@ func (p sessionCountingProvider) Prompt(ctx context.Context, systemPrompt, model
 	return "", errors.New("not implemented")
 }
 
-func (p sessionCountingProvider) NewChatSession(ctx context.Context, systemPrompt, model string) (ChatSession, error) {
+func (p sessionCountingProvider) NewChatSession(ctx context.Context, systemPrompt, model string, scope MCPScope) (ChatSession, error) {
 	*p.opened++
 	n := *p.opened
 	return &countedSession{n: n, systemPrompt: systemPrompt, closed: p.closed}, nil
@@ -317,5 +318,39 @@ func TestChat_TelegramNeverAgesOut(t *testing.T) {
 	}
 	if *opened != 1 {
 		t.Errorf("telegram opened %d sessions over 50 days of turns, want 1 (only /reset starts over)", *opened)
+	}
+}
+
+func TestMCPArgs(t *testing.T) {
+	if got := mcpArgs(MCPFull); !slices.Equal(got, []string{"mcp"}) {
+		t.Errorf("mcpArgs(MCPFull) = %v, want [mcp]", got)
+	}
+	if got := mcpArgs(MCPWealth); !slices.Equal(got, []string{"mcp", "wealth"}) {
+		t.Errorf("mcpArgs(MCPWealth) = %v, want [mcp wealth]", got)
+	}
+}
+
+// scopeRecordingProvider records the MCPScope each chat session was opened with.
+type scopeRecordingProvider struct{ scopes *[]MCPScope }
+
+func (p scopeRecordingProvider) Prompt(ctx context.Context, systemPrompt, model, text string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (p scopeRecordingProvider) NewChatSession(ctx context.Context, systemPrompt, model string, scope MCPScope) (ChatSession, error) {
+	*p.scopes = append(*p.scopes, scope)
+	return &fakeChatSession{}, nil
+}
+
+func TestChat_OpensSessionWithItsKeysScope(t *testing.T) {
+	var scopes []MCPScope
+	c := NewClientWithProvider(scopeRecordingProvider{scopes: &scopes}, "", "", "", i18n.EN)
+	const w ChatKey = "wealth-test"
+	c.chatSpecs[w] = chatSpec{systemPrompt: i18n.KeySystemPromptChat, mcpScope: MCPWealth}
+
+	mustChat(t, c, ChatTelegram)
+	mustChat(t, c, w)
+	if !slices.Equal(scopes, []MCPScope{MCPFull, MCPWealth}) {
+		t.Errorf("sessions opened with scopes %q, want telegram on the full set and the other key on wealth", scopes)
 	}
 }

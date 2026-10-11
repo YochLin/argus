@@ -55,7 +55,7 @@ func (p *countingE2ELLMProvider) Prompt(ctx context.Context, systemPrompt, model
 	p.mu.Unlock()
 	return "a plausible explanation of the move", nil
 }
-func (p *countingE2ELLMProvider) NewChatSession(ctx context.Context, systemPrompt, model string) (llm.ChatSession, error) {
+func (p *countingE2ELLMProvider) NewChatSession(ctx context.Context, systemPrompt, model string, scope llm.MCPScope) (llm.ChatSession, error) {
 	return nil, errors.New("fake: chat not supported")
 }
 func (p *countingE2ELLMProvider) callCount() int {

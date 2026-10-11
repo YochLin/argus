@@ -38,7 +38,7 @@ func (p *fillNewsLLM) Prompt(ctx context.Context, systemPrompt, model, text stri
 	p.calls++
 	return p.reply, p.err
 }
-func (p *fillNewsLLM) NewChatSession(ctx context.Context, systemPrompt, model string) (llm.ChatSession, error) {
+func (p *fillNewsLLM) NewChatSession(ctx context.Context, systemPrompt, model string, scope llm.MCPScope) (llm.ChatSession, error) {
 	return nil, errors.New("fake: chat not supported")
 }
 

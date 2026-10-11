@@ -24,7 +24,7 @@ func (acpProvider) Prompt(ctx context.Context, systemPrompt, model, text string)
 	// the prefetch paths that build their prompts already control Finnhub
 	// rate-limit exposure directly (see PLAN.md's Phase 3.5 "一次性指令加
 	// 工具——暫緩"). Only Chat gets the MCP tool surface.
-	session, err := startClaudeSession(ctx, systemPrompt, model, false)
+	session, err := startClaudeSession(ctx, systemPrompt, model, false, MCPFull)
 	if err != nil {
 		return "", err
 	}
@@ -37,8 +37,8 @@ func (acpProvider) Prompt(ctx context.Context, systemPrompt, model, text string)
 	return strings.TrimSpace(reply), nil
 }
 
-func (acpProvider) NewChatSession(ctx context.Context, systemPrompt, model string) (ChatSession, error) {
-	session, err := startClaudeSession(ctx, systemPrompt, model, true)
+func (acpProvider) NewChatSession(ctx context.Context, systemPrompt, model string, scope MCPScope) (ChatSession, error) {
+	session, err := startClaudeSession(ctx, systemPrompt, model, true, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +50,8 @@ func (acpProvider) NewChatSession(ctx context.Context, systemPrompt, model strin
 // back, never file/shell/network tool access. withMCPTools additionally
 // wires in the argus MCP server (internal/mcptools) so the agent can call
 // its read-only data tools (get_quote/get_history/...) — Phase 3.5's "掛進
-// chat session" item; disableBuiltInTools is a claude-agent-acp _meta
+// chat session" item; scope picks which tool set (see MCPScope).
+// disableBuiltInTools is a claude-agent-acp _meta
 // extension with no bearing on MCP servers, which are connected through the
 // base ACP session/new "mcpServers" field instead, so the two don't
 // conflict.
@@ -61,7 +62,7 @@ func (acpProvider) NewChatSession(ctx context.Context, systemPrompt, model strin
 // stock-analysis/chat prompts. systemPrompt replaces the agent's default
 // "Claude Code" persona entirely. model is a Claude model alias/ID (e.g.
 // "opus", "sonnet"); empty uses the agent's own default.
-func startClaudeSession(ctx context.Context, systemPrompt, model string, withMCPTools bool) (*acp.Session, error) {
+func startClaudeSession(ctx context.Context, systemPrompt, model string, withMCPTools bool, scope MCPScope) (*acp.Session, error) {
 	command, args := claudeAgentCommand()
 
 	meta := map[string]any{"disableBuiltInTools": true}
@@ -74,7 +75,7 @@ func startClaudeSession(ctx context.Context, systemPrompt, model string, withMCP
 
 	var mcpServers []acp.MCPServer
 	if withMCPTools {
-		server, err := argusMCPServer()
+		server, err := argusMCPServer(scope)
 		if err != nil {
 			// Missing tools shouldn't take chat down entirely — degrade to
 			// the tool-less session chat already worked with before this
@@ -109,7 +110,7 @@ func startClaudeSession(ctx context.Context, systemPrompt, model string, withMCP
 // it may otherwise only exist as a relative default no .env ever set) are
 // the subprocess's only source of the config main() otherwise reads
 // straight from .env.
-func argusMCPServer() (acp.MCPServer, error) {
+func argusMCPServer(scope MCPScope) (acp.MCPServer, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return acp.MCPServer{}, fmt.Errorf("resolve own executable: %w", err)
@@ -127,9 +128,17 @@ func argusMCPServer() (acp.MCPServer, error) {
 	return acp.MCPServer{
 		Name:    "argus",
 		Command: exe,
-		Args:    []string{"mcp"},
+		Args:    mcpArgs(scope),
 		Env:     env,
 	}, nil
+}
+
+// mcpArgs is the argus subcommand line for scope: `mcp`, or `mcp <scope>`.
+func mcpArgs(scope MCPScope) []string {
+	if scope == MCPFull {
+		return []string{"mcp"}
+	}
+	return []string{"mcp", string(scope)}
 }
 
 // claudeAgentCommand resolves how to launch claude-agent-acp. Defaults to

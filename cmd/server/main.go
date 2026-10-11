@@ -137,6 +137,25 @@ func runMCPServer() {
 		defer database.Close()
 	}
 
+	// `mcp <scope>` (llm.MCPScope) serves a narrower tool set. `wealth` is
+	// the web wealth assistant's: DB reads only, no providers, so it branches
+	// before any of them are built — and without a DB it has nothing to
+	// serve, unlike the full set's per-tool nil-degrade.
+	if len(os.Args) > 2 {
+		if os.Args[2] != "wealth" {
+			logger.Fatalf("mcp: unknown scope %q", os.Args[2])
+		}
+		if database == nil {
+			logger.Fatalf("mcp wealth: no database")
+		}
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		if err := mcptools.RunWealth(ctx, database); err != nil {
+			logger.Fatalf("mcp wealth server: %v", err)
+		}
+		return
+	}
+
 	// Same provider construction as app.Boot (see NewCoreProviders, Phase 24
 	// tech debt 6): Finnhub-only tools (statements/earnings) stay nil
 	// without a key, same as Bot's — and fundamentalsProvider is the same
