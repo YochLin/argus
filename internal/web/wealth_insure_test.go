@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"argus/internal/db"
+	"argus/internal/service"
 )
 
 func newWealthInsureTestServer(password string, fake *fakeDB, wealthDB wealthWriter) *Server {
@@ -48,7 +49,7 @@ func TestHandleWealthInsureGetNoProfile(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
 	}
-	var got wealthInsureResponse
+	var got service.InsuranceGap
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -93,7 +94,7 @@ func TestHandleWealthInsureGetWithProfileAndCoverage(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
 	}
-	var got wealthInsureResponse
+	var got service.InsuranceGap
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -149,7 +150,7 @@ func TestHandleWealthInsureGetZeroDependentsSkipsAgeRequirement(t *testing.T) {
 	s := newWealthInsureTestServer("", fake, &fakeWealthDB{})
 	rec := httptest.NewRecorder()
 	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/insure", nil))
-	var got wealthInsureResponse
+	var got service.InsuranceGap
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -170,7 +171,7 @@ func TestHandleWealthInsureGetExcludesArchivedPolicy(t *testing.T) {
 	s := newWealthInsureTestServer("", fake, &fakeWealthDB{})
 	rec := httptest.NewRecorder()
 	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/insure", nil))
-	var got wealthInsureResponse
+	var got service.InsuranceGap
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
