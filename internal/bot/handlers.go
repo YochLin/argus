@@ -1732,7 +1732,7 @@ func (b *Bot) handleChat(ctx context.Context, text string) {
 		text = ctxBlock + text
 	}
 
-	reply, err := b.llm.Chat(ctx, text)
+	reply, _, err := b.llm.Chat(ctx, llm.ChatTelegram, text)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyChatFailed, err))
 		return
@@ -1768,7 +1768,7 @@ func (b *Bot) handleChatArticle(ctx context.Context, text, url string) {
 		prompt = ctxBlock + prompt
 	}
 
-	reply, err := b.llm.Chat(ctx, prompt)
+	reply, _, err := b.llm.Chat(ctx, llm.ChatTelegram, prompt)
 	if err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyChatFailed, err))
 		return
@@ -1829,6 +1829,6 @@ func (b *Bot) buildChatContext() string {
 // handleReset clears the persistent chat session so the next message starts
 // a fresh conversation with no memory of earlier turns.
 func (b *Bot) handleReset() {
-	b.llm.ResetChat()
+	b.llm.ResetChat(llm.ChatTelegram)
 	b.Send(i18n.T(b.lang, i18n.KeyResetDone))
 }

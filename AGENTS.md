@@ -197,7 +197,11 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   authenticated through the operator's local `claude` CLI login rather than a metered API key) and
   optionally falling back to `AntigravityProvider` (Google's Antigravity CLI, opt-in via
   `ANTIGRAVITY_ENABLED`). `GenerateRecommendations` parses plain-text `[TICKER: X]`/`Action:`/`Reason:`
-  blocks (not JSON); `Chat` replies go through verbatim. `StockData` carries optional attach-and-render
+  blocks (not JSON); `Chat` replies go through verbatim. `Chat` keeps one session per `ChatKey`
+  (`ChatTelegram` today; Phase 28 adds the web wealth assistant) so two surfaces never share history or
+  a `/reset`; a key's `chatSpec` can age its session out by idle time or turn count (Telegram's never
+  does), and `Chat`'s `fresh` result tells the caller the agent just forgot everything before this
+  turn. `StockData` carries optional attach-and-render
   fields (`Position`, `Earnings`, `ScanReason`, `Technicals`, `Candles`, `PrevRec`) that degrade
   independently when their source data isn't available. Also home to `WeeklyReview`, `InsightPortfolio`,
   and `ReviewTrade` (closed-trade analysis). `ExtractPodcastInsights` is `/podcast`'s one-shot call over
