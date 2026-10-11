@@ -11,7 +11,7 @@ package service
 //
 // These are the plain-constant defaults, not env-tunable, even though
 // §10.2②'s doc text suggests "情境參數走 env 可調": every other wealth
-// threshold actually shipped in this codebase (goalStatus's 5pp band,
+// threshold actually shipped in this codebase (GoalStatus's 5pp band,
 // /w/alloc's drift bands) is a plain constant too — this stays consistent
 // with what was actually built rather than the doc's unimplemented
 // aspiration. /w/retire's settings drawer does let a user override the

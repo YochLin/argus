@@ -435,35 +435,29 @@ type RetirementGoalProgress struct {
 }
 
 // ComputeRetirementGoalProgress sums the retirement goal's earmarked assets
-// to TWD as of asOf — the same math wealth_goals.go's earmarkedSavedTWD and
-// wealth_retire.go's buildRetirementResponse already do for /w/goals and
-// /w/retire, hoisted here so the monthly health report (internal/bot) can
-// share it too without internal/bot importing internal/web (not a
-// dependency this codebase allows, AGENTS.md's per-package boundaries).
-// Kept as its own small function rather than refactoring those two web
-// handlers onto it — they also need per-asset rows for their own JSON
-// responses, which this single-number report doesn't. ok=false when there's
-// no retirement goal yet, it has no target amount, or any earmarked asset's
-// currency can't be priced (whole-metric-degrades, §8.17.1).
+// to TWD as of asOf (EarmarkedSavedTWD, the same sum /w/goals and /w/retire
+// show) for the monthly health report's one-line progress. ok=false when
+// there's no retirement goal yet, it has no target amount, or any earmarked
+// asset's currency can't be priced (whole-metric-degrades, §8.17.1).
 func ComputeRetirementGoalProgress(store WealthStore, fx WealthFXStore, quotes QuoteReader, asOf string) (RetirementGoalProgress, bool) {
 	goals, err := store.ListGoals()
 	if err != nil {
 		return RetirementGoalProgress{}, false
 	}
-	var goal *db.Goal
-	for i := range goals {
-		if goals[i].Kind == "retirement" {
-			goal = &goals[i]
-			break
-		}
-	}
+	goal := FindRetirementGoal(goals)
 	if goal == nil || goal.TargetAmount <= 0 {
 		return RetirementGoalProgress{}, false
 	}
 
-	earmarks, err := store.ListAllGoalAssets()
+	all, err := store.ListAllGoalAssets()
 	if err != nil {
 		return RetirementGoalProgress{}, false
+	}
+	var earmarks []db.GoalAsset
+	for _, ga := range all {
+		if ga.GoalID == goal.ID {
+			earmarks = append(earmarks, ga)
+		}
 	}
 	assetList, err := store.ListAssetsWithValue(true)
 	if err != nil {
@@ -474,25 +468,13 @@ func ComputeRetirementGoalProgress(store WealthStore, fx WealthFXStore, quotes Q
 		assetByID[a.ID] = a
 	}
 
-	var saved float64
-	for _, ga := range earmarks {
-		if ga.GoalID != goal.ID {
-			continue
-		}
-		a, found := assetByID[ga.AssetID]
-		if !found || a.Value == nil {
-			continue
-		}
-		rate, ok := RateToTWD(a.Currency, asOf, true, quotes, fx)
-		if !ok {
-			return RetirementGoalProgress{}, false
-		}
-		saved += *a.Value * ga.Ratio * rate
+	_, saved := EarmarkedSavedTWD(earmarks, assetByID, asOf, quotes, fx)
+	if saved == nil {
+		return RetirementGoalProgress{}, false
 	}
-
-	pct := saved / goal.TargetAmount * 100
+	pct := *saved / goal.TargetAmount * 100
 	if pct > 100 {
 		pct = 100
 	}
-	return RetirementGoalProgress{Name: goal.Name, TargetAmount: goal.TargetAmount, Saved: saved, ProgressPct: pct}, true
+	return RetirementGoalProgress{Name: goal.Name, TargetAmount: goal.TargetAmount, Saved: *saved, ProgressPct: pct}, true
 }
