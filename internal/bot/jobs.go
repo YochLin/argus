@@ -46,8 +46,10 @@ func (b *Bot) SendSignalAlert(sigs []signals.Signal) {
 }
 
 // benchmarkFor returns the daily-snapshot benchmark ticker for m: SPY for
-// US, 0050 for TW (Phase 6, same "snapshot alongside the watchlist" role
-// benchmarkTicker/snapshotBenchmark already played for US-only — see
+// US, 0050 for TW (Phase 6, snapshotted alongside the watchlist on every
+// closing snapshot so /track and the trade reviews can set a call against the
+// same-period broad-market move; never added to the watchlist table — it's
+// not a holding, and /list shouldn't show it — see
 // docs/phase-6-tw-market.md §3.3). 0050 is allowed to simultaneously be a
 // TW watchlist/position ticker; SaveSnapshot's INSERT OR REPLACE makes a
 // same-(ticker,date) double-write from both paths safe.

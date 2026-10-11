@@ -38,17 +38,10 @@ const (
 	// fetchStockData) since it covers the whole market rather than one name.
 	marketNewsLimit = 10
 
-	// benchmarkTicker is snapshotted alongside the watchlist on every closing
-	// snapshot (see snapshotBenchmark) so /track can compare a recommendation
-	// against the same-period broad-market move instead of just its own
-	// absolute direction. It's intentionally not added to the watchlist table
-	// — it's not a holding, and /list shouldn't show it.
-	benchmarkTicker = "SPY"
-
 	// vixTicker feeds computeMarketRegime's VIX line (Phase 3.7 追加項, see
 	// docs/phase-3.7-market-regime.md) via the ordinary quote path
-	// (b.provider.GetQuote) — not a history/watchlist ticker, same as
-	// benchmarkTicker never touching the watchlist table.
+	// (b.provider.GetQuote) — not a history/watchlist ticker, same as the
+	// benchmark (benchmarkFor) never touching the watchlist table.
 	vixTicker = "^VIX"
 )
 

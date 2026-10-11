@@ -1038,12 +1038,13 @@ func (b *Bot) buildClosedTradeReview(ticker string, stopPrice float64) (llm.Clos
 
 	if entryPrice := weightedAvgPrice(round.Legs, "BUY"); entryPrice > 0 {
 		exitPrice := weightedAvgPrice(round.Legs, "SELL")
-		spyStart, startOK, startErr := b.db.GetSnapshotClose(benchmarkTicker, round.StartDate)
-		spyEnd, endOK, endErr := b.db.GetSnapshotClose(benchmarkTicker, round.EndDate)
+		bench := benchmarkFor(market.Of(ticker))
+		spyStart, startOK, startErr := b.db.GetSnapshotClose(bench, round.StartDate)
+		spyEnd, endOK, endErr := b.db.GetSnapshotClose(bench, round.EndDate)
 		if startErr != nil || endErr != nil {
-			logger.Errorf("review %s: spy close: start err=%v end err=%v", ticker, startErr, endErr)
+			logger.Errorf("review %s: %s close: start err=%v end err=%v", ticker, bench, startErr, endErr)
 		} else if startOK && endOK {
-			vs := computeVsSPY(exitPrice, entryPrice, spyEnd, spyStart, benchmarkTicker)
+			vs := computeVsSPY(exitPrice, entryPrice, spyEnd, spyStart, bench)
 			trade.VsSPY = &vs
 		}
 	}
