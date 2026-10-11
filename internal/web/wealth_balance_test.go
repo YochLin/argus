@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"argus/internal/db"
+	"argus/internal/market"
 	"argus/internal/service"
 )
 
@@ -65,6 +67,33 @@ func TestHandleWealthBalanceGroupsAndTotals(t *testing.T) {
 	}
 	if len(got.QuarterlyTrend) != quarterlyTrendQuarters {
 		t.Errorf("len(QuarterlyTrend) = %d, want %d", len(got.QuarterlyTrend), quarterlyTrendQuarters)
+	}
+}
+
+// TestHandleWealthBalanceFilesEquityUnderGrowth pins that the US/TW equity
+// virtual rows (net-worth snapshots, never real assets rows — §9.1 rule 3)
+// sit in the growth group on the balance sheet.
+func TestHandleWealthBalanceFilesEquityUnderGrowth(t *testing.T) {
+	fake := &fakeDB{netWorthOnOrBeforeFn: func(_ string, m market.MarketID) (float64, bool, error) {
+		return 5000, m == market.TW, nil
+	}}
+	s := newWealthBalanceTestServer(fake, &fakeWealthDB{}, "")
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/balance", nil))
+	var got balanceSheetResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v (body %s)", err, rec.Body.String())
+	}
+	for _, g := range got.AssetGroups {
+		if g.Group != "growth" {
+			if len(g.Assets) != 0 {
+				t.Errorf("%s holds %+v, want only growth to hold the equity row", g.Group, g.Assets)
+			}
+			continue
+		}
+		if g.MarketValue != 5000 || len(g.Assets) != 1 || g.Assets[0].Type != "equity_tw" {
+			t.Errorf("growth = %+v, want the one equity_tw row worth 5000", g)
+		}
 	}
 }
 
@@ -294,5 +323,52 @@ func TestHandleWealthDebtPayoffAvalancheNeverWorse(t *testing.T) {
 	}
 	if got.InterestDifference < 0 {
 		t.Errorf("InterestDifference = %v, want >= 0", got.InterestDifference)
+	}
+}
+
+// TestBucketAssets pins the FX-conversion/grouping core /w/balance and
+// /w/alloc share: an asset in a bucket nobody asked for still counts toward
+// the total, liabilities never do, the US/TW equity rows land in the
+// equity bucket, and an asset whose currency can't be priced clears fxOK
+// on its own (no equity row there to do it for it).
+func TestBucketAssets(t *testing.T) {
+	today := "2026-10-11"
+	now := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
+	keys := []string{"liquid", "growth"}
+	byGroup := func(a db.AssetWithValue) string { return a.AssetGroup }
+
+	s := &Server{quotes: &fakeQuotes{}, fxDB: &fakeFXDB{rates: map[string]float64{fxKey(today, "USDTWD"): 32}}}
+	list := []db.AssetWithValue{
+		{Asset: db.Asset{ID: 1, Type: "deposit", AssetGroup: "liquid", Currency: "TWD"}, Value: floatPtr(100)},
+		{Asset: db.Asset{ID: 2, Type: "gold", AssetGroup: "elsewhere", Currency: "TWD"}, Value: floatPtr(50)},
+		{Asset: db.Asset{ID: 3, Side: "liability", Type: "loan", AssetGroup: "liquid", Currency: "TWD"}, Value: floatPtr(999)},
+	}
+	buckets, byCurrency, total, fxOK := s.bucketAssets(list, today, now, 10, true, 1000, true, keys, byGroup, "growth")
+	if !fxOK || total != 100+50+10*32+1000 {
+		t.Errorf("fxOK = %v, total = %v; want true, 1470 (the unbucketed 50 counts, the liability doesn't)", fxOK, total)
+	}
+	if byCurrency["TWD"] != 1150 || byCurrency["USD"] != 320 {
+		t.Errorf("byCurrency = %v, want TWD 1150 and USD 320 (TWD-valued)", byCurrency)
+	}
+	if b := buckets["liquid"]; b.MarketValue != 100 || len(b.Assets) != 1 || b.Assets[0].AssetID != 1 {
+		t.Errorf("liquid = %+v, want just asset 1 at 100", b)
+	}
+	growth := buckets["growth"]
+	if growth.MarketValue != 1320 || len(growth.Assets) != 2 {
+		t.Fatalf("growth = %+v, want the two equity rows worth 1320", growth)
+	}
+	types := map[string]bool{}
+	for _, it := range growth.Assets {
+		types[it.Type] = it.Category == "equity" && it.Source == "sync"
+	}
+	if !types["equity_us"] || !types["equity_tw"] {
+		t.Errorf("growth rows = %+v, want an equity_us and an equity_tw row", growth.Assets)
+	}
+
+	broke := &Server{quotes: &fakeQuotes{err: map[string]error{"USDTWD=X": errors.New("no fx")}}, fxDB: &fakeFXDB{}}
+	usd := []db.AssetWithValue{{Asset: db.Asset{ID: 4, Type: "deposit", AssetGroup: "liquid", Currency: "USD"}, Value: floatPtr(10)}}
+	buckets, _, total, fxOK = broke.bucketAssets(usd, today, now, 0, false, 0, false, keys, byGroup, "growth")
+	if fxOK || total != 0 || len(buckets["liquid"].Assets) != 0 {
+		t.Errorf("unpriceable USD asset: fxOK = %v, total = %v, liquid = %+v; want false, 0, empty", fxOK, total, buckets["liquid"])
 	}
 }
