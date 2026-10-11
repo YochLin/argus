@@ -157,7 +157,7 @@ func TestHandleWealthBalanceHealthMetricsWithSalaryAndDepositHistory(t *testing.
 		wealthAssetsAsOf: map[string][]db.AssetWithValue{
 			monthAgo: {{Asset: db.Asset{ID: 1, Side: "asset", Type: "deposit", Name: "活存", AssetGroup: "liquid", Currency: "TWD"}, Value: floatPtr(100000)}},
 		},
-		settings: map[string]string{annualSalarySettingKey: "720000"}, // 60000/month
+		settings: map[string]string{service.AnnualSalarySettingKey: "720000"}, // 60000/month
 	}
 	s := newWealthBalanceTestServer(fake, &fakeWealthDB{}, "")
 
@@ -202,7 +202,7 @@ func TestHandleWealthBalanceColdStartDepositDegrades(t *testing.T) {
 			// there, Value is just nil — not "the row doesn't exist."
 			monthAgo: {{Asset: depositAsset}},
 		},
-		settings: map[string]string{annualSalarySettingKey: "900000"},
+		settings: map[string]string{service.AnnualSalarySettingKey: "900000"},
 	}
 	s := newWealthBalanceTestServer(fake, &fakeWealthDB{}, "")
 
@@ -242,7 +242,7 @@ func TestHandleWealthProfileGetAndUpdate(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("POST status = %d, want 200, body = %s", rec.Code, rec.Body.String())
 	}
-	if wealthDB.lastSettingKey != annualSalarySettingKey || wealthDB.lastSettingValue != "900000.00" {
+	if wealthDB.lastSettingKey != service.AnnualSalarySettingKey || wealthDB.lastSettingValue != "900000.00" {
 		t.Errorf("SetSetting() got key=%q value=%q", wealthDB.lastSettingKey, wealthDB.lastSettingValue)
 	}
 }
