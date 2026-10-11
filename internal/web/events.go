@@ -40,13 +40,6 @@ type eventsResponse struct {
 // all. ?ticker=X switches from the cross-ticker recent list to that ticker's
 // own history, same two-form split as the command.
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleEvents: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	ticker := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("ticker")))
 	var events []db.PriceEvent
 	var err error

@@ -167,13 +167,6 @@ func optionExpiryEvents(positions []db.OptionPosition, today, end time.Time) []c
 // handleWealthCashList backs GET /api/wealth/cash — ungated read, same
 // convention as every other wealth GET route.
 func (s *Server) handleWealthCashList(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleWealthCashList: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	resp := cashResponse{AsOf: today.Format("2006-01-02"), Items: []cashflowItem{}, Events: []cashEvent{}, Forecast: []cashForecastMonth{}}

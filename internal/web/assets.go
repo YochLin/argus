@@ -112,13 +112,6 @@ func toAssetResponse(a db.AssetWithValue) assetResponse {
 // same "reads don't need auth" convention as every other GET route
 // (docs/phase-10-web-trade-input.md §4.1).
 func (s *Server) handleWealthAssetsList(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleWealthAssetsList: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	includeArchived := r.URL.Query().Get("archived") == "1"
 	assets, err := s.db.ListAssetsWithValue(includeArchived)
 	if err != nil {

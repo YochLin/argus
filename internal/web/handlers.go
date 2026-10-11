@@ -351,13 +351,6 @@ func (s *Server) handlePaper(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "paper account is disabled")
 		return
 	}
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handlePaper: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	resp, err := buildPaper(s.paperDB, s.quotes, marketParam(r), s.paperInitialCashUSD, s.paperInitialCashTWD)
 	if err != nil {
 		logger.Errorf("web: build paper: %v", err)
@@ -373,13 +366,6 @@ func (s *Server) handlePaper(w http.ResponseWriter, r *http.Request) {
 // simply returns empty data, same as every other market-scoped endpoint's
 // convention for a market it has nothing to report on.
 func (s *Server) handleOptions(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleOptions: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	resp, err := buildOptions(s.db, s.optionChain, s.quotes, marketParam(r))
 	if err != nil {
 		logger.Errorf("web: build options: %v", err)
@@ -390,26 +376,12 @@ func (s *Server) handleOptions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleStatus: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	resp := buildStatusWithPortfolio(s.db, s.portfolios(), marketParam(r))
 	resp.Writable = s.password != ""
 	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleDashboard: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	resp, err := buildDashboardWithPortfolio(s.db, s.portfolios(), marketParam(r))
 	if err != nil {
 		logger.Errorf("web: build dashboard: %v", err)
@@ -420,13 +392,6 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleCalendar: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	resp, err := buildCalendar(s.db, s.earnings, r.URL.Query().Get("month"), marketParam(r))
 	if err != nil {
 		logger.Errorf("web: build calendar: %v", err)
@@ -437,13 +402,6 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRounds(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleRounds: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	resp, err := buildRounds(s.db, marketParam(r))
 	if err != nil {
 		logger.Errorf("web: build rounds: %v", err)
@@ -454,13 +412,6 @@ func (s *Server) handleRounds(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRoundDetail(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleRoundDetail: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	ticker := r.URL.Query().Get("ticker")
 	start := r.URL.Query().Get("start")
 	if ticker == "" || start == "" {
@@ -482,13 +433,6 @@ func (s *Server) handleRoundDetail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDistributions(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleDistributions: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	resp, err := buildDistributions(s.db, s.history, marketParam(r))
 	if err != nil {
 		logger.Errorf("web: build distributions: %v", err)
@@ -499,13 +443,6 @@ func (s *Server) handleDistributions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleReports(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleReports: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	resp, err := buildReports(s.db, s.history, marketParam(r))
 	if err != nil {
 		logger.Errorf("web: build reports: %v", err)
@@ -516,13 +453,6 @@ func (s *Server) handleReports(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMonthly(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleMonthly: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	resp, err := buildMonthly(s.db, marketParam(r))
 	if err != nil {
 		logger.Errorf("web: build monthly: %v", err)
@@ -533,13 +463,6 @@ func (s *Server) handleMonthly(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleChart(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleChart: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	ticker := r.URL.Query().Get("ticker")
 	if ticker == "" {
 		writeError(w, http.StatusBadRequest, "ticker is required")
@@ -556,13 +479,6 @@ func (s *Server) handleChart(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTickers(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleTickers: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	resp, err := buildTickers(s.db, marketParam(r))
 	if err != nil {
 		logger.Errorf("web: build tickers: %v", err)
@@ -573,13 +489,6 @@ func (s *Server) handleTickers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWatchlistSummary(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleWatchlistSummary: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	resp, err := buildWatchlistSummary(s.db, s.quotes, s.history, marketParam(r))
 	if err != nil {
 		logger.Errorf("web: build watchlist summary: %v", err)
@@ -590,13 +499,6 @@ func (s *Server) handleWatchlistSummary(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleRisk(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleRisk: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	resp, err := buildRiskWithPortfolio(s.db, s.portfolios(), marketParam(r), s.heatThresholdPct)
 	if err != nil {
 		logger.Errorf("web: build risk: %v", err)
@@ -607,13 +509,6 @@ func (s *Server) handleRisk(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRecPerformance(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleRecPerformance: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	resp, err := s.recPerf.Get(marketParam(r))
 	if err != nil {
 		logger.Errorf("web: build rec-performance: %v", err)
@@ -624,12 +519,5 @@ func (s *Server) handleRecPerformance(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCompanyNames(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleCompanyNames: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	writeJSON(w, http.StatusOK, buildCompanyNames(s.db, s.companyNames))
 }

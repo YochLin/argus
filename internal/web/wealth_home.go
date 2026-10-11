@@ -87,13 +87,6 @@ func staleInfo(source, asOf string, now time.Time) (days int, stale bool) {
 // three presets are always computable from the same data, the query param
 // only picks which target column to show).
 func (s *Server) handleWealthHome(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleWealthHome: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	model := assets.AllocationModel(r.URL.Query().Get("model"))
 	if _, ok := assets.ModelPresets[model]; !ok {
 		model = assets.ModelBalanced

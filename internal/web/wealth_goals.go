@@ -168,13 +168,6 @@ func (s *Server) earmarkedSavedTWD(earmarks []db.GoalAsset, assetByID map[int64]
 // handleWealthGoalsList backs GET /api/wealth/goals — ungated read, same
 // convention as every other wealth GET route.
 func (s *Server) handleWealthGoalsList(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleWealthGoalsList: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	now := time.Now()
 	today := now.Format("2006-01-02")
 

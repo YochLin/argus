@@ -346,12 +346,6 @@ func (s *Server) buildRetirementResponse(r *http.Request) (retirementResponse, e
 // handleWealthRetireGet backs GET /api/wealth/retire — ungated read, same
 // convention as every other wealth GET route.
 func (s *Server) handleWealthRetireGet(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleWealthRetireGet: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
 	resp, err := s.buildRetirementResponse(r)
 	if err != nil {
 		logger.Errorf("web: wealth retire: %v", err)

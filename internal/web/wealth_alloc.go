@@ -158,13 +158,6 @@ func largestAsset(items []balanceSheetItem) (name, venue string) {
 }
 
 func (s *Server) handleWealthAlloc(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleWealthAlloc: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	model := assets.AllocationModel(r.URL.Query().Get("model"))
 	if _, ok := assets.CategoryModelPresets[model]; !ok {
 		model = assets.ModelBalanced

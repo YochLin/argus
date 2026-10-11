@@ -429,7 +429,7 @@ func spaHandler() http.Handler {
 // shape as scheduler.Scheduler and bot.Bot.Run, so main.go can start it as
 // just another goroutine alongside those.
 func (s *Server) Run(ctx context.Context, addr string) error {
-	srv := &http.Server{Addr: addr, Handler: s.mux}
+	srv := &http.Server{Addr: addr, Handler: s.Handler()}
 
 	// net.Listen up front (not srv.ListenAndServe, which binds inside the
 	// goroutine below) so the "listening" log line only fires once the bind

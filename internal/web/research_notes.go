@@ -50,13 +50,6 @@ type researchNotesListResponse struct {
 // other GET route (see handleChart): this is a read against the local
 // dashboard's own DB, not a write.
 func (s *Server) handleResearchNotesGet(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleResearchNotesGet: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	ticker := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("ticker")))
 	if ticker == "" {
 		writeError(w, http.StatusBadRequest, "ticker is required")

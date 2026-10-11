@@ -118,13 +118,6 @@ func fundTotalsTWD(funds []db.AssetWithValue, date string, live bool, quotes ser
 }
 
 func (s *Server) handleWealthFundsGet(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleWealthFundsGet: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	today := time.Now().Format("2006-01-02")
 	resp := wealthFundsResponse{AsOf: today, Chart: []fundChartPoint{}, Schedule: []fundScheduleItem{}, Rows: []fundRow{}}
 
