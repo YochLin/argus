@@ -248,13 +248,6 @@ func quarterlyDates(now time.Time, n int) []struct {
 // handleWealthBalance backs GET /api/wealth/balance — ungated like every
 // other read route.
 func (s *Server) handleWealthBalance(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleWealthBalance: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	now := time.Now()
 	today := now.Format("2006-01-02")
 
@@ -516,13 +509,6 @@ type debtPayoffPlan struct {
 }
 
 func (s *Server) handleWealthDebtPayoff(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleWealthDebtPayoff: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	extra, _ := strconv.ParseFloat(r.URL.Query().Get("extra"), 64)
 	if extra < 0 {
 		extra = 0

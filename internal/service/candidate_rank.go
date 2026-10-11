@@ -14,8 +14,7 @@ import (
 // first Recommendation Pipeline Service slice, moved verbatim from
 // bot.rankAndTruncateCandidates except benchTicker replaces the market.
 // MarketID param: resolving "which ticker is the benchmark" (SPY vs. 0050)
-// is a bot-layer policy choice (see bot.benchmarkFor, still used by several
-// other callers), not something this service needs to know.
+// is a bot-layer policy choice (see BenchmarkFor, used by several callers), not something this service needs to know.
 //
 // # What has actually been measured (2026-08-26)
 //

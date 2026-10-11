@@ -32,13 +32,6 @@ type newsSourceRequest struct {
 // page's blocklist panel (§5.3) and the data-quality "low-quality source"
 // check both read this list.
 func (s *Server) handleBlockedNewsSources(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleBlockedNewsSources: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	sources, err := s.db.ListBlockedNewsSources()
 	if err != nil {
 		logger.Errorf("web: list blocked news sources: %v", err)

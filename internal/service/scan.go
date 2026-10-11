@@ -774,8 +774,13 @@ func (s *ScanService) RecordStrategyAlerts(sigs []signals.Signal, candles []data
 }
 
 // BenchmarkFor is the project-wide market benchmark: SPY for US, 0050 for
-// TW. Previously spelled out separately in internal/bot, internal/web and
-// internal/mcptools; the bot's copy now delegates here.
+// TW. It is snapshotted alongside the watchlist on every closing snapshot
+// (Phase 6, see docs/phase-6-tw-market.md §3.3) so /track and the trade
+// reviews can set a call against the same-period broad-market move; it is
+// never added to the watchlist table — it's not a holding, and /list
+// shouldn't show it. 0050 is allowed to simultaneously be a TW
+// watchlist/position ticker; SaveSnapshot's INSERT OR REPLACE makes a
+// same-(ticker,date) double-write from both paths safe.
 func BenchmarkFor(m market.MarketID) string {
 	if m == market.TW {
 		return "0050"

@@ -112,7 +112,7 @@ func ComputeTechnicals(history RiskHistoryReader, ticker string, spyCloses []flo
 // ComputeMarketRegime builds Phase 3.7 追加項's broad-market context block
 // (see docs/phase-3.7-market-regime.md and llm.MarketContext): benchTicker's
 // own trend (SPY for US, 0050 for TW — resolved by the caller, see
-// bot.benchmarkFor, same policy-stays-in-the-adapter reasoning as
+// BenchmarkFor, same policy-stays-in-the-adapter reasoning as
 // RankAndTruncateCandidates' benchTicker param) and a volatility reading —
 // US gets vixTicker's latest quote, TW gets VolProxyPct instead (ATR14/close
 // off the same benchTicker candles already fetched, zero extra network

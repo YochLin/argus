@@ -328,12 +328,6 @@ func (s *Server) RunSectorFlowScan(ctx context.Context, m market.MarketID) {
 // an invalid/absent tf defaults to "1d", matching marketParam's own
 // default-on-anything-unrecognized convention.
 func (s *Server) handleSectorFlow(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleSectorFlow: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
 	tf := r.URL.Query().Get("tf")
 	if _, ok := sectorFlowPeriods[tf]; !ok {
 		tf = "1d"
@@ -356,12 +350,6 @@ func (s *Server) handleSectorFlow(w http.ResponseWriter, r *http.Request) {
 // sectorFlowRequestDelay each) — the client should poll GET /api/sectorflow
 // and watch computedAt for completion, not wait on this response.
 func (s *Server) handleSectorFlowRefresh(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleSectorFlowRefresh: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
 	m := marketParam(r)
 	if m == market.TW && s.industryMap == nil {
 		writeError(w, http.StatusServiceUnavailable, "no TW industry classification source configured (set FINMIND_TOKEN)")

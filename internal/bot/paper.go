@@ -189,7 +189,7 @@ func (b *Bot) sendPaperSection(m market.MarketID) {
 
 	b.Send(i18n.T(b.lang, paperSectionTitleKey(m)))
 	prices := make(map[string]float64, len(acct.Holdings))
-	for _, ticker := range sortedHoldingTickers(acct.Holdings) {
+	for _, ticker := range service.SortedHoldingTickers(acct.Holdings) {
 		h := acct.Holdings[ticker]
 		price, ok := b.priceFor(ticker, prices)
 		if !ok {
@@ -225,8 +225,4 @@ func paperSectionTitleKey(m market.MarketID) i18n.Key {
 		return i18n.KeyPaperSectionTW
 	}
 	return i18n.KeyPaperSectionUS
-}
-
-func sortedHoldingTickers(holdings map[string]paper.Holding) []string {
-	return service.SortedHoldingTickers(holdings)
 }

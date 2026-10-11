@@ -156,14 +156,58 @@ func TestRecommendationTrackingServicePreservesMissingPricesAndQuotes(t *testing
 }
 
 func TestTrackHit(t *testing.T) {
-	if !TrackHit("BUY", 5, 3, true) || TrackHit("BUY", 3, 5, true) {
-		t.Error("BUY benchmark comparison did not match expected hit rule")
+	tests := []struct {
+		name                                string
+		action                              string
+		tickerChangePct, benchmarkChangePct float64
+		haveBenchmark                       bool
+		want                                bool
+	}{
+		{"BUY beats the benchmark is a hit", "BUY", 10, 4, true, true},
+		{"BUY behind the benchmark is not a hit even though price rose", "BUY", 3, 4, true, false},
+		{"BUY without benchmark data falls back to absolute direction (up)", "BUY", 3, 0, false, true},
+		{"BUY without benchmark data falls back to absolute direction (down)", "BUY", -1, 0, false, false},
+		{"SELL underperforming the benchmark is a hit", "SELL", -10, -2, true, true},
+		{"SELL outperforming the benchmark is not a hit", "SELL", -2, -5, true, false},
+		{"SELL merely tracking the benchmark down is not a hit", "SELL", -2, -2, true, false},
+		{"SELL without benchmark data falls back to absolute direction (down)", "SELL", -3, 0, false, true},
+		{"HOLD never counts as a hit", "HOLD", 10, -10, true, false},
+		{"unset action never counts as a hit", "", 10, -10, true, false},
 	}
-	if !TrackHit("SELL", -5, -2, true) || TrackHit("SELL", -2, -5, true) {
-		t.Error("SELL benchmark comparison did not match expected hit rule")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := TrackHit(tt.action, tt.tickerChangePct, tt.benchmarkChangePct, tt.haveBenchmark); got != tt.want {
+				t.Errorf("TrackHit(%q, %v, %v, %v) = %v, want %v",
+					tt.action, tt.tickerChangePct, tt.benchmarkChangePct, tt.haveBenchmark, got, tt.want)
+			}
+		})
 	}
-	if !TrackHit("BUY", 1, 0, false) || !TrackHit("SELL", -1, 0, false) {
-		t.Error("direction fallback did not match expected hit rule")
+}
+
+func TestDisplaySource(t *testing.T) {
+	if got := DisplaySource(""); got != "watchlist" {
+		t.Errorf(`DisplaySource("") = %q, want "watchlist"`, got)
+	}
+	if got := DisplaySource("scan"); got != "scan" {
+		t.Errorf(`DisplaySource("scan") = %q, want "scan"`, got)
+	}
+}
+
+func TestSortedSourceKeys(t *testing.T) {
+	bySource := map[string]RecommendationTrackStats{
+		"watchlist": {},
+		"scan":      {},
+		"movers":    {},
+	}
+	got := SortedSourceKeys(bySource)
+	want := []string{"movers", "scan", "watchlist"}
+	if len(got) != len(want) {
+		t.Fatalf("SortedSourceKeys() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("SortedSourceKeys() = %v, want %v", got, want)
+		}
 	}
 }
 

@@ -63,13 +63,6 @@ func toLLMRunSummary(r db.LLMRun) llmRunSummaryResponse {
 }
 
 func (s *Server) handleLLMRuns(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleLLMRuns: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	runs, err := s.db.ListLLMRuns(llmRunsListLimit)
 	if err != nil {
 		logger.Errorf("web: list llm runs: %v", err)
@@ -84,13 +77,6 @@ func (s *Server) handleLLMRuns(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLLMRunDetail(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleLLMRunDetail: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")

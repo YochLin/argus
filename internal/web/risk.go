@@ -3,7 +3,6 @@ package web
 import (
 	"math"
 	"sort"
-	"strconv"
 
 	"argus/internal/data"
 	"argus/internal/db"
@@ -11,22 +10,6 @@ import (
 	"argus/internal/market"
 	"argus/internal/service"
 )
-
-// loadCash returns m's declared cash balance (0 if /cash has never set it) —
-// mirrors internal/bot's Bot.loadCash. Not yet extracted into
-// service.PortfolioService; the key itself is service.CashSettingKey, shared
-// with internal/bot.
-func loadCash(database dbReader, m market.MarketID) (float64, error) {
-	raw, ok, err := database.GetSetting(service.CashSettingKey(m))
-	if err != nil || !ok {
-		return 0, err
-	}
-	amount, err := strconv.ParseFloat(raw, 64)
-	if err != nil {
-		return 0, err
-	}
-	return amount, nil
-}
 
 // buildRisk assembles the /api/risk response (Phase 8 PR1, see
 // docs/phase-8-trader-analytics.md §3.2): current open-risk exposure across

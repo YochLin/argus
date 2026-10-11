@@ -8,6 +8,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/logger"
 	"argus/internal/market"
+	"argus/internal/service"
 	"argus/internal/signals"
 )
 
@@ -98,7 +99,7 @@ func buildChart(database dbReader, quotes quoteGetter, history data.HistoryProvi
 			if pos != nil {
 				m := market.Of(ticker)
 				mPositions := filterPositionsByMarket(allPositions, m)
-				cash, _ := loadCash(database, m)
+				cash, _, _ := service.LoadCash(database, m)
 
 				mTickers := make([]string, len(mPositions))
 				for i, p := range mPositions {

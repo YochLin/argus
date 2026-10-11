@@ -59,7 +59,7 @@ type dbReader interface {
 	GetNetWorthOnOrBefore(date string, m market.MarketID) (float64, bool, error)
 	GetNetWorthRange(from, to string, m market.MarketID) ([]db.NetWorthPoint, error)
 	// GetSetting backs risk.go's cash-balance lookup (Phase 8 PR1) — the same
-	// settings key internal/bot's loadCash reads, see service.CashSettingKey.
+	// settings key internal/bot's loadCash reads, see service.LoadCash.
 	GetSetting(key string) (string, bool, error)
 	// GetRecommendationsSince backs recperf.go's /api/rec-performance (Phase
 	// 8 PR3) — the same whole-history read argus eval's CLI uses, so the two

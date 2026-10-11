@@ -132,13 +132,6 @@ func buildFillSnapshot(database dbReader, history data.HistoryProvider, ticker, 
 }
 
 func (s *Server) handleFillSnapshot(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleFillSnapshot: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	q := r.URL.Query()
 	ticker, date := q.Get("ticker"), q.Get("date")
 	if ticker == "" || date == "" {

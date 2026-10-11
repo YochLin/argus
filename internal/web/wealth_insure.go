@@ -78,13 +78,6 @@ type wealthInsureResponse struct {
 }
 
 func (s *Server) handleWealthInsureGet(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handleWealthInsureGet: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	today := time.Now().Format("2006-01-02")
 	resp := wealthInsureResponse{AsOf: today, Rows: []insuranceCoverageRow{}, Policies: []insurancePolicyItem{}}
 

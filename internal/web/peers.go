@@ -208,13 +208,6 @@ func changePtr(candles []data.Candle, period int) *float64 {
 }
 
 func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if p := recover(); p != nil {
-			logger.Errorf("web: panic in handlePeers: %v", p)
-			writeError(w, http.StatusInternalServerError, "internal error")
-		}
-	}()
-
 	ticker := r.URL.Query().Get("ticker")
 	if ticker == "" {
 		writeError(w, http.StatusBadRequest, "ticker is required")

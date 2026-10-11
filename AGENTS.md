@@ -27,7 +27,7 @@ go vet ./...                # static checks
 docker compose up --build   # build + run in Docker (uses .env, mounts ./data -> /app/data)
 ```
 
-`go test ./...` runs the full suite; every package has one except `cmd/server` and `internal/scheduler`.
+`go test ./...` runs the full suite; every package has one except `cmd/server`.
 `internal/i18n`'s `TestTablesMatch` (`go test ./internal/i18n/...`) is worth calling out on its own since
 it guards a cross-file invariant rather than ordinary unit coverage: the zh/en message tables staying in
 sync — see that package's entry below. Setup: copy `.env.example`
@@ -443,7 +443,7 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   the persistent chat session's `claude-agent-acp` subprocess has no other way to get cleaned up if the
   bot exits mid-conversation.
 - The daily report is scheduled for 23:30 CST/Taiwan time — at least an hour into the US session (see
-  `scheduler.go`'s `AddDailyReport` doc comment for the DST-vs-standard-time reasoning behind that
+  `scheduler.go`'s `DailyReport` doc comment for the DST-vs-standard-time reasoning behind that
   specific time) — via cron spec `"0 30 23 * * *"` in `scheduler.go`. The closing snapshot runs at
   `"0 30 5 * * 2-6"` (05:30 CST Tue–Sat, after US close); it dates snapshots one day back in Taiwan
   terms and must keep skipping quotes older than ~12h, or US-holiday reruns of the previous session get
@@ -468,7 +468,7 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   (migration 3). `db.Backup`'s `VACUUM INTO` runs against the live DB via the same `*sql.DB` handle the
   bot uses, so it must stay a plain read (no schema/write locks held across it) or it'll contend with
   normal request handling.
-- Log rotation (`AddLogRotation`) and backups (`AddBackup`) both run at fixed CST times distinct from the
+- Log rotation (`scheduler.LogRotation`) and backups (`scheduler.Backup`) both run at fixed CST times distinct from the
   daily report/closing snapshot (00:00 and 06:00 respectively) — keep the backup after 05:30 (closing
   snapshot) so a day's backup always includes that day's post-close data, and don't move log rotation
   onto the same minute as another cron job for no reason (keeps log lines from either job from

@@ -153,7 +153,7 @@ type PastLesson struct {
 // price-return-vs-price-return comparison on both sides — consistent, if not
 // total-return-precise; see docs/phase-3.6-portfolio-insight.md's dividend
 // icebox note). Bench is the benchmark ticker the SPYPct side was measured
-// against (SPY for a US holding, 0050 for a TW one — see bot.benchmarkFor):
+// against (SPY for a US holding, 0050 for a TW one — see service.BenchmarkFor):
 // with both markets in the same report, a line that hardcoded "SPY" would
 // mislabel every TW comparison.
 type VsSPYReturn struct {
@@ -374,7 +374,7 @@ type TradeFollowup struct {
 // its own line and wording, never conflated with VIX.
 type MarketContext struct {
 	// Bench is the benchmark ticker SPYPrice/SPYMA50/SPYMA200 were computed
-	// from ("SPY" for US, "0050" for TW — see bot.benchmarkFor) — the field
+	// from ("SPY" for US, "0050" for TW — see service.BenchmarkFor) — the field
 	// names predate TW support and stay SPY-named, but the rendered label
 	// must say which benchmark this actually is.
 	Bench                       string

@@ -77,3 +77,34 @@ func TestPortfolioServiceRetainsQuoteAndCashErrors(t *testing.T) {
 		t.Errorf("Snapshot() errors = %+v, want quote/cash errors and no cash", snapshot)
 	}
 }
+
+type fakeSettings struct {
+	values map[string]string
+	err    error
+}
+
+func (f fakeSettings) GetSetting(key string) (string, bool, error) {
+	v, ok := f.values[key]
+	return v, ok, f.err
+}
+
+func TestLoadCash(t *testing.T) {
+	settings := fakeSettings{values: map[string]string{
+		CashSettingKeyUSD: "1234.50",
+		CashSettingKeyTWD: "not a number",
+	}}
+
+	if got, ok, err := LoadCash(settings, market.US); got != 1234.5 || !ok || err != nil {
+		t.Errorf("LoadCash(US) = %v, %v, %v; want 1234.5, true, nil", got, ok, err)
+	}
+	if got, ok, err := LoadCash(settings, market.TW); got != 0 || ok || err == nil {
+		t.Errorf("LoadCash(TW) with an unparseable value = %v, %v, %v; want 0, false, error", got, ok, err)
+	}
+	if got, ok, err := LoadCash(fakeSettings{}, market.US); got != 0 || ok || err != nil {
+		t.Errorf("LoadCash() with no declared balance = %v, %v, %v; want 0, false, nil", got, ok, err)
+	}
+	boom := errors.New("db down")
+	if _, ok, err := LoadCash(fakeSettings{err: boom}, market.US); ok || !errors.Is(err, boom) {
+		t.Errorf("LoadCash() with a store error = ok %v, err %v; want false, the store error", ok, err)
+	}
+}

@@ -31,7 +31,7 @@ func (b *Bot) handleSinopac(ctx context.Context, args string) {
 // user to confirm via Telegram, exactly like an LLM-proposed trade — see
 // internal/sinopac's Trade doc comment for why this never writes directly.
 // dryRun lists what would be proposed without creating anything, which the
-// scheduled job (AddSinopacSync) uses unless SINOPAC_SYNC_LIVE is set — the
+// scheduled job (scheduler.SinopacSync) uses unless SINOPAC_SYNC_LIVE is set — the
 // mandated safety net until PositionDetail/ProfitLoss's price-field
 // semantics have been reconciled against a real brokerage statement (see
 // the Phase 16 plan's risk section). found reports whether there was

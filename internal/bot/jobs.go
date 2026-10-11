@@ -45,18 +45,6 @@ func (b *Bot) SendSignalAlert(sigs []signals.Signal) {
 	b.publishAlert("signal_alert", notification.LevelInfo, sb.String())
 }
 
-// benchmarkFor returns the daily-snapshot benchmark ticker for m: SPY for
-// US, 0050 for TW (Phase 6, snapshotted alongside the watchlist on every
-// closing snapshot so /track and the trade reviews can set a call against the
-// same-period broad-market move; never added to the watchlist table — it's
-// not a holding, and /list shouldn't show it — see
-// docs/phase-6-tw-market.md §3.3). 0050 is allowed to simultaneously be a
-// TW watchlist/position ticker; SaveSnapshot's INSERT OR REPLACE makes a
-// same-(ticker,date) double-write from both paths safe.
-func benchmarkFor(m market.MarketID) string {
-	return service.BenchmarkFor(m)
-}
-
 // RunClosingSnapshot records the just-closed session's OHLCV for every
 // watchlist ticker in market m into daily_snapshots. Called by the
 // scheduler once per market: 05:30 CST for US (after the US close) and
@@ -219,7 +207,7 @@ func (b *Bot) priceEventScale(ticker string, changePct float64) (atrMultiple, vo
 	return atrMultiple, t.VolumeRatio
 }
 
-// snapshotBenchmark records benchmarkFor(m)'s (SPY/0050) closing price into
+// snapshotBenchmark records service.BenchmarkFor(m)'s (SPY/0050) closing price into
 // daily_snapshots under the same date as the watchlist snapshot, so /track's
 // relative-to-market hit rate (Phase 3.8) has same-day benchmark data to
 // compare against without ever needing to replay history through a live API
@@ -237,7 +225,7 @@ func (b *Bot) snapshotBenchmark(date string, m market.MarketID) {
 // Thin wrapper around service.SnapshotService.SnapshotBenchmarkTo (Phase 24
 // Stage 1 Report & Snapshot Service extraction).
 func (b *Bot) snapshotBenchmarkTo(target *db.DB, date string, m market.MarketID) {
-	b.snapshots().SnapshotBenchmarkTo(target, benchmarkFor(m), date)
+	b.snapshots().SnapshotBenchmarkTo(target, service.BenchmarkFor(m), date)
 }
 
 // recordNetWorthSnapshot is a thin wrapper around
@@ -286,7 +274,7 @@ const twMarketClosedStaleness = service.TWMarketClosedStaleness
 // fires at (11:30, moved from the original 15:00 — see
 // docs/tw-daily-report-schedule.md).
 func (b *Bot) isTWMarketClosed() bool {
-	q, err := b.provider.GetQuote(benchmarkFor(market.TW))
+	q, err := b.provider.GetQuote(service.BenchmarkFor(market.TW))
 	if err != nil {
 		logger.Errorf("tw market closed check: quote: %v", err)
 		return true
@@ -353,7 +341,7 @@ func (b *Bot) runDailyReport(ctx context.Context, m market.MarketID) {
 			ma5s[s.Quote.Ticker] = s.Technicals.MA5
 		}
 	}
-	isBear := isBearRegime(in.marketContext)
+	isBear := service.IsBearRegime(in.marketContext)
 	for _, t := range in.watchlistTickers {
 		candles, err := b.history.GetHistory(t, "1y")
 		if err != nil {
