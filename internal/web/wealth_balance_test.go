@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"argus/internal/db"
+	"argus/internal/service"
 )
 
 func newWealthBalanceTestServer(fake *fakeDB, wealthDB *fakeWealthDB, password string) *Server {
@@ -226,7 +227,7 @@ func TestHandleWealthProfileGetAndUpdate(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/profile", nil))
-	var got wealthProfileResponse
+	var got service.WealthProfile
 	json.Unmarshal(rec.Body.Bytes(), &got)
 	if got.AnnualSalary != nil {
 		t.Errorf("AnnualSalary = %v, want nil (never set)", got.AnnualSalary)

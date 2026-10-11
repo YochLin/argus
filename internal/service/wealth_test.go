@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"testing"
 
 	"argus/internal/data"
@@ -196,5 +197,33 @@ func TestComputeRetirementGoalProgressFXFailureDegrades(t *testing.T) {
 	// silently report progress based on a partial sum (§8.17.1).
 	if _, ok := ComputeRetirementGoalProgress(store, &fakeWealthFX{}, &fakeWealthQuotes{}, "2026-09-15"); ok {
 		t.Error("ComputeRetirementGoalProgress() ok = true, want false (FX unresolvable)")
+	}
+}
+
+func TestLoadWealthProfile(t *testing.T) {
+	if p := LoadWealthProfile(fakeSettings{}); p != (WealthProfile{}) {
+		t.Errorf("empty store: %+v, want every field nil", p)
+	}
+
+	p := LoadWealthProfile(fakeSettings{values: map[string]string{
+		AnnualSalarySettingKey: "1200000", BirthYearSettingKey: "1990", RetirementMonthlyContributionSettingKey: "15000.5",
+		DependentsSettingKey: "0", YoungestChildAgeSettingKey: "7", SpouseHasIncomeSettingKey: "1",
+	}})
+	if *p.AnnualSalary != 1200000 || *p.BirthYear != 1990 || *p.RetirementMonthlyContribution != 15000.5 ||
+		*p.Dependents != 0 || *p.YoungestChildAge != 7 || !*p.SpouseHasIncome {
+		t.Errorf("full store: %+v", p)
+	}
+
+	// An unparseable number reads as not saved; any non-"1" spouse value is a saved "no".
+	p = LoadWealthProfile(fakeSettings{values: map[string]string{
+		AnnualSalarySettingKey: "lots", DependentsSettingKey: "two", SpouseHasIncomeSettingKey: "yes",
+	}})
+	if p.AnnualSalary != nil || p.Dependents != nil || p.SpouseHasIncome == nil || *p.SpouseHasIncome {
+		t.Errorf("garbage store: %+v, want nil salary/dependents and spouse=false", p)
+	}
+
+	// A failing store reads as nothing saved, so a profile card never takes a page down.
+	if p := LoadWealthProfile(fakeSettings{values: map[string]string{DependentsSettingKey: "2"}, err: errors.New("db down")}); p != (WealthProfile{}) {
+		t.Errorf("failing store: %+v, want every field nil", p)
 	}
 }
