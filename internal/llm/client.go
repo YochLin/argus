@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -47,9 +48,11 @@ const maxAttemptsPerBackend = 3
 //     session per call torn down once the reply arrives — right for
 //     one-shot analysis where there's nothing to remember between calls.
 //     Each backend in the chain is tried in order until one succeeds.
-//   - Chat keeps a single Provider.ChatSession open across calls so the
-//     agent retains conversation history, for free-form back-and-forth with
-//     the user rather than a single analysis request. The chain is only
+//   - Chat keeps one Provider.ChatSession open per ChatKey across calls so
+//     the agent retains conversation history, for free-form back-and-forth
+//     with the user rather than a single analysis request. Each key is its
+//     own conversation (Telegram's chat and the web's wealth assistant must
+//     not see each other's turns or share a /reset). The chain is only
 //     consulted when (re)starting a session — once open, later calls reuse
 //     it until it errors, at which point the next call restarts from the
 //     first backend again (so a fallback session that opened because Claude
@@ -66,8 +69,53 @@ type Client struct {
 	backends []backend
 	lang     i18n.Lang
 
-	chatMu      sync.Mutex
-	chatSession ChatSession // lazily started; nil until the first Chat call
+	chatSpecs map[ChatKey]chatSpec
+	now       func() time.Time // time.Now; a test swaps it to age a session
+
+	chatMu sync.Mutex // guards chats itself, not the slots in it
+	chats  map[ChatKey]*chatSlot
+}
+
+// ChatKey names one persistent conversation. Each key gets its own session,
+// so a turn on one never lands in another's history.
+type ChatKey string
+
+// ChatTelegram is the Telegram bot's free-form chat.
+const ChatTelegram ChatKey = "telegram"
+
+// chatSpec is what a ChatKey's session is opened with. maxIdle/maxTurns are
+// when Chat drops the session and opens a fresh one; 0 never does. A key
+// whose state lives outside the conversation (in the DB, read back through
+// tools) can afford to forget, which keeps its context from growing without
+// bound; Telegram's chat keeps everything in the conversation, so it only
+// resets on /reset.
+type chatSpec struct {
+	systemPrompt i18n.Key
+	maxIdle      time.Duration
+	maxTurns     int
+}
+
+func defaultChatSpecs() map[ChatKey]chatSpec {
+	return map[ChatKey]chatSpec{
+		ChatTelegram: {systemPrompt: i18n.KeySystemPromptChat},
+	}
+}
+
+// chatSlot is one key's session. mu is held for a whole Chat call, so turns
+// on one key run one at a time while different keys don't wait on each other.
+type chatSlot struct {
+	mu       sync.Mutex
+	session  ChatSession // nil until the first Chat call, and after a reset
+	lastUsed time.Time
+	turns    int
+}
+
+func (s *chatSlot) close() {
+	if s.session != nil {
+		s.session.Close()
+		s.session = nil
+	}
+	s.turns = 0
 }
 
 // backend pairs a Provider with the model aliases/IDs it should use for
@@ -100,8 +148,11 @@ func NewClient(recommendModel, checkModel, chatModel string, lang i18n.Lang) *Cl
 // callers always go through NewClient.
 func NewClientWithProvider(provider Provider, recommendModel, checkModel, chatModel string, lang i18n.Lang) *Client {
 	return &Client{
-		backends: []backend{{provider: provider, recommendModel: recommendModel, checkModel: checkModel, chatModel: chatModel}},
-		lang:     lang,
+		backends:  []backend{{provider: provider, recommendModel: recommendModel, checkModel: checkModel, chatModel: chatModel}},
+		lang:      lang,
+		chatSpecs: defaultChatSpecs(),
+		now:       time.Now,
+		chats:     map[ChatKey]*chatSlot{},
 	}
 }
 
@@ -361,27 +412,54 @@ func (c *Client) ExtractPodcastInsights(ctx context.Context, title, url, transcr
 	return parsePodcastInsights(c.lang, raw), nil
 }
 
-// Chat sends text on the client's persistent chat session, starting one on
-// the first call. Unlike GenerateRecommendations/CheckStock, the session
-// stays open across calls so the agent remembers earlier turns. If an open
-// session fails or no session is open yet, Chat tries each backend in the
-// chain in order until one successfully starts and responds.
-func (c *Client) Chat(ctx context.Context, text string) (string, error) {
+// slot returns key's chatSlot, creating it on first use.
+func (c *Client) slot(key ChatKey) *chatSlot {
+	c.chatMu.Lock()
+	defer c.chatMu.Unlock()
+	s, ok := c.chats[key]
+	if !ok {
+		s = &chatSlot{}
+		c.chats[key] = s
+	}
+	return s
+}
+
+// Chat sends text on key's persistent chat session, starting one on the
+// first call. Unlike GenerateRecommendations/CheckStock, the session stays
+// open across calls so the agent remembers earlier turns. If an open session
+// fails, has aged past its chatSpec limits, or no session is open yet, Chat
+// tries each backend in the chain in order until one successfully starts and
+// responds. fresh reports that this reply came from a session opened by this
+// call, i.e. the agent no longer remembers anything said before it.
+func (c *Client) Chat(ctx context.Context, key ChatKey, text string) (reply string, fresh bool, err error) {
+	spec, ok := c.chatSpecs[key]
+	if !ok {
+		return "", false, fmt.Errorf("llm: unknown chat key %q", key)
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 
-	c.chatMu.Lock()
-	defer c.chatMu.Unlock()
+	s := c.slot(key)
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	if c.chatSession != nil {
-		var err error
+	if s.session != nil {
+		if (spec.maxIdle > 0 && c.now().Sub(s.lastUsed) > spec.maxIdle) || (spec.maxTurns > 0 && s.turns >= spec.maxTurns) {
+			logger.Infof("llm: chat %s session aged out after %d turns, starting a fresh one", key, s.turns)
+			s.close()
+		}
+	}
+
+	if s.session != nil {
 		for attempt := 1; attempt <= maxAttemptsPerBackend; attempt++ {
-			var reply string
-			reply, err = c.chatSession.Send(ctx, text)
+			reply, err = s.session.Send(ctx, text)
 			if err == nil {
-				return reply, nil
+				s.turns++
+				s.lastUsed = c.now()
+				return reply, false, nil
 			}
-			logger.Errorf("llm: open chat session attempt %d/%d failed: %v", attempt, maxAttemptsPerBackend, err)
+			logger.Errorf("llm: open chat %s session attempt %d/%d failed: %v", key, attempt, maxAttemptsPerBackend, err)
 			if ctx.Err() != nil {
 				break
 			}
@@ -389,57 +467,65 @@ func (c *Client) Chat(ctx context.Context, text string) (string, error) {
 		// The underlying session failed maxAttemptsPerBackend times in a
 		// row; drop it so we can try starting a fresh session across the
 		// backend chain below.
-		logger.Errorf("llm: open chat session exhausted retries, restarting from first backend: %v", err)
-		c.chatSession.Close()
-		c.chatSession = nil
+		logger.Errorf("llm: open chat %s session exhausted retries, restarting from first backend: %v", key, err)
+		s.close()
 	}
 
-	systemPrompt := i18n.T(c.lang, i18n.KeySystemPromptChat)
+	systemPrompt := i18n.T(c.lang, spec.systemPrompt)
 	var lastErr error
 	for _, b := range c.backends {
 		for attempt := 1; attempt <= maxAttemptsPerBackend; attempt++ {
 			session, err := b.provider.NewChatSession(ctx, systemPrompt, b.chatModel)
 			if err != nil {
-				logger.Errorf("llm: backend %T attempt %d/%d failed to start chat session: %v", b.provider, attempt, maxAttemptsPerBackend, err)
+				logger.Errorf("llm: backend %T attempt %d/%d failed to start chat %s session: %v", b.provider, attempt, maxAttemptsPerBackend, key, err)
 				lastErr = err
 				if ctx.Err() != nil {
-					return "", lastErr
+					return "", false, lastErr
 				}
 				continue
 			}
 			reply, err := session.Send(ctx, text)
 			if err != nil {
-				logger.Errorf("llm: backend %T attempt %d/%d failed to send chat message: %v", b.provider, attempt, maxAttemptsPerBackend, err)
+				logger.Errorf("llm: backend %T attempt %d/%d failed to send chat %s message: %v", b.provider, attempt, maxAttemptsPerBackend, key, err)
 				session.Close()
 				lastErr = err
 				if ctx.Err() != nil {
-					return "", lastErr
+					return "", false, lastErr
 				}
 				continue
 			}
-			c.chatSession = session
-			return reply, nil
+			s.session = session
+			s.turns = 1
+			s.lastUsed = c.now()
+			return reply, true, nil
 		}
 	}
-	return "", lastErr
+	return "", false, lastErr
 }
 
-// ResetChat closes the persistent chat session. The next Chat call opens a
-// new one with no memory of earlier turns.
-func (c *Client) ResetChat() {
-	c.chatMu.Lock()
-	defer c.chatMu.Unlock()
-	if c.chatSession != nil {
-		c.chatSession.Close()
-		c.chatSession = nil
-	}
+// ResetChat closes key's persistent chat session. The next Chat call on that
+// key opens a new one with no memory of earlier turns; other keys are
+// untouched.
+func (c *Client) ResetChat(key ChatKey) {
+	s := c.slot(key)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.close()
 }
 
-// Close shuts down any open persistent session. Call once on bot shutdown —
-// without it, an open chat session's claude-agent-acp process would be
-// orphaned rather than exiting with the bot.
+// Close shuts down every open persistent session. Call once on bot
+// shutdown — without it, an open chat session's claude-agent-acp process
+// would be orphaned rather than exiting with the bot.
 func (c *Client) Close() {
-	c.ResetChat()
+	c.chatMu.Lock()
+	keys := make([]ChatKey, 0, len(c.chats))
+	for k := range c.chats {
+		keys = append(keys, k)
+	}
+	c.chatMu.Unlock()
+	for _, k := range keys {
+		c.ResetChat(k)
+	}
 }
 
 // prompt tries each backend in the chain in order, retrying a given backend

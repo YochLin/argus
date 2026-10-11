@@ -3,7 +3,9 @@ package llm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
+	"time"
 
 	"argus/internal/i18n"
 )
@@ -117,7 +119,7 @@ func TestChat_FallbackWhenSendFailsOnInitialTurn(t *testing.T) {
 	c := NewClientWithProvider(primary, "", "", "", i18n.EN)
 	c.AddFallback(fallback, "", "", "")
 
-	reply, err := c.Chat(context.Background(), "hello")
+	reply, _, err := c.Chat(context.Background(), ChatTelegram, "hello")
 	if err != nil {
 		t.Fatalf("Chat() unexpected error: %v", err)
 	}
@@ -150,7 +152,7 @@ func TestChat_FallbackWhenSendFailsMidConversation(t *testing.T) {
 	c.AddFallback(fallback, "", "", "")
 
 	// Turn 1: Primary succeeds
-	reply1, err := c.Chat(context.Background(), "turn 1")
+	reply1, _, err := c.Chat(context.Background(), ChatTelegram, "turn 1")
 	if err != nil {
 		t.Fatalf("Turn 1 Chat() unexpected error: %v", err)
 	}
@@ -159,11 +161,161 @@ func TestChat_FallbackWhenSendFailsMidConversation(t *testing.T) {
 	}
 
 	// Turn 2: Primary fails, Chat automatically falls back to fallback provider
-	reply2, err := c.Chat(context.Background(), "turn 2")
+	reply2, _, err := c.Chat(context.Background(), ChatTelegram, "turn 2")
 	if err != nil {
 		t.Fatalf("Turn 2 Chat() unexpected error: %v", err)
 	}
 	if reply2 != "fallback reply turn 2" {
 		t.Errorf("Turn 2 reply = %q, want %q", reply2, "fallback reply turn 2")
+	}
+}
+
+// sessionCountingProvider opens a new numbered session on every
+// NewChatSession call; each session's reply names its own number and the
+// system prompt it was opened with, so a test can tell sessions apart.
+type sessionCountingProvider struct {
+	opened *int
+	closed *int
+}
+
+func (p sessionCountingProvider) Prompt(ctx context.Context, systemPrompt, model, text string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (p sessionCountingProvider) NewChatSession(ctx context.Context, systemPrompt, model string) (ChatSession, error) {
+	*p.opened++
+	n := *p.opened
+	return &countedSession{n: n, systemPrompt: systemPrompt, closed: p.closed}, nil
+}
+
+type countedSession struct {
+	n            int
+	systemPrompt string
+	closed       *int
+}
+
+func (s *countedSession) Send(ctx context.Context, text string) (string, error) {
+	return fmt.Sprintf("session %d (%s)", s.n, s.systemPrompt), nil
+}
+
+func (s *countedSession) Close() error {
+	*s.closed++
+	return nil
+}
+
+func newCountingClient(t *testing.T) (c *Client, opened, closed *int) {
+	t.Helper()
+	opened, closed = new(int), new(int)
+	c = NewClientWithProvider(sessionCountingProvider{opened: opened, closed: closed}, "", "", "", i18n.EN)
+	return c, opened, closed
+}
+
+func mustChat(t *testing.T, c *Client, key ChatKey) (string, bool) {
+	t.Helper()
+	reply, fresh, err := c.Chat(context.Background(), key, "hi")
+	if err != nil {
+		t.Fatalf("Chat(%s) error: %v", key, err)
+	}
+	return reply, fresh
+}
+
+func TestChat_KeysAreSeparateSessions(t *testing.T) {
+	c, opened, _ := newCountingClient(t)
+	const other ChatKey = "other"
+	c.chatSpecs[other] = chatSpec{systemPrompt: i18n.KeySystemPromptChat}
+
+	r1, fresh1 := mustChat(t, c, ChatTelegram)
+	r2, fresh2 := mustChat(t, c, other)
+	r3, fresh3 := mustChat(t, c, ChatTelegram)
+
+	if *opened != 2 {
+		t.Fatalf("opened %d sessions, want 2 (one per key)", *opened)
+	}
+	if r1 == r2 {
+		t.Errorf("two keys answered from the same session: %q", r1)
+	}
+	if r3 != r1 {
+		t.Errorf("telegram's second turn = %q, want its own session %q back", r3, r1)
+	}
+	if !fresh1 || !fresh2 || fresh3 {
+		t.Errorf("fresh = %v, %v, %v; want true, true, false", fresh1, fresh2, fresh3)
+	}
+}
+
+func TestChat_ResetOnlyClosesItsOwnKey(t *testing.T) {
+	c, opened, closed := newCountingClient(t)
+	const other ChatKey = "other"
+	c.chatSpecs[other] = chatSpec{systemPrompt: i18n.KeySystemPromptChat}
+	mustChat(t, c, ChatTelegram)
+	otherReply, _ := mustChat(t, c, other)
+
+	c.ResetChat(ChatTelegram)
+	if *closed != 1 {
+		t.Fatalf("ResetChat closed %d sessions, want 1", *closed)
+	}
+	if r, fresh := mustChat(t, c, other); r != otherReply || fresh {
+		t.Errorf("other key after telegram reset = %q (fresh %v), want its old session %q", r, fresh, otherReply)
+	}
+	if _, fresh := mustChat(t, c, ChatTelegram); !fresh {
+		t.Error("telegram after reset should get a fresh session")
+	}
+	if *opened != 3 {
+		t.Errorf("opened %d sessions, want 3", *opened)
+	}
+
+	c.Close()
+	if *closed != 3 {
+		t.Errorf("after Close, closed %d sessions, want all 3", *closed)
+	}
+}
+
+func TestChat_UnknownKey(t *testing.T) {
+	c, opened, _ := newCountingClient(t)
+	if _, _, err := c.Chat(context.Background(), "nope", "hi"); err == nil {
+		t.Fatal("Chat with an unregistered key should fail")
+	}
+	if *opened != 0 {
+		t.Errorf("opened %d sessions for an unknown key, want 0", *opened)
+	}
+}
+
+func TestChat_SessionAgesOut(t *testing.T) {
+	c, opened, closed := newCountingClient(t)
+	const k ChatKey = "aging"
+	c.chatSpecs[k] = chatSpec{systemPrompt: i18n.KeySystemPromptChat, maxIdle: 30 * time.Minute, maxTurns: 3}
+	now := time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC)
+	c.now = func() time.Time { return now }
+
+	// Turn limit: turns 1-3 share a session, turn 4 opens a new one.
+	for i, wantFresh := range []bool{true, false, false, true} {
+		if _, fresh := mustChat(t, c, k); fresh != wantFresh {
+			t.Errorf("turn %d fresh = %v, want %v", i+1, fresh, wantFresh)
+		}
+	}
+	if *opened != 2 || *closed != 1 {
+		t.Fatalf("after 4 turns opened=%d closed=%d, want 2 and 1", *opened, *closed)
+	}
+
+	// Idle limit: within 30 minutes keeps the session, past it starts over.
+	now = now.Add(29 * time.Minute)
+	if _, fresh := mustChat(t, c, k); fresh {
+		t.Error("29 minutes idle should keep the session")
+	}
+	now = now.Add(31 * time.Minute)
+	if _, fresh := mustChat(t, c, k); !fresh {
+		t.Error("31 minutes idle should start a fresh session")
+	}
+}
+
+func TestChat_TelegramNeverAgesOut(t *testing.T) {
+	c, opened, _ := newCountingClient(t)
+	now := time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC)
+	c.now = func() time.Time { return now }
+	for i := 0; i < 50; i++ {
+		mustChat(t, c, ChatTelegram)
+		now = now.Add(24 * time.Hour)
+	}
+	if *opened != 1 {
+		t.Errorf("telegram opened %d sessions over 50 days of turns, want 1 (only /reset starts over)", *opened)
 	}
 }
