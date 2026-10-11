@@ -332,7 +332,7 @@ var migrations = []string{
 	// there on the blended average silently diverges from the broker's true
 	// remaining cost basis. RecordBuy/RecordSell below do the FIFO
 	// bookkeeping going forward; this migration's Go-code backfill step
-	// (migrate() special-cases index 16 to call backfillFIFOLots after this
+	// (migrationGoSteps runs backfillFIFOLots right after this
 	// ALTER TABLE) fixes it for history already on record — the first
 	// non-pure-SQL migration in this codebase, since FIFO replay needs
 	// per-ticker running state a single SQL statement can't carry.

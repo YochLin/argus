@@ -391,8 +391,8 @@ func (b *Bot) buildSizingLines(recs []llm.Recommendation, prices, atrs map[strin
 // capScanHitTickers). Scan hits are normally 0-a few a day, but the
 // theoretical worst case is the whole day's universe-scan chunk (~100
 // tickers) hitting at once — uncapped, that's +200 Finnhub requests in one
-// run. This is a safety cap, not a tunable policy knob (like scanChunkCount/
-// benchmarkTicker), so it's a plain const rather than an env var — see
+// run. This is a safety cap, not a tunable policy knob (like scanChunkCount),
+// so it's a plain const rather than an env var — see
 // docs/phase-3.7-scanhit-fundamentals.md.
 const maxScanHitFundamentals = 5
 

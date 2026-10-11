@@ -1106,3 +1106,37 @@ func TestParseRecommendMarketArg(t *testing.T) {
 		}
 	}
 }
+
+// A TW round must be set against 0050 (service.BenchmarkFor), not SPY: the
+// review used to hardcode SPY, comparing a TWD stock's return with a USD index.
+func TestBuildClosedTradeReviewTWUsesTWBenchmark(t *testing.T) {
+	b, d := newPendingActionsTestBot(t)
+
+	if _, err := d.RecordBuy("2330", 1000, 600, 0, "2026-06-01"); err != nil {
+		t.Fatalf("RecordBuy() error = %v", err)
+	}
+	if _, _, err := d.RecordSell("2330", 1000, 660, 0, "2026-06-20"); err != nil {
+		t.Fatalf("RecordSell() error = %v", err)
+	}
+	for _, s := range []db.DailySnapshot{
+		{Ticker: "0050", Date: "2026-06-01", Close: 100},
+		{Ticker: "0050", Date: "2026-06-20", Close: 104},
+		{Ticker: "SPY", Date: "2026-06-01", Close: 500},
+		{Ticker: "SPY", Date: "2026-06-20", Close: 525},
+	} {
+		if err := d.SaveSnapshot(s); err != nil {
+			t.Fatalf("SaveSnapshot() error = %v", err)
+		}
+	}
+
+	trade, ok, err := b.buildClosedTradeReview("2330", 0)
+	if err != nil || !ok {
+		t.Fatalf("buildClosedTradeReview() = _, %v, %v; want ok=true, err=nil", ok, err)
+	}
+	if trade.VsSPY == nil {
+		t.Fatal("VsSPY = nil, want a comparison against 0050")
+	}
+	if trade.VsSPY.Bench != "0050" || trade.VsSPY.SPYPct != 4 {
+		t.Errorf("VsSPY = %+v, want Bench 0050 and benchmark return 4%%", trade.VsSPY)
+	}
+}
