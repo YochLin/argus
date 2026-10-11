@@ -1117,6 +1117,51 @@ export interface Dictionary {
   wealthEmptyRetire: string;
   wealthEmptyInsure: string;
   wealthGuideTitle: string;
+  // Phase 28's wealth assistant (Argus Wealth Assistant.dc.html's T).
+  asstTitle: string;
+  asstPageSub: string;
+  asstChat: string;
+  asstDrafts: string;
+  asstTabDrafts: string;
+  asstNewChat: string;
+  asstNewChatQ: string;
+  asstNewChatBody: string;
+  asstGreet: string;
+  asstGreetCompact: string;
+  asstSugTitle: string;
+  asstSugs: string;
+  asstGoTrades: string;
+  asstRestart: string;
+  asstThink: string;
+  asstThinkNote: string;
+  asstSec: string;
+  asstInputPh: string;
+  asstInputPhBusy: string;
+  asstInputPhRo: string;
+  asstSend: string;
+  asstHintIdle: string;
+  asstHintBusy: string;
+  asstHintErr: string;
+  asstErrTitle: string;
+  asstErrBody: string;
+  asstRetry: string;
+  asstStillAnswering: string;
+  asstNotSaved: string;
+  asstDraftNote: string;
+  asstEmptyDraft: string;
+  asstKinds: string;
+  asstClear: string;
+  asstCommitNone: string;
+  asstRoTag: string;
+  asstRoMsg: string;
+  asstRoToast: string;
+  asstExpand: string;
+  asstMinimize: string;
+  asstCollapse: string;
+  asstNoteBusy: string;
+  asstNoteErr: string;
+  asstChatBuild: string;
+  asstGuideLine: string;
   wealthGuideDone: string; // %s = steps done, %s = total
   wealthGuideHide: string;
   wealthGuideWhyBalance: string;
@@ -2470,6 +2515,52 @@ const en: Dictionary = {
   wealthEmptyRetire: "Nothing to project yet. Add your first asset from the top right, then tune the assumptions.",
   wealthEmptyInsure: "No policies on file yet. Add a policy from the top right.",
   wealthGuideTitle: "SUGGESTED ORDER",
+  asstTitle: "AI Setup Assistant",
+  asstPageSub: "Describe your situation in chat; AI organises it into drafts. Nothing is saved until you review and confirm.",
+  asstChat: "Chat",
+  asstDrafts: "Drafts",
+  asstTabDrafts: "Drafts (%s)",
+  asstNewChat: "New chat",
+  asstNewChatQ: "Start a new chat?",
+  asstNewChatBody: "The current conversation will be cleared.",
+  asstGreet:
+    "Hi, I'll help you set things up. Tell me in your own words which accounts, loans, insurance or regular monthly income and spending you have; I'll ask follow-ups and organise them into the drafts on the right for you to check.\nNothing is changed until you press “Save”.",
+  asstGreetCompact:
+    "Hi, I'll help you set things up. Tell me in your own words which accounts, loans, insurance or regular monthly income and spending you have; I'll ask follow-ups and organise them into drafts for you to check.\nNothing is changed until you press “Save”.",
+  asstSugTitle: "START HERE",
+  asstSugs: "I have a few bank accounts|I have a mortgage|I have insurance to record|What am I missing?",
+  asstGoTrades: "Go to trade records →",
+  asstRestart: "AI started over and will pick up from your drafts and records",
+  asstThink: "Thinking",
+  asstThinkNote: "Usually 10–30 seconds; you can't send another message until it's done",
+  asstSec: "%ss",
+  asstInputPh: "Describe your accounts, loans, insurance or monthly cash flow…",
+  asstInputPhBusy: "AI is replying; you can send again once it's done",
+  asstInputPhRo: "Read-only server, can't send",
+  asstSend: "Send",
+  asstHintIdle: "Enter to send · Shift + Enter for a new line",
+  asstHintBusy: "AI is working; sending is paused",
+  asstHintErr: "The last message wasn't sent; your text is still in the box",
+  asstErrTitle: "The AI service isn't responding",
+  asstErrBody: "Please try again later. What you typed is still in the input box.",
+  asstRetry: "Retry",
+  asstStillAnswering: "AI is still answering the previous message",
+  asstNotSaved: "NOT SAVED",
+  asstDraftNote: "What AI organises lands here first and changes no account. Review it, then press “Save” to store it.",
+  asstEmptyDraft: "No drafts yet. Once you describe your situation, what AI organises appears here first. It may include:",
+  asstKinds: "New|Balance update|Monthly cash flow|Insurance|Profile|Goal",
+  asstClear: "Clear drafts",
+  asstCommitNone: "Nothing to save",
+  asstRoTag: "READ-ONLY",
+  asstRoMsg: "This server is read-only: you can view this page, but not send messages, edit drafts or save data.",
+  asstRoToast: "Read-only server: can't send messages or save data",
+  asstExpand: "Expand to full page",
+  asstMinimize: "Minimise",
+  asstCollapse: "Collapse to panel",
+  asstNoteBusy: "AI is thinking…",
+  asstNoteErr: "AI didn't respond — open to retry",
+  asstChatBuild: "Set up by chat",
+  asstGuideLine: "Rather not fill pages one by one? Describe it in chat and AI drafts it for you to confirm.",
   wealthGuideDone: "%s of %s done",
   wealthGuideHide: "Hide",
   wealthGuideWhyBalance: "Record what you own and owe so net worth can be computed",
@@ -3765,6 +3856,52 @@ const zh: Dictionary = {
   wealthEmptyRetire: "還沒有可以試算的資產。從右上新增第一筆，再回來調整假設。",
   wealthEmptyInsure: "還沒有保單資料。從右上新增一張保單。",
   wealthGuideTitle: "建議的建檔順序",
+  asstTitle: "AI 建檔助理",
+  asstPageSub: "用聊天描述你的狀況，AI 會整理成草稿。你檢查、確認後才會寫入。",
+  asstChat: "對話",
+  asstDrafts: "草稿",
+  asstTabDrafts: "草稿 (%s)",
+  asstNewChat: "開新對話",
+  asstNewChatQ: "開新對話？",
+  asstNewChatBody: "目前的對話會清除。",
+  asstGreet:
+    "嗨，我來幫你建檔。用平常說話的方式告訴我你有哪些帳戶、貸款、保險或每月固定收支，我會追問細節，整理成右邊的草稿給你檢查。\n在你按「確認寫入」之前，我不會改動任何資料。",
+  asstGreetCompact:
+    "嗨，我來幫你建檔。用平常說話的方式告訴我你有哪些帳戶、貸款、保險或每月固定收支，我會追問細節，整理成草稿給你檢查。\n在你按「確認寫入」之前，我不會改動任何資料。",
+  asstSugTitle: "可以從這裡開始",
+  asstSugs: "我有幾個銀行帳戶|我有房貸|我有保險想記錄|幫我看還缺什麼資料",
+  asstGoTrades: "前往交易記錄 →",
+  asstRestart: "AI 已重新開始，會從草稿與現有資料接續",
+  asstThink: "思考中",
+  asstThinkNote: "通常需要 10–30 秒，完成前不能送出新訊息",
+  asstSec: "%s 秒",
+  asstInputPh: "描述你的帳戶、貸款、保險或每月收支…",
+  asstInputPhBusy: "AI 回覆中，完成後才能再送出",
+  asstInputPhRo: "唯讀伺服器，無法送出",
+  asstSend: "送出",
+  asstHintIdle: "Enter 送出 · Shift + Enter 換行",
+  asstHintBusy: "AI 正在整理，送出暫時停用",
+  asstHintErr: "上次沒有送出，文字已保留在輸入框",
+  asstErrTitle: "AI 服務暫時無法回應",
+  asstErrBody: "請稍後再試。你剛才輸入的內容還留在輸入框，不用重打。",
+  asstRetry: "重試",
+  asstStillAnswering: "AI 還在回覆上一則訊息",
+  asstNotSaved: "尚未寫入",
+  asstDraftNote: "AI 整理的資料先放在這裡，不會改動任何帳戶。檢查後按「確認寫入」才會存進去。",
+  asstEmptyDraft: "還沒有草稿。描述你的狀況後，AI 整理出的資料會先出現在這裡，可能包含：",
+  asstKinds: "新增|更新餘額|每月現金流|保險|個人設定|目標",
+  asstClear: "清空草稿",
+  asstCommitNone: "沒有可寫入的草稿",
+  asstRoTag: "唯讀",
+  asstRoMsg: "這台伺服器是唯讀模式：可以瀏覽這個頁面，但不能送出訊息、修改草稿或寫入資料。",
+  asstRoToast: "唯讀伺服器：無法送出訊息或寫入資料，請改用可寫入的伺服器",
+  asstExpand: "展開成整頁",
+  asstMinimize: "收合",
+  asstCollapse: "收合成小視窗",
+  asstNoteBusy: "AI 思考中…",
+  asstNoteErr: "AI 沒有回應，點開重試",
+  asstChatBuild: "用聊天建檔",
+  asstGuideLine: "不想一頁頁填？用聊天描述你的狀況，AI 整理成草稿給你確認。",
   wealthGuideDone: "%s / %s 完成",
   wealthGuideHide: "隱藏",
   wealthGuideWhyBalance: "先記下有什麼、欠什麼，淨值才算得出來",

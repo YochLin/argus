@@ -442,7 +442,7 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
         </button>
       </div>
 
-      {empty && <WealthEmptyCard dict={dict} line={dict.wealthEmptyNet} onAdd={gateAdd(() => setShowAdd(true))} />}
+      {empty && <WealthEmptyCard dict={dict} topic="balance" line={dict.wealthEmptyNet} onAdd={gateAdd(() => setShowAdd(true))} />}
       {assets && <WealthGuide dict={dict} hasAssets={!empty} onNavigate={onNavigate} />}
 
       {!empty && (
@@ -765,6 +765,7 @@ export function WealthEmptyAssets({
   onUnauthorized,
   onAdded,
   onNavigate,
+  topic,
 }: {
   dict: Dictionary;
   line: string;
@@ -772,12 +773,13 @@ export function WealthEmptyAssets({
   onUnauthorized: (retry: () => void) => void;
   onAdded: () => void;
   onNavigate?: (path: string) => void;
+  topic?: string;
 }) {
   const [adding, setAdding] = useState(false);
   const gateAdd = useGateAdd(dict, writable);
   return (
     <>
-      <WealthEmptyCard dict={dict} line={line} onAdd={gateAdd(() => setAdding(true))} />
+      <WealthEmptyCard dict={dict} topic={topic} line={line} onAdd={gateAdd(() => setAdding(true))} />
       {adding && (
         <AddAssetModal
           dict={dict}

@@ -2585,3 +2585,46 @@ export interface WealthFunds {
 export function fetchWealthFunds(): Promise<WealthFunds> {
   return getJSON("/api/wealth/funds");
 }
+
+// AssistantMessage mirrors internal/web/wealth_assistant.go's assistantMessage
+// (Phase 28): "div" is the "AI started over" divider; action "trades" asks
+// for a 前往交易記錄 button under an ai turn.
+export interface AssistantMessage {
+  id: number;
+  role: "user" | "ai" | "sys" | "div";
+  text: string;
+  action?: "trades";
+  createdAt: string;
+}
+
+// These three bypass getJSON/postJSON's mock fallback on purpose: a chat
+// that "succeeds" with mock data would show the user an answer nobody gave.
+async function assistantCall(url: string, init?: RequestInit): Promise<AssistantMessage[]> {
+  const res = await fetch(url, init);
+  const data = (await res.json().catch(() => ({}))) as { messages?: AssistantMessage[]; error?: string };
+  if (!res.ok || !Array.isArray(data.messages)) {
+    throw new ApiError(res.status, data.error ?? `HTTP ${res.status}`);
+  }
+  return data.messages;
+}
+
+export function fetchAssistant(): Promise<AssistantMessage[]> {
+  return assistantCall("/api/wealth/assistant");
+}
+
+// sendAssistant returns only the messages this turn added.
+export function sendAssistant(text: string, topic?: string): Promise<AssistantMessage[]> {
+  return assistantCall("/api/wealth/assistant/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, topic }),
+  });
+}
+
+export function newAssistantChat(): Promise<AssistantMessage[]> {
+  return assistantCall("/api/wealth/assistant/new", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+}

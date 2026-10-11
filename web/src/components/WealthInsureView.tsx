@@ -395,7 +395,7 @@ export function WealthInsureView({ dict, writable, onUnauthorized }: Props) {
         />
       )}
 
-      {empty && <WealthEmptyCard dict={dict} line={dict.wealthEmptyInsure} onAdd={gateAdd(() => setShowAddForm(true))} />}
+      {empty && <WealthEmptyCard dict={dict} topic="insure" line={dict.wealthEmptyInsure} onAdd={gateAdd(() => setShowAddForm(true))} />}
 
       {!empty && (
         <>

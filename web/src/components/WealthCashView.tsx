@@ -480,7 +480,7 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
         />
       )}
 
-      {empty && <WealthEmptyCard dict={dict} line={dict.wealthEmptyCash} onAdd={gateAdd(() => setShowAddForm(true))} />}
+      {empty && <WealthEmptyCard dict={dict} topic="cash" line={dict.wealthEmptyCash} onAdd={gateAdd(() => setShowAddForm(true))} />}
 
       {!empty && (
         <>
