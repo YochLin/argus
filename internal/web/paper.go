@@ -101,7 +101,7 @@ func buildPaper(paperDB dbReader, quotes quoteGetter, m market.MarketID, initial
 	}
 	txs := filterTransactionsByMarket(allTxs, m)
 
-	cash, err := loadCash(paperDB, m)
+	cash, _, err := service.LoadCash(paperDB, m)
 	if err != nil {
 		logger.Errorf("web: paper: load cash for %s: %v", m, err)
 	}

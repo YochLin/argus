@@ -15,6 +15,26 @@ const (
 	CashSettingKeyTWD = "cash_balance_twd"
 )
 
+// SettingReader is the one store method LoadCash needs.
+type SettingReader interface {
+	GetSetting(key string) (string, bool, error)
+}
+
+// LoadCash returns m's declared cash balance, or ok=false if /cash (or the
+// web form) has never set it. It is the one parser of that setting for the
+// bot, the dashboard and PortfolioService.
+func LoadCash(r SettingReader, m market.MarketID) (amount float64, ok bool, err error) {
+	raw, ok, err := r.GetSetting(CashSettingKey(m))
+	if err != nil || !ok {
+		return 0, false, err
+	}
+	amount, err = strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return 0, false, err
+	}
+	return amount, true, nil
+}
+
 // CashSettingKey returns the persisted cash-balance key for a market.
 func CashSettingKey(m market.MarketID) string {
 	if m == market.TW {
@@ -122,14 +142,7 @@ func (s *PortfolioService) Snapshot(m market.MarketID) (PortfolioSnapshot, error
 	}
 
 	snapshot.RealizedPnL, snapshot.RealizedPnLErr = s.store.GetRealizedPnL(m)
-	rawCash, ok, cashErr := s.store.GetSetting(CashSettingKey(m))
-	snapshot.CashErr = cashErr
-	if cashErr == nil && ok {
-		snapshot.Cash, snapshot.CashErr = strconv.ParseFloat(rawCash, 64)
-		if snapshot.CashErr == nil {
-			snapshot.HasCash = true
-		}
-	}
+	snapshot.Cash, snapshot.HasCash, snapshot.CashErr = LoadCash(s.store, m)
 	if snapshot.HasCash {
 		snapshot.AccountValue = snapshot.TotalMarketValue + snapshot.Cash
 	} else {

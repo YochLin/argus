@@ -227,7 +227,7 @@ func (b *Bot) handleCheck(ctx context.Context, ticker string) {
 	// handleCheck, unlike gatherRecommendationInputs, isn't restricted to a
 	// US-only watchlist (see docs/phase-6-tw-market.md §4.3).
 	var benchCloses []float64
-	if benchCandles, err := b.history.GetHistory(benchmarkFor(market.Of(ticker)), "1y"); err == nil {
+	if benchCandles, err := b.history.GetHistory(service.BenchmarkFor(market.Of(ticker)), "1y"); err == nil {
 		benchCloses = data.Closes(benchCandles)
 	}
 	stock.Technicals, stock.Candles, stock.StrategyHits = b.computeTechnicals(ticker, benchCloses)
@@ -288,26 +288,14 @@ func (b *Bot) handleTrack(daysArg string) {
 	b.Send(sb.String())
 }
 
-// These aliases and wrappers keep the Telegram adapter's formatting helpers
+// These aliases and wrapper keep the Telegram adapter's formatting helpers
 // compact while the tracking rule and aggregation live in internal/service.
 type trackRow = service.RecommendationTrackRow
 type trackSourceStats = service.RecommendationTrackStats
 
-func trackHit(action string, tickerChangePct, spyChangePct float64, haveSPY bool) bool {
-	return service.TrackHit(action, tickerChangePct, spyChangePct, haveSPY)
-}
-
 func summarizeTrack(rows []trackRow) (overall trackSourceStats, bySource map[string]trackSourceStats, byMarket map[market.MarketID]trackSourceStats) {
 	summary := service.SummarizeTrack(rows)
 	return summary.Overall, summary.BySource, summary.ByMarket
-}
-
-func displaySource(source string) string {
-	return service.DisplaySource(source)
-}
-
-func sortedSourceKeys(bySource map[string]trackSourceStats) []string {
-	return service.SortedSourceKeys(bySource)
 }
 
 // tradeDateRe matches an optional trailing YYYY-MM-DD date argument to
@@ -503,16 +491,6 @@ func (b *Bot) buyStopSuggestion(ticker string, existingStopPrice float64) string
 		sb.WriteString(i18n.T(b.lang, i18n.KeyBuyStopAddOnNote, ticker, b.money(ticker, existingStopPrice)))
 	}
 	return sb.String()
-}
-
-// buyAlertDirection infers which side of price a new buy alert should watch
-// by comparing it to the live quote at set time — a target at or below the
-// current price is a dip watch (db.BuyAlertBelow), one above it is a
-// breakout watch (db.BuyAlertAbove). This is what lets /buyalert take a
-// single price argument and still support both "notify me on a dip" and
-// "notify me on a breakout" without an extra direction flag.
-func buyAlertDirection(price, currentPrice float64) string {
-	return service.BuyAlertDirection(price, currentPrice)
 }
 
 func (b *Bot) buyAlertDirPhrase(direction string) string {
@@ -1038,7 +1016,7 @@ func (b *Bot) buildClosedTradeReview(ticker string, stopPrice float64) (llm.Clos
 
 	if entryPrice := weightedAvgPrice(round.Legs, "BUY"); entryPrice > 0 {
 		exitPrice := weightedAvgPrice(round.Legs, "SELL")
-		bench := benchmarkFor(market.Of(ticker))
+		bench := service.BenchmarkFor(market.Of(ticker))
 		spyStart, startOK, startErr := b.db.GetSnapshotClose(bench, round.StartDate)
 		spyEnd, endOK, endErr := b.db.GetSnapshotClose(bench, round.EndDate)
 		if startErr != nil || endErr != nil {
@@ -1412,11 +1390,6 @@ const (
 	cashSettingKeyTWD = service.CashSettingKeyTWD
 )
 
-// cashSettingKeyFor returns the settings key backing m's cash balance.
-func cashSettingKeyFor(m market.MarketID) string {
-	return service.CashSettingKey(m)
-}
-
 // handleCash manages the user's manually-declared cash balance, one per
 // market (Phase 3.6, extended by Phase 6 to two books — see §3.2). With no
 // argument it reports both currencies' current values (omitting whichever
@@ -1441,7 +1414,7 @@ func (b *Bot) handleCash(args string) {
 		b.Send(i18n.T(b.lang, i18n.KeyCashUsage))
 		return
 	}
-	if err := b.db.SetSetting(cashSettingKeyFor(m), strconv.FormatFloat(amount, 'f', 2, 64)); err != nil {
+	if err := b.db.SetSetting(service.CashSettingKey(m), strconv.FormatFloat(amount, 'f', 2, 64)); err != nil {
 		b.Send(i18n.T(b.lang, i18n.KeyCashSetFailed, err))
 		return
 	}
@@ -1521,15 +1494,7 @@ func (b *Bot) renderCashStatus() string {
 // loadCash returns m's declared cash balance, or ok=false if /cash has
 // never set it.
 func (b *Bot) loadCash(m market.MarketID) (float64, bool, error) {
-	raw, ok, err := b.db.GetSetting(cashSettingKeyFor(m))
-	if err != nil || !ok {
-		return 0, ok, err
-	}
-	amount, err := strconv.ParseFloat(raw, 64)
-	if err != nil {
-		return 0, false, err
-	}
-	return amount, true, nil
+	return service.LoadCash(b.db, m)
 }
 
 // adjustCash nudges ticker's market cash balance by delta — negative for a
@@ -1549,7 +1514,7 @@ func (b *Bot) adjustCash(ticker string, delta float64) {
 	if !ok {
 		return
 	}
-	if err := b.db.SetSetting(cashSettingKeyFor(m), strconv.FormatFloat(cash+delta, 'f', 2, 64)); err != nil {
+	if err := b.db.SetSetting(service.CashSettingKey(m), strconv.FormatFloat(cash+delta, 'f', 2, 64)); err != nil {
 		logger.Errorf("adjust cash for %s: save: %v", ticker, err)
 	}
 }

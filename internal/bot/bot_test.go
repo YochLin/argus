@@ -620,43 +620,6 @@ func TestFormatRecLine(t *testing.T) {
 	})
 }
 
-func TestTrackHit(t *testing.T) {
-	tests := []struct {
-		name                          string
-		action                        string
-		tickerChangePct, spyChangePct float64
-		haveSPY                       bool
-		want                          bool
-	}{
-		{"BUY beats SPY is a hit", "BUY", 10, 4, true, true},
-		{"BUY behind SPY is not a hit even though price rose", "BUY", 3, 4, true, false},
-		{"BUY without SPY data falls back to absolute direction (up)", "BUY", 3, 0, false, true},
-		{"BUY without SPY data falls back to absolute direction (down)", "BUY", -1, 0, false, false},
-		{"SELL underperforming SPY is a hit", "SELL", -10, -2, true, true},
-		{"SELL merely tracking SPY down is not a hit", "SELL", -2, -2, true, false},
-		{"SELL without SPY data falls back to absolute direction (down)", "SELL", -3, 0, false, true},
-		{"HOLD never counts as a hit", "HOLD", 10, -10, true, false},
-		{"unset action never counts as a hit", "", 10, -10, true, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := trackHit(tt.action, tt.tickerChangePct, tt.spyChangePct, tt.haveSPY); got != tt.want {
-				t.Errorf("trackHit(%q, %v, %v, %v) = %v, want %v",
-					tt.action, tt.tickerChangePct, tt.spyChangePct, tt.haveSPY, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestDisplaySource(t *testing.T) {
-	if got := displaySource(""); got != "watchlist" {
-		t.Errorf(`displaySource("") = %q, want "watchlist"`, got)
-	}
-	if got := displaySource("scan"); got != "scan" {
-		t.Errorf(`displaySource("scan") = %q, want "scan"`, got)
-	}
-}
-
 func TestSummarizeTrack(t *testing.T) {
 	rows := []trackRow{
 		{Action: "BUY", Source: "watchlist", ChangePct: 10, Hit: true},
@@ -698,24 +661,6 @@ func TestTrackSourceStatsZeroDivision(t *testing.T) {
 	var s trackSourceStats
 	if s.HitRate() != 0 || s.AvgBuyPct() != 0 || s.AvgSellPct() != 0 {
 		t.Errorf("zero-value trackSourceStats methods = %v, %v, %v; want all 0", s.HitRate(), s.AvgBuyPct(), s.AvgSellPct())
-	}
-}
-
-func TestSortedSourceKeys(t *testing.T) {
-	bySource := map[string]trackSourceStats{
-		"watchlist": {},
-		"scan":      {},
-		"movers":    {},
-	}
-	got := sortedSourceKeys(bySource)
-	want := []string{"movers", "scan", "watchlist"}
-	if len(got) != len(want) {
-		t.Fatalf("sortedSourceKeys() = %v, want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("sortedSourceKeys() = %v, want %v", got, want)
-		}
 	}
 }
 

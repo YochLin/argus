@@ -74,7 +74,7 @@ func (b *Bot) gatherRecommendationInputs(m market.MarketID) (recommendationInput
 	}
 	scanHits := b.loadScanHits(m)
 	dedupedCandidates := service.MergeCandidates(candidateTickers, scanHits, tickers)
-	dedupedCandidates = service.RankAndTruncateCandidates(b.history, dedupedCandidates, benchmarkFor(m), candidatePrefilterCount)
+	dedupedCandidates = service.RankAndTruncateCandidates(b.history, dedupedCandidates, service.BenchmarkFor(m), candidatePrefilterCount)
 	allTickers := append(append([]string{}, tickers...), dedupedCandidates...)
 
 	positions := b.loadPositions()
@@ -497,7 +497,7 @@ func (b *Bot) fetchStockData(tickers []string, includeFundamentals bool, positio
 			return closes
 		}
 		var closes []float64
-		if candles, err := b.history.GetHistory(benchmarkFor(m), "1y"); err == nil {
+		if candles, err := b.history.GetHistory(service.BenchmarkFor(m), "1y"); err == nil {
 			closes = data.Closes(candles)
 		}
 		benchCloses[m] = closes
@@ -793,13 +793,7 @@ func (b *Bot) accountValue(m market.MarketID) (float64, bool) {
 // vixTicker resolution (SPY/0050, ^VIX) stays a bot-layer policy choice, same
 // reasoning as rankAndTruncateCandidates' benchTicker param.
 func (b *Bot) computeMarketRegime(m market.MarketID) *llm.MarketContext {
-	return service.ComputeMarketRegime(b.history, b.provider, m, benchmarkFor(m), vixTicker)
-}
-
-// isBearRegime returns true if the market context indicates a weak/bear regime
-// (SPY below its 50-day or 200-day moving average).
-func isBearRegime(mc *llm.MarketContext) bool {
-	return service.IsBearRegime(mc)
+	return service.ComputeMarketRegime(b.history, b.provider, m, service.BenchmarkFor(m), vixTicker)
 }
 
 // loadPositions returns every open position keyed by ticker, for attaching
@@ -1004,7 +998,7 @@ func (b *Bot) loadVsSPY(stocks []llm.StockData, positions map[string]db.Position
 		if q, ok := benchQuotes[m]; ok {
 			return q
 		}
-		ticker := benchmarkFor(m)
+		ticker := service.BenchmarkFor(m)
 		q, err := b.provider.GetQuote(ticker)
 		if err != nil {
 			logger.Errorf("vs-spy: benchmark %s quote: %v", ticker, err)
@@ -1034,7 +1028,7 @@ func (b *Bot) loadVsSPY(stocks []llm.StockData, positions map[string]db.Position
 		if !ok {
 			continue
 		}
-		benchEntryClose, ok, err := b.db.GetSnapshotClose(benchmarkFor(m), buyDate)
+		benchEntryClose, ok, err := b.db.GetSnapshotClose(service.BenchmarkFor(m), buyDate)
 		if err != nil {
 			logger.Errorf("vs-spy: benchmark snapshot %s: %v", ticker, err)
 			continue
@@ -1042,7 +1036,7 @@ func (b *Bot) loadVsSPY(stocks []llm.StockData, positions map[string]db.Position
 		if !ok || benchEntryClose == 0 {
 			continue
 		}
-		out[ticker] = computeVsSPY(s.Quote.Price, p.AvgCost, benchQuote.Price, benchEntryClose, benchmarkFor(m))
+		out[ticker] = computeVsSPY(s.Quote.Price, p.AvgCost, benchQuote.Price, benchEntryClose, service.BenchmarkFor(m))
 	}
 	return out
 }

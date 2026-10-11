@@ -103,9 +103,9 @@ const twPreOpenStaleness = 72 * time.Hour
 func (b *Bot) RunTWMorningBriefing(ctx context.Context) {
 	defer b.recoverJobPanic("tw morning briefing")
 
-	q, err := b.provider.GetQuote(benchmarkFor(market.TW))
+	q, err := b.provider.GetQuote(service.BenchmarkFor(market.TW))
 	if err != nil {
-		logger.Errorf("tw morning briefing: %s quote: %v", benchmarkFor(market.TW), err)
+		logger.Errorf("tw morning briefing: %s quote: %v", service.BenchmarkFor(market.TW), err)
 		b.Send(i18n.T(b.lang, i18n.KeyTWMorningBriefingMarketClosed))
 		return
 	}

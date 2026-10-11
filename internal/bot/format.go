@@ -10,6 +10,7 @@ import (
 	"argus/internal/i18n"
 	"argus/internal/market"
 	"argus/internal/render"
+	"argus/internal/service"
 )
 
 // formatChatContext renders the read-only background block prefixed to
@@ -114,7 +115,7 @@ func renderTrackSummary(lang i18n.Lang, overall trackSourceStats, bySource map[s
 	sb.WriteString(i18n.T(lang, i18n.KeyTrackAvgReturnLine, overall.AvgBuyPct(), overall.BuyCount, overall.AvgSellPct(), overall.SellCount))
 	if len(bySource) > 1 {
 		sb.WriteString(i18n.T(lang, i18n.KeyTrackBySourceHeader))
-		for _, source := range sortedSourceKeys(bySource) {
+		for _, source := range service.SortedSourceKeys(bySource) {
 			s := bySource[source]
 			sb.WriteString(i18n.T(lang, i18n.KeyTrackBySourceLine, source, s.Hits, s.Evaluated, s.HitRate()))
 		}

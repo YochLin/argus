@@ -29,7 +29,7 @@ type PositionReader interface {
 // instead of failing /check. Technicals/candles/strategy hits are
 // deliberately not attached here — ComputeTechnicals needs a benchmark
 // ticker resolved from the caller's own market-of(ticker) policy (see
-// bot.benchmarkFor), so that attach stays the caller's job, same split
+// BenchmarkFor), so that attach stays the caller's job, same split
 // fetchStockData already has from computeTechnicals.
 func CheckStockData(quotes QuoteNewsReader, names data.CompanyNameProvider, fundamentals data.FundamentalsProvider, analystRating data.AnalystRatingProvider, positions PositionReader, ticker string) (llm.StockData, error) {
 	q, err := quotes.GetQuote(ticker)

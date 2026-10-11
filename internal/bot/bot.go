@@ -41,7 +41,7 @@ const (
 	// vixTicker feeds computeMarketRegime's VIX line (Phase 3.7 追加項, see
 	// docs/phase-3.7-market-regime.md) via the ordinary quote path
 	// (b.provider.GetQuote) — not a history/watchlist ticker, same as the
-	// benchmark (benchmarkFor) never touching the watchlist table.
+	// benchmark (service.BenchmarkFor) never touching the watchlist table.
 	vixTicker = "^VIX"
 )
 
