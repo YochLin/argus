@@ -13,18 +13,6 @@ import (
 	"argus/internal/service"
 )
 
-// annualSalarySettingKey is profile.annual_salary (§9.3) — re-exported from
-// service.AnnualSalarySettingKey for local brevity.
-const annualSalarySettingKey = service.AnnualSalarySettingKey
-
-// birthYearSettingKey/retirementContribSettingKey back the retirement page's
-// two extra "個人參數" (Phase 9 波次3 PR7) — see service.BirthYearSettingKey's
-// doc comment.
-const (
-	birthYearSettingKey         = service.BirthYearSettingKey
-	retirementContribSettingKey = service.RetirementMonthlyContributionSettingKey
-)
-
 type balanceSheetItem struct {
 	AssetID   int64   `json:"assetId,omitempty"` // 0 for the equity virtual row
 	Name      string  `json:"name"`
@@ -382,8 +370,8 @@ func (s *Server) handleWealthProfileUpdate(w http.ResponseWriter, r *http.Reques
 			writeError(w, http.StatusBadRequest, "annualSalary must be >= 0")
 			return
 		}
-		if err := s.wealthDB.SetSetting(annualSalarySettingKey, strconv.FormatFloat(*req.AnnualSalary, 'f', 2, 64)); err != nil {
-			logger.Errorf("web: set %s: %v", annualSalarySettingKey, err)
+		if err := s.wealthDB.SetSetting(service.AnnualSalarySettingKey, strconv.FormatFloat(*req.AnnualSalary, 'f', 2, 64)); err != nil {
+			logger.Errorf("web: set %s: %v", service.AnnualSalarySettingKey, err)
 			writeError(w, http.StatusInternalServerError, "failed to save")
 			return
 		}
@@ -393,8 +381,8 @@ func (s *Server) handleWealthProfileUpdate(w http.ResponseWriter, r *http.Reques
 			writeError(w, http.StatusBadRequest, "birthYear is out of range")
 			return
 		}
-		if err := s.wealthDB.SetSetting(birthYearSettingKey, strconv.Itoa(*req.BirthYear)); err != nil {
-			logger.Errorf("web: set %s: %v", birthYearSettingKey, err)
+		if err := s.wealthDB.SetSetting(service.BirthYearSettingKey, strconv.Itoa(*req.BirthYear)); err != nil {
+			logger.Errorf("web: set %s: %v", service.BirthYearSettingKey, err)
 			writeError(w, http.StatusInternalServerError, "failed to save")
 			return
 		}
@@ -404,8 +392,8 @@ func (s *Server) handleWealthProfileUpdate(w http.ResponseWriter, r *http.Reques
 			writeError(w, http.StatusBadRequest, "retirementMonthlyContribution must be >= 0")
 			return
 		}
-		if err := s.wealthDB.SetSetting(retirementContribSettingKey, strconv.FormatFloat(*req.RetirementMonthlyContribution, 'f', 2, 64)); err != nil {
-			logger.Errorf("web: set %s: %v", retirementContribSettingKey, err)
+		if err := s.wealthDB.SetSetting(service.RetirementMonthlyContributionSettingKey, strconv.FormatFloat(*req.RetirementMonthlyContribution, 'f', 2, 64)); err != nil {
+			logger.Errorf("web: set %s: %v", service.RetirementMonthlyContributionSettingKey, err)
 			writeError(w, http.StatusInternalServerError, "failed to save")
 			return
 		}

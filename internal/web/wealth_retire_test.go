@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"argus/internal/db"
+	"argus/internal/service"
 )
 
 func newWealthRetireTestServer(password string, fake *fakeDB, wealthDB wealthWriter) *Server {
@@ -40,7 +41,7 @@ func wealthAsset(id int64, side string) db.AssetWithValue {
 
 // TestHandleWealthRetireGetNoBirthYearRendersSample pins the sample-mode
 // path (design's isSample/範例): with no profile.birth_year set yet, the
-// page still renders a full projection — using defaultSampleCurrentAge
+// page still renders a full projection — using DefaultSampleCurrentAge
 // rather than a real age — tagged IsSample so nothing presents it as the
 // user's real numbers. Pool itself is still computable (no earmarks yet is
 // a known zero, not a pricing failure), which is what unlocks this path.
@@ -51,7 +52,7 @@ func TestHandleWealthRetireGetNoBirthYearRendersSample(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
 	}
-	var got retirementResponse
+	var got service.RetirementPlan
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -61,23 +62,23 @@ func TestHandleWealthRetireGetNoBirthYearRendersSample(t *testing.T) {
 	if !got.IsSample {
 		t.Errorf("IsSample = false, want true (no real birth year on file)")
 	}
-	if got.CurrentAge != defaultSampleCurrentAge {
-		t.Errorf("CurrentAge = %d, want %d (defaultSampleCurrentAge)", got.CurrentAge, defaultSampleCurrentAge)
+	if got.CurrentAge != service.DefaultSampleCurrentAge {
+		t.Errorf("CurrentAge = %d, want %d (DefaultSampleCurrentAge)", got.CurrentAge, service.DefaultSampleCurrentAge)
 	}
 	if got.Baseline == nil || got.Need == nil {
 		t.Errorf("expected a full sample projection even without a birth year, got Baseline=%v Need=%v", got.Baseline, got.Need)
 	}
-	if got.RetirementAge != defaultRetirementAge || got.MonthlySpend != defaultRetirementMonthlySpend {
-		t.Errorf("defaults = (%d, %v), want (%d, %v)", got.RetirementAge, got.MonthlySpend, defaultRetirementAge, defaultRetirementMonthlySpend)
+	if got.RetirementAge != service.DefaultRetirementAge || got.MonthlySpend != service.DefaultRetirementMonthlySpend {
+		t.Errorf("defaults = (%d, %v), want (%d, %v)", got.RetirementAge, got.MonthlySpend, service.DefaultRetirementAge, service.DefaultRetirementMonthlySpend)
 	}
 }
 
 // TestHandleWealthRetireGetNoBirthYearGoalCardSkipsAgePace pins the safety
-// property the sample path must not violate: applyRetirementPace's
+// property the sample path must not violate: ApplyRetirementPace's
 // age-based fields (only ever set by that function — see its doc comment)
 // must stay unset when there's no real birth year, even though the
 // projection itself now computes fine with a sample age. The goal card can
-// still carry a generic calendar-pace status from goalStatus (created→
+// still carry a generic calendar-pace status from GoalStatus (created→
 // target date, independent of age) — that's pre-existing, unrelated
 // behavior this test doesn't touch.
 func TestHandleWealthRetireGetNoBirthYearGoalCardSkipsAgePace(t *testing.T) {
@@ -91,7 +92,7 @@ func TestHandleWealthRetireGetNoBirthYearGoalCardSkipsAgePace(t *testing.T) {
 	s := newWealthRetireTestServer("", fake, &fakeWealthDB{})
 	rec := httptest.NewRecorder()
 	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/retire", nil))
-	var got retirementResponse
+	var got service.RetirementPlan
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -99,7 +100,7 @@ func TestHandleWealthRetireGetNoBirthYearGoalCardSkipsAgePace(t *testing.T) {
 		t.Fatal("Goal = nil, want the retirement goal to still render")
 	}
 	if got.Goal.ProjectedAtRetirement != nil || got.Goal.RetirementAge != 0 {
-		t.Errorf("Goal.ProjectedAtRetirement = %v, Goal.RetirementAge = %d, want both unset (applyRetirementPace must not run off a sample age)",
+		t.Errorf("Goal.ProjectedAtRetirement = %v, Goal.RetirementAge = %d, want both unset (ApplyRetirementPace must not run off a sample age)",
 			got.Goal.ProjectedAtRetirement, got.Goal.RetirementAge)
 	}
 }
@@ -114,7 +115,7 @@ func TestHandleWealthRetireGetComputesProjection(t *testing.T) {
 	retireYear := time.Now().Year() + 20 // retirement age 60
 	v := 20000000.0
 	fake := &fakeDB{
-		settings: map[string]string{birthYearSettingKey: strconv.Itoa(birthYear)},
+		settings: map[string]string{service.BirthYearSettingKey: strconv.Itoa(birthYear)},
 		wealthAssets: []db.AssetWithValue{
 			{Asset: db.Asset{ID: 1, Side: "asset", Type: "fund", Name: "退休基金", Currency: "TWD"}, Value: &v},
 		},
@@ -129,7 +130,7 @@ func TestHandleWealthRetireGetComputesProjection(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
 	}
-	var got retirementResponse
+	var got service.RetirementPlan
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -160,7 +161,7 @@ func TestHandleWealthRetireGetLiveOverridesDontPersist(t *testing.T) {
 	retireYear := time.Now().Year() + 20
 	v := 20000000.0
 	fake := &fakeDB{
-		settings: map[string]string{birthYearSettingKey: strconv.Itoa(birthYear)},
+		settings: map[string]string{service.BirthYearSettingKey: strconv.Itoa(birthYear)},
 		wealthAssets: []db.AssetWithValue{
 			{Asset: db.Asset{ID: 1, Side: "asset", Type: "fund", Name: "退休基金", Currency: "TWD"}, Value: &v},
 		},
@@ -171,14 +172,14 @@ func TestHandleWealthRetireGetLiveOverridesDontPersist(t *testing.T) {
 	}
 	s := newWealthRetireTestServer("", fake, &fakeWealthDB{})
 
-	get := func(query string) retirementResponse {
+	get := func(query string) service.RetirementPlan {
 		t.Helper()
 		rec := httptest.NewRecorder()
 		s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/retire"+query, nil))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
 		}
-		var got retirementResponse
+		var got service.RetirementPlan
 		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 			t.Fatalf("unmarshal: %v", err)
 		}
@@ -223,7 +224,7 @@ func TestHandleWealthRetireSaveRequiresBirthYearThenUpsertsGoal(t *testing.T) {
 	}
 
 	birthYear := time.Now().Year() - 40
-	s2 := newWealthRetireTestServer("secret", &fakeDB{settings: map[string]string{birthYearSettingKey: strconv.Itoa(birthYear)}}, wealthDB)
+	s2 := newWealthRetireTestServer("secret", &fakeDB{settings: map[string]string{service.BirthYearSettingKey: strconv.Itoa(birthYear)}}, wealthDB)
 	cookie2 := loginAndGetCookie(t, s2, "secret")
 	req2 := httptest.NewRequest(http.MethodPost, "/api/wealth/retire", bytes.NewReader(body))
 	req2.AddCookie(cookie2)

@@ -8,9 +8,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"argus/internal/db"
+	"argus/internal/service"
 )
 
 func newWealthGoalsTestServer(password string, fake *fakeDB, wealthDB wealthWriter) *Server {
@@ -70,7 +70,7 @@ func TestHandleWealthGoalsList(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
 	}
-	var got goalsResponse
+	var got service.GoalList
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestHandleWealthGoalsList(t *testing.T) {
 		t.Fatalf("len(Goals) = %d, want 2", len(got.Goals))
 	}
 
-	byID := map[int64]goalItem{}
+	byID := map[int64]service.GoalItem{}
 	for _, g := range got.Goals {
 		byID[g.ID] = g
 	}
@@ -118,7 +118,7 @@ func TestHandleWealthGoalsListRetirementMonthlyContribution(t *testing.T) {
 			{ID: 1, Name: "退休金", Kind: "retirement", TargetAmount: 27000000, Currency: "TWD", CreatedAt: "2026-01-01 00:00:00"},
 			{ID: 2, Name: "緊急預備金", Kind: "general", TargetAmount: 300000, Currency: "TWD", CreatedAt: "2026-01-01 00:00:00"},
 		},
-		settings: map[string]string{retirementContribSettingKey: "28000"},
+		settings: map[string]string{service.RetirementMonthlyContributionSettingKey: "28000"},
 	}
 	s := newWealthGoalsTestServer("", fake, &fakeWealthDB{})
 
@@ -127,11 +127,11 @@ func TestHandleWealthGoalsListRetirementMonthlyContribution(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
 	}
-	var got goalsResponse
+	var got service.GoalList
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	byID := map[int64]goalItem{}
+	byID := map[int64]service.GoalItem{}
 	for _, g := range got.Goals {
 		byID[g.ID] = g
 	}
@@ -140,27 +140,6 @@ func TestHandleWealthGoalsListRetirementMonthlyContribution(t *testing.T) {
 	}
 	if byID[2].MonthlyContribution != nil {
 		t.Errorf("general goal MonthlyContribution = %v, want nil", byID[2].MonthlyContribution)
-	}
-}
-
-// TestGoalStatus pins the straight-line expected-progress classification a
-// target_date goal gets: ahead/behind/onTrack around a 5pp band.
-func TestGoalStatus(t *testing.T) {
-	created := "2026-01-01 00:00:00"
-	target := "2027-01-01"                             // one year out
-	today, _ := time.Parse("2006-01-02", "2026-07-02") // ~half the year elapsed, expected ~50%
-
-	if got, expectedPct, ok := goalStatus(created, target, 80, today); got != "ahead" || !ok || expectedPct < 49 || expectedPct > 51 {
-		t.Errorf("progress 80%% at ~50%% elapsed = (%q, %v, %v), want (ahead, ~50, true)", got, expectedPct, ok)
-	}
-	if got, _, ok := goalStatus(created, target, 20, today); got != "behind" || !ok {
-		t.Errorf("progress 20%% at ~50%% elapsed = (%q, ok=%v), want behind", got, ok)
-	}
-	if got, _, ok := goalStatus(created, target, 50, today); got != "onTrack" || !ok {
-		t.Errorf("progress 50%% at ~50%% elapsed = (%q, ok=%v), want onTrack", got, ok)
-	}
-	if _, _, ok := goalStatus(created, "", 50, today); ok {
-		t.Errorf("no targetDate: ok = %v, want false", ok)
 	}
 }
 
@@ -273,7 +252,7 @@ func TestHandleWealthGoalsListDrawerFields(t *testing.T) {
 	s := newWealthGoalsTestServer("", fake, &fakeWealthDB{})
 	rec := httptest.NewRecorder()
 	s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/goals", nil))
-	var got goalsResponse
+	var got service.GoalList
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -322,35 +301,5 @@ func TestHandleWealthGoalUpdate(t *testing.T) {
 	wealthDB.updateGoalErr = sql.ErrNoRows
 	if code := post(map[string]any{"id": 4, "name": "x", "targetAmount": 1}); code != http.StatusNotFound {
 		t.Errorf("non-editable goal status = %d, want 404", code)
-	}
-}
-
-// TestApplyRetirementPace pins the template's retirement-card semantics:
-// marker = (age-25)/(retAge-25), "behind" only when the projection falls
-// short of the need, otherwise ahead once progress reaches the marker.
-func TestApplyRetirementPace(t *testing.T) {
-	pct := func(v float64) *float64 { return &v }
-	tests := []struct {
-		name            string
-		progress        float64
-		projected, need float64
-		wantStatus      string
-	}{
-		{"projection short is behind even if progress is past the marker", 80, 9e6, 10e6, "behind"},
-		{"funded and past the marker is ahead", 40, 12e6, 10e6, "ahead"},
-		{"funded but under the marker is on track", 10, 12e6, 10e6, "onTrack"},
-	}
-	for _, tt := range tests {
-		g := &goalItem{ProgressPct: pct(tt.progress)}
-		applyRetirementPace(g, 36, 60, tt.projected, tt.need) // (36-25)/(60-25) = 31.43 -> 31
-		if g.Status != tt.wantStatus {
-			t.Errorf("%s: status = %q, want %q", tt.name, g.Status, tt.wantStatus)
-		}
-		if g.MarkPct == nil || *g.MarkPct != 31 {
-			t.Errorf("%s: markPct = %v, want 31", tt.name, g.MarkPct)
-		}
-		if g.RetirementAge != 60 || g.ProjectedAtRetirement == nil || *g.ProjectedAtRetirement != tt.projected {
-			t.Errorf("%s: retirement fields not set: %+v", tt.name, g)
-		}
 	}
 }
