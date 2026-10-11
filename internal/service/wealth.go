@@ -41,6 +41,66 @@ const (
 	SpouseHasIncomeSettingKey  = "profile.spouse_income"
 )
 
+// WealthProfile is the household facts the platform can't derive (§9.3 "個人
+// 參數"), each nil until the user has saved it. Dependents == 0 is a real,
+// explicitly-saved "no dependents" — a caller must check the pointer to tell
+// that apart from "not set yet". The JSON tags are the /api/wealth/profile
+// wire shape.
+type WealthProfile struct {
+	AnnualSalary                  *float64 `json:"annualSalary"`
+	BirthYear                     *int     `json:"birthYear"`
+	RetirementMonthlyContribution *float64 `json:"retirementMonthlyContribution"`
+	Dependents                    *int     `json:"dependents"`
+	YoungestChildAge              *int     `json:"youngestChildAge"`
+	SpouseHasIncome               *bool    `json:"spouseHasIncome"`
+}
+
+// LoadWealthProfile reads the six settings behind WealthProfile. A store
+// error or a value that doesn't parse leaves that field nil, the same as
+// never having saved it — a profile card is a convenience, not something a
+// page should fail over.
+func LoadWealthProfile(r SettingReader) WealthProfile {
+	var p WealthProfile
+	if v, ok := settingFloat(r, AnnualSalarySettingKey); ok {
+		p.AnnualSalary = &v
+	}
+	if v, ok := settingInt(r, BirthYearSettingKey); ok {
+		p.BirthYear = &v
+	}
+	if v, ok := settingFloat(r, RetirementMonthlyContributionSettingKey); ok {
+		p.RetirementMonthlyContribution = &v
+	}
+	if v, ok := settingInt(r, DependentsSettingKey); ok {
+		p.Dependents = &v
+	}
+	if v, ok := settingInt(r, YoungestChildAgeSettingKey); ok {
+		p.YoungestChildAge = &v
+	}
+	if raw, ok, err := r.GetSetting(SpouseHasIncomeSettingKey); err == nil && ok {
+		v := raw == "1"
+		p.SpouseHasIncome = &v
+	}
+	return p
+}
+
+func settingInt(r SettingReader, key string) (int, bool) {
+	raw, ok, err := r.GetSetting(key)
+	if err != nil || !ok {
+		return 0, false
+	}
+	v, err := strconv.Atoi(raw)
+	return v, err == nil
+}
+
+func settingFloat(r SettingReader, key string) (float64, bool) {
+	raw, ok, err := r.GetSetting(key)
+	if err != nil || !ok {
+		return 0, false
+	}
+	v, err := strconv.ParseFloat(raw, 64)
+	return v, err == nil
+}
+
 // WealthStore is the read boundary the wealth-summary logic (net worth,
 // health metrics, debt payoff) needs — shared by internal/web's wealth
 // pages and internal/bot's /networth command so neither duplicates the
