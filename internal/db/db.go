@@ -229,20 +229,46 @@ func (d *DB) migrate() error {
 		return fmt.Errorf("read user_version: %w", err)
 	}
 	for i := version; i < len(migrations); i++ {
-		if _, err := d.conn.Exec(migrations[i]); err != nil {
-			return fmt.Errorf("migration %d: %w", i+1, err)
-		}
-		if i+1 == 16 {
-			if err := backfillFIFOLots(d.conn); err != nil {
-				return fmt.Errorf("migration 16 backfill: %w", err)
-			}
-		}
-		// PRAGMA doesn't support parameter binding.
-		if _, err := d.conn.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, i+1)); err != nil {
-			return fmt.Errorf("set user_version %d: %w", i+1, err)
+		if err := d.applyMigration(i + 1); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// migrationGoSteps are the migrations that need Go code after their SQL ran
+// (keyed by 1-based migration number): FIFO replay needs per-ticker running
+// state a single SQL statement can't carry.
+var migrationGoSteps = map[int]func(*sql.Tx) error{
+	16: backfillFIFOLots,
+}
+
+// applyMigration runs migration n (1-based), its Go step if it has one, and
+// the user_version bump in a single transaction. SQLite DDL is transactional,
+// so a step that fails half-way (migration 12 is four ALTERs, four UPDATEs and
+// a table rebuild) leaves neither a half-applied schema nor an advanced
+// user_version; run unwrapped, it left the former behind and the next boot
+// died re-running the step on "duplicate column".
+func (d *DB) applyMigration(n int) error {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return fmt.Errorf("migration %d: begin: %w", n, err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(migrations[n-1]); err != nil {
+		return fmt.Errorf("migration %d: %w", n, err)
+	}
+	if step := migrationGoSteps[n]; step != nil {
+		if err := step(tx); err != nil {
+			return fmt.Errorf("migration %d backfill: %w", n, err)
+		}
+	}
+	// PRAGMA doesn't support parameter binding.
+	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, n)); err != nil {
+		return fmt.Errorf("set user_version %d: %w", n, err)
+	}
+	return tx.Commit()
 }
 
 // fifoLot is one BUY transaction's purchase lot state while backfillFIFOLots
@@ -262,13 +288,9 @@ type fifoLot struct {
 // recomputes positions.avg_cost for every currently open position from the
 // resulting open lots, which is what actually fixes the reported mismatch
 // for positions that already existed before this migration ran.
-func backfillFIFOLots(conn *sql.DB) error {
-	tx, err := conn.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
+// It runs inside applyMigration's transaction (tx), so it neither begins nor
+// commits one of its own.
+func backfillFIFOLots(tx *sql.Tx) error {
 	rows, err := tx.Query(`SELECT id, ticker, side, shares, price, fee FROM transactions ORDER BY ticker, date, id`)
 	if err != nil {
 		return err
@@ -355,7 +377,7 @@ func backfillFIFOLots(conn *sql.DB) error {
 		}
 	}
 
-	return tx.Commit()
+	return nil
 }
 
 func (d *DB) AddTicker(ticker string) error {

@@ -467,8 +467,16 @@ func TestBackfillFIFOLots(t *testing.T) {
 	mustExec(`INSERT INTO transactions (ticker, side, shares, price, fee, date, realized_pnl, market) VALUES ('AAPL', 'SELL', 5, 200, 0, '2026-07-03', 375, 'us')`)
 	mustExec(`INSERT INTO positions (ticker, shares, avg_cost, market) VALUES ('AAPL', 15, 125, 'us')`)
 
-	if err := backfillFIFOLots(d.conn); err != nil {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		t.Fatalf("Begin() error = %v", err)
+	}
+	if err := backfillFIFOLots(tx); err != nil {
+		tx.Rollback()
 		t.Fatalf("backfillFIFOLots() error = %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit() error = %v", err)
 	}
 
 	var remaining1, remaining2 float64
@@ -1702,5 +1710,42 @@ func TestGetDailySnapshotsForTickers(t *testing.T) {
 	}
 	if got[2].Ticker != "MSFT" || got[2].Date != "2026-07-01" {
 		t.Errorf("GetDailySnapshotsForTickers()[2] = %+v, want MSFT 2026-07-01", got[2])
+	}
+}
+
+// A multi-statement migration that fails part-way must leave nothing behind:
+// before each step ran in a transaction, the statements before the failing
+// one stayed applied while user_version did not advance, so the next boot
+// re-ran the step and died on "duplicate column" / "table already exists".
+func TestMigrateStepIsAtomic(t *testing.T) {
+	d := newTestDB(t)
+
+	var before int
+	if err := d.conn.QueryRow(`PRAGMA user_version`).Scan(&before); err != nil {
+		t.Fatalf("read user_version: %v", err)
+	}
+
+	orig := migrations
+	t.Cleanup(func() { migrations = orig })
+	migrations = append(migrations[:len(migrations):len(migrations)],
+		`CREATE TABLE half_applied (a INTEGER); INSERT INTO no_such_table VALUES (1);`)
+
+	if err := d.migrate(); err == nil {
+		t.Fatal("migrate() error = nil, want the failing step's error")
+	}
+
+	var after int
+	if err := d.conn.QueryRow(`PRAGMA user_version`).Scan(&after); err != nil {
+		t.Fatalf("read user_version: %v", err)
+	}
+	if after != before {
+		t.Errorf("user_version = %d after a failed step, want %d", after, before)
+	}
+	var n int
+	if err := d.conn.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name = 'half_applied'`).Scan(&n); err != nil {
+		t.Fatalf("query sqlite_master: %v", err)
+	}
+	if n != 0 {
+		t.Error("table half_applied exists after a failed step, want the whole step rolled back")
 	}
 }
