@@ -385,6 +385,10 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /api/wealth/assistant", s.handleWealthAssistantGet)
 	s.mux.HandleFunc("POST /api/wealth/assistant/chat", s.requireWritable(s.requireAuth(s.requireAssistant(s.handleWealthAssistantChat))))
 	s.mux.HandleFunc("POST /api/wealth/assistant/new", s.requireWritable(s.requireAuth(s.requireAssistant(s.handleWealthAssistantNew))))
+	s.mux.HandleFunc("POST /api/wealth/assistant/drafts/update", s.requireWritable(s.requireAuth(s.requireAssistant(s.handleWealthDraftUpdate))))
+	s.mux.HandleFunc("POST /api/wealth/assistant/drafts/delete", s.requireWritable(s.requireAuth(s.requireAssistant(s.handleWealthDraftDelete))))
+	s.mux.HandleFunc("POST /api/wealth/assistant/drafts/clear", s.requireWritable(s.requireAuth(s.requireAssistant(s.handleWealthDraftClear))))
+	s.mux.HandleFunc("POST /api/wealth/assistant/apply", s.requireWritable(s.requireAuth(s.requireAssistant(s.handleWealthDraftApply))))
 	// /api/settings (Phase 17 PR2) sits behind the same gate as every write
 	// route, GET included: the read side reports which credentials are
 	// configured, which is not something to hand out unauthenticated.

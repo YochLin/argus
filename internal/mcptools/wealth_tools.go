@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"argus/internal/assets"
 	"argus/internal/db"
 	"argus/internal/market"
 	"argus/internal/service"
@@ -29,22 +31,25 @@ import (
 // recorded.
 
 // NewWealthServer builds the `argus mcp wealth` server over database (the
-// read-only connection).
-func NewWealthServer(database *db.DB) *mcp.Server {
+// read-only connection) and drafts, the writable one the propose tools use.
+// The only table they write is wealth_drafts: nothing the model does here
+// reaches the user's records until the user confirms the drafts on the web.
+func NewWealthServer(database, drafts *db.DB) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "argus-wealth", Version: Version}, nil)
-	registerWealthTools(server, &wealthTools{db: database, now: time.Now})
+	registerWealthTools(server, &wealthTools{db: database, drafts: drafts, now: time.Now})
 	return server
 }
 
 // RunWealth serves NewWealthServer on stdio until ctx is cancelled or the
 // connection closes — the `argus mcp wealth` counterpart of Run.
-func RunWealth(ctx context.Context, database *db.DB) error {
-	return NewWealthServer(database).Run(ctx, &mcp.StdioTransport{})
+func RunWealth(ctx context.Context, database, drafts *db.DB) error {
+	return NewWealthServer(database, drafts).Run(ctx, &mcp.StdioTransport{})
 }
 
 type wealthTools struct {
-	db  *db.DB
-	now func() time.Time
+	db     *db.DB
+	drafts *db.DB
+	now    func() time.Time
 }
 
 func registerWealthTools(s *mcp.Server, wt *wealthTools) {
@@ -67,6 +72,26 @@ func registerWealthTools(s *mcp.Server, wt *wealthTools) {
 		Name:        "get_profile_and_goals",
 		Description: "Get the household profile (annual salary, birth year, monthly retirement contribution, dependents, youngest child's age, whether the spouse has income; null = not recorded yet) and every goal, including the retirement goal (kind \"retirement\", whose target_date is the planned retirement date).",
 	}, wt.getProfileAndGoals)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "list_drafts",
+		Description: "List the drafts proposed so far that the user hasn't saved yet, each with its status: ok (ready to save), pending (the missing fields still need an answer) or error (the reason it can't be saved). Check this before proposing, so the same thing isn't proposed twice, and after the conversation restarted.",
+	}, wt.listDrafts)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "propose_asset",
+		Description: "Propose a new asset or liability as a draft. Nothing is saved: the user reviews the drafts and confirms them on the page. Fill in what the user said and leave out what they didn't — the draft is then pending and you should ask for the missing fields. Never for stocks or ETFs (they are trade records) or for something list_assets already has (propose_balance_update instead). Pass draft_id to replace an earlier draft once the user answers a follow-up question.",
+	}, wt.proposeAsset)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "propose_balance_update",
+		Description: "Propose a new current value for an asset list_assets already has, as a draft the user confirms on the page. Pass draft_id to replace an earlier balance draft.",
+	}, wt.proposeBalance)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "discard_draft_item",
+		Description: "Delete one draft, e.g. when the user says it was wrong or a duplicate.",
+	}, wt.discardDraft)
 }
 
 func jsonResult(v any) (*mcp.CallToolResult, error) {
@@ -285,4 +310,118 @@ func (wt *wealthTools) getProfileAndGoals(ctx context.Context, _ *mcp.CallToolRe
 	}
 	res, err := jsonResult(map[string]any{"profile": service.LoadWealthProfile(wt.db), "goals": goals})
 	return res, nil, err
+}
+
+type wealthDraft struct {
+	ID       int64           `json:"id"`
+	Kind     string          `json:"kind"`
+	TargetID *int64          `json:"asset_id,omitempty"`
+	Payload  json.RawMessage `json:"draft"`
+	service.DraftCheck
+}
+
+func (wt *wealthTools) today() string { return wt.now().In(cst).Format("2006-01-02") }
+
+func (wt *wealthTools) listDrafts(ctx context.Context, _ *mcp.CallToolRequest, _ emptyInput) (*mcp.CallToolResult, any, error) {
+	drafts, err := wt.db.ListWealthDrafts()
+	if err != nil {
+		return nil, nil, fmt.Errorf("list drafts: %w", err)
+	}
+	existing, err := wt.db.ListAssetsWithValue(false)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list assets: %w", err)
+	}
+	out := make([]wealthDraft, 0, len(drafts))
+	for _, d := range drafts {
+		c := service.CheckWealthDraft(d, existing, wt.today())
+		out = append(out, wealthDraft{ID: d.ID, Kind: d.Kind, TargetID: d.TargetID, Payload: json.RawMessage(d.Payload), DraftCheck: c})
+	}
+	res, err := jsonResult(map[string]any{"drafts": out})
+	return res, nil, err
+}
+
+type proposeAssetInput struct {
+	DraftID int64 `json:"draft_id,omitempty" jsonschema:"an earlier asset draft to replace; omit for a new one"`
+	assets.AssetDraft
+}
+
+func (wt *wealthTools) proposeAsset(ctx context.Context, _ *mcp.CallToolRequest, in proposeAssetInput) (*mcp.CallToolResult, any, error) {
+	in.Normalize()
+	payload, err := json.Marshal(in.AssetDraft)
+	if err != nil {
+		return nil, nil, err
+	}
+	return wt.propose(in.DraftID, assets.DraftAsset, nil, string(payload))
+}
+
+type proposeBalanceInput struct {
+	DraftID int64   `json:"draft_id,omitempty" jsonschema:"an earlier balance draft to replace; omit for a new one"`
+	AssetID int64   `json:"asset_id" jsonschema:"the id from list_assets"`
+	Value   float64 `json:"value" jsonschema:"the new value; for a loan or credit card the amount still owed, as a positive number"`
+	Date    string  `json:"date,omitempty" jsonschema:"YYYY-MM-DD the value is as of; omit for today, never in the future"`
+}
+
+func (wt *wealthTools) proposeBalance(ctx context.Context, _ *mcp.CallToolRequest, in proposeBalanceInput) (*mcp.CallToolResult, any, error) {
+	payload, err := json.Marshal(assets.BalanceDraft{Value: &in.Value, Date: strings.TrimSpace(in.Date)})
+	if err != nil {
+		return nil, nil, err
+	}
+	return wt.propose(in.DraftID, assets.DraftBalance, &in.AssetID, string(payload))
+}
+
+// propose stores a draft unless it is invalid: an invalid one comes back as
+// a tool error for the model to correct, while a merely incomplete one is
+// stored as pending — asking the user is the model's job, and the pending
+// card is how the user sees what is still open.
+func (wt *wealthTools) propose(draftID int64, kind string, targetID *int64, payload string) (*mcp.CallToolResult, any, error) {
+	existing, err := wt.db.ListAssetsWithValue(false)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list assets: %w", err)
+	}
+	c := service.CheckWealthDraft(db.WealthDraft{Kind: kind, TargetID: targetID, Payload: payload}, existing, wt.today())
+	if c.Status == "error" {
+		return nil, nil, fmt.Errorf("not saved as a draft: %s", c.Error)
+	}
+	if draftID > 0 {
+		if err := wt.replaceDraft(draftID, kind, targetID, payload); err != nil {
+			return nil, nil, err
+		}
+	} else if draftID, err = wt.drafts.AddWealthDraft(kind, targetID, payload); err != nil {
+		return nil, nil, fmt.Errorf("save draft: %w", err)
+	}
+	res, err := jsonResult(map[string]any{"draft_id": draftID, "status": c.Status, "missing": c.Missing})
+	return res, nil, err
+}
+
+// replaceDraft overwrites draft id, which must be the same kind (and, for a
+// balance draft, the same asset) — changing either is a new draft.
+func (wt *wealthTools) replaceDraft(id int64, kind string, targetID *int64, payload string) error {
+	drafts, err := wt.db.ListWealthDrafts()
+	if err != nil {
+		return fmt.Errorf("list drafts: %w", err)
+	}
+	for _, d := range drafts {
+		if d.ID != id {
+			continue
+		}
+		if d.Kind != kind || (targetID != nil && (d.TargetID == nil || *d.TargetID != *targetID)) {
+			return fmt.Errorf("draft %d is a different kind or asset: discard it and propose a new one", id)
+		}
+		if err := wt.drafts.UpdateWealthDraft(id, payload); err != nil {
+			return fmt.Errorf("update draft: %w", err)
+		}
+		return nil
+	}
+	return fmt.Errorf("draft %d not found: the user may have saved or deleted it", id)
+}
+
+type discardDraftInput struct {
+	DraftID int64 `json:"draft_id" jsonschema:"the id from list_drafts"`
+}
+
+func (wt *wealthTools) discardDraft(ctx context.Context, _ *mcp.CallToolRequest, in discardDraftInput) (*mcp.CallToolResult, any, error) {
+	if err := wt.drafts.DeleteWealthDraft(in.DraftID); err != nil {
+		return nil, nil, fmt.Errorf("discard draft %d: %w", in.DraftID, err)
+	}
+	return textResult("discarded"), nil, nil
 }

@@ -17,7 +17,7 @@ import (
 func connectWealth(t *testing.T, d *db.DB) *mcp.ClientSession {
 	t.Helper()
 	server := mcp.NewServer(&mcp.Implementation{Name: "argus-wealth-test", Version: "0.0.0"}, nil)
-	registerWealthTools(server, &wealthTools{db: d, now: func() time.Time { return time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC) }})
+	registerWealthTools(server, &wealthTools{db: d, drafts: d, now: func() time.Time { return time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC) }})
 	ctx := context.Background()
 	t1, t2 := mcp.NewInMemoryTransports()
 	if _, err := server.Connect(ctx, t1, nil); err != nil {
@@ -63,7 +63,7 @@ func TestWealthServer_OnlyWealthTools(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	slices.Sort(names)
-	want := []string{"get_profile_and_goals", "list_assets", "list_cashflows", "list_insurance"}
+	want := []string{"discard_draft_item", "get_profile_and_goals", "list_assets", "list_cashflows", "list_drafts", "list_insurance", "propose_asset", "propose_balance_update"}
 	if !slices.Equal(names, want) {
 		t.Errorf("wealth server tools = %v, want exactly %v (no trade or watchlist tools)", names, want)
 	}
@@ -182,5 +182,82 @@ func TestWealthTools_ProfileAndGoals(t *testing.T) {
 	}
 	if len(got.Goals) != 1 || got.Goals[0].Kind != "retirement" || got.Goals[0].TargetDate != "2045-01-01" {
 		t.Errorf("goals = %+v, want the retirement goal dated 2045-01-01", got.Goals)
+	}
+}
+
+func TestWealthTools_Drafts(t *testing.T) {
+	d := newTestDB(t)
+	esun := mustID(t)(d.CreateAsset(db.NewAsset{Side: "asset", Type: "deposit", Name: "玉山活存", AssetGroup: "liquid", Currency: "TWD"}))
+	session := connectWealth(t, d)
+
+	propose := func(tool string, args map[string]any) (struct {
+		DraftID int64    `json:"draft_id"`
+		Status  string   `json:"status"`
+		Missing []string `json:"missing"`
+	}, string) {
+		t.Helper()
+		var out struct {
+			DraftID int64    `json:"draft_id"`
+			Status  string   `json:"status"`
+			Missing []string `json:"missing"`
+		}
+		text, isError := callText(t, session, tool, args)
+		if isError {
+			return out, text
+		}
+		if err := json.Unmarshal([]byte(text), &out); err != nil {
+			t.Fatalf("%s: %v\n%s", tool, err, text)
+		}
+		return out, ""
+	}
+
+	// Incomplete is stored as pending; the missing fields come back.
+	loan, errText := propose("propose_asset", map[string]any{"type": "Loan", "name": " 房貸 ", "group": "hard", "currency": "twd"})
+	if errText != "" || loan.Status != "pending" || !slices.Equal(loan.Missing, []string{"value"}) {
+		t.Fatalf("pending loan = %+v (%s), want pending, missing [value]", loan, errText)
+	}
+	// Answering replaces the same draft.
+	if got, errText := propose("propose_asset", map[string]any{"draft_id": loan.DraftID, "type": "loan", "name": "房貸", "group": "hard", "currency": "TWD", "value": 6000000, "rate_pct": 2.1}); errText != "" || got.DraftID != loan.DraftID || got.Status != "ok" {
+		t.Fatalf("replaced loan = %+v (%s), want draft %d ok", got, errText, loan.DraftID)
+	}
+
+	// Invalid ones are refused and not stored.
+	for name, args := range map[string]map[string]any{
+		"stock":     {"type": "stock", "name": "台積電", "group": "growth", "currency": "TWD", "value": 1},
+		"duplicate": {"type": "deposit", "name": "玉山活存", "group": "liquid", "currency": "TWD", "value": 1},
+	} {
+		if _, errText := propose("propose_asset", args); errText == "" {
+			t.Errorf("%s: propose_asset accepted it, want a tool error", name)
+		}
+	}
+	if _, errText := propose("propose_balance_update", map[string]any{"asset_id": 999, "value": 1}); errText == "" {
+		t.Error("balance update for a missing asset was accepted")
+	}
+
+	bal, errText := propose("propose_balance_update", map[string]any{"asset_id": esun, "value": 150000})
+	if errText != "" || bal.Status != "ok" {
+		t.Fatalf("balance draft = %+v (%s), want ok", bal, errText)
+	}
+
+	var list struct {
+		Drafts []wealthDraft `json:"drafts"`
+	}
+	callJSON(t, session, "list_drafts", &list)
+	if len(list.Drafts) != 2 || list.Drafts[0].Kind != "asset" || list.Drafts[1].TargetID == nil || *list.Drafts[1].TargetID != esun {
+		t.Fatalf("list_drafts = %+v, want the loan and the 玉山 balance update", list.Drafts)
+	}
+	var loanDraft struct {
+		Name     string `json:"name"`
+		Currency string `json:"currency"`
+	}
+	if err := json.Unmarshal(list.Drafts[0].Payload, &loanDraft); err != nil || loanDraft.Name != "房貸" || loanDraft.Currency != "TWD" {
+		t.Errorf("stored loan payload = %s, want trimmed name and upper-case currency", list.Drafts[0].Payload)
+	}
+
+	if _, isError := callText(t, session, "discard_draft_item", map[string]any{"draft_id": bal.DraftID}); isError {
+		t.Fatal("discard_draft_item failed")
+	}
+	if rows, _ := d.ListWealthDrafts(); len(rows) != 1 {
+		t.Errorf("after discard %d drafts left, want 1", len(rows))
 	}
 }
