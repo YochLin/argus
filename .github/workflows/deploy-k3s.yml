@@ -1,0 +1,63 @@
+name: Deploy (k3s)
+
+# Manual trigger only. This and deploy.yml are two mutually exclusive deploy paths
+# (systemd binary vs. k3s image); don't let this one run on its own until the
+# cutover steps at the top of deploy/k8s/argus.yaml are done. After cutover, change
+# `on:` to the same workflow_run trigger deploy.yml uses and delete deploy.yml.
+on:
+  workflow_dispatch:
+
+# Same group as deploy.yml, so the two paths can't overlap either.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The frontend and Go builds both happen inside the Dockerfile, so no
+      # setup-node/setup-go here.
+      - name: Build image
+        run: |
+          docker build -t "argus:${GITHUB_SHA}" .
+          docker save "argus:${GITHUB_SHA}" | gzip > argus.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: argus-image
+          path: argus.tar.gz
+          retention-days: 1
+
+  deploy:
+    needs: build
+    runs-on: self-hosted
+    steps:
+      # Only to get the manifest; the rest of the repo isn't needed.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: deploy/k8s
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: argus-image
+
+      # k3s has no docker daemon to load into, and the k8s.io containerd namespace is
+      # the one the kubelet sees. Piped through stdin rather than passed as a file so
+      # we don't depend on ctr recognising gzip.
+      - name: Import image into k3s
+        run: gunzip -c argus.tar.gz | sudo k3s ctr -n k8s.io images import -
+
+      # The runner runs as yoch and reaches k3s through ~/.kube/config.
+      - name: Apply
+        run: |
+          sed "s|image: argus:dev|image: argus:${GITHUB_SHA}|" deploy/k8s/argus.yaml | kubectl apply -f -
+          kubectl rollout status deployment/argus --timeout=180s
+
+      - name: Verify
+        run: |
+          sleep 3
+          kubectl get pods -l app=argus -o wide
+          kubectl logs deployment/argus --tail=20 || true

@@ -173,10 +173,11 @@ per-message toggle, since this is a single-user bot with no per-user preference 
 `go run ./cmd/server mcp` runs the same binary as an MCP server over stdio instead of the daemon, which
 is what free-form chat shells out to for its tool calls.
 
-**Running in Docker** works for the Telegram/data/DB parts, but `/recommend`, `/check`, `/dailyreport`,
-and chat currently do **not** work in the containerized setup: the `alpine` image has no Node.js, and the
-Pro/Max login has no solved credential path inside a Linux container yet. This is a known, open
-limitation, not an oversight. See `AGENTS.md` if you want to tackle it.
+**Running in Docker**: the image bundles the dashboard build, Node.js and `claude-agent-acp`, but the
+Pro/Max login still has no credential path of its own inside a container — it has to borrow an existing
+login from the host. `deploy/k8s/argus.yaml` does that for a single-node k3s on the same machine (see its
+header for the cutover steps); plain `docker compose up` still only covers the Telegram/data/DB parts, not
+`/recommend`, `/check`, `/dailyreport` or chat. See `AGENTS.md` for what leaving that machine would take.
 
 ## Using the bot
 
