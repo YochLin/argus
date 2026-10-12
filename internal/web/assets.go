@@ -206,23 +206,14 @@ func (s *Server) handleWealthAssetCreate(w http.ResponseWriter, r *http.Request)
 	req.Type = strings.TrimSpace(req.Type)
 	req.Name = strings.TrimSpace(req.Name)
 	req.AssetGroup = strings.TrimSpace(req.AssetGroup)
-	if req.Side != "asset" && req.Side != "liability" {
-		writeError(w, http.StatusBadRequest, "side must be \"asset\" or \"liability\"")
+	if ps := assets.ValidateAsset(assets.NewAsset{
+		Side: req.Side, Type: req.Type, Name: req.Name, Group: req.AssetGroup,
+		Value: &req.InitialValue, Date: req.Date,
+	}); len(ps) > 0 {
+		writeError(w, http.StatusBadRequest, ps[0].Msg)
 		return
 	}
-	if req.Type == "" || req.Name == "" {
-		writeError(w, http.StatusBadRequest, "type and name are required")
-		return
-	}
-	if !slices.Contains(assets.AssetGroups, req.AssetGroup) {
-		writeError(w, http.StatusBadRequest, "assetGroup must be one of liquid/growth/income/hard")
-		return
-	}
-	date, ok := resolveTradeDate(req.Date)
-	if !ok {
-		writeError(w, http.StatusBadRequest, "invalid date")
-		return
-	}
+	date, _ := resolveTradeDate(req.Date)
 
 	na := db.NewAsset{
 		Side: req.Side, Type: req.Type, Name: req.Name, AssetGroup: req.AssetGroup,
@@ -283,20 +274,12 @@ func (s *Server) handleWealthAssetSnapshot(w http.ResponseWriter, r *http.Reques
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if req.AssetID <= 0 {
-		writeError(w, http.StatusBadRequest, "assetId is required")
-		return
-	}
 	today := time.Now().Format("2006-01-02")
-	date, ok := resolveTradeDate(req.Date)
-	if !ok {
-		writeError(w, http.StatusBadRequest, "invalid date")
+	if ps := assets.ValidateBalance(req.AssetID, &req.Value, req.Date, today); len(ps) > 0 {
+		writeError(w, http.StatusBadRequest, ps[0].Msg)
 		return
 	}
-	if date > today {
-		writeError(w, http.StatusBadRequest, "date can't be in the future")
-		return
-	}
+	date, _ := resolveTradeDate(req.Date)
 	if !writeSnapshotErr(w, s.wealthDB.LogAssetValue(req.AssetID, date, req.Value, today), "save value") {
 		return
 	}
