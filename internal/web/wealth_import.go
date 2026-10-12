@@ -101,40 +101,29 @@ func parseWealthImportCSV(csvText string) ([]wealthImportRow, error) {
 		row.Venue = col(rec, 4)
 		row.Currency = strings.ToUpper(col(rec, 5))
 
-		if row.Side != "asset" && row.Side != "liability" {
+		// A blank value is left to ValidateAsset ("value is required").
+		var value *float64
+		if s := col(rec, 6); s != "" {
+			v, perr := strconv.ParseFloat(s, 64)
+			if perr != nil {
+				row.Status = "error"
+				row.Message = "invalid value: " + s
+				rows = append(rows, row)
+				continue
+			}
+			value = &v
+		}
+		if ps := assets.ValidateAsset(assets.NewAsset{
+			Side: row.Side, Type: row.Type, Name: row.Name, Group: row.Group,
+			Value: value, Date: col(rec, 7),
+		}); len(ps) > 0 {
 			row.Status = "error"
-			row.Message = "side must be \"asset\" or \"liability\": " + row.Side
+			row.Message = ps[0].Msg
 			rows = append(rows, row)
 			continue
 		}
-		if row.Type == "" || row.Name == "" {
-			row.Status = "error"
-			row.Message = "type and name are required"
-			rows = append(rows, row)
-			continue
-		}
-		if row.Group != "liquid" && row.Group != "growth" && row.Group != "income" && row.Group != "hard" {
-			row.Status = "error"
-			row.Message = "group must be one of liquid/growth/income/hard: " + row.Group
-			rows = append(rows, row)
-			continue
-		}
-
-		var perr error
-		if row.Value, perr = strconv.ParseFloat(col(rec, 6), 64); perr != nil {
-			row.Status = "error"
-			row.Message = "invalid value: " + col(rec, 6)
-			rows = append(rows, row)
-			continue
-		}
-		date, ok := resolveTradeDate(col(rec, 7))
-		if !ok {
-			row.Status = "error"
-			row.Message = "invalid date, expected YYYY-MM-DD: " + col(rec, 7)
-			rows = append(rows, row)
-			continue
-		}
-		row.Date = date
+		row.Value = *value
+		row.Date, _ = resolveTradeDate(col(rec, 7))
 
 		switch {
 		case depositAssetTypes[row.Type]:
