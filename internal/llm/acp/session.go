@@ -93,32 +93,13 @@ func StartSession(ctx context.Context, command string, args []string, cwd string
 	return &Session{conn: conn, sessionID: parsed.SessionID}, nil
 }
 
-// Prompt sends a single user turn and returns the concatenated text of the
-// agent's reply.
+// Prompt sends a single user turn and returns the agent's reply: the text it
+// wrote after its last tool call (see replyCollector).
 func (s *Session) Prompt(ctx context.Context, text string) (string, error) {
-	var reply strings.Builder
+	reply := &replyCollector{sessionID: s.sessionID}
 	s.conn.NotifyHandler = func(method string, params json.RawMessage) {
-		if method != "session/update" {
-			return
-		}
-		var update struct {
-			SessionID string `json:"sessionId"`
-			Update    struct {
-				SessionUpdate string `json:"sessionUpdate"`
-				Content       struct {
-					Type string `json:"type"`
-					Text string `json:"text"`
-				} `json:"content"`
-			} `json:"update"`
-		}
-		if err := json.Unmarshal(params, &update); err != nil {
-			return
-		}
-		if update.SessionID != s.sessionID || update.Update.SessionUpdate != "agent_message_chunk" {
-			return
-		}
-		if update.Update.Content.Type == "text" {
-			reply.WriteString(update.Update.Content.Text)
+		if method == "session/update" {
+			reply.add(params)
 		}
 	}
 
@@ -131,7 +112,54 @@ func (s *Session) Prompt(ctx context.Context, text string) (string, error) {
 		return "", fmt.Errorf("session/prompt: %w", err)
 	}
 
-	return reply.String(), nil
+	return reply.text(), nil
+}
+
+// replyCollector assembles a turn's reply from session/update notifications.
+// Text the agent writes before a tool call is narration about what it is
+// about to do ("let me check the records…", often in English whatever the
+// reply language) — joined with the answer, it read as one garbled message.
+// So each tool call starts the reply over, and only the text after the last
+// one is kept; if the agent wrote nothing after it, the whole text is used
+// rather than an empty reply.
+type replyCollector struct {
+	sessionID string
+	all       strings.Builder
+	last      strings.Builder
+}
+
+func (r *replyCollector) add(params json.RawMessage) {
+	var update struct {
+		SessionID string `json:"sessionId"`
+		Update    struct {
+			SessionUpdate string `json:"sessionUpdate"`
+			Content       struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"update"`
+	}
+	if err := json.Unmarshal(params, &update); err != nil || update.SessionID != r.sessionID {
+		return
+	}
+	switch update.Update.SessionUpdate {
+	// claude-agent-acp reports an MCP tool call only as tool_call_update
+	// (seen live 2026-10-12); tool_call is the spec's opening event.
+	case "tool_call", "tool_call_update":
+		r.last.Reset()
+	case "agent_message_chunk":
+		if update.Update.Content.Type == "text" {
+			r.all.WriteString(update.Update.Content.Text)
+			r.last.WriteString(update.Update.Content.Text)
+		}
+	}
+}
+
+func (r *replyCollector) text() string {
+	if strings.TrimSpace(r.last.String()) != "" {
+		return r.last.String()
+	}
+	return r.all.String()
 }
 
 // Close shuts down the underlying agent process.
