@@ -132,17 +132,27 @@ func staleDaysPtr(source, asOf string, now time.Time) *int {
 	return &days
 }
 
-// buildAssetGroups assembles the four asset_group buckets' market values
-// (in TWD) and per-asset breakdown, plus the running grand total and a
-// per-currency total — the shared FX-conversion/grouping core of both
-// /w/balance and /w/alloc (Phase 9 PR4), so it exists in exactly one place.
-// Liabilities are the caller's own loop (only /w/balance needs them).
+// assetBucket is one bucket's running market value (TWD) and its per-asset
+// rows.
+type assetBucket struct {
+	MarketValue float64
+	Assets      []balanceSheetItem
+}
+
+// bucketAssets converts every non-liability asset to TWD and files it under
+// keyOf(asset) — one of keys, anything else counts toward the total but lands
+// in no bucket — plus the running grand total and a per-currency total. The
+// US/TW equity virtual rows go in equityKey's bucket. It is the shared
+// FX-conversion/grouping core of /w/balance (keyed by asset_group, the
+// docs/phase-9-asset-platform.md §8.5 four-bucket split) and /w/alloc (keyed
+// by assets.CategoryOf, the nine-category split), so it exists in exactly one
+// place. Liabilities are the caller's own loop (only /w/balance needs them).
 // fxOK=false means at least one asset's currency couldn't be priced for
 // today — same whole-metric-degrades rule as service.WealthTotals.
-func (s *Server) buildAssetGroups(list []db.AssetWithValue, today string, now time.Time, usTotal float64, usOK bool, twTotal float64, twOK bool) (groups map[string]*assetGroupRow, byCurrency map[string]float64, totalAssets float64, fxOK bool) {
-	groups = make(map[string]*assetGroupRow, len(assets.AssetGroups))
-	for _, g := range assets.AssetGroups {
-		groups[g] = &assetGroupRow{Group: g, Assets: []balanceSheetItem{}}
+func (s *Server) bucketAssets(list []db.AssetWithValue, today string, now time.Time, usTotal float64, usOK bool, twTotal float64, twOK bool, keys []string, keyOf func(db.AssetWithValue) string, equityKey string) (buckets map[string]*assetBucket, byCurrency map[string]float64, totalAssets float64, fxOK bool) {
+	buckets = make(map[string]*assetBucket, len(keys))
+	for _, k := range keys {
+		buckets[k] = &assetBucket{Assets: []balanceSheetItem{}}
 	}
 	byCurrency = make(map[string]float64)
 	fxOK = true
@@ -159,12 +169,12 @@ func (s *Server) buildAssetGroups(list []db.AssetWithValue, today string, now ti
 		valueTWD := *a.Value * rate
 		totalAssets += valueTWD
 		byCurrency[a.Currency] += valueTWD
-		g := groups[a.AssetGroup]
-		if g == nil {
+		b := buckets[keyOf(a)]
+		if b == nil {
 			continue
 		}
-		g.MarketValue += valueTWD
-		g.Assets = append(g.Assets, balanceSheetItem{
+		b.MarketValue += valueTWD
+		b.Assets = append(b.Assets, balanceSheetItem{
 			AssetID: a.ID, Name: a.Name, Venue: a.Venue, Currency: a.Currency, ValueTWD: valueTWD,
 			Type: a.Type, Category: assets.CategoryOf(a.Type), Source: a.Source, StaleDays: staleDaysPtr(a.Source, a.AsOf, now),
 		})
@@ -178,15 +188,15 @@ func (s *Server) buildAssetGroups(list []db.AssetWithValue, today string, now ti
 		valueTWD := e.Value * rate
 		totalAssets += valueTWD
 		byCurrency[e.Currency] += valueTWD
-		g := groups["growth"]
+		b := buckets[equityKey]
 		typ := "equity_tw"
 		if e.Currency != "TWD" {
 			typ = "equity_us"
 		}
-		g.MarketValue += valueTWD
-		g.Assets = append(g.Assets, balanceSheetItem{Name: typ, Currency: e.Currency, ValueTWD: valueTWD, Type: typ, Category: "equity", Source: "sync"})
+		b.MarketValue += valueTWD
+		b.Assets = append(b.Assets, balanceSheetItem{Name: typ, Currency: e.Currency, ValueTWD: valueTWD, Type: typ, Category: "equity", Source: "sync"})
 	}
-	return groups, byCurrency, totalAssets, fxOK
+	return buckets, byCurrency, totalAssets, fxOK
 }
 
 const quarterlyTrendQuarters = 8
@@ -292,7 +302,8 @@ func (s *Server) handleWealthBalance(w http.ResponseWriter, r *http.Request) {
 		liabilities = append(liabilities, ld)
 	}
 
-	groups, _, totalAssets, groupsFxOK := s.buildAssetGroups(list, today, now, usTotal, usOK, twTotal, twOK)
+	groups, _, totalAssets, groupsFxOK := s.bucketAssets(list, today, now, usTotal, usOK, twTotal, twOK,
+		assets.AssetGroups, func(a db.AssetWithValue) string { return a.AssetGroup }, "growth")
 	fxOK := liabFxOK && groupsFxOK
 
 	resp := balanceSheetResponse{AsOf: today, Liabilities: liabilities, LiabGroups: buildLiabGroups(liabilities, totalLiabilities)}
@@ -307,12 +318,12 @@ func (s *Server) handleWealthBalance(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	for _, g := range assets.AssetGroups {
-		row := groups[g]
+		row := assetGroupRow{Group: g, MarketValue: groups[g].MarketValue, Assets: groups[g].Assets}
 		if fxOK && totalAssets > 0 {
 			pct := row.MarketValue / totalAssets * 100
 			row.PctOfAssets = &pct
 		}
-		resp.AssetGroups = append(resp.AssetGroups, *row)
+		resp.AssetGroups = append(resp.AssetGroups, row)
 	}
 
 	if fxOK {

@@ -66,7 +66,7 @@ var AllocCategories = []string{
 // fall back to "estate" as the most common real-world case for a
 // hard-to-classify asset. "loan"/"credit_card" (liabilities) never reach
 // this function — the alloc page's category breakdown is assets-only, same
-// as buildAssetGroups.
+// as internal/web's bucketAssets.
 func CategoryOf(assetType string) string {
 	switch assetType {
 	case "deposit":

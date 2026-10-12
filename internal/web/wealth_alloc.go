@@ -78,68 +78,6 @@ type allocResponse struct {
 	Concentration    []concentrationWarning `json:"concentration"`
 }
 
-// assetCategoryRow is buildAssetCategories' per-category accumulator —
-// assetGroupRow's shape (see wealth_balance.go), keyed by
-// assets.AllocCategories instead of assets.AssetGroups.
-type assetCategoryRow struct {
-	Category    string
-	MarketValue float64
-	Assets      []balanceSheetItem
-}
-
-// buildAssetCategories is buildAssetGroups' /w/alloc-only counterpart —
-// same FX-conversion/assets-only-no-liabilities shape, keyed by
-// assets.CategoryOf(a.Type) instead of a.AssetGroup. Not shared with
-// /w/balance: that page's "資產分組" section is asset_group-based by
-// design (docs/phase-9-asset-platform.md §8.5), so it keeps calling
-// buildAssetGroups untouched.
-func (s *Server) buildAssetCategories(list []db.AssetWithValue, today string, usTotal float64, usOK bool, twTotal float64, twOK bool) (categories map[string]*assetCategoryRow, byCurrency map[string]float64, totalAssets float64, fxOK bool) {
-	categories = make(map[string]*assetCategoryRow, len(assets.AllocCategories))
-	for _, c := range assets.AllocCategories {
-		categories[c] = &assetCategoryRow{Category: c, Assets: []balanceSheetItem{}}
-	}
-	byCurrency = make(map[string]float64)
-	fxOK = true
-
-	for _, a := range list {
-		if a.Value == nil || a.Side == "liability" {
-			continue
-		}
-		rate, rok := service.RateToTWD(a.Currency, today, true, s.quotes, s.fxDB)
-		if !rok {
-			fxOK = false
-			continue
-		}
-		valueTWD := *a.Value * rate
-		totalAssets += valueTWD
-		byCurrency[a.Currency] += valueTWD
-		c := categories[assets.CategoryOf(a.Type)]
-		if c == nil {
-			continue
-		}
-		c.MarketValue += valueTWD
-		c.Assets = append(c.Assets, balanceSheetItem{AssetID: a.ID, Name: a.Name, Venue: a.Venue, Currency: a.Currency, ValueTWD: valueTWD, Type: a.Type, Source: a.Source})
-	}
-	for _, e := range service.EquityEntries(usTotal, usOK, twTotal, twOK) {
-		rate, rok := service.RateToTWD(e.Currency, today, true, s.quotes, s.fxDB)
-		if !rok {
-			fxOK = false
-			continue
-		}
-		valueTWD := e.Value * rate
-		totalAssets += valueTWD
-		byCurrency[e.Currency] += valueTWD
-		c := categories["equity"]
-		typ := "equity_tw"
-		if e.Currency != "TWD" {
-			typ = "equity_us"
-		}
-		c.MarketValue += valueTWD
-		c.Assets = append(c.Assets, balanceSheetItem{Name: typ, Currency: e.Currency, ValueTWD: valueTWD, Type: typ, Source: "sync"})
-	}
-	return categories, byCurrency, totalAssets, fxOK
-}
-
 // largestAsset returns the name/venue of items' highest-ValueTWD entry, or
 // ("", "") for an empty group (a target group with no asset in it yet — the
 // order still makes sense, "buy into <group>", just with no specific
@@ -190,7 +128,8 @@ func (s *Server) handleWealthAlloc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	categories, byCurrency, totalAssets, fxOK := s.buildAssetCategories(list, today, usTotal, usOK, twTotal, twOK)
+	categories, byCurrency, totalAssets, fxOK := s.bucketAssets(list, today, now, usTotal, usOK, twTotal, twOK,
+		assets.AllocCategories, func(a db.AssetWithValue) string { return assets.CategoryOf(a.Type) }, "equity")
 	if !fxOK || totalAssets <= 0 {
 		writeJSON(w, http.StatusOK, resp)
 		return
