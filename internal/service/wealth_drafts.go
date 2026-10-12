@@ -16,6 +16,9 @@ type DraftCheck struct {
 	Status  string   `json:"status"`
 	Missing []string `json:"missing"`
 	Error   string   `json:"error,omitempty"`
+	// Failed says Error is why the last write failed, rather than a rule the
+	// draft breaks (the card prefixes 寫入失敗 only then).
+	Failed bool `json:"failed,omitempty"`
 }
 
 // CheckWealthDraft evaluates one draft against the records as they are now —
@@ -27,7 +30,7 @@ type DraftCheck struct {
 func CheckWealthDraft(d db.WealthDraft, existing []db.AssetWithValue, today string) DraftCheck {
 	c := checkDraft(d.Kind, d.TargetID, d.Payload, existing, today)
 	if d.ApplyError != "" {
-		c.Status, c.Error = "error", d.ApplyError
+		c.Status, c.Error, c.Failed = "error", d.ApplyError, true
 	}
 	return c
 }

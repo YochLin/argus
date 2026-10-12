@@ -80,7 +80,7 @@ func TestWealthDrafts_EditDeleteClear(t *testing.T) {
 	r := decodeDrafts(t, postAssistant(t, s, cookie, "/api/wealth/assistant/drafts/update", map[string]any{
 		"id": loan, "payload": map[string]any{"type": " LOAN", "name": "Mortgage", "group": "hard", "currency": "twd", "value": 6000000, "bogus": 1},
 	}))
-	if !slices.Equal(statuses(r.Drafts), []string{"ok", "error"}) || r.Drafts[1].Error != "boom" {
+	if !slices.Equal(statuses(r.Drafts), []string{"ok", "error"}) || r.Drafts[1].Error != "boom" || !r.Drafts[1].Failed {
 		t.Fatalf("after edit = %+v, want the loan ok and the failed one still an error", r.Drafts)
 	}
 	if string(r.Drafts[0].Payload) != `{"type":"loan","name":"Mortgage","group":"hard","currency":"TWD","value":6000000}` {
@@ -134,7 +134,7 @@ func TestWealthDrafts_Apply(t *testing.T) {
 	if len(r.Messages) != 1 || r.Messages[0].Role != "sys" || r.Messages[0].Result == nil || *r.Messages[0].Result != r.Result {
 		t.Errorf("messages = %+v, want one sys message carrying the result", r.Messages)
 	}
-	if !slices.Equal(statuses(r.Drafts), []string{"pending", "error"}) || r.Drafts[1].ID != failing || r.Drafts[1].Error == "" {
+	if !slices.Equal(statuses(r.Drafts), []string{"pending", "error"}) || r.Drafts[1].ID != failing || r.Drafts[1].Error == "" || !r.Drafts[1].Failed {
 		t.Errorf("left = %+v, want the pending car and the refused balance with its reason", r.Drafts)
 	}
 
