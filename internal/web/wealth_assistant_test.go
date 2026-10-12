@@ -24,6 +24,7 @@ type fakeChatter struct {
 	freshTurns map[int]bool
 	block      chan struct{} // when set, Chat waits on it
 	entered    chan struct{} // when set, Chat signals it on entry
+	during     func()        // when set, Chat runs it — the model's tool calls
 
 	sent   []string
 	keys   []llm.ChatKey
@@ -36,6 +37,9 @@ func (f *fakeChatter) Chat(ctx context.Context, key llm.ChatKey, text string) (s
 	}
 	if f.block != nil {
 		<-f.block
+	}
+	if f.during != nil {
+		f.during()
 	}
 	f.sent = append(f.sent, text)
 	f.keys = append(f.keys, key)

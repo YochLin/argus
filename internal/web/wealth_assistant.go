@@ -15,9 +15,9 @@ import (
 
 // The wealth assistant (Phase 28, docs/phase-28-wealth-ai-chat.md §5.2): a
 // chat on the /w/* pages where the model reads the user's wealth records
-// through `argus mcp wealth` and asks about what's missing. This file is the
-// conversation half — A3. Drafts and writing them (B2) come later; for now
-// the assistant can only talk.
+// through `argus mcp wealth`, asks about what's missing and proposes drafts.
+// This file is the conversation; wealth_drafts.go is the drafts and writing
+// them.
 
 // AssistantChatter is the seam onto *llm.Client the assistant routes need —
 // an interface only so tests can fake the model.
@@ -30,6 +30,15 @@ type assistantStore interface {
 	ListAssistantMessages() ([]db.AssistantMessage, error)
 	AddAssistantMessages(msgs []db.AssistantMessage) ([]db.AssistantMessage, error)
 	ClearAssistantMessages() error
+
+	// Drafts (B2): the model adds them through `argus mcp wealth`; the web
+	// edits, deletes and writes them.
+	ListWealthDrafts() ([]db.WealthDraft, error)
+	UpdateWealthDraft(id int64, payload string) error
+	SetWealthDraftError(id int64, msg string) error
+	DeleteWealthDraft(id int64) error
+	ClearWealthDrafts() error
+	ListAssetsWithValue(includeArchived bool) ([]db.AssetWithValue, error)
 }
 
 // assistantMaxRunes caps one message. Generous for "here are all my
@@ -52,18 +61,24 @@ var wealthTopics = map[string]string{
 }
 
 // assistantMessage is one message on the wire. Action is "trades" on an ai
-// turn whose reply carried llm.WealthGoTradesMarker.
+// turn whose reply carried llm.WealthGoTradesMarker; DraftIDs are the drafts
+// that turn added (the chips — the frontend shows only those still there);
+// Result is a sys message's write outcome.
 type assistantMessage struct {
-	ID        int64  `json:"id"`
-	Role      string `json:"role"`
-	Text      string `json:"text"`
-	Action    string `json:"action,omitempty"`
-	CreatedAt string `json:"createdAt"`
+	ID        int64         `json:"id"`
+	Role      string        `json:"role"`
+	Text      string        `json:"text"`
+	Action    string        `json:"action,omitempty"`
+	DraftIDs  []int64       `json:"draftIds,omitempty"`
+	Result    *applyOutcome `json:"result,omitempty"`
+	CreatedAt string        `json:"createdAt"`
 }
 
 // assistantMeta is what wealth_assistant_messages.meta holds.
 type assistantMeta struct {
-	Action string `json:"action,omitempty"`
+	Action   string        `json:"action,omitempty"`
+	DraftIDs []int64       `json:"draftIds,omitempty"`
+	Result   *applyOutcome `json:"result,omitempty"`
 }
 
 func toAssistantMessages(rows []db.AssistantMessage) []assistantMessage {
@@ -73,7 +88,7 @@ func toAssistantMessages(rows []db.AssistantMessage) []assistantMessage {
 		if err := json.Unmarshal([]byte(m.Meta), &meta); err != nil {
 			logger.Errorf("wealth assistant: message %d meta: %v", m.ID, err)
 		}
-		out = append(out, assistantMessage{ID: m.ID, Role: m.Role, Text: m.Text, Action: meta.Action, CreatedAt: m.CreatedAt})
+		out = append(out, assistantMessage{ID: m.ID, Role: m.Role, Text: m.Text, Action: meta.Action, DraftIDs: meta.DraftIDs, Result: meta.Result, CreatedAt: m.CreatedAt})
 	}
 	return out
 }
@@ -94,7 +109,7 @@ func (s *Server) requireAssistant(next http.HandlerFunc) http.HandlerFunc {
 // every other wealth read — a read-only server still shows it.
 func (s *Server) handleWealthAssistantGet(w http.ResponseWriter, r *http.Request) {
 	if s.assistantDB == nil {
-		writeJSON(w, http.StatusOK, map[string]any{"messages": []assistantMessage{}})
+		writeJSON(w, http.StatusOK, map[string]any{"messages": []assistantMessage{}, "drafts": []assistantDraft{}})
 		return
 	}
 	rows, err := s.assistantDB.ListAssistantMessages()
@@ -103,7 +118,11 @@ func (s *Server) handleWealthAssistantGet(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "failed to load the conversation")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"messages": toAssistantMessages(rows)})
+	drafts, ok := s.loadDrafts(w)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": toAssistantMessages(rows), "drafts": drafts})
 }
 
 type assistantChatRequest struct {
@@ -153,6 +172,18 @@ func (s *Server) handleWealthAssistantChat(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "failed to load the conversation")
 		return
 	}
+	// Drafts with a higher id than this were added during the turn — ids are
+	// AUTOINCREMENT, so a deleted top draft's id isn't reused.
+	before, err := s.assistantDB.ListWealthDrafts()
+	if err != nil {
+		logger.Errorf("wealth assistant: list drafts: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to load the drafts")
+		return
+	}
+	var maxBefore int64
+	for _, d := range before {
+		maxBefore = max(maxBefore, d.ID)
+	}
 
 	// WithoutCancel: a reload mid-reply shouldn't throw the answer away — it
 	// is stored and shows up on the next load. llm.Chat bounds the call.
@@ -167,6 +198,17 @@ func (s *Server) handleWealthAssistantChat(w http.ResponseWriter, r *http.Reques
 	if strings.Contains(reply, llm.WealthGoTradesMarker) {
 		reply = strings.TrimSpace(strings.ReplaceAll(reply, llm.WealthGoTradesMarker, ""))
 		meta.Action = "trades"
+	}
+	after, err := s.assistantDB.ListWealthDrafts()
+	if err != nil {
+		logger.Errorf("wealth assistant: list drafts: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to load the drafts")
+		return
+	}
+	for _, d := range after {
+		if d.ID > maxBefore {
+			meta.DraftIDs = append(meta.DraftIDs, d.ID)
+		}
 	}
 	metaJSON, err := json.Marshal(meta)
 	if err != nil {
@@ -190,7 +232,11 @@ func (s *Server) handleWealthAssistantChat(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "failed to save the reply")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"messages": toAssistantMessages(added)})
+	drafts, ok := s.loadDrafts(w)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": toAssistantMessages(added), "drafts": drafts})
 }
 
 // handleWealthAssistantNew is 開新對話: forget the model's session and delete

@@ -417,6 +417,12 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   transaction, plus a `div` row when `fresh` says the model just forgot earlier turns); a failed turn
   stores nothing because the frontend puts the text back in the input box. The stored conversation
   (`wealth_assistant_messages`) is for display only and is never replayed to the model.
+  The model never writes the user's records: its `propose_*` tools only add rows to `wealth_drafts`
+  (the one table `argus mcp wealth` can write), and `wealth_drafts.go`'s `/apply` writes the drafts
+  the user confirmed through the same paths as the manual forms (a new asset via the CSV import's
+  write, a balance via `LogAssetValue`). A draft's status (ok/pending/error) is never stored —
+  `service.CheckWealthDraft` recomputes it on every read, for the model's `list_drafts` and the web
+  alike, from the shared rules in `internal/assets`.
 
 - `internal/paper` — Phase 11's pure rule engine shared by `argus backtest`'s historical replay
   (`cmd/server/backtest.go`) and the live paper account's forward accumulation

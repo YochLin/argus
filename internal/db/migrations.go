@@ -851,4 +851,20 @@ var migrations = []string{
 		created_at TEXT NOT NULL
 	);
 	`,
+	// 40: Phase 28 B2 — the wealth assistant's drafts: what the model proposed
+	// and the user hasn't confirmed yet. kind is 'asset'|'balance' (B3 adds
+	// more); target_id is the asset a balance draft updates, NULL for a new
+	// record; payload is the kind's JSON. There is no status column — it is
+	// recomputed from payload on every read, so an edit can't leave it stale.
+	// apply_error is the last failed write's reason; a written draft is deleted.
+	`
+	CREATE TABLE IF NOT EXISTS wealth_drafts (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		kind        TEXT NOT NULL,
+		target_id   INTEGER,
+		payload     TEXT NOT NULL DEFAULT '{}',
+		apply_error TEXT NOT NULL DEFAULT '',
+		created_at  TEXT NOT NULL
+	);
+	`,
 }

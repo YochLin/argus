@@ -192,14 +192,6 @@ func parseWealthImportCSV(csvText string) ([]wealthImportRow, error) {
 	return rows, nil
 }
 
-// wealthAssetKey identifies "the same asset" for duplicate detection —
-// assets have no natural unique key (unlike a trade's date+ticker+action+
-// shares+price), so name+type (case-insensitive) is the closest available
-// signal: a re-pasted batch shouldn't create a second "玉山活存"/deposit row.
-func wealthAssetKey(name, typ string) string {
-	return strings.ToLower(strings.TrimSpace(name)) + "|" + strings.ToLower(strings.TrimSpace(typ))
-}
-
 // annotateWealthImportRows flags rows that match an existing non-archived
 // asset (by name+type) or an earlier row in the same batch as "duplicate" —
 // skipped on apply, same as annotateImportRows' trade-duplicate handling.
@@ -207,7 +199,7 @@ func wealthAssetKey(name, typ string) string {
 func annotateWealthImportRows(rows []wealthImportRow, existing []db.AssetWithValue) {
 	seen := make(map[string]bool, len(existing))
 	for _, a := range existing {
-		seen[wealthAssetKey(a.Name, a.Type)] = true
+		seen[assets.AssetKey(a.Name, a.Type)] = true
 	}
 
 	seenInBatch := make(map[string]bool)
@@ -216,7 +208,7 @@ func annotateWealthImportRows(rows []wealthImportRow, existing []db.AssetWithVal
 		if row.Status == "error" {
 			continue
 		}
-		key := wealthAssetKey(row.Name, row.Type)
+		key := assets.AssetKey(row.Name, row.Type)
 		if seen[key] || seenInBatch[key] {
 			row.Status = "duplicate"
 			row.Message = "matches an existing asset (same name/type) — skipped"

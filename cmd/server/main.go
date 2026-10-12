@@ -148,9 +148,16 @@ func runMCPServer() {
 		if database == nil {
 			logger.Fatalf("mcp wealth: no database")
 		}
+		// The propose tools write wealth_drafts — and nothing else — through
+		// a writable connection, same split as the watchlist tools below.
+		drafts, err := db.OpenForWrites(dbPath)
+		if err != nil {
+			logger.Fatalf("mcp wealth: open writable db: %v", err)
+		}
+		defer drafts.Close()
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
-		if err := mcptools.RunWealth(ctx, database); err != nil {
+		if err := mcptools.RunWealth(ctx, database, drafts); err != nil {
 			logger.Fatalf("mcp wealth server: %v", err)
 		}
 		return
