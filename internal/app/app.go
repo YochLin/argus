@@ -427,6 +427,7 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 			Sector:              sectorProvider,
 			IndustryMap:         industryMapProvider,
 			LLMAudit:            cfg.WebLLMAudit,
+			Assistant:           a.LLM,
 			JWTSecret:           cfg.JWTSecret,
 			APIKey:              cfg.APIKey,
 			Events:              a.Events,

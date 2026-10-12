@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -318,6 +319,17 @@ func TestChat_TelegramNeverAgesOut(t *testing.T) {
 	}
 	if *opened != 1 {
 		t.Errorf("telegram opened %d sessions over 50 days of turns, want 1 (only /reset starts over)", *opened)
+	}
+}
+
+func TestWealthPromptHasMarker(t *testing.T) {
+	for _, lang := range []i18n.Lang{i18n.ZH, i18n.EN} {
+		if p := i18n.T(lang, i18n.KeySystemPromptWealth); !strings.Contains(p, WealthGoTradesMarker) {
+			t.Errorf("%s wealth system prompt doesn't contain %s; internal/web would never see the marker", lang, WealthGoTradesMarker)
+		}
+	}
+	if s := defaultChatSpecs()[ChatWealth]; s.mcpScope != MCPWealth || s.maxIdle == 0 || s.maxTurns == 0 {
+		t.Errorf("ChatWealth spec = %+v, want the wealth tool set and both aging limits", s)
 	}
 }
 

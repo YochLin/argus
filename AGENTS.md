@@ -411,6 +411,12 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   Its whitelist admits a variable on "would a wrong value still boot?", not "is it a credential":
   `DB_PATH` and the other paths are excluded permanently, since a typo there would crash-loop before
   `web.New` and leave no UI to fix it from.
+  `wealth_assistant.go`'s `/api/wealth/assistant` (Phase 28) is the wealth assistant chat: one turn
+  at a time (`assistantMu.TryLock`, else 409) on `llm.ChatWealth`, whose session reads the records
+  through `argus mcp wealth`. A turn is stored only after the model answers (user + reply in one
+  transaction, plus a `div` row when `fresh` says the model just forgot earlier turns); a failed turn
+  stores nothing because the frontend puts the text back in the input box. The stored conversation
+  (`wealth_assistant_messages`) is for display only and is never replayed to the model.
 
 - `internal/paper` — Phase 11's pure rule engine shared by `argus backtest`'s historical replay
   (`cmd/server/backtest.go`) and the live paper account's forward accumulation
