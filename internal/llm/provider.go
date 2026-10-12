@@ -18,9 +18,26 @@ type Provider interface {
 	// reply, tear the session down.
 	Prompt(ctx context.Context, systemPrompt, model, text string) (string, error)
 
-	// NewChatSession starts a persistent multi-turn session.
-	NewChatSession(ctx context.Context, systemPrompt, model string) (ChatSession, error)
+	// NewChatSession starts a persistent multi-turn session with the argus
+	// MCP tool set scope names. A provider that can't attach MCP servers
+	// ignores scope and runs tool-less.
+	NewChatSession(ctx context.Context, systemPrompt, model string, scope MCPScope) (ChatSession, error)
 }
+
+// MCPScope picks which argus MCP tool set a chat session gets — the value is
+// the `argus mcp <scope>` argument the session's MCP subprocess is launched
+// with (see argusMCPServer).
+type MCPScope string
+
+const (
+	// MCPFull is `argus mcp`: market data, the portfolio, and the gated
+	// trade/watchlist write tools — Telegram's chat.
+	MCPFull MCPScope = ""
+	// MCPWealth is `argus mcp wealth`: the wealth records only (assets,
+	// cash flows, policies, goals, profile) and nothing that can touch a
+	// trade, so the wealth assistant can't propose a buy.
+	MCPWealth MCPScope = "wealth"
+)
 
 // ChatSession is one persistent multi-turn conversation against a Provider.
 type ChatSession interface {

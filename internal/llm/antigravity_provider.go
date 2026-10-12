@@ -41,7 +41,9 @@ func (AntigravityProvider) Prompt(ctx context.Context, systemPrompt, model, text
 	return reply, err
 }
 
-func (AntigravityProvider) NewChatSession(ctx context.Context, systemPrompt, model string) (ChatSession, error) {
+// NewChatSession ignores scope: agy is driven as a plain CLI here with no
+// MCP servers attached, so a fallback chat session is always tool-less.
+func (AntigravityProvider) NewChatSession(ctx context.Context, systemPrompt, model string, scope MCPScope) (ChatSession, error) {
 	return &antigravityChatSession{systemPrompt: systemPrompt, model: model}, nil
 }
 

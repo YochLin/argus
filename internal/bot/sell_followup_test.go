@@ -120,7 +120,7 @@ func (p *lessonLLMProvider) Prompt(ctx context.Context, systemPrompt, model, tex
 	p.calls++
 	return "It kept rising after the exit.\nLesson: Use a trailing stop instead of a fixed target.", nil
 }
-func (p *lessonLLMProvider) NewChatSession(ctx context.Context, systemPrompt, model string) (llm.ChatSession, error) {
+func (p *lessonLLMProvider) NewChatSession(ctx context.Context, systemPrompt, model string, scope llm.MCPScope) (llm.ChatSession, error) {
 	return nil, errors.New("fake: chat not supported")
 }
 

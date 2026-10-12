@@ -83,7 +83,8 @@ type ChatKey string
 // ChatTelegram is the Telegram bot's free-form chat.
 const ChatTelegram ChatKey = "telegram"
 
-// chatSpec is what a ChatKey's session is opened with. maxIdle/maxTurns are
+// chatSpec is what a ChatKey's session is opened with: its system prompt,
+// which argus MCP tool set it gets (mcpScope), and when it ages out. maxIdle/maxTurns are
 // when Chat drops the session and opens a fresh one; 0 never does. A key
 // whose state lives outside the conversation (in the DB, read back through
 // tools) can afford to forget, which keeps its context from growing without
@@ -91,6 +92,7 @@ const ChatTelegram ChatKey = "telegram"
 // resets on /reset.
 type chatSpec struct {
 	systemPrompt i18n.Key
+	mcpScope     MCPScope
 	maxIdle      time.Duration
 	maxTurns     int
 }
@@ -475,7 +477,7 @@ func (c *Client) Chat(ctx context.Context, key ChatKey, text string) (reply stri
 	var lastErr error
 	for _, b := range c.backends {
 		for attempt := 1; attempt <= maxAttemptsPerBackend; attempt++ {
-			session, err := b.provider.NewChatSession(ctx, systemPrompt, b.chatModel)
+			session, err := b.provider.NewChatSession(ctx, systemPrompt, b.chatModel, spec.mcpScope)
 			if err != nil {
 				logger.Errorf("llm: backend %T attempt %d/%d failed to start chat %s session: %v", b.provider, attempt, maxAttemptsPerBackend, key, err)
 				lastErr = err

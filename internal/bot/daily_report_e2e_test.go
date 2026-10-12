@@ -64,7 +64,7 @@ func (fakeE2ELLMProvider) Prompt(ctx context.Context, systemPrompt, model, text 
 	return "[TICKER: AAPL]\nAction: BUY\nReason: Strong momentum and a recent earnings beat.\n", nil
 }
 
-func (fakeE2ELLMProvider) NewChatSession(ctx context.Context, systemPrompt, model string) (llm.ChatSession, error) {
+func (fakeE2ELLMProvider) NewChatSession(ctx context.Context, systemPrompt, model string, scope llm.MCPScope) (llm.ChatSession, error) {
 	return nil, errors.New("fake: chat not supported")
 }
 
@@ -86,7 +86,7 @@ func (p capturingE2ELLMProvider) Prompt(ctx context.Context, systemPrompt, model
 	return fmt.Sprintf("[TICKER: %s]\nAction: BUY\nReason: Strong momentum.\n", p.replyTicker), nil
 }
 
-func (capturingE2ELLMProvider) NewChatSession(ctx context.Context, systemPrompt, model string) (llm.ChatSession, error) {
+func (capturingE2ELLMProvider) NewChatSession(ctx context.Context, systemPrompt, model string, scope llm.MCPScope) (llm.ChatSession, error) {
 	return nil, errors.New("fake: chat not supported")
 }
 
