@@ -32,6 +32,8 @@ import { WealthGoalsView } from "./components/WealthGoalsView";
 import { WealthRetireView } from "./components/WealthRetireView";
 import { WealthInsureView } from "./components/WealthInsureView";
 import { WealthFundsView } from "./components/WealthFundsView";
+import { AssistantProvider } from "./assistant";
+import { AssistantFloat, AssistantPageSwitch } from "./components/AssistantWidget";
 
 // Four client-side routes (dashboard, calendar, round list, round detail)
 // don't justify pulling in a routing library — a hand-rolled route
@@ -477,66 +479,80 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
-      <Sidebar
-        path={path}
-        onNavigate={navigate}
-        dict={dict}
-        market={market}
-        status={status}
-        wealthHome={wealthHome}
-        writable={status?.writable ?? false}
-        paperEnabled={paperEnabled}
-        llmAuditEnabled={llmAuditEnabled}
-        devMode={devMode}
-        onToggleDevMode={toggleDevMode}
-      />
-      <div className="app-main">
-        <TopBar
+    <AssistantProvider
+      dict={dict}
+      path={path}
+      writable={status?.writable ?? false}
+      onUnauthorized={(retry) => setAuthRetry(() => retry)}
+    >
+      <div className="app-shell">
+        <Sidebar
+          path={path}
+          onNavigate={navigate}
+          dict={dict}
           market={market}
-          onMarketChange={handleMarketChange}
-          hideMarketToggle={isWealth}
-          isDark={isDark}
-          onToggleTheme={toggleTheme}
-          lang={lang}
-          onLangChange={changeLang}
-          dict={dict}
-          writable={!isWealth && (status?.writable ?? false)}
-          onAddTrade={() => setTradeModal({ mode: "buy", ticker: "", editableTicker: true })}
-          fx={isWealth ? { code: fxCode, rates: fxRates, onChange: setFxCode } : undefined}
+          status={status}
+          wealthHome={wealthHome}
+          writable={status?.writable ?? false}
+          paperEnabled={paperEnabled}
+          llmAuditEnabled={llmAuditEnabled}
+          devMode={devMode}
+          onToggleDevMode={toggleDevMode}
         />
-        {!isWealth &&
-          (status ? <StatusBar status={status} dict={dict} market={market} /> : <div className="status-bar" />)}
-        <div className={`content${path === "/chart" && params.get("ticker") ? " content-wide" : ""}`}>
-          {readOnly && <ReadOnlyBanner dict={dict} howOpen={roHow} onToggleHow={() => setRoHow((o) => !o)} />}
-          <ErrorBoundary key={`${path}:${market}`} message={dict.error}>
-            {body}
-          </ErrorBoundary>
+        <div className="app-main">
+          <TopBar
+            market={market}
+            onMarketChange={handleMarketChange}
+            hideMarketToggle={isWealth}
+            isDark={isDark}
+            onToggleTheme={toggleTheme}
+            lang={lang}
+            onLangChange={changeLang}
+            dict={dict}
+            writable={!isWealth && (status?.writable ?? false)}
+            onAddTrade={() => setTradeModal({ mode: "buy", ticker: "", editableTicker: true })}
+            fx={isWealth ? { code: fxCode, rates: fxRates, onChange: setFxCode } : undefined}
+          />
+          {!isWealth &&
+            (status ? <StatusBar status={status} dict={dict} market={market} /> : <div className="status-bar" />)}
+          <div className={`content${path === "/chart" && params.get("ticker") ? " content-wide" : ""}`}>
+            {readOnly && <ReadOnlyBanner dict={dict} howOpen={roHow} onToggleHow={() => setRoHow((o) => !o)} />}
+            <ErrorBoundary key={`${path}:${market}`} message={dict.error}>
+              {isWealth ? (
+                <AssistantPageSwitch dict={dict} onNavigate={navigate}>
+                  {body}
+                </AssistantPageSwitch>
+              ) : (
+                body
+              )}
+            </ErrorBoundary>
+          </div>
         </div>
+        {tradeModal && (
+          <TradeModal
+            dict={dict}
+            mode={tradeModal.mode}
+            ticker={tradeModal.ticker}
+            editableTicker={tradeModal.editableTicker}
+            prefillPrice={tradeModal.prefillPrice}
+            onClose={() => setTradeModal(null)}
+            onSuccess={() => setRefreshSignal((n) => n + 1)}
+            onUnauthorized={(retry) => setAuthRetry(() => retry)}
+          />
+        )}
+        {authRetry && (
+          <LoginModal
+            dict={dict}
+            onClose={() => setAuthRetry(null)}
+            onSuccess={() => {
+              const retry = authRetry;
+              setAuthRetry(null);
+              retry();
+            }}
+          />
+        )}
+        {isWealth && <AssistantFloat dict={dict} onNavigate={navigate} />}
       </div>
-      {tradeModal && (
-        <TradeModal
-          dict={dict}
-          mode={tradeModal.mode}
-          ticker={tradeModal.ticker}
-          editableTicker={tradeModal.editableTicker}
-          prefillPrice={tradeModal.prefillPrice}
-          onClose={() => setTradeModal(null)}
-          onSuccess={() => setRefreshSignal((n) => n + 1)}
-          onUnauthorized={(retry) => setAuthRetry(() => retry)}
-        />
-      )}
-      {authRetry && (
-        <LoginModal
-          dict={dict}
-          onClose={() => setAuthRetry(null)}
-          onSuccess={() => {
-            const retry = authRetry;
-            setAuthRetry(null);
-            retry();
-          }}
-        />
-      )}
-    </div>
+    </AssistantProvider>
   );
 }

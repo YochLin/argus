@@ -108,7 +108,7 @@ export function WealthAllocView({ dict, writable, onUnauthorized, onNavigate }: 
       </div>
 
       {noAssets && (
-        <WealthEmptyAssets dict={dict} line={dict.wealthEmptyAlloc} writable={writable} onUnauthorized={onUnauthorized} onAdded={() => setRefreshSignal((n) => n + 1)} onNavigate={onNavigate} />
+        <WealthEmptyAssets dict={dict} topic="alloc" line={dict.wealthEmptyAlloc} writable={writable} onUnauthorized={onUnauthorized} onAdded={() => setRefreshSignal((n) => n + 1)} onNavigate={onNavigate} />
       )}
 
       {!noAssets && (

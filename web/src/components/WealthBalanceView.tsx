@@ -207,7 +207,7 @@ export function WealthBalanceView({ dict, writable, onUnauthorized, onNavigate }
       {view === "arc" ? (
         <ArchivedCard dict={dict} items={archived} loaded={assets != null} onOpen={setDrawer} onRestore={restore} />
       ) : empty ? (
-        <WealthEmptyCard dict={dict} line={dict.wealthEmptyBalance} onAdd={gateAdd(() => setShowAdd(true))} />
+        <WealthEmptyCard dict={dict} topic="balance" line={dict.wealthEmptyBalance} onAdd={gateAdd(() => setShowAdd(true))} />
       ) : (
         <>
           <div className="card card--glow" style={{ padding: 19.2, marginBottom: 16 }}>

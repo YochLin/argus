@@ -3,6 +3,8 @@ import { fetchWealthAssets, fetchWealthCash, fetchWealthInsure, fetchWealthProfi
 import type { Dictionary } from "../i18n";
 import { useFlash } from "../flash";
 import { hasPickedModel } from "../wealthCategory";
+import { useAssistant } from "../assistant";
+import { AiIcon } from "./AssistantWidget";
 
 // useGateAdd is what an add button does. The design keeps the button on a
 // read-only server and answers the click with a toast saying why nothing opens
@@ -15,11 +17,21 @@ export function useGateAdd(dict: Dictionary, writable: boolean) {
 // WealthEmptyCard is what a wealth page shows in place of its body while it has
 // nothing to show (Argus Trading WebUI.dc.html's wes.on): one line and an add
 // button.
-export function WealthEmptyCard({ dict, line, onAdd }: { dict: Dictionary; line: string; onAdd: () => void }) {
+// topic is the page (its /w/<topic> segment) the 用聊天建檔 button opens the
+// assistant on, so the AI asks about that first; the button only shows inside
+// the AssistantProvider.
+export function WealthEmptyCard({ dict, line, onAdd, topic }: { dict: Dictionary; line: string; onAdd: () => void; topic?: string }) {
+  const assistant = useAssistant();
   return (
     <div className="card wealth-empty">
       <span className="wealth-empty-line">{line}</span>
-      <button className="wealth-empty-add" onClick={onAdd}>
+      {assistant && (
+        <button className="wealth-empty-chat" onClick={() => assistant.open(topic)}>
+          <AiIcon />
+          {dict.asstChatBuild}
+        </button>
+      )}
+      <button className={`wealth-empty-add${assistant ? " after-chat" : ""}`} onClick={onAdd}>
         <span style={{ fontSize: 14, lineHeight: 1 }}>＋</span>
         {dict.wealthHomeAddNew}
       </button>
@@ -83,6 +95,7 @@ function loadHidden(): boolean {
 // until those are loaded, and nothing if they fail to load.
 export function WealthGuide({ dict, hasAssets, onNavigate }: { dict: Dictionary; hasAssets: boolean; onNavigate: (path: string) => void }) {
   const [hidden, setHidden] = useState(loadHidden);
+  const assistant = useAssistant();
   const [saved, setSaved] = useState<{ cash: boolean; birth: boolean; policy: boolean } | null>(null);
 
   useEffect(() => {
@@ -145,6 +158,15 @@ export function WealthGuide({ dict, hasAssets, onNavigate }: { dict: Dictionary;
           </div>
         ))}
       </div>
+      {assistant && (
+        <div className="wealth-guide-chat">
+          <span>{dict.asstGuideLine}</span>
+          <button onClick={() => assistant.open()}>
+            <AiIcon />
+            {dict.asstChatBuild}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
