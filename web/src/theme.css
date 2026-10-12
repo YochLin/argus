@@ -6935,12 +6935,18 @@ a.snap-news-head:hover {
    The design's --tint/--tint-b/--shadow are this file's
    --accent-tint-bg/--accent-tint-border/--card-shadow; its warn/profit/loss
    backgrounds have no token here yet, so they're the design's literals. */
-.asst {
+/* .asst-vars carries the tokens to what renders outside .asst: the launcher
+   and the edit drawer (a portal). */
+.asst,
+.asst-vars {
   --asst-warn-bg: rgba(245, 158, 11, 0.1);
   --asst-warn-b: rgba(245, 158, 11, 0.45);
   --asst-warn-ink: #f59e0b;
   --asst-profit-bg: rgba(16, 185, 129, 0.14);
   --asst-loss-bg: rgba(239, 68, 68, 0.14);
+}
+
+.asst {
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -6949,7 +6955,8 @@ a.snap-news-head:hover {
   font-family: var(--font-sans);
 }
 
-:root.light .asst {
+:root.light .asst,
+:root.light .asst-vars {
   --asst-warn-b: rgba(217, 119, 6, 0.5);
   --asst-warn-ink: #b45309;
   --asst-profit-bg: rgba(16, 185, 129, 0.12);
@@ -7476,8 +7483,391 @@ a.snap-news-head:hover {
   border-top: 1px solid var(--border);
   padding: 12px 14px;
   display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.asst-foot-row {
+  display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.asst-foot-note {
+  font-size: 11px;
+  color: var(--ink-3);
+  text-wrap: pretty;
+}
+
+.asst-drafts-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+/* the result card after 確認寫入 */
+.asst-applied {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--asst-profit-bg);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.asst-applied-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--profit);
+}
+
+.asst-applied-body {
+  font-size: 12px;
+  color: var(--ink-2);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.asst-applied-link {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--accent);
+}
+
+/* a draft card; the border and background follow its status */
+.asst-dcard {
+  border-radius: 10px;
+  padding: 12px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: box-shadow 0.3s ease;
+  background: var(--bg);
+  border: 1px dashed var(--border);
+}
+
+.asst-dcard.pending {
+  border-color: var(--asst-warn-b);
+}
+
+.asst-dcard.error {
+  border: 1px solid var(--loss);
+  background: var(--asst-loss-bg);
+}
+
+.asst-dcard.focus {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.asst-dcard-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.asst-dcard-kind {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  color: var(--ink-2);
+  background: var(--surface);
+}
+
+.asst-dcard-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asst-dcard-new {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+}
+
+.asst-st {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+
+.asst-st.pending,
+.asst-st.error {
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.asst-st.pending {
+  background: var(--asst-warn-bg);
+  color: var(--asst-warn-ink);
+  border: 1px solid var(--asst-warn-b);
+}
+
+.asst-st.error {
+  background: var(--asst-loss-bg);
+  color: var(--loss);
+  border: 1px solid var(--loss);
+}
+
+.asst-dcard-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.asst-dcard-btn.del {
+  color: var(--ink-3);
+}
+
+.asst-dcard-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent-tint-border);
+}
+
+.asst-dcard-btn.del:hover {
+  color: var(--loss);
+  border-color: var(--loss);
+}
+
+.asst-dcard-btn.ro {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.asst-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 8px 12px;
+}
+
+.asst-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.asst-field-k,
+.asst-upd-note {
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.asst-field-v {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* the yellow dashed "? 待補" — opens the drawer */
+.asst-missing {
+  align-self: flex-start;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 5px;
+  border: 1px dashed var(--asst-warn-ink);
+  background: var(--asst-warn-bg);
+  color: var(--asst-warn-ink);
+  cursor: pointer;
+}
+
+.asst-upd {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.asst-upd-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.asst-upd-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.asst-upd-k {
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+.asst-upd-from {
+  font-size: 13px;
+  color: var(--ink-3);
+  text-decoration: line-through;
+}
+
+.asst-upd-arrow {
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.asst-upd-to {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.asst-upd-delta {
+  font-size: 11.5px;
+  color: var(--profit);
+}
+
+.asst-upd-delta.down {
+  color: var(--loss);
+}
+
+.asst-dcard-pending {
+  font-size: 11.5px;
+  color: var(--asst-warn-ink);
+  text-wrap: pretty;
+}
+
+.asst-dcard-err {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+  border-top: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.asst-dcard-err > span {
+  flex: 1 1 200px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--loss);
+  text-wrap: pretty;
+}
+
+.asst-dcard-err > button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--accent);
+}
+
+/* edit drawer bits (inside the shared .wealth-drawer-panel) */
+.asst-edit-note {
+  padding: 8px 11px;
+  border-radius: 8px;
+  border: 1px dashed var(--asst-warn-b);
+  font-size: 11.5px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.asst-edit-err {
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: var(--asst-loss-bg);
+  border: 1px solid var(--loss);
+  font-size: 12px;
+  color: var(--loss);
+  text-wrap: pretty;
+}
+
+.asst-ai-unsure {
+  margin-left: 7px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--asst-warn-ink);
+}
+
+.wealth-drawer-field input.asst-input-unsure {
+  border: 1px dashed var(--asst-warn-ink);
+}
+
+.wealth-drawer-field input.asst-input-ro {
+  color: var(--ink-2);
+}
+
+/* "已加入草稿：…" under an ai turn */
+.asst-chips {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.asst-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  border: 1px dashed var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.asst-chip:hover {
+  border-style: solid;
+}
+
+.asst-chip-plus {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.asst-chip-pre {
+  color: var(--ink-3);
+}
+
+.asst-chip-arrow {
+  margin-left: 4px;
 }
 
 .asst-clear,
@@ -7499,6 +7889,7 @@ a.snap-news-head:hover {
 
 .asst-commit {
   flex: 1;
+  padding: 8px 16px;
   font-size: 13px;
   font-weight: 700;
   border: 1px solid var(--accent);
@@ -7511,6 +7902,11 @@ a.snap-news-head:hover {
   border-color: var(--border);
   background: var(--surface-2);
   color: var(--ink-3);
+  cursor: not-allowed;
+}
+
+.asst-commit.ro {
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -7662,6 +8058,7 @@ a.snap-news-head:hover {
 
 .asst-launcher-btn {
   position: relative;
+  position: relative;
   flex-shrink: 0;
   width: 56px;
   height: 56px;
@@ -7678,6 +8075,43 @@ a.snap-news-head:hover {
 
 .asst-launcher-btn:hover {
   transform: translateY(-1px);
+}
+
+.asst-launcher-note.drafts {
+  border: 1px dashed var(--asst-warn-b);
+  color: var(--asst-warn-ink);
+}
+
+/* how many drafts wait, on the bubble */
+.asst-launcher-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: var(--asst-warn-ink);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--bg);
+}
+
+/* the phone/panel drafts tab's "+n" since it was last opened */
+.asst-unseen {
+  margin-left: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
 }
 
 /* entry points on the existing wealth pages (dashed in the design's
