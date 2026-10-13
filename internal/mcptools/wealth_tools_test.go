@@ -63,7 +63,7 @@ func TestWealthServer_OnlyWealthTools(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	slices.Sort(names)
-	want := []string{"discard_draft_item", "get_profile_and_goals", "list_assets", "list_cashflows", "list_drafts", "list_insurance", "propose_asset", "propose_balance_update", "propose_cashflow", "propose_insurance"}
+	want := []string{"discard_draft_item", "get_profile_and_goals", "list_assets", "list_cashflows", "list_drafts", "list_insurance", "propose_asset", "propose_balance_update", "propose_cashflow", "propose_goal", "propose_insurance", "propose_profile"}
 	if !slices.Equal(names, want) {
 		t.Errorf("wealth server tools = %v, want exactly %v (no trade or watchlist tools)", names, want)
 	}
@@ -278,5 +278,27 @@ func TestWealthTools_Drafts(t *testing.T) {
 	}
 	if _, errText := propose("propose_insurance", map[string]any{"name": "儲蓄險", "insurer": "國泰人壽", "kind": "savings", "amount": 1}); errText == "" {
 		t.Error("a policy with kind savings was accepted")
+	}
+
+	// A profile: retirement age without a birth year on file or in the draft
+	// waits for it; there is only one profile draft.
+	prof, errText := propose("propose_profile", map[string]any{"annual_salary": 1200000, "retirement_age": 60, "retirement_monthly_spend": 40000})
+	if errText != "" || prof.Status != "pending" || !slices.Equal(prof.Missing, []string{"birth_year"}) {
+		t.Fatalf("profile draft = %+v (%s), want pending, missing [birth_year]", prof, errText)
+	}
+	if _, errText := propose("propose_profile", map[string]any{"dependents": 2}); errText == "" {
+		t.Error("a second profile draft was accepted")
+	}
+	if got, errText := propose("propose_profile", map[string]any{"draft_id": prof.DraftID, "birth_year": 1990, "retirement_age": 60, "retirement_monthly_spend": 40000}); errText != "" || got.Status != "ok" {
+		t.Fatalf("profile with birth year = %+v (%s), want ok", got, errText)
+	}
+
+	// A goal: pending without its target, refused with a past target year.
+	goal, errText := propose("propose_goal", map[string]any{"name": " 子女教育金 ", "target_year": 2040})
+	if errText != "" || goal.Status != "pending" || !slices.Equal(goal.Missing, []string{"target_amount"}) {
+		t.Fatalf("goal draft = %+v (%s), want pending, missing [target_amount]", goal, errText)
+	}
+	if _, errText := propose("propose_goal", map[string]any{"name": "旅遊", "target_amount": 100000, "target_year": 2000}); errText == "" {
+		t.Error("a goal with a past target year was accepted")
 	}
 }

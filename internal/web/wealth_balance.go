@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -376,73 +377,51 @@ func (s *Server) handleWealthProfileUpdate(w http.ResponseWriter, r *http.Reques
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if req.AnnualSalary != nil {
-		if *req.AnnualSalary < 0 {
-			writeError(w, http.StatusBadRequest, "annualSalary must be >= 0")
-			return
-		}
-		if err := s.wealthDB.SetSetting(service.AnnualSalarySettingKey, strconv.FormatFloat(*req.AnnualSalary, 'f', 2, 64)); err != nil {
-			logger.Errorf("web: set %s: %v", service.AnnualSalarySettingKey, err)
-			writeError(w, http.StatusInternalServerError, "failed to save")
-			return
-		}
+	p := assets.Profile(req)
+	if ps := assets.ValidateProfile(p, time.Now().Year()); len(ps) > 0 {
+		writeError(w, http.StatusBadRequest, ps[0].Msg)
+		return
 	}
-	if req.BirthYear != nil {
-		if *req.BirthYear < 1900 || *req.BirthYear > time.Now().Year() {
-			writeError(w, http.StatusBadRequest, "birthYear is out of range")
-			return
-		}
-		if err := s.wealthDB.SetSetting(service.BirthYearSettingKey, strconv.Itoa(*req.BirthYear)); err != nil {
-			logger.Errorf("web: set %s: %v", service.BirthYearSettingKey, err)
-			writeError(w, http.StatusInternalServerError, "failed to save")
-			return
-		}
-	}
-	if req.RetirementMonthlyContribution != nil {
-		if *req.RetirementMonthlyContribution < 0 {
-			writeError(w, http.StatusBadRequest, "retirementMonthlyContribution must be >= 0")
-			return
-		}
-		if err := s.wealthDB.SetSetting(service.RetirementMonthlyContributionSettingKey, strconv.FormatFloat(*req.RetirementMonthlyContribution, 'f', 2, 64)); err != nil {
-			logger.Errorf("web: set %s: %v", service.RetirementMonthlyContributionSettingKey, err)
-			writeError(w, http.StatusInternalServerError, "failed to save")
-			return
-		}
-	}
-	if req.Dependents != nil {
-		if *req.Dependents < 0 {
-			writeError(w, http.StatusBadRequest, "dependents must be >= 0")
-			return
-		}
-		if err := s.wealthDB.SetSetting(service.DependentsSettingKey, strconv.Itoa(*req.Dependents)); err != nil {
-			logger.Errorf("web: set %s: %v", service.DependentsSettingKey, err)
-			writeError(w, http.StatusInternalServerError, "failed to save")
-			return
-		}
-	}
-	if req.YoungestChildAge != nil {
-		if *req.YoungestChildAge < 0 || *req.YoungestChildAge > 30 {
-			writeError(w, http.StatusBadRequest, "youngestChildAge is out of range")
-			return
-		}
-		if err := s.wealthDB.SetSetting(service.YoungestChildAgeSettingKey, strconv.Itoa(*req.YoungestChildAge)); err != nil {
-			logger.Errorf("web: set %s: %v", service.YoungestChildAgeSettingKey, err)
-			writeError(w, http.StatusInternalServerError, "failed to save")
-			return
-		}
-	}
-	if req.SpouseHasIncome != nil {
-		v := "0"
-		if *req.SpouseHasIncome {
-			v = "1"
-		}
-		if err := s.wealthDB.SetSetting(service.SpouseHasIncomeSettingKey, v); err != nil {
-			logger.Errorf("web: set %s: %v", service.SpouseHasIncomeSettingKey, err)
-			writeError(w, http.StatusInternalServerError, "failed to save")
-			return
-		}
+	if err := saveWealthProfile(s.wealthDB, p); err != nil {
+		logger.Errorf("web: save profile: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to save")
+		return
 	}
 	writeJSON(w, http.StatusOK, tradeResponse{Message: "saved"})
+}
+
+// saveWealthProfile writes the settings p sets — the one write path for the
+// profile cards and the assistant's profile drafts. Callers validate first.
+func saveWealthProfile(w wealthWriter, p assets.Profile) error {
+	var sets [][2]string
+	if p.AnnualSalary != nil {
+		sets = append(sets, [2]string{service.AnnualSalarySettingKey, strconv.FormatFloat(*p.AnnualSalary, 'f', 2, 64)})
+	}
+	if p.BirthYear != nil {
+		sets = append(sets, [2]string{service.BirthYearSettingKey, strconv.Itoa(*p.BirthYear)})
+	}
+	if p.RetirementMonthlyContribution != nil {
+		sets = append(sets, [2]string{service.RetirementMonthlyContributionSettingKey, strconv.FormatFloat(*p.RetirementMonthlyContribution, 'f', 2, 64)})
+	}
+	if p.Dependents != nil {
+		sets = append(sets, [2]string{service.DependentsSettingKey, strconv.Itoa(*p.Dependents)})
+	}
+	if p.YoungestChildAge != nil {
+		sets = append(sets, [2]string{service.YoungestChildAgeSettingKey, strconv.Itoa(*p.YoungestChildAge)})
+	}
+	if p.SpouseHasIncome != nil {
+		v := "0"
+		if *p.SpouseHasIncome {
+			v = "1"
+		}
+		sets = append(sets, [2]string{service.SpouseHasIncomeSettingKey, v})
+	}
+	for _, kv := range sets {
+		if err := w.SetSetting(kv[0], kv[1]); err != nil {
+			return fmt.Errorf("set %s: %w", kv[0], err)
+		}
+	}
+	return nil
 }
 
 // debtPayoffResponse backs GET /api/wealth/debt-payoff?extra=NNNN — the

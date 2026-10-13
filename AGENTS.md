@@ -422,7 +422,8 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   the user confirmed through the same paths as the manual forms (a new asset via the CSV import's
   write, a balance via `LogAssetValue`, a monthly cash flow via `CreateRecurringCashflow` — never
   linked to an asset; that link is made on `/w/cash`; a policy via `CreateInsuranceAsset`, one coverage like
-  `/w/insure`'s form). A draft's status (ok/pending/error) is never stored —
+  `/w/insure`'s form; a profile via `saveWealthProfile` plus, for a retirement age and spend, `saveRetirement`
+  — the retirement goal row, as `/w/retire`'s quick switch; a goal via `CreateGoal`). A draft's status (ok/pending/error) is never stored —
   `service.CheckWealthDraft` recomputes it on every read, for the model's `list_drafts` and the web
   alike, from the shared rules in `internal/assets`.
 

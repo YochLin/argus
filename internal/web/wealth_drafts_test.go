@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"argus/internal/db"
+	"argus/internal/service"
 )
 
 type draftsResponse struct {
@@ -126,12 +127,14 @@ func TestWealthDrafts_Apply(t *testing.T) {
 	addDraft(t, d, "balance", &esun, `{"value":150}`)
 	addDraft(t, d, "cashflow", nil, `{"direction":"out","name":"Mortgage payment","amount":32000,"currency":"TWD","day_of_month":5,"category":"mortgage"}`)
 	addDraft(t, d, "insurance", nil, `{"name":"Whole life","insurer":"Fubon","kind":"hospital","amount":3000,"annual_premium":36000}`)
+	addDraft(t, d, "profile", nil, `{"birth_year":1990,"dependents":2,"retirement_age":60,"retirement_monthly_spend":40000}`)
+	addDraft(t, d, "goal", nil, `{"name":"Education","target_amount":2000000,"target_year":2040,"saved_amount":100000}`)
 	// History is read-only: a past day that already has a value is refused.
 	failing := addDraft(t, d, "balance", &esun, `{"value":90,"date":"2026-01-02"}`)
 
 	r := decodeDrafts(t, postAssistant(t, s, cookie, "/api/wealth/assistant/apply", nil))
-	if r.Result != (applyOutcome{Applied: 4, Kept: 2}) {
-		t.Errorf("result = %+v, want 4 applied, 2 kept", r.Result)
+	if r.Result != (applyOutcome{Applied: 6, Kept: 2}) {
+		t.Errorf("result = %+v, want 6 applied, 2 kept", r.Result)
 	}
 	if len(r.Messages) != 1 || r.Messages[0].Role != "sys" || r.Messages[0].Result == nil || *r.Messages[0].Result != r.Result {
 		t.Errorf("messages = %+v, want one sys message carrying the result", r.Messages)
@@ -177,5 +180,26 @@ func TestWealthDrafts_Apply(t *testing.T) {
 	}
 	if det, err := d.GetInsuranceDetails(covs[0].AssetID); err != nil || det == nil || det.Insurer != "Fubon" || det.AnnualPremium == nil || *det.AnnualPremium != 36000 {
 		t.Errorf("policy details = %+v (%v), want Fubon, premium 36000", det, err)
+	}
+	if p := service.LoadWealthProfile(d); p.BirthYear == nil || *p.BirthYear != 1990 || p.Dependents == nil || *p.Dependents != 2 || p.AnnualSalary != nil {
+		t.Errorf("profile = %+v, want birth year 1990, 2 dependents and the salary untouched", p)
+	}
+	goals, err := d.ListGoals()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ret, edu := service.FindRetirementGoal(goals), (*db.Goal)(nil)
+	for i := range goals {
+		if goals[i].Name == "Education" {
+			edu = &goals[i]
+		}
+	}
+	// The retirement goal is what /w/retire's quick switch would save: the
+	// date the user turns 60 and 25 years of spending.
+	if ret == nil || ret.Name != "Retirement" || ret.TargetDate != "2050-01-01" || ret.TargetAmount != 40000*12*25 {
+		t.Errorf("retirement goal = %+v, want Retirement on 2050-01-01 for 12,000,000", ret)
+	}
+	if edu == nil || edu.Kind != "general" || edu.TargetAmount != 2000000 || edu.TargetDate != "2040-12-31" || edu.Currency != "TWD" || edu.SavedAmount == nil || *edu.SavedAmount != 100000 {
+		t.Errorf("education goal = %+v, want a general TWD goal of 2,000,000 by 2040-12-31 with 100,000 saved", edu)
 	}
 }

@@ -315,8 +315,9 @@ var enMessages = map[Key]string{
 		"3. Don't calculate, and don't recommend investments or insurance products; the system computes net worth, retirement projections and coverage gaps itself.\n" +
 		"4. When the user describes a deposit, loan, credit card, fund, property or similar account, draft it with propose_asset; for a new amount on an account that already exists, use propose_balance_update; for regular monthly income or spending (salary, rent received, a mortgage or loan payment, a fund DCA, premiums, living costs), use propose_cashflow — a loan and its monthly payment are two drafts; for an insurance policy, use propose_insurance — one draft is one policy's main coverage. Fill in only what the user said and leave the rest out, so the draft shows as missing those fields, then ask. When the user answers, update the same draft by passing its draft_id instead of adding another. If a tool returns an error, fix what it says; don't force it.\n" +
 		"5. Drafts are saved only when the user presses Confirm on the page; say \"added to the drafts\", never \"recorded\".\n" +
-		"6. The profile and goals can't be drafted in this version; once worked out, tell the user to add them on the matching page themselves.",
-	KeyWealthTopicHint: "(The user opened the assistant from %s; start by asking about that.)\n",
+		"6. For the profile (annual salary, birth year, monthly retirement contribution, dependents, youngest child's age, whether the spouse has income) and the retirement plan (retirement age and monthly spending in retirement, always given together), use propose_profile — there is only one profile draft: if one exists, pass its draft_id and give every field to change again; for a savings goal (a child's education, a house down payment, a trip, ...), use propose_goal, one draft per goal — retirement isn't one of them.",
+	KeyWealthTopicHint:          "(The user opened the assistant from %s; start by asking about that.)\n",
+	KeyWealthRetirementGoalName: "Retirement",
 
 	KeyRecPromptIntro:           "You are a US equities analyst. Based on the market data below, give today's action recommendations.\n\n",
 	KeyRecPromptIntroTW:         "You are a Taiwan equities analyst. Based on the market data below, give today's action recommendations.\n\n",

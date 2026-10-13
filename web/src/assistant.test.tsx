@@ -317,6 +317,79 @@ describe("wealth assistant drafts", () => {
     });
   });
 
+  it("a profile card lists what changes; the drawer fills in what's missing", async () => {
+    const prof: api.AssistantDraft = {
+      id: 6,
+      kind: "profile",
+      payload: { annual_salary: 1200000, retirement_age: 60, spouse_has_income: false },
+      status: "pending",
+      missing: ["retirement_monthly_spend"],
+      createdAt: "2026-10-13T10:00:00+08:00",
+    };
+    m.fetchAssistant.mockResolvedValue(data([], [prof]));
+    m.updateAssistantDraft.mockResolvedValue(data([], [{ ...prof, status: "ok", missing: [] }]));
+    localStorage.setItem("argus.assistant.mode", "panel");
+    renderWidget();
+    fireEvent.click(await screen.findByRole("tab", { name: dict.asstTabDrafts.replace("%s", "1") }));
+
+    expect(screen.getAllByText(dict.asstKindProfile)).toHaveLength(2); // the tag and the title, as in the design
+    expect(screen.getByText("NT$1,200,000")).toBeTruthy();
+    expect(screen.getByText(dict.wealthInsureSpouseIncomeNo)).toBeTruthy();
+    // Fields the draft doesn't touch aren't listed.
+    expect(screen.queryByText(dict.wealthInsureDependentsLabel)).toBeNull();
+    fireEvent.click(screen.getByText(`? ${dict.asstPendingVal}`));
+
+    fireEvent.change(document.querySelector<HTMLInputElement>(".asst-input-unsure")!, { target: { value: "40000" } });
+    fireEvent.click(screen.getByText(dict.asstSaveDraft));
+
+    await waitFor(() => expect(screen.queryByText(dict.asstEditTitle)).toBeNull());
+    expect(m.updateAssistantDraft).toHaveBeenCalledWith(6, {
+      annual_salary: 1200000,
+      birth_year: undefined,
+      retirement_age: 60,
+      retirement_monthly_spend: 40000,
+      retirement_monthly_contribution: undefined,
+      dependents: undefined,
+      youngest_child_age: undefined,
+      spouse_has_income: false,
+    });
+  });
+
+  it("a goal card shows target, year, saved and monthly; the drawer saves the target", async () => {
+    const goal: api.AssistantDraft = {
+      id: 7,
+      kind: "goal",
+      payload: { name: "子女教育金", target_year: 2040, monthly_contribution: 5000 },
+      status: "pending",
+      missing: ["target_amount"],
+      createdAt: "2026-10-13T10:00:00+08:00",
+    };
+    m.fetchAssistant.mockResolvedValue(data([], [goal]));
+    m.updateAssistantDraft.mockResolvedValue(data([], [{ ...goal, status: "ok", missing: [] }]));
+    localStorage.setItem("argus.assistant.mode", "panel");
+    renderWidget();
+    fireEvent.click(await screen.findByRole("tab", { name: dict.asstTabDrafts.replace("%s", "1") }));
+
+    expect(screen.getByText(dict.asstKindGoal)).toBeTruthy();
+    expect(screen.getByText("子女教育金")).toBeTruthy();
+    expect(screen.getByText("2040")).toBeTruthy();
+    expect(screen.getByText("NT$5,000")).toBeTruthy();
+    fireEvent.click(screen.getByText(`? ${dict.asstPendingVal}`));
+
+    fireEvent.change(document.querySelector<HTMLInputElement>(".asst-input-unsure")!, { target: { value: "2000000" } });
+    fireEvent.click(screen.getByText(dict.asstSaveDraft));
+
+    await waitFor(() => expect(screen.queryByText(dict.asstEditTitle)).toBeNull());
+    expect(m.updateAssistantDraft).toHaveBeenCalledWith(7, {
+      name: "子女教育金",
+      target_amount: 2000000,
+      target_year: 2040,
+      saved_amount: undefined,
+      monthly_contribution: 5000,
+      note: undefined,
+    });
+  });
+
   it("read-only: delete and confirm only toast", async () => {
     m.fetchAssistant.mockResolvedValue(data([], [deposit]));
     localStorage.setItem("argus.assistant.mode", "panel");
