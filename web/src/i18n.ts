@@ -1162,6 +1162,49 @@ export interface Dictionary {
   asstNoteErr: string;
   asstChatBuild: string;
   asstGuideLine: string;
+  // B2 drafts. %s is a count; asstCommitNM / asstSysApplied take n then m.
+  asstNewChatBodyDrafts: string;
+  asstAddedTo: string;
+  asstKindAsset: string;
+  asstKindBalance: string;
+  asstStOk: string;
+  asstStPending: string;
+  asstStError: string;
+  asstPendingVal: string;
+  asstPendingNote: string;
+  asstUpdNote: string;
+  asstFrom: string;
+  asstTo: string;
+  asstFType: string;
+  asstFAmt: string;
+  asstFCur: string;
+  asstFRate: string;
+  asstFTerm: string;
+  asstFDate: string;
+  asstTermMonths: string;
+  asstFailPre: string;
+  asstEdit: string;
+  asstDel: string;
+  asstFix: string;
+  asstNewTag: string;
+  asstCommitN: string;
+  asstCommitNM: string;
+  asstFootNote: string;
+  asstAppliedTitle: string;
+  asstAppliedBody: string;
+  asstAppliedKept: string;
+  asstSysApplied: string;
+  asstSysAppliedAll: string;
+  asstSeeBal: string;
+  asstClearQ: string;
+  asstClearBody: string;
+  asstClearOk: string;
+  asstEditTitle: string;
+  asstEditNote: string;
+  asstSaveDraft: string;
+  asstAiUnsure: string;
+  asstNoteDrafts: string;
+  asstUnseen: string;
   wealthGuideDone: string; // %s = steps done, %s = total
   wealthGuideHide: string;
   wealthGuideWhyBalance: string;
@@ -2561,6 +2604,48 @@ const en: Dictionary = {
   asstNoteErr: "AI didn't respond — open to retry",
   asstChatBuild: "Set up by chat",
   asstGuideLine: "Rather not fill pages one by one? Describe it in chat and AI drafts it for you to confirm.",
+  asstNewChatBodyDrafts: "The conversation is cleared. Your %s drafts are kept.",
+  asstAddedTo: "Added to drafts: ",
+  asstKindAsset: "NEW",
+  asstKindBalance: "BALANCE",
+  asstStOk: "Ready",
+  asstStPending: "Needs info",
+  asstStError: "Can't save",
+  asstPendingVal: "Missing",
+  asstPendingNote: "AI wasn't sure about these fields — fill them in to save",
+  asstUpdNote: "Updates an existing account's balance",
+  asstFrom: "WAS",
+  asstTo: "NOW",
+  asstFType: "Type",
+  asstFAmt: "Amount",
+  asstFCur: "Currency",
+  asstFRate: "Rate",
+  asstFTerm: "Remaining",
+  asstFDate: "As of",
+  asstTermMonths: "%s mo",
+  asstFailPre: "Save failed: ",
+  asstEdit: "Edit",
+  asstDel: "Delete",
+  asstFix: "Fix →",
+  asstNewTag: "NEW",
+  asstCommitN: "Confirm & save %s",
+  asstCommitNM: "Save %n · %m need fixes",
+  asstFootNote: "Drafts that need info or have errors are skipped and stay here for you to fix.",
+  asstAppliedTitle: "%s saved",
+  asstAppliedBody: "Saved to the balance sheet.",
+  asstAppliedKept: " The %s below weren't saved — fix them and save again.",
+  asstSysApplied: "%n saved · %m left in drafts to fix",
+  asstSysAppliedAll: "%s saved",
+  asstSeeBal: "View balance sheet →",
+  asstClearQ: "Clear all drafts?",
+  asstClearBody: "All %s drafts are deleted. Saved data isn't affected. This can't be undone.",
+  asstClearOk: "Clear",
+  asstEditTitle: "EDIT DRAFT",
+  asstEditNote: "This only updates the draft — it's saved when you press “Confirm”.",
+  asstSaveDraft: "Update draft",
+  asstAiUnsure: "AI unsure — please fill",
+  asstNoteDrafts: "%s drafts not saved",
+  asstUnseen: "+%s",
   wealthGuideDone: "%s of %s done",
   wealthGuideHide: "Hide",
   wealthGuideWhyBalance: "Record what you own and owe so net worth can be computed",
@@ -3902,6 +3987,48 @@ const zh: Dictionary = {
   asstNoteErr: "AI 沒有回應，點開重試",
   asstChatBuild: "用聊天建檔",
   asstGuideLine: "不想一頁頁填？用聊天描述你的狀況，AI 整理成草稿給你確認。",
+  asstNewChatBodyDrafts: "目前的對話會清除，草稿裡的 %s 筆會保留。",
+  asstAddedTo: "已加入草稿：",
+  asstKindAsset: "新增",
+  asstKindBalance: "更新餘額",
+  asstStOk: "可寫入",
+  asstStPending: "待補",
+  asstStError: "無法寫入",
+  asstPendingVal: "待補",
+  asstPendingNote: "AI 不確定這些欄位，補上後才能寫入",
+  asstUpdNote: "修改既有帳戶的餘額",
+  asstFrom: "原金額",
+  asstTo: "新金額",
+  asstFType: "類型",
+  asstFAmt: "金額",
+  asstFCur: "幣別",
+  asstFRate: "利率",
+  asstFTerm: "剩餘期數",
+  asstFDate: "日期",
+  asstTermMonths: "%s 期",
+  asstFailPre: "寫入失敗：",
+  asstEdit: "編輯",
+  asstDel: "刪除",
+  asstFix: "修正 →",
+  asstNewTag: "新",
+  asstCommitN: "確認寫入 %s 筆",
+  asstCommitNM: "寫入 %n 筆，%m 筆需修正",
+  asstFootNote: "待補和錯誤的草稿不會寫入，會留在這裡讓你修正。",
+  asstAppliedTitle: "已寫入 %s 筆",
+  asstAppliedBody: "已存進資產負債表。",
+  asstAppliedKept: "下面 %s 筆沒有寫入，修正後可以再寫一次。",
+  asstSysApplied: "已寫入 %n 筆，%m 筆留在草稿待修正",
+  asstSysAppliedAll: "已寫入 %s 筆",
+  asstSeeBal: "到資產負債表查看 →",
+  asstClearQ: "清空草稿？",
+  asstClearBody: "草稿裡的 %s 筆都會刪除，已寫入的資料不受影響。這個動作無法復原。",
+  asstClearOk: "清空",
+  asstEditTitle: "編輯草稿",
+  asstEditNote: "這裡只更新草稿，按「確認寫入」後才會存進去。",
+  asstSaveDraft: "更新草稿",
+  asstAiUnsure: "AI 不確定，請補上",
+  asstNoteDrafts: "%s 筆草稿尚未寫入",
+  asstUnseen: "+%s",
   wealthGuideDone: "%s / %s 完成",
   wealthGuideHide: "隱藏",
   wealthGuideWhyBalance: "先記下有什麼、欠什麼，淨值才算得出來",

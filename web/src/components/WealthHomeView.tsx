@@ -33,13 +33,13 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
-const GROUPS: AssetGroup[] = ["liquid", "growth", "income", "hard"];
+export const GROUPS: AssetGroup[] = ["liquid", "growth", "income", "hard"];
 // CURRENCIES mirrors the design spec's display-currency menu (§8.1) — the
 // backend only converts USD/TWD so far (wealth_home.go), the rest are
 // accepted as an asset's native currency and simply won't convert into the
 // net-worth total yet (rendered "—" if that ever matters — see
 // wealth_home.go's "degrade the whole metric" rule).
-const CURRENCIES = ["TWD", "USD", "JPY", "EUR", "CNY"];
+export const CURRENCIES = ["TWD", "USD", "JPY", "EUR", "CNY"];
 
 // Kind mirrors assets.CategoryOf's recognized type strings (§8.5) plus
 // "loan" (liability) and "other" (legacy catch-all) — every kind but

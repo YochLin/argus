@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useAssistant, useIsMobile, type Assistant } from "../assistant";
 import { useFlash } from "../flash";
+import type { AssistantMessage } from "../api";
 import type { Dictionary } from "../i18n";
+import { DraftsPane, draftChip } from "./AssistantDrafts";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 // Phase 28's wealth assistant (Argus Wealth Assistant.dc.html): a launcher
 // bubble, a floating panel, or a full page in place of the /w/* page body.
-// Drafts (the right-hand pane) arrive in B2; until then that pane only shows
-// its empty state, as the design's first/chatting views do.
+// The drafts column lives in AssistantDrafts.tsx.
 
 export function AiIcon({ size = 12 }: { size?: number }) {
   return (
@@ -61,15 +62,23 @@ export function AssistantPageSwitch({ dict, onNavigate, children }: { dict: Dict
 
 function Launcher({ dict, a }: { dict: Dictionary; a: Assistant }) {
   const busy = a.pending !== null;
-  const note = busy ? dict.asstNoteBusy : a.failed ? dict.asstNoteErr : dict.asstChatBuild;
-  const tone = busy ? " busy" : a.failed ? " err" : "";
+  const n = a.drafts.length;
+  const note = busy
+    ? dict.asstNoteBusy
+    : a.failed
+      ? dict.asstNoteErr
+      : n
+        ? dict.asstNoteDrafts.replace("%s", String(n))
+        : dict.asstChatBuild;
+  const tone = busy ? " busy" : a.failed ? " err" : n ? " drafts" : "";
   return (
-    <div className="asst-launcher">
+    <div className="asst-launcher asst-vars">
       <button className={`asst-launcher-note${tone}`} onClick={() => a.open()}>
         {note}
       </button>
       <button className="asst-launcher-btn" onClick={() => a.open()} aria-label={dict.asstTitle} title={dict.asstTitle}>
         {busy ? <Dots light /> : <AiIcon size={24} />}
+        {n > 0 && <span className="asst-launcher-badge">{n}</span>}
       </button>
     </div>
   );
@@ -88,16 +97,16 @@ function AssistantBody({
   mobile: boolean;
   onNavigate: (path: string) => void;
 }) {
-  const [tab, setTab] = useState<"chat" | "drafts">("chat");
   const [confirmNew, setConfirmNew] = useState(false);
-  const { load, loaded } = a;
+  const { load, loaded, tab, setTab } = a;
   useEffect(() => {
     if (!loaded) load();
   }, [loaded, load]);
 
   const askNew = () => setConfirmNew(true);
   const chat = <ChatPane dict={dict} a={a} compact={compact} onNewChat={askNew} onNavigate={onNavigate} />;
-  const drafts = <DraftsPane dict={dict} a={a} compact={compact} />;
+  const drafts = <DraftsPane dict={dict} a={a} compact={compact} onNavigate={onNavigate} />;
+  const unseen = tab === "chat" ? a.newIds.length : 0;
 
   return (
     <div className={`asst${compact ? " asst--compact" : " asst--page"}`}>
@@ -130,7 +139,8 @@ function AssistantBody({
               {dict.asstChat}
             </button>
             <button role="tab" aria-selected={tab === "drafts"} className={tab === "drafts" ? "on" : ""} onClick={() => setTab("drafts")}>
-              {dict.asstTabDrafts.replace("%s", "0")}
+              {dict.asstTabDrafts.replace("%s", String(a.drafts.length))}
+              {unseen > 0 && <span className="asst-unseen">{dict.asstUnseen.replace("%s", String(unseen))}</span>}
             </button>
           </div>
           {!a.writable && <RoBanner dict={dict} />}
@@ -160,7 +170,7 @@ function AssistantBody({
       {confirmNew && (
         <ConfirmDialog
           title={dict.asstNewChatQ}
-          body={dict.asstNewChatBody}
+          body={a.drafts.length ? dict.asstNewChatBodyDrafts.replace("%s", String(a.drafts.length)) : dict.asstNewChatBody}
           okLabel={dict.asstNewChat}
           cancelLabel={dict.cancel}
           onCancel={() => setConfirmNew(false)}
@@ -262,12 +272,13 @@ function ChatPane({
             </div>
           ) : m.role === "sys" ? (
             <div key={m.id} className="asst-sys">
-              ✓ {m.text}
+              ✓ {sysText(dict, m)}
             </div>
           ) : (
             <div key={m.id} className="asst-ai">
               <AiLabel />
               <span className="asst-ai-text">{m.text}</span>
+              <Chips dict={dict} a={a} ids={m.draftIds} />
               {m.action === "trades" && (
                 <button className="asst-go" onClick={() => onNavigate("/")}>
                   {dict.asstGoTrades}
@@ -339,37 +350,29 @@ function ChatPane({
   );
 }
 
-// DraftsPane is the drafts column. Nothing proposes drafts until B2, so it
-// is always the design's empty state with a disabled footer.
-function DraftsPane({ dict, a, compact }: { dict: Dictionary; a: Assistant; compact: boolean }) {
-  const flash = useFlash();
+function sysText(dict: Dictionary, m: AssistantMessage): string {
+  const r = m.result;
+  if (!r) return m.text;
+  return r.kept
+    ? dict.asstSysApplied.replace("%n", String(r.applied)).replace("%m", String(r.kept))
+    : dict.asstSysAppliedAll.replace("%s", String(r.applied));
+}
+
+// Chips are an ai turn's "已加入草稿：…" links — only for drafts still there
+// (one written or deleted since has nothing to point at).
+function Chips({ dict, a, ids }: { dict: Dictionary; a: Assistant; ids?: number[] }) {
+  const live = (ids ?? []).flatMap((id) => a.drafts.filter((d) => d.id === id));
+  if (!live.length) return null;
   return (
-    <div className="asst-pane">
-      <div className="asst-drafts-head">
-        <div className="asst-drafts-head-row">
-          <span className="asst-label">{dict.asstDrafts}</span>
-          <span className="asst-not-saved">{dict.asstNotSaved}</span>
-        </div>
-        <span className="asst-note">{dict.asstDraftNote}</span>
-      </div>
-      <div className="asst-drafts-list">
-        <div className="asst-drafts-empty">
-          <span>{dict.asstEmptyDraft}</span>
-          <div className="asst-kinds">
-            {dict.asstKinds.split("|").map((k) => (
-              <span key={k}>{k}</span>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div className={`asst-drafts-foot${compact ? " compact" : ""}`}>
-        <button className="asst-clear off" onClick={() => !a.writable && flash(dict.asstRoToast, "error")}>
-          {dict.asstClear}
+    <div className="asst-chips">
+      {live.map((d) => (
+        <button key={d.id} className="asst-chip" onClick={() => a.goDraft(d.id)}>
+          <span className="asst-chip-plus">＋</span>
+          <span className="asst-chip-pre">{dict.asstAddedTo}</span>
+          <span>{draftChip(dict, d)}</span>
+          <span className="asst-chip-arrow">↓</span>
         </button>
-        <button className="asst-commit off" aria-disabled>
-          {dict.asstCommitNone}
-        </button>
-      </div>
+      ))}
     </div>
   );
 }

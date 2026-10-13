@@ -1,5 +1,20 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { ApiError, fetchAssistant, newAssistantChat, sendAssistant, type AssistantMessage } from "./api";
+import {
+  ApiError,
+  applyAssistantDrafts,
+  clearAssistantDrafts,
+  deleteAssistantDraft,
+  fetchAssistant,
+  newAssistantChat,
+  sendAssistant,
+  updateAssistantDraft,
+  type ApplyResult,
+  type AssetDraftPayload,
+  type AssistantData,
+  type AssistantDraft,
+  type AssistantMessage,
+  type BalanceDraftPayload,
+} from "./api";
 import { useFlash } from "./flash";
 import type { Dictionary } from "./i18n";
 
@@ -29,6 +44,22 @@ export interface Assistant {
   send: (text: string) => void;
   newChat: () => void;
   writable: boolean;
+
+  // Drafts (B2). newIds are the drafts the last turn added (the cards' 新
+  // tag and the phone tab's +n), cleared once the drafts tab is opened;
+  // applied is the last write's outcome, shown as the result card until the
+  // next turn or clear. focusId is the card a chip just pointed at.
+  drafts: AssistantDraft[];
+  newIds: number[];
+  applied: ApplyResult | null;
+  tab: "chat" | "drafts";
+  setTab: (t: "chat" | "drafts") => void;
+  focusId: number | null;
+  goDraft: (id: number) => void;
+  saveDraft: (id: number, payload: AssetDraftPayload | BalanceDraftPayload) => Promise<boolean>;
+  deleteDraft: (id: number) => void;
+  clearDrafts: () => void;
+  applyDrafts: () => void;
 }
 
 const AssistantContext = createContext<Assistant | null>(null);
@@ -72,6 +103,12 @@ export function AssistantProvider({
   const [elapsed, setElapsed] = useState(0);
   const [failed, setFailed] = useState(false);
   const [input, setInput] = useState("");
+  const [drafts, setDrafts] = useState<AssistantDraft[]>([]);
+  const [newIds, setNewIds] = useState<number[]>([]);
+  const [applied, setApplied] = useState<ApplyResult | null>(null);
+  const [tab, setTabState] = useState<"chat" | "drafts">("chat");
+  const [focusId, setFocusId] = useState<number | null>(null);
+  const focusTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const topic = useRef<string | undefined>(undefined);
   const loading = useRef(false);
 
@@ -96,8 +133,9 @@ export function AssistantProvider({
     if (loading.current) return;
     loading.current = true;
     fetchAssistant()
-      .then((m) => {
-        setMessages(m);
+      .then((d) => {
+        setMessages(d.messages);
+        setDrafts(d.drafts);
         setLoaded(true);
       })
       .catch(() => {
@@ -124,9 +162,12 @@ export function AssistantProvider({
       setInput("");
       setFailed(false);
       sendAssistant(text, topic.current)
-        .then((added) => {
+        .then((d) => {
           topic.current = undefined;
-          setMessages((m) => [...m, ...added]);
+          setMessages((m) => [...m, ...d.messages]);
+          setDrafts(d.drafts);
+          setNewIds(d.messages.flatMap((m) => m.draftIds ?? []));
+          setApplied(null);
         })
         .catch((e) => {
           // The design's error state: the message isn't kept, the text goes
@@ -166,6 +207,43 @@ export function AssistantProvider({
     [mode, setMode],
   );
 
+  const setTab = useCallback((t: "chat" | "drafts") => {
+    setTabState(t);
+    if (t === "drafts") setNewIds([]);
+  }, []);
+
+  // goDraft is a chip's click: show the drafts and outline that card for a
+  // moment (DraftsPane scrolls to it). Unlike opening the tab, it keeps the
+  // 新 tags — the design's goDraft does too.
+  const goDraft = useCallback((id: number) => {
+    setTabState("drafts");
+    setFocusId(id);
+    clearTimeout(focusTimer.current);
+    focusTimer.current = setTimeout(() => setFocusId(null), 1800);
+  }, []);
+
+  // draftCall runs one drafts write: read-only and the shared errors are
+  // handled here, and the server's list replaces ours. It resolves whether
+  // the call went through.
+  function draftCall(call: () => Promise<AssistantData>, after?: (d: AssistantData) => void): Promise<boolean> {
+    if (!writable) {
+      flash(dict.asstRoToast, "error");
+      return Promise.resolve(false);
+    }
+    return call()
+      .then((d) => {
+        setDrafts(d.drafts);
+        after?.(d);
+        return true;
+      })
+      .catch((e) => {
+        if (e instanceof ApiError && e.status === 401) onUnauthorized(() => void draftCall(call, after));
+        else if (e instanceof ApiError && e.status === 409) flash(dict.asstStillAnswering, "error");
+        else flash(e instanceof ApiError ? e.message : dict.error, "error");
+        return false;
+      });
+  }
+
   const value: Assistant = {
     mode,
     setMode,
@@ -181,6 +259,22 @@ export function AssistantProvider({
     send,
     newChat,
     writable,
+    drafts,
+    newIds,
+    applied,
+    tab,
+    setTab,
+    focusId,
+    goDraft,
+    saveDraft: (id, payload) => draftCall(() => updateAssistantDraft(id, payload)),
+    deleteDraft: (id) => void draftCall(() => deleteAssistantDraft(id)),
+    clearDrafts: () => void draftCall(clearAssistantDrafts, () => setApplied(null)),
+    applyDrafts: () =>
+      void draftCall(applyAssistantDrafts, (d) => {
+        setMessages((m) => [...m, ...d.messages]);
+        setNewIds([]);
+        if (d.result) setApplied(d.result);
+      }),
   };
   return <AssistantContext.Provider value={value}>{children}</AssistantContext.Provider>;
 }
