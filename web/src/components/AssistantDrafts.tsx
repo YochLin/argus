@@ -446,12 +446,12 @@ function DraftEditDrawer({
               {flow ? (
                 <>
                   <div className="wealth-drawer-field">
-                    {label(dict.asstFFlow, "direction")}
-                    {chips(["in", "out"], f.direction, pickDirection, (v) => flowLabel(dict, v) ?? v)}
-                  </div>
-                  <div className="wealth-drawer-field">
                     {label(dict.wealthCashNameLabel, "name")}
                     <input className={unsure("name", !f.name.trim())} value={f.name} onChange={(e) => set("name")(e.target.value)} />
+                  </div>
+                  <div className="wealth-drawer-field">
+                    {label(dict.asstFFlow, "direction")}
+                    {chips(["in", "out"], f.direction, pickDirection, (v) => flowLabel(dict, v) ?? v)}
                   </div>
                 </>
               ) : asset ? (
@@ -483,7 +483,6 @@ function DraftEditDrawer({
                   inputMode="decimal"
                   value={f.value}
                   onChange={(e) => set("value")(e.target.value)}
-                  style={{ textAlign: "right" }}
                 />
               </div>
               {(asset || flow) && (
