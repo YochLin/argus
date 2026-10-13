@@ -2643,7 +2643,18 @@ export interface CashflowDraftPayload {
   category?: string;
 }
 
-export type DraftPayload = AssetDraftPayload | BalanceDraftPayload | CashflowDraftPayload;
+// InsuranceDraftPayload mirrors internal/assets.InsuranceDraft (always TWD).
+export interface InsuranceDraftPayload {
+  name?: string;
+  insurer?: string;
+  insured?: string;
+  kind?: string;
+  amount?: number;
+  annual_premium?: number;
+  premium_years?: number;
+}
+
+export type DraftPayload = AssetDraftPayload | BalanceDraftPayload | CashflowDraftPayload | InsuranceDraftPayload;
 
 // AssistantDraft mirrors wealth_drafts.go's assistantDraft: status and
 // missing are computed by the server on every read. current is a balance
@@ -2662,6 +2673,7 @@ export type AssistantDraft = {
   | { kind: "asset"; payload: AssetDraftPayload }
   | { kind: "balance"; payload: BalanceDraftPayload }
   | { kind: "cashflow"; payload: CashflowDraftPayload }
+  | { kind: "insurance"; payload: InsuranceDraftPayload }
 );
 
 export interface AssistantData {

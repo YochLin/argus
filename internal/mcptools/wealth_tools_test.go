@@ -63,7 +63,7 @@ func TestWealthServer_OnlyWealthTools(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	slices.Sort(names)
-	want := []string{"discard_draft_item", "get_profile_and_goals", "list_assets", "list_cashflows", "list_drafts", "list_insurance", "propose_asset", "propose_balance_update", "propose_cashflow"}
+	want := []string{"discard_draft_item", "get_profile_and_goals", "list_assets", "list_cashflows", "list_drafts", "list_insurance", "propose_asset", "propose_balance_update", "propose_cashflow", "propose_insurance"}
 	if !slices.Equal(names, want) {
 		t.Errorf("wealth server tools = %v, want exactly %v (no trade or watchlist tools)", names, want)
 	}
@@ -269,5 +269,14 @@ func TestWealthTools_Drafts(t *testing.T) {
 	}
 	if _, errText := propose("propose_cashflow", map[string]any{"direction": "out", "name": "薪水", "amount": 1, "currency": "TWD", "category": "salary"}); errText == "" {
 		t.Error("an expense with category salary was accepted")
+	}
+
+	// A policy: pending without its amount, refused with an unknown kind.
+	pol, errText := propose("propose_insurance", map[string]any{"name": "富邦終身壽險", "insurer": "富邦人壽", "kind": "Life", "annual_premium": 36000})
+	if errText != "" || pol.Status != "pending" || !slices.Equal(pol.Missing, []string{"amount"}) {
+		t.Fatalf("insurance draft = %+v (%s), want pending, missing [amount]", pol, errText)
+	}
+	if _, errText := propose("propose_insurance", map[string]any{"name": "儲蓄險", "insurer": "國泰人壽", "kind": "savings", "amount": 1}); errText == "" {
+		t.Error("a policy with kind savings was accepted")
 	}
 }

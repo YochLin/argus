@@ -125,12 +125,13 @@ func TestWealthDrafts_Apply(t *testing.T) {
 	addDraft(t, d, "asset", nil, `{"type":"loan","name":"Car","group":"hard","currency":"TWD"}`) // pending: stays
 	addDraft(t, d, "balance", &esun, `{"value":150}`)
 	addDraft(t, d, "cashflow", nil, `{"direction":"out","name":"Mortgage payment","amount":32000,"currency":"TWD","day_of_month":5,"category":"mortgage"}`)
+	addDraft(t, d, "insurance", nil, `{"name":"Whole life","insurer":"Fubon","kind":"hospital","amount":3000,"annual_premium":36000}`)
 	// History is read-only: a past day that already has a value is refused.
 	failing := addDraft(t, d, "balance", &esun, `{"value":90,"date":"2026-01-02"}`)
 
 	r := decodeDrafts(t, postAssistant(t, s, cookie, "/api/wealth/assistant/apply", nil))
-	if r.Result != (applyOutcome{Applied: 3, Kept: 2}) {
-		t.Errorf("result = %+v, want 3 applied, 2 kept", r.Result)
+	if r.Result != (applyOutcome{Applied: 4, Kept: 2}) {
+		t.Errorf("result = %+v, want 4 applied, 2 kept", r.Result)
 	}
 	if len(r.Messages) != 1 || r.Messages[0].Role != "sys" || r.Messages[0].Result == nil || *r.Messages[0].Result != r.Result {
 		t.Errorf("messages = %+v, want one sys message carrying the result", r.Messages)
@@ -165,5 +166,16 @@ func TestWealthDrafts_Apply(t *testing.T) {
 	if len(flows) != 1 || flows[0].Name != "Mortgage payment" || flows[0].Amount != 32000 || flows[0].Category != "mortgage" ||
 		flows[0].DayOfMonth == nil || *flows[0].DayOfMonth != 5 || flows[0].AssetID != nil || !flows[0].Active {
 		t.Errorf("cash flows = %+v, want the active, unlinked mortgage payment on the 5th", flows)
+	}
+	covs, err := d.ListInsuranceCoverages()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The unit comes from the kind, never from the payload.
+	if len(covs) != 1 || covs[0].Kind != "hospital" || covs[0].Amount != 3000 || covs[0].PerPeriod != "day" {
+		t.Fatalf("coverages = %+v, want one hospital coverage of 3000 per day", covs)
+	}
+	if det, err := d.GetInsuranceDetails(covs[0].AssetID); err != nil || det == nil || det.Insurer != "Fubon" || det.AnnualPremium == nil || *det.AnnualPremium != 36000 {
+		t.Errorf("policy details = %+v (%v), want Fubon, premium 36000", det, err)
 	}
 }

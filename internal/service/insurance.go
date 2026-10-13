@@ -8,28 +8,6 @@ import (
 	"argus/internal/db"
 )
 
-// insuranceKinds fixes the six coverage kinds' order and their unit (§8.6's
-// "月給付/日額型保障不能跟一次金加總" — per_period is derived from kind
-// server-side, never trusted from the client, so a coverage can never be
-// filed under the wrong unit and silently corrupt the have-side aggregate).
-// Order matches the design template's cov[] array (Argus Trading WebUI.dc.html
-// insureModel(), lines 4288-4295).
-var insuranceKinds = []struct{ kind, perPeriod string }{
-	{"life", ""}, {"accident", ""}, {"ci", ""}, {"cancer", ""},
-	{"disability", "month"}, {"hospital", "day"},
-}
-
-// InsuranceKindPerPeriod returns kind's benefit unit ("" lump sum, "month" or
-// "day"); ok is false for a kind that isn't one of the six.
-func InsuranceKindPerPeriod(kind string) (perPeriod string, ok bool) {
-	for _, k := range insuranceKinds {
-		if k.kind == kind {
-			return k.perPeriod, true
-		}
-	}
-	return "", false
-}
-
 // InsuranceCoverageRow is one coverage kind's have / need / gap line. The
 // JSON tags (here and below) are the /api/wealth/insure wire shape.
 type InsuranceCoverageRow struct {
@@ -140,7 +118,7 @@ func ComputeInsuranceGap(store InsuranceStore, fx WealthFXStore, quotes QuoteRea
 	needInputsOK := debtOK && liquidOK && expenseOK && resp.HasProfile
 
 	// Have-side: every coverage on a non-archived insurance-type asset,
-	// summed by kind (§8.6: never across per_period, but insuranceKinds
+	// summed by kind (§8.6: never across per_period, but assets.InsuranceKinds
 	// already keeps kind 1:1 with per_period, so a plain per-kind sum can't
 	// mix units).
 	assetList, err := store.ListAssetsWithValue(false)
@@ -165,7 +143,7 @@ func ComputeInsuranceGap(store InsuranceStore, fx WealthFXStore, quotes QuoteRea
 	if err != nil {
 		return resp, fmt.Errorf("list coverages: %w", err)
 	}
-	haveByKind := make(map[string]float64, len(insuranceKinds))
+	haveByKind := make(map[string]float64, len(assets.InsuranceKinds))
 	for _, c := range coverages {
 		a, ok := policyAssets[c.AssetID]
 		if !ok {
@@ -210,9 +188,9 @@ func ComputeInsuranceGap(store InsuranceStore, fx WealthFXStore, quotes QuoteRea
 		return 0, false
 	}
 
-	for _, k := range insuranceKinds {
-		row := InsuranceCoverageRow{Kind: k.kind, PerPeriod: k.perPeriod, Have: haveByKind[k.kind]}
-		if need, ok := needFor(k.kind); ok {
+	for _, k := range assets.InsuranceKinds {
+		row := InsuranceCoverageRow{Kind: k.Kind, PerPeriod: k.PerPeriod, Have: haveByKind[k.Kind]}
+		if need, ok := needFor(k.Kind); ok {
 			n := need
 			row.Need = &n
 			gap := need - row.Have
