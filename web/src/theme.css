@@ -192,6 +192,9 @@ input {
 }
 
 .sidebar-wordmark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-family: var(--font-mono);
   color: var(--accent);
   letter-spacing: 0.08em;
