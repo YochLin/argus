@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { fetchCompanyNames, fetchConfig, fetchStatus, fetchWealthFX, fetchWealthHome, marketOf, onNetWorthChange, type Market, type Status, type WealthHome } from "./api";
 import { setDisplayCurrency, type DisplayCurrency } from "./currency";
 import { getDictionary, normalizeLang, type Lang } from "./i18n";
@@ -231,6 +231,7 @@ export default function App() {
   // hides both below when here, same "don't render, don't just disable"
   // convention as every other feature-gated chrome element.
   const isWealth = path === "/w" || path.startsWith("/w/");
+  const [wealthRev, setWealthRev] = useState(0);
 
   // 顯示幣別: fmtMoney reads the module-level currency during this render,
   // so it has to be set before any child renders. A currency whose rate
@@ -484,6 +485,7 @@ export default function App() {
       path={path}
       writable={status?.writable ?? false}
       onUnauthorized={(retry) => setAuthRetry(() => retry)}
+      onApplied={() => setWealthRev((n) => n + 1)}
     >
       <div className="app-shell">
         <Sidebar
@@ -520,7 +522,8 @@ export default function App() {
             <ErrorBoundary key={`${path}:${market}`} message={dict.error}>
               {isWealth ? (
                 <AssistantPageSwitch dict={dict} onNavigate={navigate}>
-                  {body}
+                  {/* Remounted after the assistant writes drafts, so the page reloads its data. */}
+                  <Fragment key={wealthRev}>{body}</Fragment>
                 </AssistantPageSwitch>
               ) : (
                 body

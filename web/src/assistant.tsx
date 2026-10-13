@@ -9,11 +9,10 @@ import {
   sendAssistant,
   updateAssistantDraft,
   type ApplyResult,
-  type AssetDraftPayload,
   type AssistantData,
   type AssistantDraft,
   type AssistantMessage,
-  type BalanceDraftPayload,
+  type DraftPayload,
 } from "./api";
 import { useFlash } from "./flash";
 import type { Dictionary } from "./i18n";
@@ -56,7 +55,7 @@ export interface Assistant {
   setTab: (t: "chat" | "drafts") => void;
   focusId: number | null;
   goDraft: (id: number) => void;
-  saveDraft: (id: number, payload: AssetDraftPayload | BalanceDraftPayload) => Promise<boolean>;
+  saveDraft: (id: number, payload: DraftPayload) => Promise<boolean>;
   deleteDraft: (id: number) => void;
   clearDrafts: () => void;
   applyDrafts: () => void;
@@ -87,12 +86,15 @@ export function AssistantProvider({
   path,
   writable,
   onUnauthorized,
+  onApplied,
   children,
 }: {
   dict: Dictionary;
   path: string;
   writable: boolean;
   onUnauthorized: (retry: () => void) => void;
+  // onApplied: drafts were written, so the page behind the assistant is stale.
+  onApplied: () => void;
   children: ReactNode;
 }) {
   const flash = useFlash();
@@ -274,6 +276,7 @@ export function AssistantProvider({
         setMessages((m) => [...m, ...d.messages]);
         setNewIds([]);
         if (d.result) setApplied(d.result);
+        if (d.result?.applied) onApplied();
       }),
   };
   return <AssistantContext.Provider value={value}>{children}</AssistantContext.Provider>;

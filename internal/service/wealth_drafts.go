@@ -64,6 +64,14 @@ func checkDraft(kind string, targetID *int64, payload string, existing []db.Asse
 		if id > 0 && FindAsset(existing, id) == nil {
 			ps = append(ps, assets.Problem{Field: "assetId", Msg: "the asset no longer exists"})
 		}
+	case assets.DraftCashflow:
+		// No duplicate check: two flows may share a name (two policies'
+		// premiums), and the user sees list_cashflows' rows on /w/cash.
+		var d assets.CashflowDraft
+		if err := json.Unmarshal([]byte(payload), &d); err != nil {
+			return DraftCheck{Status: "error", Missing: []string{}, Error: "unreadable draft: " + err.Error()}
+		}
+		ps = d.Problems()
 	default:
 		return DraftCheck{Status: "error", Missing: []string{}, Error: "unknown draft kind: " + kind}
 	}

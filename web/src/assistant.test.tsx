@@ -69,15 +69,16 @@ const balance: api.AssistantDraft = {
 };
 
 function renderWidget({ writable = true, onNavigate = vi.fn(), withCard = false } = {}) {
+  const onApplied = vi.fn();
   render(
     <FlashProvider>
-      <AssistantProvider dict={dict} path="/w" writable={writable} onUnauthorized={vi.fn()}>
+      <AssistantProvider dict={dict} path="/w" writable={writable} onUnauthorized={vi.fn()} onApplied={onApplied}>
         {withCard && <WealthEmptyCard dict={dict} line="empty" onAdd={vi.fn()} topic="insure" />}
         <AssistantFloat dict={dict} onNavigate={onNavigate} />
       </AssistantProvider>
     </FlashProvider>,
   );
-  return { onNavigate };
+  return { onNavigate, onApplied };
 }
 
 function type(text: string) {
@@ -212,12 +213,13 @@ describe("wealth assistant drafts", () => {
     m.fetchAssistant.mockResolvedValue(data([], [deposit, loan]));
     m.applyAssistantDrafts.mockResolvedValue(data([{ ...msg(5, "sys", ""), result: { applied: 1, kept: 1 } }], [loan], { applied: 1, kept: 1 }));
     localStorage.setItem("argus.assistant.mode", "panel");
-    renderWidget();
+    const { onApplied } = renderWidget();
     fireEvent.click(await screen.findByRole("tab", { name: dict.asstTabDrafts.replace("%s", "2") }));
     fireEvent.click(screen.getByText(dict.asstCommitNM.replace("%n", "1").replace("%m", "1")));
 
     expect(await screen.findByText(`✓ ${dict.asstAppliedTitle.replace("%s", "1")}`)).toBeTruthy();
     expect(m.applyAssistantDrafts).toHaveBeenCalledTimes(1);
+    expect(onApplied).toHaveBeenCalledTimes(1); // the page behind reloads
     fireEvent.click(screen.getByRole("tab", { name: dict.asstChat }));
     expect(screen.getByText(`✓ ${dict.asstSysApplied.replace("%n", "1").replace("%m", "1")}`)).toBeTruthy();
   });
@@ -238,6 +240,43 @@ describe("wealth assistant drafts", () => {
 
     await waitFor(() => expect(screen.queryByText(dict.asstEditTitle)).toBeNull());
     expect(m.updateAssistantDraft).toHaveBeenCalledWith(2, expect.objectContaining({ value: 6000000, rate_pct: 2.1, fund_code: "X1", type: "loan" }));
+  });
+
+  it("a cash flow card shows flow, amount and day; the drawer fills in its category", async () => {
+    const pay: api.AssistantDraft = {
+      id: 4,
+      kind: "cashflow",
+      payload: { direction: "out", name: "房貸扣款", amount: 32000, currency: "TWD", day_of_month: 5 },
+      status: "pending",
+      missing: ["category"],
+      createdAt: "2026-10-12T10:00:00+08:00",
+    };
+    m.fetchAssistant.mockResolvedValue(data([], [pay]));
+    m.updateAssistantDraft.mockResolvedValue(data([], [{ ...pay, status: "ok", missing: [] }]));
+    localStorage.setItem("argus.assistant.mode", "panel");
+    renderWidget();
+    fireEvent.click(await screen.findByRole("tab", { name: dict.asstTabDrafts.replace("%s", "1") }));
+
+    expect(screen.getByText(dict.asstKindCash)).toBeTruthy();
+    expect(screen.getByText(dict.wealthCashDirectionOut)).toBeTruthy();
+    expect(screen.getByText("NT$32,000")).toBeTruthy();
+    expect(screen.getByText(dict.asstDayN.replace("%s", "5"))).toBeTruthy();
+    fireEvent.click(screen.getByText(`? ${dict.asstPendingVal}`));
+
+    // Only the expense categories are offered for an expense.
+    expect(screen.queryByText(dict.wealthCashCatSalary)).toBeNull();
+    fireEvent.click(screen.getByText(dict.wealthCashCatMortgage));
+    fireEvent.click(screen.getByText(dict.asstSaveDraft));
+
+    await waitFor(() => expect(screen.queryByText(dict.asstEditTitle)).toBeNull());
+    expect(m.updateAssistantDraft).toHaveBeenCalledWith(4, {
+      direction: "out",
+      name: "房貸扣款",
+      amount: 32000,
+      currency: "TWD",
+      day_of_month: 5,
+      category: "mortgage",
+    });
   });
 
   it("read-only: delete and confirm only toast", async () => {

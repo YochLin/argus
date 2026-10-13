@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"argus/internal/assets"
 	"argus/internal/db"
 	"argus/internal/logger"
 	"argus/internal/service"
@@ -305,16 +306,8 @@ func (s *Server) handleWealthCashCreate(w http.ResponseWriter, r *http.Request) 
 	}
 	req.Direction = strings.TrimSpace(req.Direction)
 	req.Name = strings.TrimSpace(req.Name)
-	if req.Direction != "in" && req.Direction != "out" {
-		writeError(w, http.StatusBadRequest, "direction must be \"in\" or \"out\"")
-		return
-	}
-	if req.Name == "" || req.Amount <= 0 {
-		writeError(w, http.StatusBadRequest, "name and a positive amount are required")
-		return
-	}
-	if req.DayOfMonth != nil && (*req.DayOfMonth < 1 || *req.DayOfMonth > 31) {
-		writeError(w, http.StatusBadRequest, "dayOfMonth must be between 1 and 31")
+	if ps := assets.ValidateCashflow(assets.NewCashflow{Direction: req.Direction, Name: req.Name, Amount: &req.Amount, DayOfMonth: req.DayOfMonth}); len(ps) > 0 {
+		writeError(w, http.StatusBadRequest, ps[0].Msg)
 		return
 	}
 	id, err := s.wealthDB.CreateRecurringCashflow(db.NewRecurringCashflow{
@@ -353,12 +346,9 @@ func (s *Server) handleWealthCashUpdate(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "id is required")
 		return
 	}
-	if req.Name == "" || req.Amount <= 0 {
-		writeError(w, http.StatusBadRequest, "name and a positive amount are required")
-		return
-	}
-	if req.DayOfMonth != nil && (*req.DayOfMonth < 1 || *req.DayOfMonth > 31) {
-		writeError(w, http.StatusBadRequest, "dayOfMonth must be between 1 and 31")
+	// Direction can't be edited; "out" stands in so only the edited fields count.
+	if ps := assets.ValidateCashflow(assets.NewCashflow{Direction: "out", Name: req.Name, Amount: &req.Amount, DayOfMonth: req.DayOfMonth}); len(ps) > 0 {
+		writeError(w, http.StatusBadRequest, ps[0].Msg)
 		return
 	}
 	switch err := s.wealthDB.UpdateRecurringCashflow(req.ID, db.RecurringCashflowEdit{

@@ -2633,6 +2633,18 @@ export interface BalanceDraftPayload {
   date?: string;
 }
 
+// CashflowDraftPayload mirrors internal/assets.CashflowDraft.
+export interface CashflowDraftPayload {
+  direction?: string;
+  name?: string;
+  amount?: number;
+  currency?: string;
+  day_of_month?: number;
+  category?: string;
+}
+
+export type DraftPayload = AssetDraftPayload | BalanceDraftPayload | CashflowDraftPayload;
+
 // AssistantDraft mirrors wealth_drafts.go's assistantDraft: status and
 // missing are computed by the server on every read. current is a balance
 // draft's asset as it is now.
@@ -2646,7 +2658,11 @@ export type AssistantDraft = {
   failed?: boolean;
   current?: { name: string; type: string; currency: string; value: number | null };
   createdAt: string;
-} & ({ kind: "asset"; payload: AssetDraftPayload } | { kind: "balance"; payload: BalanceDraftPayload });
+} & (
+  | { kind: "asset"; payload: AssetDraftPayload }
+  | { kind: "balance"; payload: BalanceDraftPayload }
+  | { kind: "cashflow"; payload: CashflowDraftPayload }
+);
 
 export interface AssistantData {
   messages: AssistantMessage[];
@@ -2682,7 +2698,7 @@ export function newAssistantChat(): Promise<AssistantData> {
   return assistantCall("/api/wealth/assistant/new", {}, "messages");
 }
 
-export function updateAssistantDraft(id: number, payload: AssetDraftPayload | BalanceDraftPayload): Promise<AssistantData> {
+export function updateAssistantDraft(id: number, payload: DraftPayload): Promise<AssistantData> {
   return assistantCall("/api/wealth/assistant/drafts/update", { id, payload }, "drafts");
 }
 
@@ -2696,5 +2712,5 @@ export function clearAssistantDrafts(): Promise<AssistantData> {
 
 // applyAssistantDrafts writes every ready draft; messages is the sys note.
 export function applyAssistantDrafts(): Promise<AssistantData> {
-  return assistantCall("/api/wealth/assistant/apply", {}, "drafts");
+  return movesNetWorth(assistantCall("/api/wealth/assistant/apply", {}, "drafts"));
 }
