@@ -89,6 +89,11 @@ func registerWealthTools(s *mcp.Server, wt *wealthTools) {
 	}, wt.proposeBalance)
 
 	mcp.AddTool(s, &mcp.Tool{
+		Name:        "propose_cashflow",
+		Description: "Propose a new recurring monthly cash flow (salary, rent received, a loan or mortgage payment, a fund DCA, a premium, living costs, ...) as a draft the user confirms on the page. Check list_cashflows first: a flow already there is changed on the cash flow page, not proposed again. Leave out what the user didn't say and ask for it. Pass draft_id to replace an earlier cash flow draft.",
+	}, wt.proposeCashflow)
+
+	mcp.AddTool(s, &mcp.Tool{
 		Name:        "discard_draft_item",
 		Description: "Delete one draft, e.g. when the user says it was wrong or a duplicate.",
 	}, wt.discardDraft)
@@ -367,6 +372,20 @@ func (wt *wealthTools) proposeBalance(ctx context.Context, _ *mcp.CallToolReques
 		return nil, nil, err
 	}
 	return wt.propose(in.DraftID, assets.DraftBalance, &in.AssetID, string(payload))
+}
+
+type proposeCashflowInput struct {
+	DraftID int64 `json:"draft_id,omitempty" jsonschema:"an earlier cash flow draft to replace; omit for a new one"`
+	assets.CashflowDraft
+}
+
+func (wt *wealthTools) proposeCashflow(ctx context.Context, _ *mcp.CallToolRequest, in proposeCashflowInput) (*mcp.CallToolResult, any, error) {
+	in.Normalize()
+	payload, err := json.Marshal(in.CashflowDraft)
+	if err != nil {
+		return nil, nil, err
+	}
+	return wt.propose(in.DraftID, assets.DraftCashflow, nil, string(payload))
 }
 
 // propose stores a draft unless it is invalid: an invalid one comes back as

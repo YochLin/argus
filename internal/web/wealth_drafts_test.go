@@ -124,12 +124,13 @@ func TestWealthDrafts_Apply(t *testing.T) {
 	addDraft(t, d, "asset", nil, `{"type":"loan","name":"Mortgage","group":"hard","currency":"TWD","value":6000000,"rate_pct":2.1}`)
 	addDraft(t, d, "asset", nil, `{"type":"loan","name":"Car","group":"hard","currency":"TWD"}`) // pending: stays
 	addDraft(t, d, "balance", &esun, `{"value":150}`)
+	addDraft(t, d, "cashflow", nil, `{"direction":"out","name":"Mortgage payment","amount":32000,"currency":"TWD","day_of_month":5,"category":"mortgage"}`)
 	// History is read-only: a past day that already has a value is refused.
 	failing := addDraft(t, d, "balance", &esun, `{"value":90,"date":"2026-01-02"}`)
 
 	r := decodeDrafts(t, postAssistant(t, s, cookie, "/api/wealth/assistant/apply", nil))
-	if r.Result != (applyOutcome{Applied: 2, Kept: 2}) {
-		t.Errorf("result = %+v, want 2 applied, 2 kept", r.Result)
+	if r.Result != (applyOutcome{Applied: 3, Kept: 2}) {
+		t.Errorf("result = %+v, want 3 applied, 2 kept", r.Result)
 	}
 	if len(r.Messages) != 1 || r.Messages[0].Role != "sys" || r.Messages[0].Result == nil || *r.Messages[0].Result != r.Result {
 		t.Errorf("messages = %+v, want one sys message carrying the result", r.Messages)
@@ -156,5 +157,13 @@ func TestWealthDrafts_Apply(t *testing.T) {
 	}
 	if det, err := d.GetLoanDetails(mortgage.ID); err != nil || det == nil || det.RatePct == nil || *det.RatePct != 2.1 {
 		t.Errorf("mortgage loan details = %+v (%v), want rate 2.1", det, err)
+	}
+	flows, err := d.ListRecurringCashflows(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(flows) != 1 || flows[0].Name != "Mortgage payment" || flows[0].Amount != 32000 || flows[0].Category != "mortgage" ||
+		flows[0].DayOfMonth == nil || *flows[0].DayOfMonth != 5 || flows[0].AssetID != nil || !flows[0].Active {
+		t.Errorf("cash flows = %+v, want the active, unlinked mortgage payment on the 5th", flows)
 	}
 }

@@ -7795,7 +7795,38 @@ a.snap-news-head:hover {
   color: var(--accent);
 }
 
-/* edit drawer bits (inside the shared .wealth-drawer-panel) */
+/* edit drawer bits (inside the shared .wealth-drawer-panel). The assistant
+   design's drawer is a touch tighter than the quick-add one, and its inputs
+   are mono (the read-only name stays sans). */
+.wealth-drawer-panel.asst-vars h2.asst-label {
+  margin: 0;
+  font-weight: 400;
+}
+
+.wealth-drawer-panel.asst-vars .modal-close {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.asst-vars .wealth-drawer-body {
+  padding: 16px 18px;
+  gap: 13px;
+}
+
+.asst-vars .wealth-drawer-field {
+  gap: 5px;
+}
+
+.asst-vars .wealth-drawer-field-label {
+  align-items: center;
+  gap: 7px;
+}
+
+.asst-vars .wealth-drawer-field input {
+  border-radius: 8px;
+  font-family: var(--font-mono);
+}
+
 .asst-edit-note {
   padding: 8px 11px;
   border-radius: 8px;
@@ -7816,7 +7847,6 @@ a.snap-news-head:hover {
 }
 
 .asst-ai-unsure {
-  margin-left: 7px;
   font-family: var(--font-mono);
   font-size: 9.5px;
   color: var(--asst-warn-ink);
@@ -7828,6 +7858,7 @@ a.snap-news-head:hover {
 
 .wealth-drawer-field input.asst-input-ro {
   color: var(--ink-2);
+  font-family: var(--font-sans);
 }
 
 /* "已加入草稿：…" under an ai turn */

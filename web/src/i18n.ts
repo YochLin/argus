@@ -1167,6 +1167,9 @@ export interface Dictionary {
   asstAddedTo: string;
   asstKindAsset: string;
   asstKindBalance: string;
+  asstKindCash: string;
+  asstFFlow: string;
+  asstDayN: string;
   asstStOk: string;
   asstStPending: string;
   asstStError: string;
@@ -2608,6 +2611,9 @@ const en: Dictionary = {
   asstAddedTo: "Added to drafts: ",
   asstKindAsset: "NEW",
   asstKindBalance: "BALANCE",
+  asstKindCash: "MONTHLY",
+  asstFFlow: "Flow",
+  asstDayN: "Day %s",
   asstStOk: "Ready",
   asstStPending: "Needs info",
   asstStError: "Can't save",
@@ -2632,7 +2638,7 @@ const en: Dictionary = {
   asstCommitNM: "Save %n · %m need fixes",
   asstFootNote: "Drafts that need info or have errors are skipped and stay here for you to fix.",
   asstAppliedTitle: "%s saved",
-  asstAppliedBody: "Saved to the balance sheet.",
+  asstAppliedBody: "Saved to the balance sheet and cash flow.",
   asstAppliedKept: " The %s below weren't saved — fix them and save again.",
   asstSysApplied: "%n saved · %m left in drafts to fix",
   asstSysAppliedAll: "%s saved",
@@ -3991,6 +3997,9 @@ const zh: Dictionary = {
   asstAddedTo: "已加入草稿：",
   asstKindAsset: "新增",
   asstKindBalance: "更新餘額",
+  asstKindCash: "每月現金流",
+  asstFFlow: "收支",
+  asstDayN: "每月 %s 日",
   asstStOk: "可寫入",
   asstStPending: "待補",
   asstStError: "無法寫入",
@@ -4015,7 +4024,7 @@ const zh: Dictionary = {
   asstCommitNM: "寫入 %n 筆，%m 筆需修正",
   asstFootNote: "待補和錯誤的草稿不會寫入，會留在這裡讓你修正。",
   asstAppliedTitle: "已寫入 %s 筆",
-  asstAppliedBody: "已存進資產負債表。",
+  asstAppliedBody: "已存進資產負債表與現金流。",
   asstAppliedKept: "下面 %s 筆沒有寫入，修正後可以再寫一次。",
   asstSysApplied: "已寫入 %n 筆，%m 筆留在草稿待修正",
   asstSysAppliedAll: "已寫入 %s 筆",

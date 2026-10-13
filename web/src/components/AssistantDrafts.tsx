@@ -1,10 +1,11 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { AssetDraftPayload, AssetGroup, AssistantDraft } from "../api";
+import type { AssetGroup, AssistantDraft, DraftPayload } from "../api";
 import type { Assistant } from "../assistant";
 import { useFlash } from "../flash";
 import type { Dictionary } from "../i18n";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, categoryLabel } from "./WealthCashView";
 import { CURRENCIES, GROUPS, groupLabel, typeLabel } from "./WealthHomeView";
 
 // The drafts column of the wealth assistant (Phase 28 B2, design view
@@ -30,11 +31,18 @@ export function draftTitle(dict: Dictionary, d: AssistantDraft): string {
 
 // draftChip is a chip's label: the name and the amount, as in the design.
 export function draftChip(dict: Dictionary, d: AssistantDraft): string {
-  const p = d.payload;
+  const v = d.kind === "cashflow" ? d.payload.amount : d.payload.value;
   const cur = d.kind === "balance" ? d.current?.currency : d.payload.currency;
   const neg = d.kind === "asset" && LOAN_TYPES.includes(d.payload.type ?? "");
-  return p.value == null ? draftTitle(dict, d) : `${draftTitle(dict, d)} ${money(p.value, cur, neg)}`;
+  return v == null ? draftTitle(dict, d) : `${draftTitle(dict, d)} ${money(v, cur, neg)}`;
 }
+
+function kindLabel(dict: Dictionary, d: AssistantDraft): string {
+  return d.kind === "balance" ? dict.asstKindBalance : d.kind === "cashflow" ? dict.asstKindCash : dict.asstKindAsset;
+}
+
+const flowLabel = (dict: Dictionary, dir?: string) =>
+  dir === "in" ? dict.wealthCashDirectionIn : dir === "out" ? dict.wealthCashDirectionOut : dir;
 
 function statusLabel(dict: Dictionary, s: AssistantDraft["status"]): string {
   return s === "ok" ? dict.asstStOk : s === "pending" ? dict.asstStPending : dict.asstStError;
@@ -174,6 +182,25 @@ export function DraftsPane({
 
 type Field = { label: string; value?: string; missing?: boolean };
 
+function FieldGrid({ fields, dict, onEdit }: { fields: Field[]; dict: Dictionary; onEdit: () => void }) {
+  return (
+    <div className="asst-fields">
+      {fields.map((f) => (
+        <div key={f.label} className="asst-field">
+          <span className="asst-field-k">{f.label}</span>
+          {f.missing ? (
+            <button className="asst-missing" onClick={onEdit}>
+              ? {dict.asstPendingVal}
+            </button>
+          ) : (
+            <span className="asst-field-v">{f.value ?? "—"}</span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function DraftCard({
   dict,
   d,
@@ -227,6 +254,17 @@ function DraftCard({
         </div>
       </div>
     );
+  } else if (d.kind === "cashflow") {
+    // The design's three fields; currency and category only when missing.
+    const p = d.payload;
+    const fields: Field[] = [
+      { label: dict.asstFFlow, value: flowLabel(dict, p.direction), missing: miss("direction") },
+      { label: dict.asstFAmt, value: p.amount != null ? money(p.amount, p.currency) : undefined, missing: miss("amount") },
+      { label: dict.wealthCashDayOfMonthLabel, value: p.day_of_month != null ? dict.asstDayN.replace("%s", String(p.day_of_month)) : "—" },
+    ];
+    if (miss("currency")) fields.push({ label: dict.asstFCur, missing: true });
+    if (miss("category")) fields.push({ label: dict.wealthCashCategoryLabel, missing: true });
+    body = <FieldGrid fields={fields} dict={dict} onEdit={onEdit} />;
   } else {
     const p = d.payload;
     const loan = LOAN_TYPES.includes(p.type ?? "");
@@ -244,28 +282,13 @@ function DraftCard({
       });
     }
     if (p.date) fields.push({ label: dict.asstFDate, value: p.date });
-    body = (
-      <div className="asst-fields">
-        {fields.map((f) => (
-          <div key={f.label} className="asst-field">
-            <span className="asst-field-k">{f.label}</span>
-            {f.missing ? (
-              <button className="asst-missing" onClick={onEdit}>
-                ? {dict.asstPendingVal}
-              </button>
-            ) : (
-              <span className="asst-field-v">{f.value ?? "—"}</span>
-            )}
-          </div>
-        ))}
-      </div>
-    );
+    body = <FieldGrid fields={fields} dict={dict} onEdit={onEdit} />;
   }
 
   return (
     <div className={`asst-dcard ${d.status}${focused ? " focus" : ""}`} data-draft={d.id}>
       <div className="asst-dcard-head">
-        <span className="asst-dcard-kind">{d.kind === "balance" ? dict.asstKindBalance : dict.asstKindAsset}</span>
+        <span className="asst-dcard-kind">{kindLabel(dict, d)}</span>
         <span className="asst-dcard-name">{draftTitle(dict, d)}</span>
         {isNew && <span className="asst-dcard-new">{dict.asstNewTag}</span>}
         <span className={`asst-st ${d.status}`}>{statusLabel(dict, d.status)}</span>
@@ -302,6 +325,8 @@ function num(s: string): number | undefined {
 
 const str = (v?: number) => (v == null ? "" : String(v));
 
+const flowCategories = (dir: string): string[] => [...(dir === "in" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES)];
+
 // DraftEditDrawer is the design's 編輯草稿 drawer, with the §10.2 deviation:
 // chips and number/date inputs instead of free text, so an edit can't type
 // an amount the server reads as "missing". Fields it doesn't show (a fund's
@@ -315,16 +340,20 @@ function DraftEditDrawer({
   dict: Dictionary;
   d: AssistantDraft;
   onClose: () => void;
-  onSave: (payload: AssetDraftPayload) => Promise<unknown>;
+  onSave: (payload: DraftPayload) => Promise<unknown>;
 }) {
   const asset = d.kind === "asset" ? d.payload : null;
+  const flow = d.kind === "cashflow" ? d.payload : null;
   const [f, setF] = useState({
-    name: asset?.name ?? "",
+    name: asset?.name ?? flow?.name ?? "",
     type: asset?.type ?? "",
     group: asset?.group ?? "",
-    currency: asset?.currency ?? "",
-    value: str(d.payload.value),
-    date: d.payload.date ?? "",
+    currency: asset?.currency ?? flow?.currency ?? "",
+    value: str(d.kind === "cashflow" ? d.payload.amount : d.payload.value),
+    date: d.kind === "cashflow" ? "" : (d.payload.date ?? ""),
+    direction: flow?.direction ?? "",
+    day: str(flow?.day_of_month),
+    category: flow?.category ?? "",
     inst: asset ? ((LOAN_TYPES.includes(asset.type ?? "") ? asset.lender : asset.type === "deposit" ? asset.bank : asset.venue) ?? "") : "",
     accountNote: asset?.account_note ?? "",
     rate: str(asset?.rate_pct),
@@ -334,10 +363,24 @@ function DraftEditDrawer({
   const [saving, setSaving] = useState(false);
   const set = (k: keyof typeof f) => (v: string) => setF((p) => ({ ...p, [k]: v }));
   const loan = LOAN_TYPES.includes(f.type);
+  const valueKey = flow ? "amount" : "value";
+  // A category belongs to one direction: switching drops one that doesn't fit.
+  const pickDirection = (v: string) =>
+    setF((p) => ({ ...p, direction: v, category: flowCategories(v).includes(p.category) ? p.category : "" }));
 
   function save() {
-    let payload: AssetDraftPayload;
-    if (!asset) {
+    let payload: DraftPayload;
+    if (flow) {
+      payload = {
+        ...flow,
+        direction: f.direction,
+        name: f.name,
+        amount: num(f.value),
+        currency: f.currency,
+        day_of_month: num(f.day),
+        category: f.category,
+      };
+    } else if (!asset) {
       payload = { value: num(f.value), date: f.date || undefined };
     } else {
       const inst = f.inst.trim() || undefined;
@@ -387,7 +430,7 @@ function DraftEditDrawer({
           <Dialog.Content className="wealth-drawer-panel asst-vars" aria-describedby={undefined} onOpenAutoFocus={(e) => e.preventDefault()}>
             <div className="wealth-drawer-header">
               <Dialog.Title className="asst-label">{dict.asstEditTitle}</Dialog.Title>
-              <span className="wealth-drawer-step">{d.kind === "balance" ? dict.asstKindBalance : dict.asstKindAsset}</span>
+              <span className="wealth-drawer-step">{kindLabel(dict, d)}</span>
               <Dialog.Close className="modal-close" style={{ marginLeft: "auto" }} aria-label="close">
                 ×
               </Dialog.Close>
@@ -400,7 +443,18 @@ function DraftEditDrawer({
                   {d.error}
                 </div>
               )}
-              {asset ? (
+              {flow ? (
+                <>
+                  <div className="wealth-drawer-field">
+                    {label(dict.wealthCashNameLabel, "name")}
+                    <input className={unsure("name", !f.name.trim())} value={f.name} onChange={(e) => set("name")(e.target.value)} />
+                  </div>
+                  <div className="wealth-drawer-field">
+                    {label(dict.asstFFlow, "direction")}
+                    {chips(["in", "out"], f.direction, pickDirection, (v) => flowLabel(dict, v) ?? v)}
+                  </div>
+                </>
+              ) : asset ? (
                 <>
                   <div className="wealth-drawer-field">
                     {label(dict.wealthName, "name")}
@@ -422,26 +476,38 @@ function DraftEditDrawer({
                 </div>
               )}
               <div className="wealth-drawer-field">
-                {label(d.kind === "balance" ? dict.asstTo : dict.asstFAmt, "value")}
+                {label(d.kind === "balance" ? dict.asstTo : dict.asstFAmt, valueKey)}
                 <input
-                  className={`mono${unsure("value", f.value.trim() === "")}`}
+                  className={`mono${unsure(valueKey, f.value.trim() === "")}`}
                   type="number"
                   inputMode="decimal"
                   value={f.value}
                   onChange={(e) => set("value")(e.target.value)}
-                  style={{ textAlign: "right" }}
                 />
               </div>
-              {asset && (
+              {(asset || flow) && (
                 <div className="wealth-drawer-field">
                   {label(dict.asstFCur, "currency")}
                   {chips(CURRENCIES, f.currency, set("currency"), (c) => c)}
                 </div>
               )}
-              <div className="wealth-drawer-field">
-                {label(dict.asstFDate, "date")}
-                <input className="mono" type="date" value={f.date} onChange={(e) => set("date")(e.target.value)} />
-              </div>
+              {flow ? (
+                <>
+                  <div className="wealth-drawer-field">
+                    {label(dict.wealthCashDayOfMonthLabel, "day_of_month")}
+                    <input className="mono" type="number" inputMode="numeric" min={1} max={31} value={f.day} onChange={(e) => set("day")(e.target.value)} />
+                  </div>
+                  <div className="wealth-drawer-field">
+                    {label(dict.wealthCashCategoryLabel, "category")}
+                    {chips(flowCategories(f.direction), f.category, set("category"), (c) => categoryLabel(dict, c))}
+                  </div>
+                </>
+              ) : (
+                <div className="wealth-drawer-field">
+                  {label(dict.asstFDate, "date")}
+                  <input className="mono" type="date" value={f.date} onChange={(e) => set("date")(e.target.value)} />
+                </div>
+              )}
               {asset && (
                 <div className="wealth-drawer-field">
                   <span className="wealth-drawer-field-label">{loan ? dict.wealthLender : dict.wealthFInst}</span>

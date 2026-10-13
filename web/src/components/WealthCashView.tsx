@@ -31,10 +31,10 @@ const CURRENCY = "NT$"; // display currency fixed to TWD, same known gap as Weal
 // 支出六項 (docs/phase-9-asset-platform.md §8.4) — a free-text `category`
 // column server-side, but the add form only ever offers these eleven so the
 // item list groups predictably.
-const INCOME_CATEGORIES = ["salary", "rent", "dividend", "bond_interest", "fund_dividend"] as const;
-const EXPENSE_CATEGORIES = ["living", "mortgage", "sip", "loan", "insurance", "tax"] as const;
+export const INCOME_CATEGORIES = ["salary", "rent", "dividend", "bond_interest", "fund_dividend"] as const;
+export const EXPENSE_CATEGORIES = ["living", "mortgage", "sip", "loan", "insurance", "tax"] as const;
 
-function categoryLabel(dict: Dictionary, category: string | undefined): string {
+export function categoryLabel(dict: Dictionary, category: string | undefined): string {
   switch (category) {
     case "salary":
       return dict.wealthCashCatSalary;

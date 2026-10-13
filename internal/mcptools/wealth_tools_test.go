@@ -63,7 +63,7 @@ func TestWealthServer_OnlyWealthTools(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	slices.Sort(names)
-	want := []string{"discard_draft_item", "get_profile_and_goals", "list_assets", "list_cashflows", "list_drafts", "list_insurance", "propose_asset", "propose_balance_update"}
+	want := []string{"discard_draft_item", "get_profile_and_goals", "list_assets", "list_cashflows", "list_drafts", "list_insurance", "propose_asset", "propose_balance_update", "propose_cashflow"}
 	if !slices.Equal(names, want) {
 		t.Errorf("wealth server tools = %v, want exactly %v (no trade or watchlist tools)", names, want)
 	}
@@ -259,5 +259,15 @@ func TestWealthTools_Drafts(t *testing.T) {
 	}
 	if rows, _ := d.ListWealthDrafts(); len(rows) != 1 {
 		t.Errorf("after discard %d drafts left, want 1", len(rows))
+	}
+
+	// A cash flow: pending without its amount, refused with an income
+	// category on an expense.
+	pay, errText := propose("propose_cashflow", map[string]any{"direction": "OUT", "name": "房貸扣款", "currency": "TWD", "day_of_month": 5, "category": "mortgage"})
+	if errText != "" || pay.Status != "pending" || !slices.Equal(pay.Missing, []string{"amount"}) {
+		t.Fatalf("cash flow draft = %+v (%s), want pending, missing [amount]", pay, errText)
+	}
+	if _, errText := propose("propose_cashflow", map[string]any{"direction": "out", "name": "薪水", "amount": 1, "currency": "TWD", "category": "salary"}); errText == "" {
+		t.Error("an expense with category salary was accepted")
 	}
 }

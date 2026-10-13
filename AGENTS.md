@@ -420,7 +420,8 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   The model never writes the user's records: its `propose_*` tools only add rows to `wealth_drafts`
   (the one table `argus mcp wealth` can write), and `wealth_drafts.go`'s `/apply` writes the drafts
   the user confirmed through the same paths as the manual forms (a new asset via the CSV import's
-  write, a balance via `LogAssetValue`). A draft's status (ok/pending/error) is never stored —
+  write, a balance via `LogAssetValue`, a monthly cash flow via `CreateRecurringCashflow` — never
+  linked to an asset; that link is made on `/w/cash`). A draft's status (ok/pending/error) is never stored —
   `service.CheckWealthDraft` recomputes it on every read, for the model's `list_drafts` and the web
   alike, from the shared rules in `internal/assets`.
 

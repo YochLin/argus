@@ -145,6 +145,14 @@ func (s *Server) handleWealthDraftUpdate(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		payload = d
+	case assets.DraftCashflow:
+		var d assets.CashflowDraft
+		if err := json.Unmarshal(req.Payload, &d); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid payload")
+			return
+		}
+		d.Normalize()
+		payload = d
 	default:
 		writeError(w, http.StatusBadRequest, "this draft can't be edited")
 		return
@@ -263,7 +271,8 @@ func anyOK(views []assistantDraft) bool {
 
 // applyDraft writes one ok draft. A new asset goes through the CSV import's
 // write (Source "import", §5) so detail rows land exactly as an imported one
-// would; a balance goes through LogAssetValue, the value drawer's path.
+// would; a balance goes through LogAssetValue, the value drawer's path; a
+// cash flow through CreateRecurringCashflow, /w/cash's add form's.
 func (s *Server) applyDraft(d db.WealthDraft) error {
 	switch d.Kind {
 	case assets.DraftAsset:
@@ -295,6 +304,16 @@ func (s *Server) applyDraft(d db.WealthDraft) error {
 			date = day
 		}
 		return s.wealthDB.LogAssetValue(*d.TargetID, date, *b.Value, day)
+	case assets.DraftCashflow:
+		var c assets.CashflowDraft
+		if err := json.Unmarshal([]byte(d.Payload), &c); err != nil {
+			return err
+		}
+		_, err := s.wealthDB.CreateRecurringCashflow(db.NewRecurringCashflow{
+			Direction: c.Direction, Name: c.Name, Amount: *c.Amount, Currency: c.Currency,
+			DayOfMonth: c.DayOfMonth, Category: c.Category,
+		})
+		return err
 	}
 	return fmt.Errorf("unknown draft kind %q", d.Kind)
 }
