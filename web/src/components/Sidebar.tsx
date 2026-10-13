@@ -115,7 +115,17 @@ export function Sidebar({
   return (
     <div className="sidebar">
       <div className="sidebar-wordmark">
-        ARGUS <span className="cursor">▮</span>
+        <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">
+          <path
+            d="M3 16 C8 7.5 24 7.5 29 16 C24 24.5 8 24.5 3 16 Z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.6"
+            strokeLinejoin="round"
+          />
+          <rect className="cursor" x="12.5" y="12.5" width="7" height="7" rx="1" fill="currentColor" />
+        </svg>
+        <span>ARGUS</span>
       </div>
       <nav className="sidebar-nav">
         {navLinks.map((link) => (
