@@ -7,6 +7,7 @@ import type { Dictionary } from "../i18n";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, categoryLabel } from "./WealthCashView";
 import { CURRENCIES, GROUPS, groupLabel, typeLabel } from "./WealthHomeView";
+import { KIND_ORDER, KIND_PER_PERIOD, kindLabel as insKindLabel, periodSuffix } from "./WealthInsureView";
 
 // The drafts column of the wealth assistant (Phase 28 B2, design view
 // "drafts"/"applied"): what the AI proposed, each card with the server's
@@ -31,15 +32,30 @@ export function draftTitle(dict: Dictionary, d: AssistantDraft): string {
 
 // draftChip is a chip's label: the name and the amount, as in the design.
 export function draftChip(dict: Dictionary, d: AssistantDraft): string {
-  const v = d.kind === "cashflow" ? d.payload.amount : d.payload.value;
-  const cur = d.kind === "balance" ? d.current?.currency : d.payload.currency;
+  const v = d.kind === "cashflow" || d.kind === "insurance" ? d.payload.amount : d.payload.value;
+  const cur = d.kind === "balance" ? d.current?.currency : d.kind === "insurance" ? "TWD" : d.payload.currency;
   const neg = d.kind === "asset" && LOAN_TYPES.includes(d.payload.type ?? "");
   return v == null ? draftTitle(dict, d) : `${draftTitle(dict, d)} ${money(v, cur, neg)}`;
 }
 
 function kindLabel(dict: Dictionary, d: AssistantDraft): string {
-  return d.kind === "balance" ? dict.asstKindBalance : d.kind === "cashflow" ? dict.asstKindCash : dict.asstKindAsset;
+  return d.kind === "balance"
+    ? dict.asstKindBalance
+    : d.kind === "cashflow"
+      ? dict.asstKindCash
+      : d.kind === "insurance"
+        ? dict.asstKindIns
+        : dict.asstKindAsset;
 }
+
+// insKind narrows a payload's kind to one of /w/insure's six (else undefined).
+const insKind = (k?: string) => KIND_ORDER.find((x) => x === k);
+
+// insUnit is a coverage kind's unit suffix (／月, ／日, or none).
+const insUnit = (dict: Dictionary, kind?: string) => {
+  const k = insKind(kind);
+  return k ? periodSuffix(dict, KIND_PER_PERIOD[k]) : "";
+};
 
 const flowLabel = (dict: Dictionary, dir?: string) =>
   dir === "in" ? dict.wealthCashDirectionIn : dir === "out" ? dict.wealthCashDirectionOut : dir;
@@ -265,6 +281,17 @@ function DraftCard({
     if (miss("currency")) fields.push({ label: dict.asstFCur, missing: true });
     if (miss("category")) fields.push({ label: dict.wealthCashCategoryLabel, missing: true });
     body = <FieldGrid fields={fields} dict={dict} onEdit={onEdit} />;
+  } else if (d.kind === "insurance") {
+    // The design's four: 保險公司, 保障類型, 保額, 年繳保費.
+    const p = d.payload;
+    const k = insKind(p.kind);
+    const fields: Field[] = [
+      { label: dict.wealthInsureInsurerLabel, value: p.insurer || undefined, missing: miss("insurer") },
+      { label: dict.wealthInsureKindLabel, value: k ? insKindLabel(dict, k) : p.kind, missing: miss("kind") },
+      { label: dict.wealthInsureAmountLabel, value: p.amount != null ? money(p.amount, "TWD") + insUnit(dict, p.kind) : undefined, missing: miss("amount") },
+      { label: dict.wealthInsureAnnualPremiumLabel, value: p.annual_premium != null ? money(p.annual_premium, "TWD") : "—" },
+    ];
+    body = <FieldGrid fields={fields} dict={dict} onEdit={onEdit} />;
   } else {
     const p = d.payload;
     const loan = LOAN_TYPES.includes(p.type ?? "");
@@ -344,16 +371,22 @@ function DraftEditDrawer({
 }) {
   const asset = d.kind === "asset" ? d.payload : null;
   const flow = d.kind === "cashflow" ? d.payload : null;
+  const ins = d.kind === "insurance" ? d.payload : null;
   const [f, setF] = useState({
-    name: asset?.name ?? flow?.name ?? "",
+    name: asset?.name ?? flow?.name ?? ins?.name ?? "",
     type: asset?.type ?? "",
     group: asset?.group ?? "",
     currency: asset?.currency ?? flow?.currency ?? "",
-    value: str(d.kind === "cashflow" ? d.payload.amount : d.payload.value),
-    date: d.kind === "cashflow" ? "" : (d.payload.date ?? ""),
+    value: str(d.kind === "cashflow" || d.kind === "insurance" ? d.payload.amount : d.payload.value),
+    date: d.kind === "cashflow" || d.kind === "insurance" ? "" : (d.payload.date ?? ""),
     direction: flow?.direction ?? "",
     day: str(flow?.day_of_month),
     category: flow?.category ?? "",
+    insurer: ins?.insurer ?? "",
+    insured: ins?.insured ?? "",
+    insKind: ins?.kind ?? "",
+    premium: str(ins?.annual_premium),
+    years: str(ins?.premium_years),
     inst: asset ? ((LOAN_TYPES.includes(asset.type ?? "") ? asset.lender : asset.type === "deposit" ? asset.bank : asset.venue) ?? "") : "",
     accountNote: asset?.account_note ?? "",
     rate: str(asset?.rate_pct),
@@ -363,7 +396,7 @@ function DraftEditDrawer({
   const [saving, setSaving] = useState(false);
   const set = (k: keyof typeof f) => (v: string) => setF((p) => ({ ...p, [k]: v }));
   const loan = LOAN_TYPES.includes(f.type);
-  const valueKey = flow ? "amount" : "value";
+  const valueKey = flow || ins ? "amount" : "value";
   // A category belongs to one direction: switching drops one that doesn't fit.
   const pickDirection = (v: string) =>
     setF((p) => ({ ...p, direction: v, category: flowCategories(v).includes(p.category) ? p.category : "" }));
@@ -379,6 +412,17 @@ function DraftEditDrawer({
         currency: f.currency,
         day_of_month: num(f.day),
         category: f.category,
+      };
+    } else if (ins) {
+      payload = {
+        ...ins,
+        name: f.name,
+        insurer: f.insurer,
+        insured: f.insured.trim() || undefined,
+        kind: f.insKind,
+        amount: num(f.value),
+        annual_premium: num(f.premium),
+        premium_years: num(f.years),
       };
     } else if (!asset) {
       payload = { value: num(f.value), date: f.date || undefined };
@@ -454,6 +498,21 @@ function DraftEditDrawer({
                     {chips(["in", "out"], f.direction, pickDirection, (v) => flowLabel(dict, v) ?? v)}
                   </div>
                 </>
+              ) : ins ? (
+                <>
+                  <div className="wealth-drawer-field">
+                    {label(dict.wealthName, "name")}
+                    <input className={unsure("name", !f.name.trim())} value={f.name} onChange={(e) => set("name")(e.target.value)} />
+                  </div>
+                  <div className="wealth-drawer-field">
+                    {label(dict.wealthInsureInsurerLabel, "insurer")}
+                    <input className={unsure("insurer", !f.insurer.trim())} value={f.insurer} onChange={(e) => set("insurer")(e.target.value)} />
+                  </div>
+                  <div className="wealth-drawer-field">
+                    {label(dict.wealthInsureKindLabel, "kind")}
+                    {chips(KIND_ORDER, f.insKind, set("insKind"), (k) => insKindLabel(dict, insKind(k)!))}
+                  </div>
+                </>
               ) : asset ? (
                 <>
                   <div className="wealth-drawer-field">
@@ -476,7 +535,10 @@ function DraftEditDrawer({
                 </div>
               )}
               <div className="wealth-drawer-field">
-                {label(d.kind === "balance" ? dict.asstTo : dict.asstFAmt, valueKey)}
+                {label(
+                  d.kind === "balance" ? dict.asstTo : ins ? dict.wealthInsureAmountLabel + insUnit(dict, f.insKind) : dict.asstFAmt,
+                  valueKey,
+                )}
                 <input
                   className={`mono${unsure(valueKey, f.value.trim() === "")}`}
                   type="number"
@@ -500,6 +562,21 @@ function DraftEditDrawer({
                   <div className="wealth-drawer-field">
                     {label(dict.wealthCashCategoryLabel, "category")}
                     {chips(flowCategories(f.direction), f.category, set("category"), (c) => categoryLabel(dict, c))}
+                  </div>
+                </>
+              ) : ins ? (
+                <>
+                  <div className="wealth-drawer-field">
+                    {label(dict.wealthInsureAnnualPremiumLabel, "annual_premium")}
+                    <input className="mono" type="number" inputMode="decimal" value={f.premium} onChange={(e) => set("premium")(e.target.value)} />
+                  </div>
+                  <div className="wealth-drawer-field">
+                    {label(dict.wealthInsurePremiumYearsLabel, "premium_years")}
+                    <input className="mono" type="number" inputMode="numeric" value={f.years} onChange={(e) => set("years")(e.target.value)} />
+                  </div>
+                  <div className="wealth-drawer-field">
+                    {label(dict.wealthInsuredLabel, "insured")}
+                    <input value={f.insured} onChange={(e) => set("insured")(e.target.value)} />
                   </div>
                 </>
               ) : (

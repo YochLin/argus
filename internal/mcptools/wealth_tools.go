@@ -94,6 +94,11 @@ func registerWealthTools(s *mcp.Server, wt *wealthTools) {
 	}, wt.proposeCashflow)
 
 	mcp.AddTool(s, &mcp.Tool{
+		Name:        "propose_insurance",
+		Description: "Propose a new insurance policy with its main coverage as a draft the user confirms on the page. One draft is one policy and one coverage kind; if the policy has more coverages, say they can be added on the insurance page after saving. Check list_insurance first: a policy already there isn't proposed again. Leave out what the user didn't say and ask for it. The premium is also a cash flow: propose it with propose_cashflow (category insurance) only if the user pays it monthly. Pass draft_id to replace an earlier insurance draft.",
+	}, wt.proposeInsurance)
+
+	mcp.AddTool(s, &mcp.Tool{
 		Name:        "discard_draft_item",
 		Description: "Delete one draft, e.g. when the user says it was wrong or a duplicate.",
 	}, wt.discardDraft)
@@ -386,6 +391,20 @@ func (wt *wealthTools) proposeCashflow(ctx context.Context, _ *mcp.CallToolReque
 		return nil, nil, err
 	}
 	return wt.propose(in.DraftID, assets.DraftCashflow, nil, string(payload))
+}
+
+type proposeInsuranceInput struct {
+	DraftID int64 `json:"draft_id,omitempty" jsonschema:"an earlier insurance draft to replace; omit for a new one"`
+	assets.InsuranceDraft
+}
+
+func (wt *wealthTools) proposeInsurance(ctx context.Context, _ *mcp.CallToolRequest, in proposeInsuranceInput) (*mcp.CallToolResult, any, error) {
+	in.Normalize()
+	payload, err := json.Marshal(in.InsuranceDraft)
+	if err != nil {
+		return nil, nil, err
+	}
+	return wt.propose(in.DraftID, assets.DraftInsurance, nil, string(payload))
 }
 
 // propose stores a draft unless it is invalid: an invalid one comes back as

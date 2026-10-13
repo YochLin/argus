@@ -72,6 +72,19 @@ func checkDraft(kind string, targetID *int64, payload string, existing []db.Asse
 			return DraftCheck{Status: "error", Missing: []string{}, Error: "unreadable draft: " + err.Error()}
 		}
 		ps = d.Problems()
+	case assets.DraftInsurance:
+		var d assets.InsuranceDraft
+		if err := json.Unmarshal([]byte(payload), &d); err != nil {
+			return DraftCheck{Status: "error", Missing: []string{}, Error: "unreadable draft: " + err.Error()}
+		}
+		ps = d.Problems()
+		key := assets.AssetKey(d.Name, "insurance")
+		for _, a := range existing {
+			if d.Name != "" && assets.AssetKey(a.Name, a.Type) == key {
+				ps = append(ps, assets.Problem{Field: "name", Msg: "a policy with this name already exists — add another coverage to it on the insurance page"})
+				break
+			}
+		}
 	default:
 		return DraftCheck{Status: "error", Missing: []string{}, Error: "unknown draft kind: " + kind}
 	}

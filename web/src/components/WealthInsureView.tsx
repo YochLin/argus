@@ -30,12 +30,12 @@ const CURRENCY = "NT$"; // display currency fixed to TWD, same known gap as ever
 // per_period from kind and never trusts a client-sent value, so this map is
 // display-only (the add form's amount-field suffix preview), not sent on
 // submit.
-const KIND_ORDER: InsuranceKind[] = ["life", "accident", "ci", "cancer", "disability", "hospital"];
-const KIND_PER_PERIOD: Record<InsuranceKind, "" | "month" | "day"> = {
+export const KIND_ORDER: InsuranceKind[] = ["life", "accident", "ci", "cancer", "disability", "hospital"];
+export const KIND_PER_PERIOD: Record<InsuranceKind, "" | "month" | "day"> = {
   life: "", accident: "", ci: "", cancer: "", disability: "month", hospital: "day",
 };
 
-function kindLabel(dict: Dictionary, kind: InsuranceKind): string {
+export function kindLabel(dict: Dictionary, kind: InsuranceKind): string {
   switch (kind) {
     case "life":
       return dict.wealthInsureKindLife;
@@ -52,7 +52,7 @@ function kindLabel(dict: Dictionary, kind: InsuranceKind): string {
   }
 }
 
-function periodSuffix(dict: Dictionary, perPeriod?: string): string {
+export function periodSuffix(dict: Dictionary, perPeriod?: string): string {
   if (perPeriod === "month") return dict.wealthInsurePerMonthSuffix;
   if (perPeriod === "day") return dict.wealthInsurePerDaySuffix;
   return "";

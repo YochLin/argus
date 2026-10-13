@@ -153,6 +153,14 @@ func (s *Server) handleWealthDraftUpdate(w http.ResponseWriter, r *http.Request)
 		}
 		d.Normalize()
 		payload = d
+	case assets.DraftInsurance:
+		var d assets.InsuranceDraft
+		if err := json.Unmarshal(req.Payload, &d); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid payload")
+			return
+		}
+		d.Normalize()
+		payload = d
 	default:
 		writeError(w, http.StatusBadRequest, "this draft can't be edited")
 		return
@@ -272,7 +280,8 @@ func anyOK(views []assistantDraft) bool {
 // applyDraft writes one ok draft. A new asset goes through the CSV import's
 // write (Source "import", §5) so detail rows land exactly as an imported one
 // would; a balance goes through LogAssetValue, the value drawer's path; a
-// cash flow through CreateRecurringCashflow, /w/cash's add form's.
+// cash flow through CreateRecurringCashflow, /w/cash's add form's; a policy
+// through CreateInsuranceAsset, /w/insure's.
 func (s *Server) applyDraft(d db.WealthDraft) error {
 	switch d.Kind {
 	case assets.DraftAsset:
@@ -313,6 +322,19 @@ func (s *Server) applyDraft(d db.WealthDraft) error {
 			Direction: c.Direction, Name: c.Name, Amount: *c.Amount, Currency: c.Currency,
 			DayOfMonth: c.DayOfMonth, Category: c.Category,
 		})
+		return err
+	case assets.DraftInsurance:
+		var p assets.InsuranceDraft
+		if err := json.Unmarshal([]byte(d.Payload), &p); err != nil {
+			return err
+		}
+		// Venue = insurer and no group, as handleWealthInsureCreate does.
+		perPeriod, _ := assets.InsurancePerPeriod(p.Kind)
+		_, err := s.wealthDB.CreateInsuranceAsset(
+			db.NewAsset{Name: p.Name, Venue: p.Insurer, Currency: "TWD", Source: "import"},
+			db.InsuranceDetails{Insurer: p.Insurer, Insured: p.Insured, AnnualPremium: p.AnnualPremium, PremiumYears: p.PremiumYears},
+			db.InsuranceCoverage{Kind: p.Kind, Amount: *p.Amount, PerPeriod: perPeriod},
+		)
 		return err
 	}
 	return fmt.Errorf("unknown draft kind %q", d.Kind)

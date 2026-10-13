@@ -279,6 +279,44 @@ describe("wealth assistant drafts", () => {
     });
   });
 
+  it("an insurance card shows the design's four fields; the drawer fills in the amount", async () => {
+    const pol: api.AssistantDraft = {
+      id: 5,
+      kind: "insurance",
+      payload: { name: "富邦終身壽險", insurer: "富邦人壽", kind: "life", annual_premium: 36000, premium_years: 20 },
+      status: "pending",
+      missing: ["amount"],
+      createdAt: "2026-10-13T10:00:00+08:00",
+    };
+    m.fetchAssistant.mockResolvedValue(data([], [pol]));
+    m.updateAssistantDraft.mockResolvedValue(data([], [{ ...pol, status: "ok", missing: [] }]));
+    localStorage.setItem("argus.assistant.mode", "panel");
+    renderWidget();
+    fireEvent.click(await screen.findByRole("tab", { name: dict.asstTabDrafts.replace("%s", "1") }));
+
+    expect(screen.getByText(dict.asstKindIns)).toBeTruthy();
+    expect(screen.getByText("富邦人壽")).toBeTruthy();
+    expect(screen.getByText(dict.wealthInsureKindLife)).toBeTruthy();
+    expect(screen.getByText("NT$36,000")).toBeTruthy();
+    fireEvent.click(screen.getByText(`? ${dict.asstPendingVal}`));
+
+    // Hospital pays per day: the amount's label says so.
+    fireEvent.click(screen.getAllByText(dict.wealthInsureKindHospital).pop()!);
+    expect(screen.getByText(dict.wealthInsureAmountLabel + dict.wealthInsurePerDaySuffix)).toBeTruthy();
+    fireEvent.change(document.querySelector<HTMLInputElement>(".asst-input-unsure")!, { target: { value: "3000" } });
+    fireEvent.click(screen.getByText(dict.asstSaveDraft));
+
+    await waitFor(() => expect(screen.queryByText(dict.asstEditTitle)).toBeNull());
+    expect(m.updateAssistantDraft).toHaveBeenCalledWith(5, {
+      name: "富邦終身壽險",
+      insurer: "富邦人壽",
+      kind: "hospital",
+      amount: 3000,
+      annual_premium: 36000,
+      premium_years: 20,
+    });
+  });
+
   it("read-only: delete and confirm only toast", async () => {
     m.fetchAssistant.mockResolvedValue(data([], [deposit]));
     localStorage.setItem("argus.assistant.mode", "panel");

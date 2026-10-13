@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"argus/internal/assets"
 	"argus/internal/db"
 	"argus/internal/logger"
 	"argus/internal/service"
@@ -24,7 +25,7 @@ func (s *Server) handleWealthInsureGet(w http.ResponseWriter, r *http.Request) {
 
 // wealthInsureCreateRequest backs the add-policy form. PerPeriod is
 // deliberately not a request field — it's derived from Kind server-side
-// (service.InsuranceKindPerPeriod) so a coverage can never be filed under the wrong
+// (assets.InsurancePerPeriod) so a coverage can never be filed under the wrong
 // unit, unlike the design template's drawer which offers 保障類型/給付單位
 // as two independent selects (§8.18.2) and trusts the combination.
 type wealthInsureCreateRequest struct {
@@ -43,27 +44,13 @@ func (s *Server) handleWealthInsureCreate(w http.ResponseWriter, r *http.Request
 		return
 	}
 	req.Insurer, req.Name, req.Insured = strings.TrimSpace(req.Insurer), strings.TrimSpace(req.Name), strings.TrimSpace(req.Insured)
-	perPeriod, validKind := service.InsuranceKindPerPeriod(req.Kind)
-	if !validKind {
-		writeError(w, http.StatusBadRequest, "kind is invalid")
+	if ps := assets.ValidatePolicy(assets.NewPolicy{
+		Insurer: req.Insurer, Name: req.Name, Kind: req.Kind, Amount: &req.Amount, AnnualPremium: req.AnnualPremium, PremiumYears: req.PremiumYears,
+	}); len(ps) > 0 {
+		writeError(w, http.StatusBadRequest, ps[0].Msg)
 		return
 	}
-	if req.Insurer == "" || req.Name == "" {
-		writeError(w, http.StatusBadRequest, "insurer and name are required")
-		return
-	}
-	if req.Amount <= 0 {
-		writeError(w, http.StatusBadRequest, "amount must be positive")
-		return
-	}
-	if req.AnnualPremium != nil && *req.AnnualPremium < 0 {
-		writeError(w, http.StatusBadRequest, "annualPremium must be >= 0")
-		return
-	}
-	if req.PremiumYears != nil && *req.PremiumYears < 0 {
-		writeError(w, http.StatusBadRequest, "premiumYears must be >= 0")
-		return
-	}
+	perPeriod, _ := assets.InsurancePerPeriod(req.Kind)
 
 	// Venue = insurer, per §8.18.2 note 4: the policy drawer's "保險公司"
 	// field doubles as the asset's venue, it has no separate venue field.

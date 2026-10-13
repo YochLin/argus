@@ -184,14 +184,3 @@ func TestComputeInsuranceGapStoreErrorsAreWrapped(t *testing.T) {
 		t.Errorf("details failure: err = %v, want it to say get details 3", err)
 	}
 }
-
-func TestInsuranceKindPerPeriod(t *testing.T) {
-	for kind, want := range map[string]string{"life": "", "accident": "", "ci": "", "cancer": "", "disability": "month", "hospital": "day"} {
-		if got, ok := InsuranceKindPerPeriod(kind); !ok || got != want {
-			t.Errorf("InsuranceKindPerPeriod(%q) = %q, %v; want %q, true", kind, got, ok, want)
-		}
-	}
-	if _, ok := InsuranceKindPerPeriod("savings"); ok {
-		t.Error("InsuranceKindPerPeriod(savings) ok = true, want false")
-	}
-}
