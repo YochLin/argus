@@ -95,6 +95,24 @@ function statusLabel(dict: Dictionary, s: AssistantDraft["status"]): string {
   return s === "ok" ? dict.asstStOk : s === "pending" ? dict.asstStPending : dict.asstStError;
 }
 
+// KIND_PAGE is where a written draft lands.
+const KIND_PAGE: Record<AssistantDraft["kind"], [string, "navWealthBalance" | "navWealthCash" | "navWealthInsure" | "navWealthRetire" | "navWealthGoals"]> = {
+  asset: ["/w/balance", "navWealthBalance"],
+  balance: ["/w/balance", "navWealthBalance"],
+  cashflow: ["/w/cash", "navWealthCash"],
+  insurance: ["/w/insure", "navWealthInsure"],
+  profile: ["/w/retire", "navWealthRetire"],
+  goal: ["/w/goals", "navWealthGoals"],
+};
+
+// appliedPages are the result card's links: one per page the write touched,
+// in the order written — the design's single 資產負債表 link when that is all
+// it touched. A result stored before kinds existed gets that link too.
+function appliedPages(kinds?: AssistantDraft["kind"][]) {
+  const pages = (kinds?.length ? kinds : (["asset"] as const)).map((k) => KIND_PAGE[k]);
+  return pages.filter(([path], i) => pages.findIndex(([p]) => p === path) === i);
+}
+
 export function DraftsPane({
   dict,
   a,
@@ -144,7 +162,13 @@ export function DraftsPane({
         <div className="asst-drafts-head-row">
           <span className="asst-label">{dict.asstDrafts}</span>
           {a.drafts.length > 0 && <span className="asst-drafts-count">{a.drafts.length}</span>}
-          <span className="asst-not-saved">{dict.asstNotSaved}</span>
+          <span className="asst-not-saved">
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+              <path d="M3 13.5V2.5h7l3 3v8Z" />
+              <path d="M6 8h4M6 10.5h4" />
+            </svg>
+            {dict.asstNotSaved}
+          </span>
         </div>
         <span className="asst-note">{dict.asstDraftNote}</span>
       </div>
@@ -156,9 +180,11 @@ export function DraftsPane({
               {dict.asstAppliedBody}
               {a.drafts.length > 0 && dict.asstAppliedKept.replace("%s", String(a.drafts.length))}
             </span>
-            <button className="asst-applied-link" onClick={() => onNavigate("/w/balance")}>
-              {dict.asstSeeBal}
-            </button>
+            {appliedPages(a.applied.kinds).map(([path, page]) => (
+              <button key={path} className="asst-applied-link" onClick={() => onNavigate(path)}>
+                {dict.asstSeeOn.replace("%s", dict[page])}
+              </button>
+            ))}
           </div>
         )}
         {a.drafts.length === 0 && !a.applied && (
@@ -208,6 +234,7 @@ export function DraftsPane({
           body={dict.asstClearBody.replace("%s", String(a.drafts.length))}
           okLabel={dict.asstClearOk}
           cancelLabel={dict.cancel}
+          variant="asst"
           onCancel={() => setConfirmClear(false)}
           onConfirm={() => {
             setConfirmClear(false);

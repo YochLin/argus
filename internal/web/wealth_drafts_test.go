@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -133,10 +134,11 @@ func TestWealthDrafts_Apply(t *testing.T) {
 	failing := addDraft(t, d, "balance", &esun, `{"value":90,"date":"2026-01-02"}`)
 
 	r := decodeDrafts(t, postAssistant(t, s, cookie, "/api/wealth/assistant/apply", nil))
-	if r.Result != (applyOutcome{Applied: 6, Kept: 2}) {
-		t.Errorf("result = %+v, want 6 applied, 2 kept", r.Result)
+	want := applyOutcome{Applied: 6, Kept: 2, Kinds: []string{"asset", "balance", "cashflow", "insurance", "profile", "goal"}}
+	if !reflect.DeepEqual(r.Result, want) {
+		t.Errorf("result = %+v, want %+v", r.Result, want)
 	}
-	if len(r.Messages) != 1 || r.Messages[0].Role != "sys" || r.Messages[0].Result == nil || *r.Messages[0].Result != r.Result {
+	if len(r.Messages) != 1 || r.Messages[0].Role != "sys" || r.Messages[0].Result == nil || !reflect.DeepEqual(*r.Messages[0].Result, r.Result) {
 		t.Errorf("messages = %+v, want one sys message carrying the result", r.Messages)
 	}
 	if !slices.Equal(statuses(r.Drafts), []string{"pending", "error"}) || r.Drafts[1].ID != failing || r.Drafts[1].Error == "" || !r.Drafts[1].Failed {

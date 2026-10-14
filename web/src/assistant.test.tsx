@@ -211,17 +211,36 @@ describe("wealth assistant drafts", () => {
 
   it("confirm writes, then shows the result card and the sys note", async () => {
     m.fetchAssistant.mockResolvedValue(data([], [deposit, loan]));
-    m.applyAssistantDrafts.mockResolvedValue(data([{ ...msg(5, "sys", ""), result: { applied: 1, kept: 1 } }], [loan], { applied: 1, kept: 1 }));
+    const result = { applied: 1, kept: 1, kinds: ["asset" as const] };
+    m.applyAssistantDrafts.mockResolvedValue(data([{ ...msg(5, "sys", ""), result }], [loan], result));
     localStorage.setItem("argus.assistant.mode", "panel");
     const { onApplied } = renderWidget();
     fireEvent.click(await screen.findByRole("tab", { name: dict.asstTabDrafts.replace("%s", "2") }));
     fireEvent.click(screen.getByText(dict.asstCommitNM.replace("%n", "1").replace("%m", "1")));
 
     expect(await screen.findByText(`✓ ${dict.asstAppliedTitle.replace("%s", "1")}`)).toBeTruthy();
+    // The link goes where the write landed.
+    expect(screen.getByText(dict.asstSeeOn.replace("%s", dict.navWealthBalance))).toBeTruthy();
     expect(m.applyAssistantDrafts).toHaveBeenCalledTimes(1);
     expect(onApplied).toHaveBeenCalledTimes(1); // the page behind reloads
     fireEvent.click(screen.getByRole("tab", { name: dict.asstChat }));
     expect(screen.getByText(`✓ ${dict.asstSysApplied.replace("%n", "1").replace("%m", "1")}`)).toBeTruthy();
+  });
+
+  it("a write that touched several pages links to each, once", async () => {
+    const result = { applied: 3, kept: 0, kinds: ["cashflow" as const, "goal" as const, "cashflow" as const] };
+    m.fetchAssistant.mockResolvedValue(data([], [deposit]));
+    m.applyAssistantDrafts.mockResolvedValue(data([], [], result));
+    localStorage.setItem("argus.assistant.mode", "panel");
+    renderWidget();
+    fireEvent.click(await screen.findByRole("tab", { name: dict.asstTabDrafts.replace("%s", "1") }));
+    fireEvent.click(screen.getByText(dict.asstCommitN.replace("%s", "1")));
+
+    await screen.findByText(`✓ ${dict.asstAppliedTitle.replace("%s", "3")}`);
+    expect(screen.getAllByText(/→$/).map((b) => b.textContent)).toEqual([
+      dict.asstSeeOn.replace("%s", dict.navWealthCash),
+      dict.asstSeeOn.replace("%s", dict.navWealthGoals),
+    ]);
   });
 
   it("the edit drawer saves numbers and keeps fields it doesn't show", async () => {

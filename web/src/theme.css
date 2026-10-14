@@ -6357,6 +6357,46 @@ a.snap-news-head:hover {
   color: #fff;
 }
 
+.confirm-dialog--primary .confirm-actions .confirm-ok {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* The wealth assistant's confirms (Argus Wealth Assistant.dc.html): a
+   slightly smaller, heavier dialog than the shared one. */
+.confirm-backdrop--asst {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.confirm-dialog--asst {
+  width: min(380px, 100%);
+  gap: 10px;
+  padding: 18px;
+  border-radius: 12px;
+  background: linear-gradient(160deg, var(--surface) 0%, var(--surface-2) 100%);
+}
+
+.confirm-dialog--asst .confirm-title {
+  font-weight: 700;
+}
+
+.confirm-dialog--asst .confirm-body {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.confirm-dialog--asst .confirm-actions {
+  gap: 8px;
+}
+
+.confirm-dialog--asst .confirm-actions button {
+  min-height: 38px;
+}
+
+.confirm-dialog--asst .confirm-actions .confirm-ok {
+  font-weight: 700;
+}
+
 /* Shell toast (flash.tsx). Fixed to the viewport so it survives a route
    change; the error tone (not in the design, which only toasts successes)
    reuses the shape with --loss and may wrap. */
@@ -7160,6 +7200,7 @@ a.snap-news-head:hover {
   font-family: var(--font-sans);
   font-size: 12.5px;
   font-weight: 700;
+  line-height: 1.5;
   padding: 7px 13px;
   border-radius: 8px;
   border: 1px solid var(--accent-tint-border);
@@ -7214,6 +7255,10 @@ a.snap-news-head:hover {
 .asst-think-label {
   font-size: 13px;
   font-weight: 600;
+}
+
+.asst-think-note {
+  font-size: 11px;
 }
 
 .asst-think-sec {
@@ -7431,6 +7476,9 @@ a.snap-news-head:hover {
 
 .asst-not-saved {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.06em;
@@ -8005,6 +8053,7 @@ a.snap-news-head:hover {
 .asst-bar-new {
   min-height: 32px;
   padding: 5px 10px;
+  gap: 5px;
 }
 
 .asst-icon-btn {
@@ -8205,7 +8254,7 @@ a.snap-news-head:hover {
   flex-wrap: wrap;
   padding: 12px;
   border-radius: 10px;
-  border: 1px solid var(--accent-tint-border);
+  border: 2px dashed var(--accent);
   background: var(--accent-tint-bg);
 }
 
