@@ -173,6 +173,8 @@ function AssistantBody({
           body={a.drafts.length ? dict.asstNewChatBodyDrafts.replace("%s", String(a.drafts.length)) : dict.asstNewChatBody}
           okLabel={dict.asstNewChat}
           cancelLabel={dict.cancel}
+          variant="asst"
+          tone="primary"
           onCancel={() => setConfirmNew(false)}
           onConfirm={() => {
             setConfirmNew(false);
@@ -297,7 +299,7 @@ function ChatPane({
                 <span className="asst-think-label">{dict.asstThink}</span>
                 <span className="asst-think-sec">{dict.asstSec.replace("%s", String(a.elapsed))}</span>
               </div>
-              <span className="asst-note">{dict.asstThinkNote}</span>
+              <span className="asst-note asst-think-note">{dict.asstThinkNote}</span>
             </div>
           </>
         )}

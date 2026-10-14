@@ -1203,7 +1203,7 @@ export interface Dictionary {
   asstAppliedKept: string;
   asstSysApplied: string;
   asstSysAppliedAll: string;
-  asstSeeBal: string;
+  asstSeeOn: string;
   asstClearQ: string;
   asstClearBody: string;
   asstClearOk: string;
@@ -2652,7 +2652,7 @@ const en: Dictionary = {
   asstAppliedKept: " The %s below weren't saved — fix them and save again.",
   asstSysApplied: "%n saved · %m left in drafts to fix",
   asstSysAppliedAll: "%s saved",
-  asstSeeBal: "View balance sheet →",
+  asstSeeOn: "View %s →",
   asstClearQ: "Clear all drafts?",
   asstClearBody: "All %s drafts are deleted. Saved data isn't affected. This can't be undone.",
   asstClearOk: "Clear",
@@ -4043,7 +4043,7 @@ const zh: Dictionary = {
   asstAppliedKept: "下面 %s 筆沒有寫入，修正後可以再寫一次。",
   asstSysApplied: "已寫入 %n 筆，%m 筆留在草稿待修正",
   asstSysAppliedAll: "已寫入 %s 筆",
-  asstSeeBal: "到資產負債表查看 →",
+  asstSeeOn: "到%s查看 →",
   asstClearQ: "清空草稿？",
   asstClearBody: "草稿裡的 %s 筆都會刪除，已寫入的資料不受影響。這個動作無法復原。",
   asstClearOk: "清空",

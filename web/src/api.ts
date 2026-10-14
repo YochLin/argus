@@ -2604,6 +2604,8 @@ export interface AssistantMessage {
 export interface ApplyResult {
   applied: number;
   kept: number;
+  // kinds written, in order (absent on results stored before they existed)
+  kinds?: AssistantDraft["kind"][];
 }
 
 // AssetDraftPayload mirrors internal/assets.AssetDraft — snake_case, the

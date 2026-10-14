@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"argus/internal/assets"
@@ -41,10 +42,13 @@ type draftAsset struct {
 }
 
 // applyOutcome is a sys message's result: Applied drafts written, Kept left
-// in the drafts (failed, pending or invalid).
+// in the drafts (failed, pending or invalid). Kinds are the written drafts'
+// kinds, in first-written order, so the result card can link to the pages
+// they landed on.
 type applyOutcome struct {
-	Applied int `json:"applied"`
-	Kept    int `json:"kept"`
+	Applied int      `json:"applied"`
+	Kept    int      `json:"kept"`
+	Kinds   []string `json:"kinds,omitempty"`
 }
 
 func today() string { return time.Now().Format("2006-01-02") }
@@ -269,6 +273,9 @@ func (s *Server) handleWealthDraftApply(w http.ResponseWriter, r *http.Request) 
 			logger.Errorf("wealth drafts: delete applied draft %d: %v", d.ID, err)
 		}
 		out.Applied++
+		if !slices.Contains(out.Kinds, d.Kind) {
+			out.Kinds = append(out.Kinds, d.Kind)
+		}
 	}
 
 	meta, _ := json.Marshal(assistantMeta{Result: &out})

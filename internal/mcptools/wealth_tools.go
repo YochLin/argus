@@ -100,7 +100,7 @@ func registerWealthTools(s *mcp.Server, wt *wealthTools) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "propose_profile",
-		Description: "Propose changes to the household profile and the retirement plan as a draft the user confirms on the page. Give only the fields the user stated; the rest stay as they are. retirement_age and retirement_monthly_spend go together, and the age needs a birth year (stored, or in this draft). There is only one profile draft: if list_drafts has one, pass its draft_id and every field it should still change.",
+		Description: "Propose changes to the household profile and the retirement plan as a draft the user confirms on the page. Give only the fields the user stated; the rest stay as they are. retirement_age and retirement_monthly_spend go together: when the user gave only one, pass it anyway (the draft is pending) and ask for the other. The age needs a birth year (stored, or in this draft). There is only one profile draft: if list_drafts has one, pass its draft_id and every field it should still change.",
 	}, wt.proposeProfile)
 
 	mcp.AddTool(s, &mcp.Tool{
