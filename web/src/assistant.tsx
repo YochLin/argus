@@ -42,6 +42,9 @@ export interface Assistant {
   setInput: (s: string) => void;
   send: (text: string) => void;
   newChat: () => void;
+  // forget drops what this page holds after the server emptied the wealth
+  // account (the settings page's reset): no conversation, no drafts.
+  forget: () => void;
   writable: boolean;
 
   // Drafts (B2). newIds are the drafts the last turn added (the cards' 新
@@ -260,6 +263,15 @@ export function AssistantProvider({
     setInput,
     send,
     newChat,
+    forget: () => {
+      setMessages([]);
+      setDrafts([]);
+      setNewIds([]);
+      setApplied(null);
+      setFailed(false);
+      setInput("");
+      topic.current = undefined;
+    },
     writable,
     drafts,
     newIds,

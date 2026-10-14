@@ -7,6 +7,9 @@ import { fmtMoney } from "./WealthHomeView";
 
 interface Props {
   path: string;
+  // wealth: which account the shell is in — App decides, since /settings
+  // keeps the one it was opened from rather than following its path.
+  wealth: boolean;
   onNavigate: (path: string) => void;
   dict: Dictionary;
   market: Market;
@@ -82,16 +85,13 @@ const wealthLinks: Array<{ path: string; label: (dict: Dictionary) => string; ic
   { path: "/w/import", label: (d) => d.navWealthImport, icon: <ImportIcon /> },
 ];
 
-function isWealthPath(path: string): boolean {
-  return path === "/w" || path.startsWith("/w/");
-}
-
 function isActive(linkPath: string, path: string): boolean {
   return linkPath === path;
 }
 
 export function Sidebar({
   path,
+  wealth: isWealth,
   onNavigate,
   dict,
   market,
@@ -103,7 +103,6 @@ export function Sidebar({
   devMode,
   onToggleDevMode,
 }: Props) {
-  const isWealth = isWealthPath(path);
   const navLinks = isWealth
     ? wealthLinks
     : [
