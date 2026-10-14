@@ -575,7 +575,7 @@ func TestNetWorthBaseline(t *testing.T) {
 // calendar date it happens to run on.
 func TestBuildDashboard_PeriodReturns(t *testing.T) {
 	now := time.Now()
-	ytdStart, err := time.Parse("2006-01-02", YTDStart(now))
+	ytdStart, err := time.Parse("2006-01-02", service.YTDStart(now))
 	if err != nil {
 		t.Fatalf("parse YTDStart: %v", err)
 	}

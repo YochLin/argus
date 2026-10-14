@@ -7,6 +7,7 @@ import (
 
 	"argus/internal/logger"
 	"argus/internal/market"
+	"argus/internal/service"
 )
 
 // YearlyPnL is one calendar year's row in the monthly P&L grid — a fund
@@ -25,7 +26,7 @@ type monthlyResponse struct {
 	Years []YearlyPnL `json:"years"`
 }
 
-// buildMonthly assembles /api/monthly: pnl.go's DailyPnL replay engine (the
+// buildMonthly assembles /api/monthly: service/pnl.go's DailyPnL replay engine (the
 // same source the calendar heatmap reads) aggregated to month granularity.
 // Deliberately amount-based, not a % of net_worth_snapshots — a mid-period
 // buy/deposit would pollute a % figure (docs/phase-8-trader-analytics.md §1
@@ -59,7 +60,7 @@ func buildMonthly(database dbReader, m market.MarketID) (monthlyResponse, error)
 	if err != nil {
 		return monthlyResponse{}, err
 	}
-	daily := DailyPnL(txs, snapshots)
+	daily := service.DailyPnL(txs, snapshots)
 
 	type yearMonth struct {
 		year  int

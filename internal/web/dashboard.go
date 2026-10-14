@@ -15,12 +15,12 @@ import (
 // language decision: the frontend picks zh/en display text itself from
 // /api/config's lang, so internal/i18n never needs touching for this API.
 type dashboardResponse struct {
-	KPIs  kpisResponse `json:"kpis"`
-	Curve []DateValue  `json:"curve"`
-	// Drawdown is Curve's underwater series (pnl.go's DrawdownSeries, Phase 8
+	KPIs  kpisResponse        `json:"kpis"`
+	Curve []service.DateValue `json:"curve"`
+	// Drawdown is Curve's underwater series (service/pnl.go's DrawdownSeries, Phase 8
 	// PR2) — always <= 0, same length/date axis as Curve, "[]" not "null"
 	// when there's no history yet.
-	Drawdown []DateValue `json:"drawdown"`
+	Drawdown []service.DateValue `json:"drawdown"`
 	// Benchmark is the same-cash-flow SPY/0050 replay (benchmark.go's
 	// BenchmarkReplay, Phase 8 PR2) in the same cumulative-P&L-amount units
 	// as Curve, directly overlayable on the same chart/axis. Its date axis
@@ -28,8 +28,8 @@ type dashboardResponse struct {
 	// be later than Curve's own start — see docs/phase-8-trader-analytics.md
 	// §7's accepted gap. "[]" not "null" when there's no benchmark history
 	// in range yet.
-	Benchmark []DateValue        `json:"benchmark"`
-	Positions []positionResponse `json:"positions"`
+	Benchmark []service.DateValue `json:"benchmark"`
+	Positions []positionResponse  `json:"positions"`
 }
 
 type kpisResponse struct {
@@ -39,7 +39,7 @@ type kpisResponse struct {
 	Expectancy   float64 `json:"expectancy"`
 	MaxDrawdown  float64 `json:"maxDrawdown"`
 	// YTDReturnPct/QTDReturnPct/HTDReturnPct are *float64 (not omitempty) so
-	// "no usable baseline yet" (see pnl.go's PeriodReturnPct) serializes as
+	// "no usable baseline yet" (see service/pnl.go's PeriodReturnPct) serializes as
 	// an explicit JSON null, never an omitted key or a misleading 0 —
 	// docs/phase-5-web-dashboard.md's "don't pad missing data with zero"
 	// principle.
@@ -177,7 +177,7 @@ func netWorthBaseline(database dbReader, periodStart string, m market.MarketID, 
 // definitions buildDashboard/buildRisk already use elsewhere — live position
 // value + declared cash for AccountValue (buildRisk's accountValue), the
 // all-time realized-SELL total for NetPnL (db.GetRealizedPnL, same figure
-// internal/bot's /portfolio shows), and pnl.go's FilterSells/WinRate for the
+// internal/bot's /portfolio shows), and service/pnl.go's FilterSells/WinRate for the
 // win-rate/trade-count pair — no new "what counts as account value" logic
 // gets invented here.
 func buildStatus(database dbReader, quotes quoteGetter, m market.MarketID) statusResponse {
@@ -218,21 +218,21 @@ func buildStatusWithPortfolio(database dbReader, portfolio *service.PortfolioSer
 	if txs, err := database.GetAllTransactions(); err != nil {
 		logger.Errorf("web: status: get transactions: %v", err)
 	} else {
-		sells := FilterSells(filterTransactionsByMarket(txs, m))
+		sells := service.FilterSells(filterTransactionsByMarket(txs, m))
 		status.TradeCount = len(sells)
-		status.WinRate = WinRate(sells)
+		status.WinRate = service.WinRate(sells)
 	}
 
 	return status
 }
 
 // buildDashboard assembles the /api/dashboard response: KPIs and the
-// cumulative P&L curve (both from the DailyPnL replay engine in pnl.go)
+// cumulative P&L curve (both from the DailyPnL replay engine in service/pnl.go)
 // and the live-quote-enriched positions list, restricted to market m
 // (Phase 6, see docs/phase-6-tw-market.md §4.4 — TWD and USD transactions
 // must never be replayed together, or the curve/KPIs come out as
 // meaningless mixed-currency numbers). The replay engine itself
-// (DailyPnL/KPIs in pnl.go) is unchanged — it's a pure function over
+// (DailyPnL/KPIs in service/pnl.go) is unchanged — it's a pure function over
 // whatever transactions/snapshots it's given, so filtering happens here,
 // before that call, not inside it. Nothing here aborts the whole response
 // on a partial failure — a single bad quote just leaves that position's
@@ -254,15 +254,15 @@ func buildDashboardWithPortfolio(database dbReader, portfolio *service.Portfolio
 	}
 	txs := filterTransactionsByMarket(allTxs, m)
 
-	sells := FilterSells(txs)
+	sells := service.FilterSells(txs)
 	resp := dashboardResponse{
-		Curve:     []DateValue{}, // never nil — JSON "[]", not "null", when there's no history yet
-		Drawdown:  []DateValue{},
-		Benchmark: []DateValue{},
+		Curve:     []service.DateValue{}, // never nil — JSON "[]", not "null", when there's no history yet
+		Drawdown:  []service.DateValue{},
+		Benchmark: []service.DateValue{},
 		KPIs: kpisResponse{
-			WinRate:      WinRate(sells),
-			ProfitFactor: ProfitFactor(sells),
-			Expectancy:   Expectancy(sells),
+			WinRate:      service.WinRate(sells),
+			ProfitFactor: service.ProfitFactor(sells),
+			Expectancy:   service.Expectancy(sells),
 		},
 	}
 
@@ -295,16 +295,16 @@ func buildDashboardWithPortfolio(database dbReader, portfolio *service.Portfolio
 			return dashboardResponse{}, err
 		}
 
-		daily := DailyPnL(txs, snapshots)
-		curve := CumulativeCurve(daily)
+		daily := service.DailyPnL(txs, snapshots)
+		curve := service.CumulativeCurve(daily)
 		if curve != nil {
 			resp.Curve = curve
 		}
 		if len(curve) > 0 {
 			resp.KPIs.NetPnL = curve[len(curve)-1].Value
 		}
-		resp.KPIs.MaxDrawdown = MaxDrawdownAbs(curve)
-		if dd := DrawdownSeries(curve); dd != nil {
+		resp.KPIs.MaxDrawdown = service.MaxDrawdownAbs(curve)
+		if dd := service.DrawdownSeries(curve); dd != nil {
 			resp.Drawdown = dd
 		}
 
@@ -323,21 +323,21 @@ func buildDashboardWithPortfolio(database dbReader, portfolio *service.Portfolio
 			}
 		}
 
-		ytdStart := YTDStart(now)
+		ytdStart := service.YTDStart(now)
 		if base, ok := netWorthBaseline(database, ytdStart, m, to); ok {
-			if pct, ok := PeriodReturnPct(curve, ytdStart, base, ok); ok {
+			if pct, ok := service.CurvePeriodReturnPct(curve, ytdStart, base, ok); ok {
 				resp.KPIs.YTDReturnPct = &pct
 			}
 		}
-		qtdStart := QTDStart(now)
+		qtdStart := service.QTDStart(now)
 		if base, ok := netWorthBaseline(database, qtdStart, m, to); ok {
-			if pct, ok := PeriodReturnPct(curve, qtdStart, base, ok); ok {
+			if pct, ok := service.CurvePeriodReturnPct(curve, qtdStart, base, ok); ok {
 				resp.KPIs.QTDReturnPct = &pct
 			}
 		}
-		htdStart := HTDStart(now)
+		htdStart := service.HTDStart(now)
 		if base, ok := netWorthBaseline(database, htdStart, m, to); ok {
-			if pct, ok := PeriodReturnPct(curve, htdStart, base, ok); ok {
+			if pct, ok := service.CurvePeriodReturnPct(curve, htdStart, base, ok); ok {
 				resp.KPIs.HTDReturnPct = &pct
 			}
 		}

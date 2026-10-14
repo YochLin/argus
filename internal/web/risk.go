@@ -63,7 +63,7 @@ type riskPositionResponse struct {
 // docs/phase-8-trader-analytics.md §3.2): current open-risk exposure across
 // every position in market m, priced with live quotes (this is a "right
 // now" view, not a replay off daily_snapshots, so it deliberately doesn't
-// reuse pnl.go's DailyPnL engine). accountValue is the sum of each
+// reuse service/pnl.go's DailyPnL engine). accountValue is the sum of each
 // position's live market value plus m's declared cash balance — a position
 // whose quote fetch fails contributes 0 to that sum (logged, not fatal),
 // same "attach what's available" degrade convention buildDashboard uses for

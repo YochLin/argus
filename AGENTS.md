@@ -372,9 +372,10 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   URL index — one `register*` per area (stock, wealth, LLM audit, system, `/api/v1`), each naming
   the files its handlers live in; a new route goes there, not into `server.go`'s `New`. A read
   page's response struct, `buildX` and `handleX` all sit in that page's own file (there is no
-  catch-all `handlers.go`); `store.go`'s `dbReader` is the one narrow DB interface they share. `pnl.go`'s pure
-  `DailyPnL`/`CumulativeCurve`/KPI functions are the daily-P&L replay engine backing every dashboard
-  view. The embedded frontend build lives at `internal/web/dist` (React/Vite source at repo-root `web/`);
+  catch-all `handlers.go`); `store.go`'s `dbReader` is the one narrow DB interface they share.
+  `internal/service/pnl.go`'s pure `DailyPnL`/`CumulativeCurve`/KPI functions are the daily-P&L replay
+  engine backing every dashboard view — called as `service.X` directly, with no re-export shim in this
+  package (`cmd/server/backtest.go` uses the same functions without importing `internal/web`). The embedded frontend build lives at `internal/web/dist` (React/Vite source at repo-root `web/`);
   only `index.html` is committed as a placeholder, CI builds the real SPA. Every market-scoped API
   endpoint takes a `?market=us|tw` query parameter (TW support added in Phase 6 PR1) so a TWD position
   never gets replayed through the same P&L curve as a USD one. `risk.go`'s `/api/risk` (`m=us` only)

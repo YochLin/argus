@@ -8,10 +8,11 @@ import (
 	"argus/internal/db"
 	"argus/internal/logger"
 	"argus/internal/market"
+	"argus/internal/service"
 )
 
 // calendarResponse is /api/calendar's body — same "raw data only" rule as
-// dashboardResponse. Days is the DailyPnL series (pnl.go) restricted to the
+// dashboardResponse. Days is the DailyPnL series (service/pnl.go) restricted to the
 // requested month; a calendar day absent from Days simply has no data
 // (weekend, holiday, or before daily_snapshots started) rather than a
 // misleading 0 — the frontend must render "no data" distinctly from a
@@ -20,7 +21,7 @@ import (
 // doc's A3) both work off one response with no further API calls.
 type calendarResponse struct {
 	Month        string                `json:"month"`
-	Days         []DateValue           `json:"days"`
+	Days         []service.DateValue   `json:"days"`
 	Transactions []transactionResponse `json:"transactions"`
 	// Events is the month's earnings-date markers (Calendar's scope is
 	// earnings-only, see docs/architecture — IPO/dividend/split/lock-up have
@@ -59,7 +60,7 @@ func monthBounds(month string) (start, end string, ok bool) {
 }
 
 // buildCalendar assembles the /api/calendar response for one month: the
-// subset of the DailyPnL replay engine's output (pnl.go — same engine PR1's
+// subset of the DailyPnL replay engine's output (service/pnl.go — same engine PR1's
 // dashboard curve uses) falling within that month, the month's raw
 // transactions for the click-a-day detail panel, and the month's earnings
 // events for every ticker either transacted this market or on this market's
@@ -77,7 +78,7 @@ func buildCalendar(database dbReader, earnings data.EarningsProvider, month stri
 
 	resp := calendarResponse{
 		Month:        month,
-		Days:         []DateValue{},
+		Days:         []service.DateValue{},
 		Transactions: []transactionResponse{},
 		Events:       []calendarEvent{},
 	}
@@ -143,7 +144,7 @@ func buildCalendar(database dbReader, earnings data.EarningsProvider, month stri
 		return calendarResponse{}, err
 	}
 
-	for _, d := range DailyPnL(txs, snapshots) {
+	for _, d := range service.DailyPnL(txs, snapshots) {
 		if d.Date >= monthStart && d.Date <= monthEnd {
 			resp.Days = append(resp.Days, d)
 		}

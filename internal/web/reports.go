@@ -11,6 +11,7 @@ import (
 	"argus/internal/db"
 	"argus/internal/logger"
 	"argus/internal/market"
+	"argus/internal/service"
 )
 
 // minSampleSize is the "low sample" honesty threshold (design doc's own
@@ -196,8 +197,8 @@ func groupReport(records []sellRecord, keyFn func(sellRecord) string, order []st
 		g := ReportGroup{
 			Key:            key,
 			N:              len(b.sells),
-			WinRate:        WinRate(b.sells),
-			ProfitFactor:   ProfitFactor(b.sells),
+			WinRate:        service.WinRate(b.sells),
+			ProfitFactor:   service.ProfitFactor(b.sells),
 			AvgHoldingDays: float64(totalHoldingDays) / float64(len(b.sells)),
 			LowSample:      len(b.sells) < minSampleSize,
 		}
@@ -340,11 +341,11 @@ func buildReports(database dbReader, history data.HistoryProvider, m market.Mark
 		return reportsResponse{}, err
 	}
 
-	sells := FilterSells(txs)
+	sells := service.FilterSells(txs)
 	resp := reportsResponse{
-		WinRate:        WinRate(sells),
-		ProfitFactor:   ProfitFactor(sells),
-		Expectancy:     Expectancy(sells),
+		WinRate:        service.WinRate(sells),
+		ProfitFactor:   service.ProfitFactor(sells),
+		Expectancy:     service.Expectancy(sells),
 		ByTicker:       groupReport(records, func(r sellRecord) string { return r.Ticker }, nil),
 		ByHoldingDays:  groupReport(records, func(r sellRecord) string { return holdingDaysBucket(r.HoldingDays) }, holdingDaysBucketOrder),
 		ByEntryMonth:   groupReport(records, func(r sellRecord) string { return fmt.Sprintf("%02d", int(r.EntryMonth)) }, monthOrder),
