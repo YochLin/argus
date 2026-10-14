@@ -132,6 +132,10 @@ type Config struct {
 	// *llm.Client). nil makes the assistant's write routes 409; its GET
 	// still answers with an empty conversation.
 	Assistant AssistantChatter
+	// BackupDir is where /api/wealth/reset writes its pre-reset backup — the
+	// nightly backups' directory (env BACKUP_DIR). Empty defaults to the
+	// same "data/backups" app.Load does.
+	BackupDir string
 }
 
 // Server is Argus's read-only web dashboard (Phase 5 PR1 — see
@@ -193,7 +197,11 @@ type Server struct {
 	assistant   AssistantChatter
 	assistantDB assistantStore
 	assistantMu sync.Mutex
-	mux         *http.ServeMux
+	// resetDB/backupDir back wealth_reset.go; resetDB is set only when
+	// cfg.DB != nil, same typed-nil reason as apiDB.
+	resetDB   wealthResetter
+	backupDir string
+	mux       *http.ServeMux
 }
 
 func New(cfg Config) *Server {
@@ -229,10 +237,12 @@ func New(cfg Config) *Server {
 		llmAudit:            cfg.LLMAudit,
 		jwtSecret:           cfg.JWTSecret,
 		apiKey:              cfg.APIKey,
+		backupDir:           cmp.Or(cfg.BackupDir, "data/backups"),
 	}
 	if cfg.DB != nil {
 		s.apiDB = cfg.DB
 		s.assistantDB = cfg.DB
+		s.resetDB = cfg.DB
 	}
 	s.assistant = cfg.Assistant
 	s.recPerf = newRecPerfStore(s.db, s.history)
@@ -389,6 +399,11 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("POST /api/wealth/assistant/drafts/delete", s.requireWritable(s.requireAuth(s.requireAssistant(s.handleWealthDraftDelete))))
 	s.mux.HandleFunc("POST /api/wealth/assistant/drafts/clear", s.requireWritable(s.requireAuth(s.requireAssistant(s.handleWealthDraftClear))))
 	s.mux.HandleFunc("POST /api/wealth/assistant/apply", s.requireWritable(s.requireAuth(s.requireAssistant(s.handleWealthDraftApply))))
+	// /api/wealth/reset (Phase 28 D) — the settings page's danger zone. GET
+	// too sits behind the write gate: it only feeds that zone, which a
+	// read-only server doesn't show.
+	s.mux.HandleFunc("GET /api/wealth/reset", s.requireWritable(s.requireAuth(s.handleWealthResetGet)))
+	s.mux.HandleFunc("POST /api/wealth/reset", s.requireWritable(s.requireAuth(s.handleWealthReset)))
 	// /api/settings (Phase 17 PR2) sits behind the same gate as every write
 	// route, GET included: the read side reports which credentials are
 	// configured, which is not something to hand out unauthenticated.
