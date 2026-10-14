@@ -7121,11 +7121,6 @@ a.snap-news-head:hover {
   flex-shrink: 0;
 }
 
-.asst--compact .asst-ro {
-  border-radius: 0;
-  border-width: 0 0 1px;
-}
-
 .asst-ro-tag {
   display: flex;
   align-items: center;
