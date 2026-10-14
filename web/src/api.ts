@@ -1657,7 +1657,7 @@ export function executeOptionClose(req: OptionCloseRequest): Promise<TradeRespon
 }
 
 // --- Phase 5 §B CSV import (optional, docs/phase-5-web-dashboard.md) ---
-// Mirrors internal/web/csvimport.go's importRow/importResponse.
+// Mirrors internal/web/trade_import.go's importRow/importResponse.
 
 export interface ImportRow {
   line: number;
@@ -1876,7 +1876,7 @@ export function saveSettings(updates: Record<string, string>): Promise<{ message
 }
 
 // --- Phase 9: wealth platform (docs/phase-9-asset-platform.md) ---
-// Mirrors internal/web/assets.go and wealth_home.go.
+// Mirrors internal/web/wealth_assets.go and wealth_home.go.
 
 export type AssetSide = "asset" | "liability";
 export type AssetGroup = "liquid" | "growth" | "income" | "hard";

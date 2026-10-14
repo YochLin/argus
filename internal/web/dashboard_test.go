@@ -72,7 +72,7 @@ type fakeDB struct {
 	// strategyAlerts backs StrategyAlertsFor (strategies_test.go); the verdicts
 	// come from recs through GetRecommendationsForTicker.
 	strategyAlerts []db.StrategyAlert
-	// wealthAssets backs ListAssetsWithValue for assets_test.go (Phase 9 PR1).
+	// wealthAssets backs ListAssetsWithValue for wealth_assets_test.go (Phase 9 PR1).
 	wealthAssets []db.AssetWithValue
 	// assetSnapshots backs ListAssetSnapshots, keyed by asset id.
 	assetSnapshots map[int64][]db.AssetSnapshot

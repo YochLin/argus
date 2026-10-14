@@ -396,7 +396,7 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   BUY/SELL/HOLD joined from `recommendations` — the first one for that ticker within 4 days of the
   signal date, since a scan hit is promoted by the next report. It is a record of pushes, not a replay
   of the rules, so it starts empty at ship time and a marker means "this fired and you were told".
-  `apiauth.go`/`apiv1.go`/`apiv1_resources.go`/`ws.go` (Phase 24 Stage 4) are the `/api/v1` surface
+  `apiv1_auth.go`/`apiv1.go`/`apiv1_resources.go`/`apiv1_ws.go` (Phase 24 Stage 4) are the `/api/v1` surface
   aimed at a future mobile app and at scripts — JWT (`JWT_SECRET`) or `X-API-Key` (`API_KEY`) auth, a
   `{success, data, error, timestamp}` envelope on every response, and a `/api/v1/ws` WebSocket fed by
   `internal/notification`'s `WebSocketHub`. It is registered only when `JWT_SECRET` **and**

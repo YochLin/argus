@@ -113,10 +113,10 @@ type dbReader interface {
 	// the chart's strategy markers, each with the LLM's call on it (Phase 27 P5).
 	StrategyAlertsFor(ticker string) ([]db.StrategyAlert, error)
 	GetRecommendationsForTicker(ticker, from, to string) ([]db.Recommendation, error)
-	// ListAssetsWithValue backs assets.go's GET /api/wealth/assets (Phase 9
+	// ListAssetsWithValue backs wealth_assets.go's GET /api/wealth/assets (Phase 9
 	// PR1) — writes go through the separate wealthWriter interface.
 	ListAssetsWithValue(includeArchived bool) ([]db.AssetWithValue, error)
-	// ListAssetSnapshots backs assets.go's GET /api/wealth/assets/history — one
+	// ListAssetSnapshots backs wealth_assets.go's GET /api/wealth/assets/history — one
 	// asset's value records for the edit drawer.
 	ListAssetSnapshots(assetID int64) ([]db.AssetSnapshot, error)
 	// ListAssetsValueAsOf backs wealth_home.go's YTD/MoM historical totals.
