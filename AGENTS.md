@@ -368,7 +368,9 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
 
 - `internal/web` — Phase 5's web dashboard (read-only until Phase 10 added trade-input write endpoints):
   an in-process HTTP server gated by `WEB_ADDR`,
-  sharing the bot's live `data.Provider` chain and `*db.DB` connection directly. `pnl.go`'s pure
+  sharing the bot's live `data.Provider` chain and `*db.DB` connection directly. `routes.go` is the
+  URL index — one `register*` per area (stock, wealth, LLM audit, system, `/api/v1`), each naming
+  the files its handlers live in; a new route goes there, not into `server.go`'s `New`. `pnl.go`'s pure
   `DailyPnL`/`CumulativeCurve`/KPI functions are the daily-P&L replay engine backing every dashboard
   view. The embedded frontend build lives at `internal/web/dist` (React/Vite source at repo-root `web/`);
   only `index.html` is committed as a placeholder, CI builds the real SPA. Every market-scoped API
