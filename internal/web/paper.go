@@ -1,6 +1,7 @@
 package web
 
 import (
+	"net/http"
 	"sort"
 	"time"
 
@@ -308,4 +309,23 @@ func closedPositionFromRound(ticker string, r round) paperClosedResponse {
 		cr.ExitReason = "stop"
 	}
 	return cr
+}
+
+// handlePaper serves /api/paper?market=us|tw (Phase 11 PR4). 404s outright
+// when the feature is off (s.paperDB nil, PAPER_DB_PATH unset) rather than
+// a 200 with empty data — a disabled feature should read as absent, not as
+// "an account with zero everything," and the frontend uses /api/config's
+// paperEnabled to avoid ever calling this in the first place.
+func (s *Server) handlePaper(w http.ResponseWriter, r *http.Request) {
+	if s.paperDB == nil {
+		writeError(w, http.StatusNotFound, "paper account is disabled")
+		return
+	}
+	resp, err := buildPaper(s.paperDB, s.quotes, marketParam(r), s.paperInitialCashUSD, s.paperInitialCashTWD)
+	if err != nil {
+		logger.Errorf("web: build paper: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build paper account")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

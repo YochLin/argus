@@ -2,6 +2,7 @@ package web
 
 import (
 	"math"
+	"net/http"
 	"sort"
 
 	"argus/internal/data"
@@ -10,6 +11,53 @@ import (
 	"argus/internal/market"
 	"argus/internal/service"
 )
+
+// riskResponse is /api/risk's body (Phase 8 PR1, see
+// docs/phase-8-trader-analytics.md §3.2) — current open-risk exposure
+// across market m's positions, priced with live quotes. HeatThresholdPct
+// echoes the server's RISK_HEAT_PCT config (<=0 means "don't draw a
+// warning line," same convention as internal/bot's STOP_LOSS_PCT) so the
+// frontend doesn't need its own copy of that env var.
+type riskResponse struct {
+	AccountValue     float64                `json:"accountValue"`
+	Cash             float64                `json:"cash"`
+	HeatPct          float64                `json:"heatPct"`
+	HeatThresholdPct float64                `json:"heatThresholdPct"`
+	Positions        []riskPositionResponse `json:"positions"`
+	// OptionLockedCash/OptionCollateral are Phase 12 PR3's addition —
+	// US-only (options.go's OptionChainProvider is US-only), always zero/nil
+	// for market=tw. See buildOptionCollateral.
+	OptionLockedCash float64                    `json:"optionLockedCash"`
+	OptionCollateral []optionCollateralResponse `json:"optionCollateral"`
+}
+
+// optionCollateralResponse is one underlying's covered-call collateral
+// status — Naked is true when LockedShares (from open short calls) exceeds
+// HeldShares (the actual stock position), the one case in this whole phase
+// where the user might not know what they've done (docs/phase-12-options.md
+// §3.5).
+type optionCollateralResponse struct {
+	Underlying   string  `json:"underlying"`
+	LockedShares float64 `json:"lockedShares"`
+	HeldShares   float64 `json:"heldShares"`
+	Naked        bool    `json:"naked"`
+}
+
+type riskPositionResponse struct {
+	Ticker    string  `json:"ticker"`
+	Shares    float64 `json:"shares"`
+	AvgCost   float64 `json:"avgCost"`
+	Price     float64 `json:"price"`
+	Value     float64 `json:"value"`
+	WeightPct float64 `json:"weightPct"`
+	StopPrice float64 `json:"stopPrice"`
+	// OpenRisk/OpenRiskPct are nil when the position has no stop price set
+	// — deliberately not 0, which would read as "no risk" rather than
+	// "unknown/undefined risk." See buildRisk's doc comment.
+	OpenRisk         *float64 `json:"openRisk"`
+	OpenRiskPct      *float64 `json:"openRiskPct"`
+	UnrealizedPnLPct float64  `json:"unrealizedPnLPct"`
+}
 
 // buildRisk assembles the /api/risk response (Phase 8 PR1, see
 // docs/phase-8-trader-analytics.md §3.2): current open-risk exposure across
@@ -192,4 +240,14 @@ type pricedPosition struct {
 	AvgCost   float64
 	StopPrice float64
 	Price     float64
+}
+
+func (s *Server) handleRisk(w http.ResponseWriter, r *http.Request) {
+	resp, err := buildRiskWithPortfolio(s.db, s.portfolios(), marketParam(r), s.heatThresholdPct)
+	if err != nil {
+		logger.Errorf("web: build risk: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build risk")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"net/http"
 	"sync"
 
 	"argus/internal/data"
@@ -122,4 +123,14 @@ func fetchHistories(history data.HistoryProvider, tickers []string, rangeParam s
 	}
 	wg.Wait()
 	return result
+}
+
+func (s *Server) handleWatchlistSummary(w http.ResponseWriter, r *http.Request) {
+	resp, err := buildWatchlistSummary(s.db, s.quotes, s.history, marketParam(r))
+	if err != nil {
+		logger.Errorf("web: build watchlist summary: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build watchlist summary")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

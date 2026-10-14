@@ -4,7 +4,16 @@ import (
 	"argus/internal/data"
 	"argus/internal/logger"
 	"argus/internal/market"
+	"net/http"
 )
+
+// companyNamesResponse is /api/company-names' body — TW ticker → Chinese
+// short name (e.g. "2330" → "台積電"), see companynames.go's
+// buildCompanyNames. Always a map (possibly empty), never null, so the
+// frontend can index it unconditionally.
+type companyNamesResponse struct {
+	Names map[string]string `json:"names"`
+}
 
 // buildCompanyNames assembles /api/company-names: every TW ticker the user
 // has any relationship with (watchlist ∪ positions ∪ transacted tickers ∪
@@ -71,4 +80,8 @@ func buildCompanyNames(database dbReader, provider data.CompanyNameProvider) com
 		resp.Names[ticker] = name
 	}
 	return resp
+}
+
+func (s *Server) handleCompanyNames(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, buildCompanyNames(s.db, s.companyNames))
 }

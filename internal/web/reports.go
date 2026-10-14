@@ -3,11 +3,13 @@ package web
 import (
 	"fmt"
 	"math"
+	"net/http"
 	"sort"
 	"time"
 
 	"argus/internal/data"
 	"argus/internal/db"
+	"argus/internal/logger"
 	"argus/internal/market"
 )
 
@@ -303,7 +305,7 @@ func buildStreakStats(sells []db.Transaction) StreakStats {
 	return s
 }
 
-// reportsResponse is /api/reports' body — see handlers.go for the JSON
+// reportsResponse is /api/reports' body — see dashboard.go's dashboardResponse for the JSON
 // contract this mirrors on the frontend.
 type reportsResponse struct {
 	WinRate        float64       `json:"winRate"` // fraction 0-1, same convention as ReportGroup.WinRate/kpisResponse.WinRate
@@ -364,4 +366,14 @@ func buildReports(database dbReader, history data.HistoryProvider, m market.Mark
 	resp.MAEMFE = buildMAEMFESummary(txs, history)
 
 	return resp, nil
+}
+
+func (s *Server) handleReports(w http.ResponseWriter, r *http.Request) {
+	resp, err := buildReports(s.db, s.history, marketParam(r))
+	if err != nil {
+		logger.Errorf("web: build reports: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build reports")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

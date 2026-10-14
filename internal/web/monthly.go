@@ -1,9 +1,11 @@
 package web
 
 import (
+	"net/http"
 	"sort"
 	"time"
 
+	"argus/internal/logger"
 	"argus/internal/market"
 )
 
@@ -92,4 +94,14 @@ func buildMonthly(database dbReader, m market.MarketID) (monthlyResponse, error)
 		resp.Years = append(resp.Years, *years[y])
 	}
 	return resp, nil
+}
+
+func (s *Server) handleMonthly(w http.ResponseWriter, r *http.Request) {
+	resp, err := buildMonthly(s.db, marketParam(r))
+	if err != nil {
+		logger.Errorf("web: build monthly: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build monthly")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

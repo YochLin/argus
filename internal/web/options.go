@@ -260,3 +260,18 @@ func fetchOptionMarkAndGreeks(optionChain data.OptionChainProvider, quotes quote
 	g = option.BlackScholesGreeks(spot, p.Strike, float64(dte)/365, option.RiskFreeRate, q.ImpliedVolatility, 0, right)
 	return mark, dte, g, true
 }
+
+// handleOptions serves /api/options?market=us|tw (Phase 12 PR4) — always
+// 200, never 404 (unlike handlePaper, there's no separate feature flag:
+// the options ledger is always present, just usually empty). market=tw
+// simply returns empty data, same as every other market-scoped endpoint's
+// convention for a market it has nothing to report on.
+func (s *Server) handleOptions(w http.ResponseWriter, r *http.Request) {
+	resp, err := buildOptions(s.db, s.optionChain, s.quotes, marketParam(r))
+	if err != nil {
+		logger.Errorf("web: build options: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build options")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}

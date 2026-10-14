@@ -1,6 +1,7 @@
 package web
 
 import (
+	"net/http"
 	"time"
 
 	"argus/internal/data"
@@ -186,4 +187,14 @@ func computeMAESample(ticker string, r round, candles []data.Candle) (maeReturnS
 		return maeReturnSample{}, false
 	}
 	return maeReturnSample{Ticker: ticker, MAEPct: mm.MAEPct, ReturnPct: retPct}, true
+}
+
+func (s *Server) handleDistributions(w http.ResponseWriter, r *http.Request) {
+	resp, err := buildDistributions(s.db, s.history, marketParam(r))
+	if err != nil {
+		logger.Errorf("web: build distributions: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build distributions")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

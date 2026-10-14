@@ -22,6 +22,20 @@ import (
 	"argus/internal/service"
 )
 
+type configResponse struct {
+	Lang string `json:"lang"`
+	// PaperEnabled (Phase 11 PR4) tells the frontend whether to show the
+	// "Paper Account" sidebar item at all — /api/paper 404s regardless, but
+	// showing a nav link to a page that always errors would be worse than
+	// not showing it, same reasoning as Writable gating the trade UI.
+	PaperEnabled bool `json:"paperEnabled"`
+	// LLMAuditEnabled (Phase 19, §8.4) tells the frontend whether to show
+	// the "/llm" sidebar item at all — mirrors PaperEnabled's reasoning, but
+	// here the API routes themselves are also unregistered (see
+	// Config.LLMAudit), so this really is the only signal the frontend has.
+	LLMAuditEnabled bool `json:"llmAuditEnabled"`
+}
+
 // dist holds the built frontend (web/'s Vite project, configured to build
 // straight into this directory — see web/vite.config.ts — since go:embed
 // patterns can't reach outside the package directory with a "..", the SPA
@@ -322,4 +336,8 @@ func (s *Server) Run(ctx context.Context, addr string) error {
 	case err := <-errCh:
 		return err
 	}
+}
+
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, configResponse{Lang: string(s.lang), PaperEnabled: s.paperDB != nil, LLMAuditEnabled: s.llmAudit})
 }

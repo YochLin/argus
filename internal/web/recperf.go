@@ -1,6 +1,7 @@
 package web
 
 import (
+	"net/http"
 	"sort"
 	"sync"
 	"time"
@@ -308,7 +309,6 @@ func buildRecPerformance(database dbReader, history data.HistoryProvider, m mark
 	return resp, nil
 }
 
-
 // recPerfActiveSignals lists still-open BUY/SELL recs — those whose
 // shortest-horizon window (recPerfHorizons[0]) hasn't matured yet — with an
 // excess return recomputed entry-to-today instead of entry-to-horizon, using
@@ -414,4 +414,14 @@ func recPerfExtremes(recs []receval.ScoredRec, horizon int) []recPerfExtreme {
 		})
 	}
 	return out
+}
+
+func (s *Server) handleRecPerformance(w http.ResponseWriter, r *http.Request) {
+	resp, err := s.recPerf.Get(marketParam(r))
+	if err != nil {
+		logger.Errorf("web: build rec-performance: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build rec-performance")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

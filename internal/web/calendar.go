@@ -1,6 +1,7 @@
 package web
 
 import (
+	"net/http"
 	"time"
 
 	"argus/internal/data"
@@ -8,6 +9,40 @@ import (
 	"argus/internal/logger"
 	"argus/internal/market"
 )
+
+// calendarResponse is /api/calendar's body — same "raw data only" rule as
+// dashboardResponse. Days is the DailyPnL series (pnl.go) restricted to the
+// requested month; a calendar day absent from Days simply has no data
+// (weekend, holiday, or before daily_snapshots started) rather than a
+// misleading 0 — the frontend must render "no data" distinctly from a
+// $0 day. Transactions is the whole month's raw transaction rows, letting
+// the frontend's click-a-day panel and week/month summary rows (design
+// doc's A3) both work off one response with no further API calls.
+type calendarResponse struct {
+	Month        string                `json:"month"`
+	Days         []DateValue           `json:"days"`
+	Transactions []transactionResponse `json:"transactions"`
+	// Events is the month's earnings-date markers (Calendar's scope is
+	// earnings-only, see docs/architecture — IPO/dividend/split/lock-up have
+	// no data source in internal/data today) for every ticker either
+	// transacted this market or on this market's watchlist.
+	Events []calendarEvent `json:"events"`
+}
+
+// calendarEvent is a single earnings-date marker. Note text is deliberately
+// not included — the frontend builds display copy from Kind/Hour/Estimated
+// via its own i18n dictionary (web/src/i18n.ts), same "backend never sends
+// display strings" rule every other endpoint in this package follows. Kind
+// is carried as a string (not hardcoded to "earnings" in the frontend) so a
+// future event type can slot in without a response-shape change.
+type calendarEvent struct {
+	Date      string `json:"date"`
+	Ticker    string `json:"ticker"`
+	Kind      string `json:"kind"`
+	Hour      string `json:"hour"`      // "bmo"/"amc"/"dmh"/"" — Finnhub-only, always "" for TW's estimated proxy
+	Estimated bool   `json:"estimated"` // true for TW's statutory-deadline proxy, see data.GetTWEarningsInRange
+	Held      bool   `json:"held"`      // ticker is a currently open position
+}
 
 // monthBounds parses a "YYYY-MM" month string into its first/last calendar
 // day (as "YYYY-MM-DD" strings, matching daily_snapshots/transactions'
@@ -185,4 +220,14 @@ func attachCalendarEvents(resp *calendarResponse, database dbReader, earnings da
 		})
 	}
 	return nil
+}
+
+func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
+	resp, err := buildCalendar(s.db, s.earnings, r.URL.Query().Get("month"), marketParam(r))
+	if err != nil {
+		logger.Errorf("web: build calendar: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build calendar")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
