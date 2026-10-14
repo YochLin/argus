@@ -143,8 +143,12 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   (ticker, round start) in `round_theses` (Phase 27), read through `service.CurrentThesis`/`RoundThesis`
   with the legacy `thesis_entries` journal only as a fallback; `RecordBuy` re-keys a pre-buy draft to the
   round it opens. Migrations are versioned via
-  `PRAGMA user_version`, append-only in `db.migrations`,
-  never edited/reordered once shipped. `RecordBuy`/`RecordSell` own all `positions`/`transactions`
+  `PRAGMA user_version`, append-only in `db.migrations` (`migrations.go` is the list; `migrate.go` is
+  the runner plus the Go-code steps), never edited/reordered once shipped. Files are one table (or
+  table family) each: `db.go` is only the connection (`New`/`Open*`/`Backup`/`Close`), and the original
+  nine tables' methods sit in `trades.go` (the write path), `trade_queries.go`, `snapshots.go`,
+  `networth.go`, `recommendations.go`, `watchlist.go`, `settings.go` and `signal_states.go`; an `Err*`
+  lives in the file whose methods return it. `RecordBuy`/`RecordSell` own all `positions`/`transactions`
   writes with weighted-average cost and realized P&L math. TW support added a `market` column to four
   tables (migration 12) and rebuilt `net_worth_snapshots`'s primary key to `(date, market)`. Phase 12
   (migration 15) added `option_positions`/`option_transactions` (`options.go`) as two fully independent
