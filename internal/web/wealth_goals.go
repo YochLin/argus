@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"argus/internal/assets"
 	"argus/internal/db"
 	"argus/internal/logger"
 	"argus/internal/service"
@@ -43,12 +44,10 @@ type wealthGoalCreateRequest struct {
 // itself so both handlers share one rule set.
 func (req wealthGoalCreateRequest) newGoal(w http.ResponseWriter) (db.NewGoal, bool) {
 	req.Name = strings.TrimSpace(req.Name)
-	if req.Name == "" || req.TargetAmount <= 0 {
-		writeError(w, http.StatusBadRequest, "name and a positive targetAmount are required")
-		return db.NewGoal{}, false
-	}
-	if (req.SavedAmount != nil && *req.SavedAmount < 0) || (req.MonthlyContribution != nil && *req.MonthlyContribution < 0) || req.StartYear < 0 {
-		writeError(w, http.StatusBadRequest, "savedAmount, monthlyContribution and startYear must not be negative")
+	if ps := assets.ValidateGoal(assets.NewGoal{
+		Name: req.Name, TargetAmount: &req.TargetAmount, SavedAmount: req.SavedAmount, MonthlyContribution: req.MonthlyContribution, StartYear: req.StartYear,
+	}); len(ps) > 0 {
+		writeError(w, http.StatusBadRequest, ps[0].Msg)
 		return db.NewGoal{}, false
 	}
 	return db.NewGoal{

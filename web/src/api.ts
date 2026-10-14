@@ -2654,7 +2654,36 @@ export interface InsuranceDraftPayload {
   premium_years?: number;
 }
 
-export type DraftPayload = AssetDraftPayload | BalanceDraftPayload | CashflowDraftPayload | InsuranceDraftPayload;
+// ProfileDraftPayload mirrors internal/assets.ProfileDraft: only the fields
+// given change. retirement_age and retirement_monthly_spend go together.
+export interface ProfileDraftPayload {
+  annual_salary?: number;
+  birth_year?: number;
+  retirement_monthly_contribution?: number;
+  dependents?: number;
+  youngest_child_age?: number;
+  spouse_has_income?: boolean;
+  retirement_age?: number;
+  retirement_monthly_spend?: number;
+}
+
+// GoalDraftPayload mirrors internal/assets.GoalDraft (a general goal, TWD).
+export interface GoalDraftPayload {
+  name?: string;
+  target_amount?: number;
+  target_year?: number;
+  saved_amount?: number;
+  monthly_contribution?: number;
+  note?: string;
+}
+
+export type DraftPayload =
+  | AssetDraftPayload
+  | BalanceDraftPayload
+  | CashflowDraftPayload
+  | InsuranceDraftPayload
+  | ProfileDraftPayload
+  | GoalDraftPayload;
 
 // AssistantDraft mirrors wealth_drafts.go's assistantDraft: status and
 // missing are computed by the server on every read. current is a balance
@@ -2674,6 +2703,8 @@ export type AssistantDraft = {
   | { kind: "balance"; payload: BalanceDraftPayload }
   | { kind: "cashflow"; payload: CashflowDraftPayload }
   | { kind: "insurance"; payload: InsuranceDraftPayload }
+  | { kind: "profile"; payload: ProfileDraftPayload }
+  | { kind: "goal"; payload: GoalDraftPayload }
 );
 
 export interface AssistantData {

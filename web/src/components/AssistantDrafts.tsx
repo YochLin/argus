@@ -27,11 +27,14 @@ function money(v: number, currency?: string, negative?: boolean): string {
 // draftTitle is a card's (and a chip's) name.
 export function draftTitle(dict: Dictionary, d: AssistantDraft): string {
   if (d.kind === "balance") return d.current?.name ?? "—";
+  if (d.kind === "profile") return dict.asstProfileName;
   return d.payload.name || dict.asstPendingVal;
 }
 
 // draftChip is a chip's label: the name and the amount, as in the design.
 export function draftChip(dict: Dictionary, d: AssistantDraft): string {
+  if (d.kind === "profile") return draftTitle(dict, d);
+  if (d.kind === "goal") return d.payload.target_amount == null ? draftTitle(dict, d) : `${draftTitle(dict, d)} ${money(d.payload.target_amount, "TWD")}`;
   const v = d.kind === "cashflow" || d.kind === "insurance" ? d.payload.amount : d.payload.value;
   const cur = d.kind === "balance" ? d.current?.currency : d.kind === "insurance" ? "TWD" : d.payload.currency;
   const neg = d.kind === "asset" && LOAN_TYPES.includes(d.payload.type ?? "");
@@ -39,14 +42,42 @@ export function draftChip(dict: Dictionary, d: AssistantDraft): string {
 }
 
 function kindLabel(dict: Dictionary, d: AssistantDraft): string {
-  return d.kind === "balance"
-    ? dict.asstKindBalance
-    : d.kind === "cashflow"
-      ? dict.asstKindCash
-      : d.kind === "insurance"
-        ? dict.asstKindIns
-        : dict.asstKindAsset;
+  return {
+    asset: dict.asstKindAsset,
+    balance: dict.asstKindBalance,
+    cashflow: dict.asstKindCash,
+    insurance: dict.asstKindIns,
+    profile: dict.asstKindProfile,
+    goal: dict.asstKindGoal,
+  }[d.kind];
 }
+
+// NumDef is one number field of a profile or goal draft, shared by the card
+// and the drawer. money ones are TWD.
+type NumDef = { key: string; label: string; money?: boolean };
+
+// The profile's numbers in the order /w's setup cards ask for them; whether
+// the spouse has an income is the one yes/no and is handled on its own.
+const profileNums = (dict: Dictionary): NumDef[] => [
+  { key: "annual_salary", label: dict.wealthAnnualSalary, money: true },
+  { key: "birth_year", label: dict.wealthRetireBirthYearLabel },
+  { key: "retirement_age", label: dict.wealthRetireTargetAgeLabel },
+  { key: "retirement_monthly_spend", label: dict.wealthRetireSpendLabel, money: true },
+  { key: "retirement_monthly_contribution", label: dict.wealthRetireContribInputLabel, money: true },
+  { key: "dependents", label: dict.wealthInsureDependentsLabel },
+  { key: "youngest_child_age", label: dict.wealthInsureYoungestChildAgeLabel },
+];
+
+// A goal's numbers, as /w/goals' drawer labels them — except its bare 目標,
+// which would read as the card's kind tag.
+const goalNums = (dict: Dictionary): NumDef[] => [
+  { key: "target_amount", label: dict.asstFTarget, money: true },
+  { key: "target_year", label: dict.wealthGoalsEtaYearLabel },
+  { key: "saved_amount", label: dict.wealthGoalsSavedLabel, money: true },
+  { key: "monthly_contribution", label: dict.wealthGoalsMonthlyLabel, money: true },
+];
+
+const spouseLabel = (dict: Dictionary, v: boolean) => (v ? dict.wealthInsureSpouseIncomeYes : dict.wealthInsureSpouseIncomeNo);
 
 // insKind narrows a payload's kind to one of /w/insure's six (else undefined).
 const insKind = (k?: string) => KIND_ORDER.find((x) => x === k);
@@ -292,6 +323,44 @@ function DraftCard({
       { label: dict.wealthInsureAnnualPremiumLabel, value: p.annual_premium != null ? money(p.annual_premium, "TWD") : "—" },
     ];
     body = <FieldGrid fields={fields} dict={dict} onEdit={onEdit} />;
+  } else if (d.kind === "profile") {
+    // The design's "field → value" list: only what the draft changes, plus
+    // what it still needs.
+    const p = d.payload as Record<string, number | undefined>;
+    const rows = profileNums(dict).flatMap((n): Field[] =>
+      p[n.key] != null
+        ? [{ label: n.label, value: n.money ? money(p[n.key]!, "TWD") : String(p[n.key]) }]
+        : miss(n.key)
+          ? [{ label: n.label, missing: true }]
+          : [],
+    );
+    if (d.payload.spouse_has_income != null) rows.push({ label: dict.wealthInsureSpouseIncomeLabel, value: spouseLabel(dict, d.payload.spouse_has_income) });
+    body = (
+      <div className="asst-kv">
+        {rows.map((r) => (
+          <div key={r.label} className="asst-kv-row">
+            <span className="asst-kv-k">{r.label}</span>
+            <span className="asst-kv-arrow">→</span>
+            {r.missing ? (
+              <button className="asst-missing" onClick={onEdit}>
+                ? {dict.asstPendingVal}
+              </button>
+            ) : (
+              <span className="asst-kv-v">{r.value}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  } else if (d.kind === "goal") {
+    // Not in the design: the grid card, as §10.2 decided.
+    const p = d.payload as Record<string, number | undefined>;
+    const fields: Field[] = goalNums(dict).map((n) => ({
+      label: n.label,
+      value: p[n.key] == null ? "—" : n.money ? money(p[n.key]!, "TWD") : String(p[n.key]),
+      missing: miss(n.key),
+    }));
+    body = <FieldGrid fields={fields} dict={dict} onEdit={onEdit} />;
   } else {
     const p = d.payload;
     const loan = LOAN_TYPES.includes(p.type ?? "");
@@ -372,13 +441,23 @@ function DraftEditDrawer({
   const asset = d.kind === "asset" ? d.payload : null;
   const flow = d.kind === "cashflow" ? d.payload : null;
   const ins = d.kind === "insurance" ? d.payload : null;
+  const prof = d.kind === "profile" ? d.payload : null;
+  const goal = d.kind === "goal" ? d.payload : null;
+  // Profile and goal drafts are only number fields (plus a goal's name and
+  // note, and the spouse yes/no), kept apart from the shared ones below.
+  const defs = prof ? profileNums(dict) : goal ? goalNums(dict) : [];
+  const [nums, setNums] = useState(() =>
+    Object.fromEntries(defs.map((n) => [n.key, str((d.payload as Record<string, number | undefined>)[n.key])])),
+  );
+  const [spouse, setSpouse] = useState(prof?.spouse_has_income == null ? "" : String(prof.spouse_has_income));
+  const [note, setNote] = useState(goal?.note ?? "");
   const [f, setF] = useState({
-    name: asset?.name ?? flow?.name ?? ins?.name ?? "",
+    name: asset?.name ?? flow?.name ?? ins?.name ?? goal?.name ?? "",
     type: asset?.type ?? "",
     group: asset?.group ?? "",
     currency: asset?.currency ?? flow?.currency ?? "",
-    value: str(d.kind === "cashflow" || d.kind === "insurance" ? d.payload.amount : d.payload.value),
-    date: d.kind === "cashflow" || d.kind === "insurance" ? "" : (d.payload.date ?? ""),
+    value: str(d.kind === "cashflow" || d.kind === "insurance" ? d.payload.amount : d.kind === "asset" || d.kind === "balance" ? d.payload.value : undefined),
+    date: d.kind === "asset" || d.kind === "balance" ? (d.payload.date ?? "") : "",
     direction: flow?.direction ?? "",
     day: str(flow?.day_of_month),
     category: flow?.category ?? "",
@@ -403,7 +482,12 @@ function DraftEditDrawer({
 
   function save() {
     let payload: DraftPayload;
-    if (flow) {
+    const numbers = Object.fromEntries(defs.map((n) => [n.key, num(nums[n.key])]));
+    if (prof) {
+      payload = { ...prof, ...numbers, spouse_has_income: spouse === "" ? undefined : spouse === "true" };
+    } else if (goal) {
+      payload = { ...goal, ...numbers, name: f.name, note: note.trim() || undefined };
+    } else if (flow) {
       payload = {
         ...flow,
         direction: f.direction,
@@ -466,6 +550,39 @@ function DraftEditDrawer({
       ))}
     </div>
   );
+  const numField = (n: NumDef) => (
+    <div key={n.key} className="wealth-drawer-field">
+      {label(n.label, n.key)}
+      <input
+        className={`mono${unsure(n.key, nums[n.key].trim() === "")}`}
+        type="number"
+        inputMode="decimal"
+        value={nums[n.key]}
+        onChange={(e) => setNums((p) => ({ ...p, [n.key]: e.target.value }))}
+      />
+    </div>
+  );
+  const ownFields = prof ? (
+    <>
+      {defs.map(numField)}
+      <div className="wealth-drawer-field">
+        {label(dict.wealthInsureSpouseIncomeLabel, "spouse_has_income")}
+        {chips(["true", "false"], spouse, setSpouse, (v) => spouseLabel(dict, v === "true"))}
+      </div>
+    </>
+  ) : goal ? (
+    <>
+      <div className="wealth-drawer-field">
+        {label(dict.wealthName, "name")}
+        <input className={unsure("name", !f.name.trim())} value={f.name} onChange={(e) => set("name")(e.target.value)} />
+      </div>
+      {defs.map(numField)}
+      <div className="wealth-drawer-field">
+        {label(dict.wealthGoalsNoteLabel, "note")}
+        <input value={note} onChange={(e) => setNote(e.target.value)} />
+      </div>
+    </>
+  ) : null;
 
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
@@ -528,25 +645,29 @@ function DraftEditDrawer({
                     {chips(GROUPS, f.group, set("group"), (g) => groupLabel(dict, g as AssetGroup))}
                   </div>
                 </>
-              ) : (
+              ) : d.kind === "balance" ? (
                 <div className="wealth-drawer-field">
                   <span className="wealth-drawer-field-label">{dict.wealthName}</span>
                   <input value={d.current?.name ?? ""} readOnly className="asst-input-ro" />
                 </div>
+              ) : (
+                ownFields
               )}
-              <div className="wealth-drawer-field">
-                {label(
-                  d.kind === "balance" ? dict.asstTo : ins ? dict.wealthInsureAmountLabel + insUnit(dict, f.insKind) : dict.asstFAmt,
-                  valueKey,
-                )}
-                <input
-                  className={`mono${unsure(valueKey, f.value.trim() === "")}`}
-                  type="number"
-                  inputMode="decimal"
-                  value={f.value}
-                  onChange={(e) => set("value")(e.target.value)}
-                />
-              </div>
+              {!ownFields && (
+                <div className="wealth-drawer-field">
+                  {label(
+                    d.kind === "balance" ? dict.asstTo : ins ? dict.wealthInsureAmountLabel + insUnit(dict, f.insKind) : dict.asstFAmt,
+                    valueKey,
+                  )}
+                  <input
+                    className={`mono${unsure(valueKey, f.value.trim() === "")}`}
+                    type="number"
+                    inputMode="decimal"
+                    value={f.value}
+                    onChange={(e) => set("value")(e.target.value)}
+                  />
+                </div>
+              )}
               {(asset || flow) && (
                 <div className="wealth-drawer-field">
                   {label(dict.asstFCur, "currency")}
@@ -579,7 +700,7 @@ function DraftEditDrawer({
                     <input value={f.insured} onChange={(e) => set("insured")(e.target.value)} />
                   </div>
                 </>
-              ) : (
+              ) : ownFields ? null : (
                 <div className="wealth-drawer-field">
                   {label(dict.asstFDate, "date")}
                   <input className="mono" type="date" value={f.date} onChange={(e) => set("date")(e.target.value)} />

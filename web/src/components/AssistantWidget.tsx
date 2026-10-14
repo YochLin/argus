@@ -13,8 +13,8 @@ import { ConfirmDialog } from "./ConfirmDialog";
 export function AiIcon({ size = 12 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" stroke="currentColor" strokeWidth={1.5} fill="none" aria-hidden="true">
-      <path d="M2.5 3.5h11v7.5H7l-3 2.5V11H2.5Z" />
-      <path d="M8 5.2l.6 1.4 1.4.6-1.4.6L8 9.2l-.6-1.4-1.4-.6 1.4-.6Z" />
+      <path d="M8 2.3l1.27 3.4 3.4 1.27-3.4 1.27L8 11.67 6.73 8.27 3.33 7l3.4-1.27Z" fill="currentColor" stroke="none" />
+      <path d="M12.33 10.33l.53 1.34 1.34.53-1.34.53-.53 1.34-.53-1.34-1.34-.53 1.34-.53Z" fill="currentColor" stroke="none" opacity={0.85} />
     </svg>
   );
 }

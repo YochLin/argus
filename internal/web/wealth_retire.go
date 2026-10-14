@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"argus/internal/assets"
 	"argus/internal/db"
 	"argus/internal/logger"
 	"argus/internal/service"
@@ -90,24 +91,16 @@ func (s *Server) handleWealthRetireSave(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
-	if req.MonthlySpend <= 0 {
-		writeError(w, http.StatusBadRequest, "monthlySpend must be positive")
-		return
-	}
 	by := service.LoadWealthProfile(s.db).BirthYear
 	if by == nil {
 		writeError(w, http.StatusBadRequest, "set your birth year first")
 		return
 	}
-	birthYear := *by
-	currentAge := time.Now().Year() - birthYear
-	if req.RetirementAge <= currentAge || req.RetirementAge > service.RetirementHorizonAge {
-		writeError(w, http.StatusBadRequest, "retirementAge must be between your current age and the simulation horizon")
+	if ps := assets.ValidateRetirement(&req.RetirementAge, &req.MonthlySpend, by, time.Now().Year()); len(ps) > 0 {
+		writeError(w, http.StatusBadRequest, ps[0].Msg)
 		return
 	}
-	targetDate := fmt.Sprintf("%04d-01-01", birthYear+req.RetirementAge)
-	targetAmount := req.MonthlySpend * 12 * service.RetirementWithdrawalMultiple
-	if _, err := s.wealthDB.UpsertRetirementGoal(req.Name, targetAmount, targetDate); err != nil {
+	if err := s.saveRetirement(req.Name, req.RetirementAge, req.MonthlySpend, *by); err != nil {
 		logger.Errorf("web: upsert retirement goal: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to save")
 		return
@@ -120,6 +113,14 @@ func (s *Server) handleWealthRetireSave(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// saveRetirement stores a validated retirement plan in the retirement goal:
+// the date the user turns age and 25 years of spending (the 4% rule) — the
+// quick switch's write, and the assistant's profile drafts'.
+func (s *Server) saveRetirement(name string, age int, monthlySpend float64, birthYear int) error {
+	_, err := s.wealthDB.UpsertRetirementGoal(name, monthlySpend*12*service.RetirementWithdrawalMultiple, fmt.Sprintf("%04d-01-01", birthYear+age))
+	return err
 }
 
 type retireAssignItem struct {

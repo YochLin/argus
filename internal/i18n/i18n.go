@@ -473,6 +473,10 @@ const (
 	// entry point opens it.
 	KeySystemPromptWealth Key = "system_prompt_wealth"
 	KeyWealthTopicHint    Key = "wealth_topic_hint"
+	// KeyWealthRetirementGoalName names the retirement goal a profile draft
+	// creates when there is none yet — /w/retire's own save uses the page
+	// title, which is this text.
+	KeyWealthRetirementGoalName Key = "wealth_retirement_goal_name"
 
 	KeyRecPromptIntro Key = "rec_prompt_intro"
 	// KeyRecPromptIntroTW is KeyRecPromptIntro's Taiwan-market twin —

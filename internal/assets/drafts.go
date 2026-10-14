@@ -5,13 +5,14 @@ import (
 	"strings"
 )
 
-// Draft kinds — wealth_drafts.kind (Phase 28 B2, B3a, B3b). B3c adds
-// profile and goal.
+// Draft kinds — wealth_drafts.kind (Phase 28 B2, B3a–c).
 const (
 	DraftAsset     = "asset"
 	DraftBalance   = "balance"
 	DraftCashflow  = "cashflow"
 	DraftInsurance = "insurance"
+	DraftProfile   = "profile"
+	DraftGoal      = "goal"
 )
 
 // DraftAssetTypes is what the wealth assistant may propose as a new asset —

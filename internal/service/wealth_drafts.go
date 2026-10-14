@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	"argus/internal/assets"
@@ -26,16 +27,19 @@ type DraftCheck struct {
 // update for an asset that has since gone away shows up as an error. Both
 // the propose tools (before storing) and the web (for the drafts pane) call
 // this, so the model and the user see the same verdict. A draft whose last
-// write failed is an error with that reason until it is edited.
-func CheckWealthDraft(d db.WealthDraft, existing []db.AssetWithValue, today string) DraftCheck {
-	c := checkDraft(d.Kind, d.TargetID, d.Payload, existing, today)
+// write failed is an error with that reason until it is edited. birthYear is
+// the stored one (WealthProfile.BirthYear): a profile draft's retirement age
+// needs it when the draft doesn't set its own.
+func CheckWealthDraft(d db.WealthDraft, existing []db.AssetWithValue, birthYear *int, today string) DraftCheck {
+	c := checkDraft(d.Kind, d.TargetID, d.Payload, existing, birthYear, today)
 	if d.ApplyError != "" {
 		c.Status, c.Error, c.Failed = "error", d.ApplyError, true
 	}
 	return c
 }
 
-func checkDraft(kind string, targetID *int64, payload string, existing []db.AssetWithValue, today string) DraftCheck {
+func checkDraft(kind string, targetID *int64, payload string, existing []db.AssetWithValue, birthYear *int, today string) DraftCheck {
+	thisYear, _ := strconv.Atoi(today[:4])
 	var ps []assets.Problem
 	switch kind {
 	case assets.DraftAsset:
@@ -85,6 +89,19 @@ func checkDraft(kind string, targetID *int64, payload string, existing []db.Asse
 				break
 			}
 		}
+	case assets.DraftProfile:
+		var d assets.ProfileDraft
+		if err := json.Unmarshal([]byte(payload), &d); err != nil {
+			return DraftCheck{Status: "error", Missing: []string{}, Error: "unreadable draft: " + err.Error()}
+		}
+		ps = d.Problems(birthYear, thisYear)
+	case assets.DraftGoal:
+		// No duplicate check, as /w/goals has none: two goals may share a name.
+		var d assets.GoalDraft
+		if err := json.Unmarshal([]byte(payload), &d); err != nil {
+			return DraftCheck{Status: "error", Missing: []string{}, Error: "unreadable draft: " + err.Error()}
+		}
+		ps = d.Problems(thisYear)
 	default:
 		return DraftCheck{Status: "error", Missing: []string{}, Error: "unknown draft kind: " + kind}
 	}

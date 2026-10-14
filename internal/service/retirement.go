@@ -1,5 +1,7 @@
 package service
 
+import "argus/internal/assets"
+
 // Retirement projection (Phase 9 波次3 PR7, docs/phase-9-asset-platform.md
 // §8.7/§10.2②) — a pure function, no DB/network, same "health metrics never
 // go through the LLM" rule as the rest of this file's wealth math.
@@ -24,11 +26,14 @@ const (
 	RetirementPostReturnReal         = 0.01 // default real return, drawing down
 	RetirementWithdrawalMultiple     = 25   // 4% rule: need = annual spend * 25
 	RetirementWithdrawalRateReal     = 0.04 // same 4% rule as a rate rather than a multiple — RetirementInputs.WithdrawalRate takes this form
-	RetirementHorizonAge             = 92   // default simulate-depletion-out-to age
 	RetirementScenarioCrashPct       = 0.30 // one-off shock, sequence-of-returns scenario
 	RetirementScenarioCrashLeadYears = 5    // years before retirement the shock lands
 	RetirementScenarioLowReturnDelta = 0.015
 )
+
+// RetirementHorizonAge is the default simulate-depletion-out-to age, and so
+// the latest retirement age that can be saved (assets.ValidateRetirement).
+const RetirementHorizonAge = assets.RetirementHorizonAge
 
 // RetirementInputs is the caller-resolved state. YearsToRetirement and
 // YearsPostRetirement are already clamped to >= 0 by the caller (derived

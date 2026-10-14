@@ -9,6 +9,7 @@ import (
 
 	"argus/internal/assets"
 	"argus/internal/db"
+	"argus/internal/i18n"
 	"argus/internal/logger"
 	"argus/internal/service"
 )
@@ -49,13 +50,13 @@ type applyOutcome struct {
 func today() string { return time.Now().Format("2006-01-02") }
 
 // draftViews renders drafts with their computed status.
-func draftViews(drafts []db.WealthDraft, existing []db.AssetWithValue) []assistantDraft {
+func draftViews(drafts []db.WealthDraft, existing []db.AssetWithValue, birthYear *int) []assistantDraft {
 	day := today()
 	out := make([]assistantDraft, 0, len(drafts))
 	for _, d := range drafts {
 		v := assistantDraft{
 			ID: d.ID, Kind: d.Kind, TargetID: d.TargetID, Payload: json.RawMessage(d.Payload),
-			DraftCheck: service.CheckWealthDraft(d, existing, day), CreatedAt: d.CreatedAt,
+			DraftCheck: service.CheckWealthDraft(d, existing, birthYear, day), CreatedAt: d.CreatedAt,
 		}
 		if d.TargetID != nil {
 			if a := service.FindAsset(existing, *d.TargetID); a != nil {
@@ -74,7 +75,7 @@ func (s *Server) loadDrafts(w http.ResponseWriter) ([]assistantDraft, bool) {
 	if !ok {
 		return nil, false
 	}
-	return draftViews(drafts, existing), true
+	return draftViews(drafts, existing, service.LoadWealthProfile(s.db).BirthYear), true
 }
 
 func (s *Server) draftsAndAssets(w http.ResponseWriter) ([]db.WealthDraft, []db.AssetWithValue, bool) {
@@ -161,6 +162,21 @@ func (s *Server) handleWealthDraftUpdate(w http.ResponseWriter, r *http.Request)
 		}
 		d.Normalize()
 		payload = d
+	case assets.DraftProfile:
+		var d assets.ProfileDraft
+		if err := json.Unmarshal(req.Payload, &d); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid payload")
+			return
+		}
+		payload = d
+	case assets.DraftGoal:
+		var d assets.GoalDraft
+		if err := json.Unmarshal(req.Payload, &d); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid payload")
+			return
+		}
+		d.Normalize()
+		payload = d
 	default:
 		writeError(w, http.StatusBadRequest, "this draft can't be edited")
 		return
@@ -228,7 +244,7 @@ func (s *Server) handleWealthDraftApply(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	views := draftViews(drafts, existing)
+	views := draftViews(drafts, existing, service.LoadWealthProfile(s.db).BirthYear)
 	if !anyOK(views) {
 		writeError(w, http.StatusBadRequest, "no draft is ready to save")
 		return
@@ -281,7 +297,8 @@ func anyOK(views []assistantDraft) bool {
 // write (Source "import", §5) so detail rows land exactly as an imported one
 // would; a balance goes through LogAssetValue, the value drawer's path; a
 // cash flow through CreateRecurringCashflow, /w/cash's add form's; a policy
-// through CreateInsuranceAsset, /w/insure's.
+// through CreateInsuranceAsset, /w/insure's; a profile through the profile
+// cards' and /w/retire's writes; a goal through CreateGoal, /w/goals'.
 func (s *Server) applyDraft(d db.WealthDraft) error {
 	switch d.Kind {
 	case assets.DraftAsset:
@@ -335,6 +352,37 @@ func (s *Server) applyDraft(d db.WealthDraft) error {
 			db.InsuranceDetails{Insurer: p.Insurer, Insured: p.Insured, AnnualPremium: p.AnnualPremium, PremiumYears: p.PremiumYears},
 			db.InsuranceCoverage{Kind: p.Kind, Amount: *p.Amount, PerPeriod: perPeriod},
 		)
+		return err
+	case assets.DraftProfile:
+		var p assets.ProfileDraft
+		if err := json.Unmarshal([]byte(d.Payload), &p); err != nil {
+			return err
+		}
+		if err := saveWealthProfile(s.wealthDB, p.Profile()); err != nil {
+			return err
+		}
+		if p.RetirementAge == nil {
+			return nil
+		}
+		// Checked ok, so the birth year is in the draft (just saved) or stored.
+		name := i18n.T(s.lang, i18n.KeyWealthRetirementGoalName)
+		goals, err := s.db.ListGoals()
+		if err != nil {
+			return err
+		}
+		if g := service.FindRetirementGoal(goals); g != nil {
+			name = g.Name
+		}
+		return s.saveRetirement(name, *p.RetirementAge, *p.RetirementMonthlySpend, *service.LoadWealthProfile(s.db).BirthYear)
+	case assets.DraftGoal:
+		var g assets.GoalDraft
+		if err := json.Unmarshal([]byte(d.Payload), &g); err != nil {
+			return err
+		}
+		_, err := s.wealthDB.CreateGoal(db.NewGoal{
+			Name: g.Name, Kind: "general", TargetAmount: *g.TargetAmount, Currency: "TWD", TargetDate: g.TargetDate(), Note: g.Note,
+			SavedAmount: g.SavedAmount, MonthlyContribution: g.MonthlyContribution,
+		})
 		return err
 	}
 	return fmt.Errorf("unknown draft kind %q", d.Kind)

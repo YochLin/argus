@@ -99,6 +99,16 @@ func registerWealthTools(s *mcp.Server, wt *wealthTools) {
 	}, wt.proposeInsurance)
 
 	mcp.AddTool(s, &mcp.Tool{
+		Name:        "propose_profile",
+		Description: "Propose changes to the household profile and the retirement plan as a draft the user confirms on the page. Give only the fields the user stated; the rest stay as they are. retirement_age and retirement_monthly_spend go together, and the age needs a birth year (stored, or in this draft). There is only one profile draft: if list_drafts has one, pass its draft_id and every field it should still change.",
+	}, wt.proposeProfile)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "propose_goal",
+		Description: "Propose a new savings goal (a child's education, a house down payment, a trip, ...) in TWD as a draft the user confirms on the page. Not for retirement: that is propose_profile. Check get_profile_and_goals first: a goal already there is changed on the goals page, not proposed again. Leave out what the user didn't say and ask for it. Pass draft_id to replace an earlier goal draft.",
+	}, wt.proposeGoal)
+
+	mcp.AddTool(s, &mcp.Tool{
 		Name:        "discard_draft_item",
 		Description: "Delete one draft, e.g. when the user says it was wrong or a duplicate.",
 	}, wt.discardDraft)
@@ -341,9 +351,10 @@ func (wt *wealthTools) listDrafts(ctx context.Context, _ *mcp.CallToolRequest, _
 	if err != nil {
 		return nil, nil, fmt.Errorf("list assets: %w", err)
 	}
+	birthYear := service.LoadWealthProfile(wt.db).BirthYear
 	out := make([]wealthDraft, 0, len(drafts))
 	for _, d := range drafts {
-		c := service.CheckWealthDraft(d, existing, wt.today())
+		c := service.CheckWealthDraft(d, existing, birthYear, wt.today())
 		out = append(out, wealthDraft{ID: d.ID, Kind: d.Kind, TargetID: d.TargetID, Payload: json.RawMessage(d.Payload), DraftCheck: c})
 	}
 	res, err := jsonResult(map[string]any{"drafts": out})
@@ -407,6 +418,44 @@ func (wt *wealthTools) proposeInsurance(ctx context.Context, _ *mcp.CallToolRequ
 	return wt.propose(in.DraftID, assets.DraftInsurance, nil, string(payload))
 }
 
+type proposeProfileInput struct {
+	DraftID int64 `json:"draft_id,omitempty" jsonschema:"the existing profile draft; omit only when list_drafts has none"`
+	assets.ProfileDraft
+}
+
+func (wt *wealthTools) proposeProfile(ctx context.Context, _ *mcp.CallToolRequest, in proposeProfileInput) (*mcp.CallToolResult, any, error) {
+	if in.DraftID == 0 {
+		drafts, err := wt.db.ListWealthDrafts()
+		if err != nil {
+			return nil, nil, fmt.Errorf("list drafts: %w", err)
+		}
+		for _, d := range drafts {
+			if d.Kind == assets.DraftProfile {
+				return nil, nil, fmt.Errorf("profile draft %d already exists: pass it as draft_id, with every field it should change", d.ID)
+			}
+		}
+	}
+	payload, err := json.Marshal(in.ProfileDraft)
+	if err != nil {
+		return nil, nil, err
+	}
+	return wt.propose(in.DraftID, assets.DraftProfile, nil, string(payload))
+}
+
+type proposeGoalInput struct {
+	DraftID int64 `json:"draft_id,omitempty" jsonschema:"an earlier goal draft to replace; omit for a new one"`
+	assets.GoalDraft
+}
+
+func (wt *wealthTools) proposeGoal(ctx context.Context, _ *mcp.CallToolRequest, in proposeGoalInput) (*mcp.CallToolResult, any, error) {
+	in.Normalize()
+	payload, err := json.Marshal(in.GoalDraft)
+	if err != nil {
+		return nil, nil, err
+	}
+	return wt.propose(in.DraftID, assets.DraftGoal, nil, string(payload))
+}
+
 // propose stores a draft unless it is invalid: an invalid one comes back as
 // a tool error for the model to correct, while a merely incomplete one is
 // stored as pending — asking the user is the model's job, and the pending
@@ -416,7 +465,7 @@ func (wt *wealthTools) propose(draftID int64, kind string, targetID *int64, payl
 	if err != nil {
 		return nil, nil, fmt.Errorf("list assets: %w", err)
 	}
-	c := service.CheckWealthDraft(db.WealthDraft{Kind: kind, TargetID: targetID, Payload: payload}, existing, wt.today())
+	c := service.CheckWealthDraft(db.WealthDraft{Kind: kind, TargetID: targetID, Payload: payload}, existing, service.LoadWealthProfile(wt.db).BirthYear, wt.today())
 	if c.Status == "error" {
 		return nil, nil, fmt.Errorf("not saved as a draft: %s", c.Error)
 	}
