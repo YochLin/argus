@@ -368,9 +368,14 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
 
 - `internal/web` — Phase 5's web dashboard (read-only until Phase 10 added trade-input write endpoints):
   an in-process HTTP server gated by `WEB_ADDR`,
-  sharing the bot's live `data.Provider` chain and `*db.DB` connection directly. `pnl.go`'s pure
-  `DailyPnL`/`CumulativeCurve`/KPI functions are the daily-P&L replay engine backing every dashboard
-  view. The embedded frontend build lives at `internal/web/dist` (React/Vite source at repo-root `web/`);
+  sharing the bot's live `data.Provider` chain and `*db.DB` connection directly. `routes.go` is the
+  URL index — one `register*` per area (stock, wealth, LLM audit, system, `/api/v1`), each naming
+  the files its handlers live in; a new route goes there, not into `server.go`'s `New`. A read
+  page's response struct, `buildX` and `handleX` all sit in that page's own file (there is no
+  catch-all `handlers.go`); `store.go`'s `dbReader` is the one narrow DB interface they share.
+  `internal/service/pnl.go`'s pure `DailyPnL`/`CumulativeCurve`/KPI functions are the daily-P&L replay
+  engine backing every dashboard view — called as `service.X` directly, with no re-export shim in this
+  package (`cmd/server/backtest.go` uses the same functions without importing `internal/web`). The embedded frontend build lives at `internal/web/dist` (React/Vite source at repo-root `web/`);
   only `index.html` is committed as a placeholder, CI builds the real SPA. Every market-scoped API
   endpoint takes a `?market=us|tw` query parameter (TW support added in Phase 6 PR1) so a TWD position
   never gets replayed through the same P&L curve as a USD one. `risk.go`'s `/api/risk` (`m=us` only)
@@ -396,7 +401,7 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   BUY/SELL/HOLD joined from `recommendations` — the first one for that ticker within 4 days of the
   signal date, since a scan hit is promoted by the next report. It is a record of pushes, not a replay
   of the rules, so it starts empty at ship time and a marker means "this fired and you were told".
-  `apiauth.go`/`apiv1.go`/`apiv1_resources.go`/`ws.go` (Phase 24 Stage 4) are the `/api/v1` surface
+  `apiv1_auth.go`/`apiv1.go`/`apiv1_resources.go`/`apiv1_ws.go` (Phase 24 Stage 4) are the `/api/v1` surface
   aimed at a future mobile app and at scripts — JWT (`JWT_SECRET`) or `X-API-Key` (`API_KEY`) auth, a
   `{success, data, error, timestamp}` envelope on every response, and a `/api/v1/ws` WebSocket fed by
   `internal/notification`'s `WebSocketHub`. It is registered only when `JWT_SECRET` **and**

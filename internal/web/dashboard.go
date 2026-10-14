@@ -1,6 +1,7 @@
 package web
 
 import (
+	"net/http"
 	"time"
 
 	"argus/internal/db"
@@ -8,6 +9,92 @@ import (
 	"argus/internal/market"
 	"argus/internal/service"
 )
+
+// dashboardResponse is /api/dashboard's body. Only raw numbers/dates/
+// tickers — no display strings — per docs/phase-5-web-dashboard.md's UI
+// language decision: the frontend picks zh/en display text itself from
+// /api/config's lang, so internal/i18n never needs touching for this API.
+type dashboardResponse struct {
+	KPIs  kpisResponse        `json:"kpis"`
+	Curve []service.DateValue `json:"curve"`
+	// Drawdown is Curve's underwater series (service/pnl.go's DrawdownSeries, Phase 8
+	// PR2) — always <= 0, same length/date axis as Curve, "[]" not "null"
+	// when there's no history yet.
+	Drawdown []service.DateValue `json:"drawdown"`
+	// Benchmark is the same-cash-flow SPY/0050 replay (benchmark.go's
+	// BenchmarkReplay, Phase 8 PR2) in the same cumulative-P&L-amount units
+	// as Curve, directly overlayable on the same chart/axis. Its date axis
+	// starts wherever daily_snapshots' benchmark history begins, which may
+	// be later than Curve's own start — see docs/phase-8-trader-analytics.md
+	// §7's accepted gap. "[]" not "null" when there's no benchmark history
+	// in range yet.
+	Benchmark []service.DateValue `json:"benchmark"`
+	Positions []positionResponse  `json:"positions"`
+}
+
+type kpisResponse struct {
+	NetPnL       float64 `json:"netPnL"`
+	WinRate      float64 `json:"winRate"`
+	ProfitFactor float64 `json:"profitFactor"`
+	Expectancy   float64 `json:"expectancy"`
+	MaxDrawdown  float64 `json:"maxDrawdown"`
+	// YTDReturnPct/QTDReturnPct/HTDReturnPct are *float64 (not omitempty) so
+	// "no usable baseline yet" (see service/pnl.go's PeriodReturnPct) serializes as
+	// an explicit JSON null, never an omitted key or a misleading 0 —
+	// docs/phase-5-web-dashboard.md's "don't pad missing data with zero"
+	// principle.
+	YTDReturnPct *float64 `json:"ytdReturnPct"`
+	QTDReturnPct *float64 `json:"qtdReturnPct"`
+	HTDReturnPct *float64 `json:"htdReturnPct"`
+	// BenchmarkAlpha is Curve's terminal value minus Benchmark's terminal
+	// value (Phase 8 PR2) — nil when there's no benchmark curve in range yet
+	// (same "explicit null over a misleading zero" convention as the
+	// period-return fields above).
+	BenchmarkAlpha *float64 `json:"benchmarkAlpha"`
+}
+
+type positionResponse struct {
+	Ticker           string  `json:"ticker"`
+	Shares           float64 `json:"shares"`
+	AvgCost          float64 `json:"avgCost"`
+	Price            float64 `json:"price"`
+	MarketValue      float64 `json:"marketValue"`
+	UnrealizedPnL    float64 `json:"unrealizedPnL"`
+	UnrealizedPnLPct float64 `json:"unrealizedPnLPct"`
+	// StopPrice (Phase 10, docs/phase-10-web-trade-input.md §4.3) is
+	// db.Position.StopPrice passed straight through — 0 means unset, same
+	// sentinel convention as the DB column itself; the frontend renders that
+	// as "—" rather than a misleading $0.00.
+	StopPrice float64 `json:"stopPrice"`
+}
+
+type statusResponse struct {
+	WatchingCount int     `json:"watchingCount"`
+	SPYChangePct  float64 `json:"spyChangePct"`
+	LastCloseDate string  `json:"lastCloseDate"`
+	// AccountValue/NetPnL/WinRate/TradeCount back the sidebar's
+	// account-overview card (see buildStatus's doc comment for each field's
+	// exact definition).
+	AccountValue float64 `json:"accountValue"`
+	NetPnL       float64 `json:"netPnL"`
+	WinRate      float64 `json:"winRate"`
+	TradeCount   int     `json:"tradeCount"`
+	// Writable (Phase 10, docs/phase-10-web-trade-input.md §4.1) mirrors
+	// whether WEB_PASSWORD is configured — the frontend uses this to decide
+	// whether to render any trade-input UI at all, not just disable it.
+	Writable bool `json:"writable"`
+}
+
+type transactionResponse struct {
+	ID          int64   `json:"id"`
+	Date        string  `json:"date"`
+	Ticker      string  `json:"ticker"`
+	Side        string  `json:"side"`
+	Shares      float64 `json:"shares"`
+	Price       float64 `json:"price"`
+	Fee         float64 `json:"fee"`
+	RealizedPnL float64 `json:"realizedPnL"`
+}
 
 // filterByMarket returns the subset of tickers belonging to market m.
 func filterByMarket(tickers []string, m market.MarketID) []string {
@@ -42,108 +129,6 @@ func filterPositionsByMarket(positions []db.Position, m market.MarketID) []db.Po
 		}
 	}
 	return out
-}
-
-// dbReader is the subset of *db.DB the dashboard needs — narrow enough to
-// fake in tests without a real SQLite file.
-type dbReader interface {
-	GetPositions() ([]db.Position, error)
-	GetAllTransactions() ([]db.Transaction, error)
-	GetDailySnapshotsForTickers(tickers []string, from, to string) ([]db.DailySnapshot, error)
-	GetWatchlist() ([]string, error)
-	// GetWatchlistByMarket backs calendar.go's earnings-event ticker set — a
-	// market-scoped watchlist, so a TW earnings dot doesn't get attributed to
-	// the US calendar view and vice versa.
-	GetWatchlistByMarket(m market.MarketID) ([]string, error)
-	GetLatestSnapshot(ticker string) (db.DailySnapshot, bool, error)
-	GetNetWorthOnOrBefore(date string, m market.MarketID) (float64, bool, error)
-	GetNetWorthRange(from, to string, m market.MarketID) ([]db.NetWorthPoint, error)
-	// GetSetting backs risk.go's cash-balance lookup (Phase 8 PR1) — the same
-	// settings key internal/bot's loadCash reads, see service.LoadCash.
-	GetSetting(key string) (string, bool, error)
-	// GetRecommendationsSince backs recperf.go's /api/rec-performance (Phase
-	// 8 PR3) — the same whole-history read argus eval's CLI uses, so the two
-	// reports are guaranteed to score identically off the same database.
-	GetRecommendationsSince(fromDate string) ([]db.Recommendation, error)
-	// GetRoundThesis/GetThesisEntriesInRange (via service.RoundThesis) and
-	// GetLessonsForTickers back rounds.go's round-detail thesis/lessons
-	// attachment (Phase 8 PR4; thesis became one text per round in Phase 27 P1b,
-	// the old journal is only the fallback).
-	GetRoundThesis(ticker, roundStart string) (string, bool, error)
-	GetThesisEntriesInRange(ticker, from, to string) ([]db.ThesisEntry, error)
-	GetLessonsForTickers(tickers []string) (map[string][]db.Lesson, error)
-	// GetRealizedPnL backs buildStatus's sidebar account-overview card — the
-	// same all-time-SELL-total definition internal/bot's /portfolio uses.
-	GetRealizedPnL(m market.MarketID) (float64, error)
-	// GetOptionPositions backs risk.go's Phase 12 PR3 collateral summary
-	// (CSP locked cash, covered-call locked shares, naked-call flag) — the
-	// same read internal/bot's /portfolio options section uses.
-	GetOptionPositions() ([]db.OptionPosition, error)
-	// GetAllOptionTransactions backs options.go's Phase 12 PR4 closed-
-	// position list (/api/options).
-	GetAllOptionTransactions() ([]db.OptionTransaction, error)
-	// GetUniverse backs sectorflow.go's Phase 18 scan — the same market-wide
-	// candidate pool RunUniverseScan/RunTWUniverseScan already scan, not a
-	// new ticker set.
-	GetUniverse() ([]db.UniverseEntry, error)
-	// ListLLMRuns/GetLLMRun back llmruns.go's Phase 19 /llm audit page —
-	// GET /api/llm-runs (list) and GET /api/llm-runs/{id} (detail).
-	ListLLMRuns(limit int) ([]db.LLMRun, error)
-	GetLLMRun(id int64) (db.LLMRunDetail, bool, error)
-	// ListBlockedNewsSources backs both newssources.go's GET
-	// /api/news-sources/blocked and the /llm page's own data-quality
-	// "low-quality source" check (Phase 19 §8.2) — the block/unblock writes
-	// themselves go through the separate newsSourceWriter interface.
-	ListBlockedNewsSources() ([]db.BlockedNewsSource, error)
-	// GetRecentPriceEvents/GetPriceEventsForTicker back events.go's GET
-	// /api/events — the same two reads bot.handleEvents' /events command
-	// already uses, so the web view and the Telegram command can never
-	// disagree about what was recorded.
-	GetRecentPriceEvents(limit int) ([]db.PriceEvent, error)
-	GetPriceEventsForTicker(ticker string, limit int) ([]db.PriceEvent, error)
-	// GetResearchNotesByTicker backs research_notes.go's GET
-	// /api/research-notes — the chart page's notebook card history for one
-	// ticker; writes go through the separate researchNotesWriter interface.
-	GetResearchNotesByTicker(ticker string) ([]db.ResearchNote, error)
-	// FillNewsFor backs fillsnapshot.go's GET /api/fill-snapshot — the
-	// headlines (with links and LLM labels) stored when a fill on that day was
-	// recorded (Phase 27 P7a).
-	FillNewsFor(ticker, fillDate string) ([]db.FillNews, error)
-	// StrategyAlertsFor and GetRecommendationsForTicker back strategies.go —
-	// the chart's strategy markers, each with the LLM's call on it (Phase 27 P5).
-	StrategyAlertsFor(ticker string) ([]db.StrategyAlert, error)
-	GetRecommendationsForTicker(ticker, from, to string) ([]db.Recommendation, error)
-	// ListAssetsWithValue backs assets.go's GET /api/wealth/assets (Phase 9
-	// PR1) — writes go through the separate wealthWriter interface.
-	ListAssetsWithValue(includeArchived bool) ([]db.AssetWithValue, error)
-	// ListAssetSnapshots backs assets.go's GET /api/wealth/assets/history — one
-	// asset's value records for the edit drawer.
-	ListAssetSnapshots(assetID int64) ([]db.AssetSnapshot, error)
-	// ListAssetsValueAsOf backs wealth_home.go's YTD/MoM historical totals.
-	ListAssetsValueAsOf(asOfDate string, includeArchived bool) ([]db.AssetWithValue, error)
-	// GetLoanDetails backs wealth_balance.go's liabilities list (rate/term
-	// for the debt-payoff calculator and display).
-	GetLoanDetails(assetID int64) (*db.LoanDetails, error)
-	// ListRecurringCashflows backs wealth_cash.go's GET /api/wealth/cash
-	// (Phase 9 波次2 PR5) — writes go through the separate wealthWriter
-	// interface below, same GET-vs-write split as ListAssetsWithValue.
-	ListRecurringCashflows(activeOnly bool) ([]db.RecurringCashflow, error)
-	// ListGoals/ListAllGoalAssets back wealth_goals.go's GET /api/wealth/goals
-	// (Phase 9 波次3 PR6) — writes go through the separate wealthWriter
-	// interface below, same GET-vs-write split as ListAssetsWithValue.
-	ListGoals() ([]db.Goal, error)
-	ListAllGoalAssets() ([]db.GoalAsset, error)
-	// ListInsuranceCoverages/GetInsuranceDetails back wealth_insure.go's GET
-	// /api/wealth/insure (Phase 9 波次3 PR8) — writes go through the
-	// separate wealthWriter interface below, same GET-vs-write split as
-	// ListAssetsWithValue.
-	ListInsuranceCoverages() ([]db.InsuranceCoverage, error)
-	GetInsuranceDetails(assetID int64) (*db.InsuranceDetails, error)
-	// GetFundDetails backs wealth_funds.go's GET /api/wealth/funds (Phase 9
-	// 波次4 PR10) — writes go through the separate wealthWriter interface
-	// below (fund rows are only ever created via CSV import, see
-	// wealth_import.go).
-	GetFundDetails(assetID int64) (*db.FundDetails, error)
 }
 
 // netWorthBaseline resolves the capital base for a period starting at
@@ -192,7 +177,7 @@ func netWorthBaseline(database dbReader, periodStart string, m market.MarketID, 
 // definitions buildDashboard/buildRisk already use elsewhere — live position
 // value + declared cash for AccountValue (buildRisk's accountValue), the
 // all-time realized-SELL total for NetPnL (db.GetRealizedPnL, same figure
-// internal/bot's /portfolio shows), and pnl.go's FilterSells/WinRate for the
+// internal/bot's /portfolio shows), and service/pnl.go's FilterSells/WinRate for the
 // win-rate/trade-count pair — no new "what counts as account value" logic
 // gets invented here.
 func buildStatus(database dbReader, quotes quoteGetter, m market.MarketID) statusResponse {
@@ -233,21 +218,21 @@ func buildStatusWithPortfolio(database dbReader, portfolio *service.PortfolioSer
 	if txs, err := database.GetAllTransactions(); err != nil {
 		logger.Errorf("web: status: get transactions: %v", err)
 	} else {
-		sells := FilterSells(filterTransactionsByMarket(txs, m))
+		sells := service.FilterSells(filterTransactionsByMarket(txs, m))
 		status.TradeCount = len(sells)
-		status.WinRate = WinRate(sells)
+		status.WinRate = service.WinRate(sells)
 	}
 
 	return status
 }
 
 // buildDashboard assembles the /api/dashboard response: KPIs and the
-// cumulative P&L curve (both from the DailyPnL replay engine in pnl.go)
+// cumulative P&L curve (both from the DailyPnL replay engine in service/pnl.go)
 // and the live-quote-enriched positions list, restricted to market m
 // (Phase 6, see docs/phase-6-tw-market.md §4.4 — TWD and USD transactions
 // must never be replayed together, or the curve/KPIs come out as
 // meaningless mixed-currency numbers). The replay engine itself
-// (DailyPnL/KPIs in pnl.go) is unchanged — it's a pure function over
+// (DailyPnL/KPIs in service/pnl.go) is unchanged — it's a pure function over
 // whatever transactions/snapshots it's given, so filtering happens here,
 // before that call, not inside it. Nothing here aborts the whole response
 // on a partial failure — a single bad quote just leaves that position's
@@ -269,15 +254,15 @@ func buildDashboardWithPortfolio(database dbReader, portfolio *service.Portfolio
 	}
 	txs := filterTransactionsByMarket(allTxs, m)
 
-	sells := FilterSells(txs)
+	sells := service.FilterSells(txs)
 	resp := dashboardResponse{
-		Curve:     []DateValue{}, // never nil — JSON "[]", not "null", when there's no history yet
-		Drawdown:  []DateValue{},
-		Benchmark: []DateValue{},
+		Curve:     []service.DateValue{}, // never nil — JSON "[]", not "null", when there's no history yet
+		Drawdown:  []service.DateValue{},
+		Benchmark: []service.DateValue{},
 		KPIs: kpisResponse{
-			WinRate:      WinRate(sells),
-			ProfitFactor: ProfitFactor(sells),
-			Expectancy:   Expectancy(sells),
+			WinRate:      service.WinRate(sells),
+			ProfitFactor: service.ProfitFactor(sells),
+			Expectancy:   service.Expectancy(sells),
 		},
 	}
 
@@ -310,16 +295,16 @@ func buildDashboardWithPortfolio(database dbReader, portfolio *service.Portfolio
 			return dashboardResponse{}, err
 		}
 
-		daily := DailyPnL(txs, snapshots)
-		curve := CumulativeCurve(daily)
+		daily := service.DailyPnL(txs, snapshots)
+		curve := service.CumulativeCurve(daily)
 		if curve != nil {
 			resp.Curve = curve
 		}
 		if len(curve) > 0 {
 			resp.KPIs.NetPnL = curve[len(curve)-1].Value
 		}
-		resp.KPIs.MaxDrawdown = MaxDrawdownAbs(curve)
-		if dd := DrawdownSeries(curve); dd != nil {
+		resp.KPIs.MaxDrawdown = service.MaxDrawdownAbs(curve)
+		if dd := service.DrawdownSeries(curve); dd != nil {
 			resp.Drawdown = dd
 		}
 
@@ -338,21 +323,21 @@ func buildDashboardWithPortfolio(database dbReader, portfolio *service.Portfolio
 			}
 		}
 
-		ytdStart := YTDStart(now)
+		ytdStart := service.YTDStart(now)
 		if base, ok := netWorthBaseline(database, ytdStart, m, to); ok {
-			if pct, ok := PeriodReturnPct(curve, ytdStart, base, ok); ok {
+			if pct, ok := service.CurvePeriodReturnPct(curve, ytdStart, base, ok); ok {
 				resp.KPIs.YTDReturnPct = &pct
 			}
 		}
-		qtdStart := QTDStart(now)
+		qtdStart := service.QTDStart(now)
 		if base, ok := netWorthBaseline(database, qtdStart, m, to); ok {
-			if pct, ok := PeriodReturnPct(curve, qtdStart, base, ok); ok {
+			if pct, ok := service.CurvePeriodReturnPct(curve, qtdStart, base, ok); ok {
 				resp.KPIs.QTDReturnPct = &pct
 			}
 		}
-		htdStart := HTDStart(now)
+		htdStart := service.HTDStart(now)
 		if base, ok := netWorthBaseline(database, htdStart, m, to); ok {
-			if pct, ok := PeriodReturnPct(curve, htdStart, base, ok); ok {
+			if pct, ok := service.CurvePeriodReturnPct(curve, htdStart, base, ok); ok {
 				resp.KPIs.HTDReturnPct = &pct
 			}
 		}
@@ -378,4 +363,20 @@ func buildDashboardWithPortfolio(database dbReader, portfolio *service.Portfolio
 	}
 
 	return resp, nil
+}
+
+func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	resp := buildStatusWithPortfolio(s.db, s.portfolios(), marketParam(r))
+	resp.Writable = s.password != ""
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+	resp, err := buildDashboardWithPortfolio(s.db, s.portfolios(), marketParam(r))
+	if err != nil {
+		logger.Errorf("web: build dashboard: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build dashboard")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

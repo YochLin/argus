@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"argus/internal/db"
+	"argus/internal/service"
 )
 
 // TestBenchmarkReplay pins all four documented behaviors
@@ -33,7 +34,7 @@ func TestBenchmarkReplay(t *testing.T) {
 
 	got := BenchmarkReplay(txs, benchCloses)
 
-	want := []DateValue{
+	want := []service.DateValue{
 		{Date: "2024-01-02", Value: 0},
 		{Date: "2024-01-04", Value: 60.1},
 		{Date: "2024-01-05", Value: 60.1},

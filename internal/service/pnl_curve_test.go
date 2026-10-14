@@ -1,4 +1,4 @@
-package web
+package service
 
 import (
 	"testing"
@@ -288,18 +288,18 @@ func TestCurveValueBefore(t *testing.T) {
 		{Date: "2026-02-10", Value: 25},
 		{Date: "2026-03-20", Value: 15},
 	}
-	if got := curveValueBefore(curve, "2026-03-01"); got != 25 {
-		t.Errorf("curveValueBefore(before 03-01) = %v, want 25 (last point strictly before)", got)
+	if got := CurveValueBefore(curve, "2026-03-01"); got != 25 {
+		t.Errorf("CurveValueBefore(before 03-01) = %v, want 25 (last point strictly before)", got)
 	}
-	if got := curveValueBefore(curve, "2026-01-01"); got != 0 {
-		t.Errorf("curveValueBefore(before everything) = %v, want 0", got)
+	if got := CurveValueBefore(curve, "2026-01-01"); got != 0 {
+		t.Errorf("CurveValueBefore(before everything) = %v, want 0", got)
 	}
-	if got := curveValueBefore(nil, "2026-01-01"); got != 0 {
-		t.Errorf("curveValueBefore(nil) = %v, want 0", got)
+	if got := CurveValueBefore(nil, "2026-01-01"); got != 0 {
+		t.Errorf("CurveValueBefore(nil) = %v, want 0", got)
 	}
 }
 
-func TestPeriodReturnPct(t *testing.T) {
+func TestCurvePeriodReturnPct(t *testing.T) {
 	curve := []DateValue{
 		{Date: "2025-12-31", Value: 100},
 		{Date: "2026-06-15", Value: 150},
@@ -307,24 +307,24 @@ func TestPeriodReturnPct(t *testing.T) {
 
 	// Baseline before the curve's history starts: period P&L is the full
 	// curve (nothing to subtract), 50/1000*100 = 5%.
-	if pct, ok := PeriodReturnPct(curve, "2026-01-01", 1000, true); !ok || pct != 5 {
-		t.Errorf("PeriodReturnPct(baseline before curve) = (%v, %v), want (5, true)", pct, ok)
+	if pct, ok := CurvePeriodReturnPct(curve, "2026-01-01", 1000, true); !ok || pct != 5 {
+		t.Errorf("CurvePeriodReturnPct(baseline before curve) = (%v, %v), want (5, true)", pct, ok)
 	}
 
 	// haveBaseline false → not computable.
-	if _, ok := PeriodReturnPct(curve, "2026-01-01", 1000, false); ok {
-		t.Errorf("PeriodReturnPct(no baseline) ok = true, want false")
+	if _, ok := CurvePeriodReturnPct(curve, "2026-01-01", 1000, false); ok {
+		t.Errorf("CurvePeriodReturnPct(no baseline) ok = true, want false")
 	}
 
 	// baseline == 0 → not computable (division would be meaningless).
-	if _, ok := PeriodReturnPct(curve, "2026-01-01", 0, true); ok {
-		t.Errorf("PeriodReturnPct(zero baseline) ok = true, want false")
+	if _, ok := CurvePeriodReturnPct(curve, "2026-01-01", 0, true); ok {
+		t.Errorf("CurvePeriodReturnPct(zero baseline) ok = true, want false")
 	}
 
 	// periodStart predates the whole curve (every curve point postdates
 	// it): curveValueBefore returns 0, so period P&L is the full curve
 	// range (150), 150/500*100 = 30%.
-	if pct, ok := PeriodReturnPct(curve, "2025-01-01", 500, true); !ok || pct != 30 {
-		t.Errorf("PeriodReturnPct(period predates history) = (%v, %v), want (30, true)", pct, ok)
+	if pct, ok := CurvePeriodReturnPct(curve, "2025-01-01", 500, true); !ok || pct != 30 {
+		t.Errorf("CurvePeriodReturnPct(period predates history) = (%v, %v), want (30, true)", pct, ok)
 	}
 }

@@ -1,6 +1,6 @@
-// Mirrors internal/web/handlers.go's JSON response shapes exactly — the Go
+// Mirrors the JSON response structs in internal/web (dashboard.go, rounds.go, chart.go, risk.go, ...) exactly — the Go
 // side sends only raw numbers/dates/tickers (no display strings), so this
-// file and internal/web/handlers.go must be kept in sync by hand the same
+// file and those structs must be kept in sync by hand the same
 // way any other cross-language API contract in this project is (there's
 // no shared schema generator here).
 
@@ -119,7 +119,7 @@ export interface Transaction {
 }
 
 // CalendarEvent is a single earnings-date marker (Calendar's scope is
-// earnings-only, see internal/web/handlers.go's calendarEvent). Note text is
+// earnings-only, see internal/web/calendar.go's calendarEvent). Note text is
 // deliberately not sent — the frontend builds display copy from
 // kind/hour/estimated via i18n.ts, same "backend never sends display
 // strings" rule every other endpoint here follows.
@@ -210,7 +210,7 @@ export interface RoundDetail {
   // thesis is one overwritable text per round, editable whether the round is
   // open or closed ("" = none written); thesisEdited is false when the text is
   // only the legacy journal's last entry, shown as a default until first save
-  // (see internal/web/handlers.go's roundDetailResponse doc).
+  // (see internal/web/rounds.go's roundDetailResponse doc).
   thesis: string;
   thesisEdited: boolean;
   lessons: Lesson[];
@@ -369,7 +369,7 @@ export interface WatchlistSummary {
   tickers: WatchlistSummaryItem[];
 }
 
-// RiskPosition mirrors internal/web/handlers.go's riskPositionResponse
+// RiskPosition mirrors internal/web/risk.go's riskPositionResponse
 // (Phase 8 PR1) — a live-priced view of one open position's stop-loss risk.
 // openRisk/openRiskPct are null when the position has no stop price set
 // (never 0 — 0 would read as "no risk," the opposite of the truth); see
@@ -387,7 +387,7 @@ export interface RiskPosition {
   unrealizedPnLPct: number;
 }
 
-// Risk mirrors internal/web/handlers.go's riskResponse. heatThresholdPct
+// Risk mirrors internal/web/risk.go's riskResponse. heatThresholdPct
 // <= 0 means the server's RISK_HEAT_PCT is disabled — don't draw a warning
 // line or recolor the heat KPI.
 export interface Risk {
@@ -398,7 +398,7 @@ export interface Risk {
   positions: RiskPosition[];
 }
 
-// CompanyNames mirrors internal/web/handlers.go's companyNamesResponse —
+// CompanyNames mirrors internal/web/companynames.go's companyNamesResponse —
 // TW ticker → Chinese short name ("2330" → "台積電"). Empty (never null)
 // when FINMIND_TOKEN isn't configured server-side.
 export interface CompanyNames {
@@ -1657,7 +1657,7 @@ export function executeOptionClose(req: OptionCloseRequest): Promise<TradeRespon
 }
 
 // --- Phase 5 §B CSV import (optional, docs/phase-5-web-dashboard.md) ---
-// Mirrors internal/web/csvimport.go's importRow/importResponse.
+// Mirrors internal/web/trade_import.go's importRow/importResponse.
 
 export interface ImportRow {
   line: number;
@@ -1876,7 +1876,7 @@ export function saveSettings(updates: Record<string, string>): Promise<{ message
 }
 
 // --- Phase 9: wealth platform (docs/phase-9-asset-platform.md) ---
-// Mirrors internal/web/assets.go and wealth_home.go.
+// Mirrors internal/web/wealth_assets.go and wealth_home.go.
 
 export type AssetSide = "asset" | "liability";
 export type AssetGroup = "liquid" | "growth" | "income" | "hard";

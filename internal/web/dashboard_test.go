@@ -72,7 +72,7 @@ type fakeDB struct {
 	// strategyAlerts backs StrategyAlertsFor (strategies_test.go); the verdicts
 	// come from recs through GetRecommendationsForTicker.
 	strategyAlerts []db.StrategyAlert
-	// wealthAssets backs ListAssetsWithValue for assets_test.go (Phase 9 PR1).
+	// wealthAssets backs ListAssetsWithValue for wealth_assets_test.go (Phase 9 PR1).
 	wealthAssets []db.AssetWithValue
 	// assetSnapshots backs ListAssetSnapshots, keyed by asset id.
 	assetSnapshots map[int64][]db.AssetSnapshot
@@ -575,7 +575,7 @@ func TestNetWorthBaseline(t *testing.T) {
 // calendar date it happens to run on.
 func TestBuildDashboard_PeriodReturns(t *testing.T) {
 	now := time.Now()
-	ytdStart, err := time.Parse("2006-01-02", YTDStart(now))
+	ytdStart, err := time.Parse("2006-01-02", service.YTDStart(now))
 	if err != nil {
 		t.Fatalf("parse YTDStart: %v", err)
 	}

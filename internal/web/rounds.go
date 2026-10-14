@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"sort"
 	"time"
 
@@ -12,6 +13,65 @@ import (
 	"argus/internal/market"
 	"argus/internal/service"
 )
+
+// roundsResponse is /api/rounds' body — every position round trip across
+// every ticker ever transacted (rounds.go's segmentRounds), most-recently-
+// started first. The frontend's round picker groups these by ticker.
+type roundsResponse struct {
+	Rounds []roundSummary `json:"rounds"`
+}
+
+type roundSummary struct {
+	Ticker      string  `json:"ticker"`
+	Start       string  `json:"start"`
+	End         string  `json:"end"` // "" while still open
+	Open        bool    `json:"open"`
+	Shares      float64 `json:"shares"`
+	RealizedPnL float64 `json:"realizedPnL"`
+	// MAEPct/MFEPct are only filled by /api/chart (Phase 27 P2), which already
+	// holds ~1y of candles — /api/rounds has none, so it leaves HasMAEMFE
+	// false. HasMAEMFE is also false for a round that starts before the
+	// first candle, since a window-truncated excursion would understate it.
+	MAEPct    float64 `json:"maePct"`
+	MFEPct    float64 `json:"mfePct"`
+	HasMAEMFE bool    `json:"hasMaeMfe"`
+}
+
+// roundDetailResponse is /api/round-detail's body: one round's daily
+// candles (padded before/after — see buildRoundDetail) plus its own legs as
+// trades, for the round detail page's lightweight-charts K-line and buy/
+// sell markers. MAEPct/MFEPct (Phase 5 PR4, design doc §A2) are the round's
+// own approximate max adverse/favorable excursion, computed from the same
+// candles already fetched here — HasMAEMFE is false only when the round's
+// window has no matching candle data at all (shouldn't normally happen for
+// a real round, but a delisted/renamed ticker could hit it).
+type roundDetailResponse struct {
+	Ticker    string                `json:"ticker"`
+	Start     string                `json:"start"`
+	End       string                `json:"end"`
+	Candles   []candleResponse      `json:"candles"`
+	Trades    []transactionResponse `json:"trades"`
+	MAEPct    float64               `json:"maePct"`
+	MFEPct    float64               `json:"mfePct"`
+	HasMAEMFE bool                  `json:"hasMaeMfe"`
+	// Thesis/Lessons (Phase 8 PR4, docs/phase-8-trader-analytics.md §6.2) are
+	// attachments from service.RoundThesis/db.GetLessonsForTickers, each
+	// degrading independently (a query failure logs and leaves the field at
+	// its zero value) rather than failing the whole response, same
+	// attach-what's-available convention as buildClosedTradeReview. Thesis is
+	// the round's single overwritable text (Phase 27 P1b; "" = none written) —
+	// editable for open and closed rounds alike. ThesisEdited is false when the
+	// text is only the legacy journal's last entry for the round, shown as a
+	// default until the first save.
+	Thesis       string           `json:"thesis"`
+	ThesisEdited bool             `json:"thesisEdited"`
+	Lessons      []lessonResponse `json:"lessons"`
+}
+
+type lessonResponse struct {
+	Date   string `json:"date"`
+	Lesson string `json:"lesson"`
+}
 
 // errRoundNotFound distinguishes "no such round" (404) from any other
 // buildRoundDetail failure (a DB or Yahoo error, 500) for handleRoundDetail
@@ -180,4 +240,35 @@ func buildRoundDetail(database dbReader, history data.HistoryProvider, ticker, s
 	}
 
 	return resp, nil
+}
+
+func (s *Server) handleRounds(w http.ResponseWriter, r *http.Request) {
+	resp, err := buildRounds(s.db, marketParam(r))
+	if err != nil {
+		logger.Errorf("web: build rounds: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build rounds")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleRoundDetail(w http.ResponseWriter, r *http.Request) {
+	ticker := r.URL.Query().Get("ticker")
+	start := r.URL.Query().Get("start")
+	if ticker == "" || start == "" {
+		writeError(w, http.StatusBadRequest, "ticker and start are required")
+		return
+	}
+
+	resp, err := buildRoundDetail(s.db, s.history, ticker, start)
+	if errors.Is(err, errRoundNotFound) {
+		writeError(w, http.StatusNotFound, "round not found")
+		return
+	}
+	if err != nil {
+		logger.Errorf("web: build round detail: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build round detail")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

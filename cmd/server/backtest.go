@@ -19,8 +19,8 @@ import (
 	"argus/internal/market"
 	"argus/internal/paper"
 	"argus/internal/receval"
+	"argus/internal/service"
 	"argus/internal/signals"
-	"argus/internal/web"
 )
 
 // runBacktest runs the "backtest" subcommand: replays the recommendations
@@ -301,7 +301,7 @@ func (s tickerSeries) windowFrom(startDate string) tickerSeries {
 }
 
 // maxDrawdownPct is the largest peak-to-trough decline in curve as a
-// percentage of the running peak (internal/web.MaxDrawdownAbs is the same
+// percentage of the running peak (internal/service.MaxDrawdownAbs is the same
 // walk but returns a dollar amount against a cumulative P&L curve, which
 // isn't the right denominator for an equity level series starting above
 // zero — see internal/bot/format.go's maxDrawdownPct for the same
@@ -350,9 +350,9 @@ func printBacktestReport(lang i18n.Lang, cfg paper.Config, trades []paper.Trade,
 			})
 		}
 	}
-	winRate := web.WinRate(sells) * 100
-	profitFactor := web.ProfitFactor(sells)
-	expectancy := web.Expectancy(sells)
+	winRate := service.WinRate(sells) * 100
+	profitFactor := service.ProfitFactor(sells)
+	expectancy := service.Expectancy(sells)
 
 	fmt.Print(i18n.T(lang, i18n.KeyBacktestOverviewTitle))
 	fmt.Print(i18n.T(lang, i18n.KeyBacktestOverviewLine,

@@ -36,7 +36,7 @@ import (
 // service."
 type settingKey struct {
 	name string
-	// group is an id, not a display string (see handlers.go's calendarEvent
+	// group is an id, not a display string (see calendar.go's calendarEvent
 	// for the same convention) — the frontend maps it to a section heading
 	// from its own dictionary, so adding a key here is the only edit needed
 	// to make it appear in the UI.

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"net/http"
 	"sort"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 // paperResponse is /api/paper's body — one market's live paper account
 // (Phase 11 PR3/PR4, docs/phase-11-paper-account.md §7): KPIs, open
 // positions, closed rounds, and three overlayable curves. No new
-// computation engine — every number here comes from pnl.go/benchmark.go's
+// computation engine — every number here comes from service/pnl.go/benchmark.go's
 // existing pure functions (the same ones buildDashboard already uses) fed
 // paper.db's data instead of the real db, or from segmentRounds (rounds.go,
 // Phase 8 PR4), which already does exactly the BUY/SELL round-pairing this
@@ -22,9 +23,9 @@ type paperResponse struct {
 	KPIs      paperKPIs               `json:"kpis"`
 	Positions []paperPositionResponse `json:"positions"`
 	Closed    []paperClosedResponse   `json:"closed"`
-	Curve     []DateValue             `json:"curve"`
-	Benchmark []DateValue             `json:"benchmark"`
-	Drawdown  []DateValue             `json:"drawdown"`
+	Curve     []service.DateValue     `json:"curve"`
+	Benchmark []service.DateValue     `json:"benchmark"`
+	Drawdown  []service.DateValue     `json:"drawdown"`
 }
 
 type paperKPIs struct {
@@ -118,9 +119,9 @@ func buildPaper(paperDB dbReader, quotes quoteGetter, m market.MarketID, initial
 	resp := paperResponse{
 		Positions: []paperPositionResponse{},
 		Closed:    []paperClosedResponse{},
-		Curve:     []DateValue{},
-		Benchmark: []DateValue{},
-		Drawdown:  []DateValue{},
+		Curve:     []service.DateValue{},
+		Benchmark: []service.DateValue{},
+		Drawdown:  []service.DateValue{},
 		KPIs: paperKPIs{
 			Cash:        cash,
 			InitialCash: initialCash,
@@ -131,10 +132,10 @@ func buildPaper(paperDB dbReader, quotes quoteGetter, m market.MarketID, initial
 		resp.KPIs.SinceDate = txs[0].Date // date-ordered, see GetAllTransactions
 	}
 
-	sells := FilterSells(txs)
-	resp.KPIs.WinRate = WinRate(sells)
-	resp.KPIs.ProfitFactor = ProfitFactor(sells)
-	resp.KPIs.Expectancy = Expectancy(sells)
+	sells := service.FilterSells(txs)
+	resp.KPIs.WinRate = service.WinRate(sells)
+	resp.KPIs.ProfitFactor = service.ProfitFactor(sells)
+	resp.KPIs.Expectancy = service.Expectancy(sells)
 
 	// entryDateByTicker resolves each still-open position's own entry date
 	// (segmentRounds' trailing open round, EndDate "") rather than
@@ -201,9 +202,9 @@ func buildPaper(paperDB dbReader, quotes quoteGetter, m market.MarketID, initial
 			return paperResponse{}, err
 		}
 
-		pnlCurve := CumulativeCurve(DailyPnL(txs, snapshots))
+		pnlCurve := service.CumulativeCurve(service.DailyPnL(txs, snapshots))
 		resp.Curve = equityCurveFrom(pnlCurve, initialCash)
-		resp.Drawdown = DrawdownSeries(resp.Curve)
+		resp.Drawdown = service.DrawdownSeries(resp.Curve)
 		resp.KPIs.MaxDrawdownPct = maxDrawdownPct(resp.Curve)
 
 		benchCloses := make(map[string]float64)
@@ -224,27 +225,27 @@ func buildPaper(paperDB dbReader, quotes quoteGetter, m market.MarketID, initial
 	return resp, nil
 }
 
-// equityCurveFrom shifts a cumulative-P&L curve (pnl.go's CumulativeCurve/
+// equityCurveFrom shifts a cumulative-P&L curve (service/pnl.go's CumulativeCurve/
 // BenchmarkReplay both return "P&L relative to 0") into an equity-level
 // curve starting near initialCash — docs/phase-11-paper-account.md §7.1
 // asks for "curve"/"benchmark" as the equity curve itself, directly
 // overlayable, rather than a P&L delta.
-func equityCurveFrom(pnlCurve []DateValue, initialCash float64) []DateValue {
-	out := make([]DateValue, len(pnlCurve))
+func equityCurveFrom(pnlCurve []service.DateValue, initialCash float64) []service.DateValue {
+	out := make([]service.DateValue, len(pnlCurve))
 	for i, v := range pnlCurve {
-		out[i] = DateValue{Date: v.Date, Value: v.Value + initialCash}
+		out[i] = service.DateValue{Date: v.Date, Value: v.Value + initialCash}
 	}
 	return out
 }
 
 // maxDrawdownPct is the largest peak-to-trough decline in curve as a
-// percentage of the running peak. DrawdownSeries/MaxDrawdownAbs (pnl.go)
+// percentage of the running peak. DrawdownSeries/MaxDrawdownAbs (service/pnl.go)
 // only give a dollar figure — meaningful for a cumulative-P&L curve
 // starting at 0, but docs/phase-11-paper-account.md §7.1 asks for a
 // percentage here, so this walks the same peak logic and divides by peak
 // instead. Shifting curve by a constant (equityCurveFrom) doesn't change
 // this result, since both peak and current value shift by the same amount.
-func maxDrawdownPct(curve []DateValue) float64 {
+func maxDrawdownPct(curve []service.DateValue) float64 {
 	if len(curve) < 2 {
 		return 0
 	}
@@ -308,4 +309,23 @@ func closedPositionFromRound(ticker string, r round) paperClosedResponse {
 		cr.ExitReason = "stop"
 	}
 	return cr
+}
+
+// handlePaper serves /api/paper?market=us|tw (Phase 11 PR4). 404s outright
+// when the feature is off (s.paperDB nil, PAPER_DB_PATH unset) rather than
+// a 200 with empty data — a disabled feature should read as absent, not as
+// "an account with zero everything," and the frontend uses /api/config's
+// paperEnabled to avoid ever calling this in the first place.
+func (s *Server) handlePaper(w http.ResponseWriter, r *http.Request) {
+	if s.paperDB == nil {
+		writeError(w, http.StatusNotFound, "paper account is disabled")
+		return
+	}
+	resp, err := buildPaper(s.paperDB, s.quotes, marketParam(r), s.paperInitialCashUSD, s.paperInitialCashTWD)
+	if err != nil {
+		logger.Errorf("web: build paper: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build paper account")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

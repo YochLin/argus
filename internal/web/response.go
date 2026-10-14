@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"argus/internal/logger"
+	"argus/internal/market"
 )
 
 // Pre-v1 / SPA Response Protocol:
@@ -93,4 +94,15 @@ func decodeAPIJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 		return false
 	}
 	return true
+}
+
+// marketParam parses r's "market" query parameter into a market.MarketID —
+// "tw" for Taiwan, anything else (including absent, the common case)
+// defaults to US, preserving pre-Phase-6 behavior for every existing
+// client. See docs/phase-6-tw-market.md §4.4.
+func marketParam(r *http.Request) market.MarketID {
+	if r.URL.Query().Get("market") == "tw" {
+		return market.TW
+	}
+	return market.US
 }

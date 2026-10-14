@@ -3,12 +3,15 @@ package web
 import (
 	"fmt"
 	"math"
+	"net/http"
 	"sort"
 	"time"
 
 	"argus/internal/data"
 	"argus/internal/db"
+	"argus/internal/logger"
 	"argus/internal/market"
+	"argus/internal/service"
 )
 
 // minSampleSize is the "low sample" honesty threshold (design doc's own
@@ -194,8 +197,8 @@ func groupReport(records []sellRecord, keyFn func(sellRecord) string, order []st
 		g := ReportGroup{
 			Key:            key,
 			N:              len(b.sells),
-			WinRate:        WinRate(b.sells),
-			ProfitFactor:   ProfitFactor(b.sells),
+			WinRate:        service.WinRate(b.sells),
+			ProfitFactor:   service.ProfitFactor(b.sells),
 			AvgHoldingDays: float64(totalHoldingDays) / float64(len(b.sells)),
 			LowSample:      len(b.sells) < minSampleSize,
 		}
@@ -303,7 +306,7 @@ func buildStreakStats(sells []db.Transaction) StreakStats {
 	return s
 }
 
-// reportsResponse is /api/reports' body — see handlers.go for the JSON
+// reportsResponse is /api/reports' body — see dashboard.go's dashboardResponse for the JSON
 // contract this mirrors on the frontend.
 type reportsResponse struct {
 	WinRate        float64       `json:"winRate"` // fraction 0-1, same convention as ReportGroup.WinRate/kpisResponse.WinRate
@@ -338,11 +341,11 @@ func buildReports(database dbReader, history data.HistoryProvider, m market.Mark
 		return reportsResponse{}, err
 	}
 
-	sells := FilterSells(txs)
+	sells := service.FilterSells(txs)
 	resp := reportsResponse{
-		WinRate:        WinRate(sells),
-		ProfitFactor:   ProfitFactor(sells),
-		Expectancy:     Expectancy(sells),
+		WinRate:        service.WinRate(sells),
+		ProfitFactor:   service.ProfitFactor(sells),
+		Expectancy:     service.Expectancy(sells),
 		ByTicker:       groupReport(records, func(r sellRecord) string { return r.Ticker }, nil),
 		ByHoldingDays:  groupReport(records, func(r sellRecord) string { return holdingDaysBucket(r.HoldingDays) }, holdingDaysBucketOrder),
 		ByEntryMonth:   groupReport(records, func(r sellRecord) string { return fmt.Sprintf("%02d", int(r.EntryMonth)) }, monthOrder),
@@ -364,4 +367,14 @@ func buildReports(database dbReader, history data.HistoryProvider, m market.Mark
 	resp.MAEMFE = buildMAEMFESummary(txs, history)
 
 	return resp, nil
+}
+
+func (s *Server) handleReports(w http.ResponseWriter, r *http.Request) {
+	resp, err := buildReports(s.db, s.history, marketParam(r))
+	if err != nil {
+		logger.Errorf("web: build reports: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build reports")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

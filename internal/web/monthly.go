@@ -1,10 +1,13 @@
 package web
 
 import (
+	"net/http"
 	"sort"
 	"time"
 
+	"argus/internal/logger"
 	"argus/internal/market"
+	"argus/internal/service"
 )
 
 // YearlyPnL is one calendar year's row in the monthly P&L grid — a fund
@@ -23,7 +26,7 @@ type monthlyResponse struct {
 	Years []YearlyPnL `json:"years"`
 }
 
-// buildMonthly assembles /api/monthly: pnl.go's DailyPnL replay engine (the
+// buildMonthly assembles /api/monthly: service/pnl.go's DailyPnL replay engine (the
 // same source the calendar heatmap reads) aggregated to month granularity.
 // Deliberately amount-based, not a % of net_worth_snapshots — a mid-period
 // buy/deposit would pollute a % figure (docs/phase-8-trader-analytics.md §1
@@ -57,7 +60,7 @@ func buildMonthly(database dbReader, m market.MarketID) (monthlyResponse, error)
 	if err != nil {
 		return monthlyResponse{}, err
 	}
-	daily := DailyPnL(txs, snapshots)
+	daily := service.DailyPnL(txs, snapshots)
 
 	type yearMonth struct {
 		year  int
@@ -92,4 +95,14 @@ func buildMonthly(database dbReader, m market.MarketID) (monthlyResponse, error)
 		resp.Years = append(resp.Years, *years[y])
 	}
 	return resp, nil
+}
+
+func (s *Server) handleMonthly(w http.ResponseWriter, r *http.Request) {
+	resp, err := buildMonthly(s.db, marketParam(r))
+	if err != nil {
+		logger.Errorf("web: build monthly: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build monthly")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

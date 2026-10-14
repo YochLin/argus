@@ -1,6 +1,7 @@
 package web
 
 import (
+	"net/http"
 	"sort"
 	"time"
 
@@ -11,6 +12,76 @@ import (
 	"argus/internal/service"
 	"argus/internal/signals"
 )
+
+type candleResponse struct {
+	Date   string  `json:"date"`
+	Open   float64 `json:"open"`
+	High   float64 `json:"high"`
+	Low    float64 `json:"low"`
+	Close  float64 `json:"close"`
+	Volume int64   `json:"volume"`
+}
+
+// chartResponse is /api/chart's body: ticker's ~2y of daily candles, the
+// support/resistance levels computed from the latest year of them, and the
+// candlestick/volume/gap patterns found across all of them (chart.go's
+// buildChart). Candles/Levels/Patterns are "[]" not "null" when empty, same
+// dashboard.go convention.
+type chartResponse struct {
+	Ticker   string                `json:"ticker"`
+	Candles  []candleResponse      `json:"candles"`
+	Levels   []levelResponse       `json:"levels"`
+	Patterns []patternResponse     `json:"patterns"`
+	Position *riskPositionResponse `json:"position"`
+	Rounds   []roundSummary        `json:"rounds"`
+	// Fills is every buy/sell on this ticker, oldest first — the snapshot
+	// tab's picker (Phase 27 P6).
+	Fills []fillResponse `json:"fills"`
+	// Strategies is every strategy signal pushed for this ticker, oldest
+	// first (Phase 27 P5). Empty until the bot has pushed one — there is
+	// nothing to backfill from.
+	Strategies []strategyAlertResponse `json:"strategies"`
+}
+
+// patternResponse is one signals.DetectPatterns hit, dates instead of candle
+// indices. Only numbers, no display text — the frontend builds names,
+// definitions and the "why" rows from Type and these fields through its own
+// dictionary, same rule as calendarEvent above. Type-specific meaning of Extra
+// is documented on signals.Pattern.
+type patternResponse struct {
+	Type      string       `json:"type"`
+	Cat       string       `json:"cat"`
+	Dir       string       `json:"dir"`
+	Start     string       `json:"start"`
+	End       string       `json:"end"`
+	Conf      string       `json:"conf"` // "high"/"mid"/"low"; "" for gaps
+	BodyRatio float64      `json:"bodyRatio"`
+	VolRatio  float64      `json:"volRatio"`
+	Prior5Pct float64      `json:"prior5Pct"`
+	Extra     float64      `json:"extra"`
+	RefDate   string       `json:"refDate,omitempty"` // volume divergence: the prior high's date
+	Gap       *gapResponse `json:"gap,omitempty"`
+	Fwd5      *float64     `json:"fwd5"` // % move 5 bars after End; null near the end of the data
+}
+
+type gapResponse struct {
+	Lo       float64 `json:"lo"`
+	Hi       float64 `json:"hi"`
+	FillDate string  `json:"fillDate"` // "" while the gap is still open
+}
+
+type levelResponse struct {
+	Price     float64 `json:"price"`
+	Touches   int     `json:"touches"`
+	FirstDate string  `json:"firstDate"`
+	LastDate  string  `json:"lastDate"`
+}
+
+// tickersResponse is /api/tickers' body - the /chart list page's ticker
+// picker source (chart.go's buildTickers).
+type tickersResponse struct {
+	Tickers []string `json:"tickers"`
+}
 
 // chartHistoryRange is how much history /api/chart serves. Two years, not one:
 // the pattern statistics (how a pattern has played out on this ticker) need
@@ -211,4 +282,30 @@ func buildTickers(database dbReader, m market.MarketID) (tickersResponse, error)
 	sort.Strings(tickers)
 
 	return tickersResponse{Tickers: tickers}, nil
+}
+
+func (s *Server) handleChart(w http.ResponseWriter, r *http.Request) {
+	ticker := r.URL.Query().Get("ticker")
+	if ticker == "" {
+		writeError(w, http.StatusBadRequest, "ticker is required")
+		return
+	}
+
+	resp, err := buildChart(s.db, s.quotes, s.history, ticker)
+	if err != nil {
+		logger.Errorf("web: build chart for %s: %v", ticker, err)
+		writeError(w, http.StatusInternalServerError, "failed to build chart")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleTickers(w http.ResponseWriter, r *http.Request) {
+	resp, err := buildTickers(s.db, marketParam(r))
+	if err != nil {
+		logger.Errorf("web: build tickers: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to build tickers")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

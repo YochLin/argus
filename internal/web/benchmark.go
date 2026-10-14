@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"argus/internal/db"
+	"argus/internal/service"
 )
 
 // closeOnOrBefore returns the value at the rightmost key in sorted (ascending)
@@ -52,7 +53,7 @@ func applyRealShares(realShares map[string]float64, t db.Transaction) {
 // proportion stays correct) — the design doc's accepted gap that the
 // benchmark curve can only be drawn from the day daily_snapshots' SPY/0050
 // history actually begins, never earlier.
-func BenchmarkReplay(txs []db.Transaction, benchCloses map[string]float64) []DateValue {
+func BenchmarkReplay(txs []db.Transaction, benchCloses map[string]float64) []service.DateValue {
 	if len(benchCloses) == 0 {
 		return nil
 	}
@@ -68,7 +69,7 @@ func BenchmarkReplay(txs []db.Transaction, benchCloses map[string]float64) []Dat
 	var invested, proceeds float64
 
 	ti := 0
-	out := make([]DateValue, 0, len(dates))
+	out := make([]service.DateValue, 0, len(dates))
 	for _, date := range dates {
 		for ti < len(txs) && txs[ti].Date <= date {
 			t := txs[ti]
@@ -106,7 +107,7 @@ func BenchmarkReplay(txs []db.Transaction, benchCloses map[string]float64) []Dat
 		for _, sh := range benchShares {
 			holdings += sh * benchCloses[date]
 		}
-		out = append(out, DateValue{Date: date, Value: holdings + proceeds - invested})
+		out = append(out, service.DateValue{Date: date, Value: holdings + proceeds - invested})
 	}
 	return out
 }
