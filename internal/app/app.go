@@ -428,6 +428,7 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 			IndustryMap:         industryMapProvider,
 			LLMAudit:            cfg.WebLLMAudit,
 			Assistant:           a.LLM,
+			BackupDir:           cfg.BackupDir,
 			JWTSecret:           cfg.JWTSecret,
 			APIKey:              cfg.APIKey,
 			Events:              a.Events,

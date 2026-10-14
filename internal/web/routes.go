@@ -163,6 +163,11 @@ func (s *Server) registerWealthRoutes() {
 	s.mux.HandleFunc("POST /api/wealth/assistant/drafts/delete", s.requireWritable(s.requireAuth(s.requireAssistant(s.handleWealthDraftDelete))))
 	s.mux.HandleFunc("POST /api/wealth/assistant/drafts/clear", s.requireWritable(s.requireAuth(s.requireAssistant(s.handleWealthDraftClear))))
 	s.mux.HandleFunc("POST /api/wealth/assistant/apply", s.requireWritable(s.requireAuth(s.requireAssistant(s.handleWealthDraftApply))))
+	// /api/wealth/reset (Phase 28 D) — the settings page's danger zone. GET
+	// too sits behind the write gate: it only feeds that zone, which a
+	// read-only server doesn't show.
+	s.mux.HandleFunc("GET /api/wealth/reset", s.requireWritable(s.requireAuth(s.handleWealthResetGet)))
+	s.mux.HandleFunc("POST /api/wealth/reset", s.requireWritable(s.requireAuth(s.handleWealthReset)))
 }
 
 // registerLLMRoutes: Phase 19's /llm page (§4.4/§5.3). See Config.LLMAudit's

@@ -431,6 +431,12 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   — the retirement goal row, as `/w/retire`'s quick switch; a goal via `CreateGoal`). A draft's status (ok/pending/error) is never stored —
   `service.CheckWealthDraft` recomputes it on every read, for the model's `list_drafts` and the web
   alike, from the shared rules in `internal/assets`.
+  `wealth_reset.go`'s `/api/wealth/reset` (Phase 28 D) is the settings page's 重設整個管理帳戶: it
+  backs the database up into `BACKUP_DIR` first (a failed backup deletes nothing; the nightly pruning
+  applies to that file too), then `db.ResetWealthData` empties the wealth account — assets with their
+  history and details, cash flows, goals, `profile.*`, the assistant's drafts and conversation — in one
+  transaction, and the assistant's session starts over. **The trading account is never touched**
+  (positions, transactions, snapshots, `cash_balance*`), and the assistant cannot reach this route.
 
 - `internal/paper` — Phase 11's pure rule engine shared by `argus backtest`'s historical replay
   (`cmd/server/backtest.go`) and the live paper account's forward accumulation

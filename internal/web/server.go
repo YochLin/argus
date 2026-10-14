@@ -146,6 +146,10 @@ type Config struct {
 	// *llm.Client). nil makes the assistant's write routes 409; its GET
 	// still answers with an empty conversation.
 	Assistant AssistantChatter
+	// BackupDir is where /api/wealth/reset writes its pre-reset backup — the
+	// nightly backups' directory (env BACKUP_DIR). Empty defaults to the
+	// same "data/backups" app.Load does.
+	BackupDir string
 }
 
 // Server is Argus's read-only web dashboard (Phase 5 PR1 — see
@@ -207,7 +211,11 @@ type Server struct {
 	assistant   AssistantChatter
 	assistantDB assistantStore
 	assistantMu sync.Mutex
-	mux         *http.ServeMux
+	// resetDB/backupDir back wealth_reset.go; resetDB is set only when
+	// cfg.DB != nil, same typed-nil reason as apiDB.
+	resetDB   wealthResetter
+	backupDir string
+	mux       *http.ServeMux
 }
 
 func New(cfg Config) *Server {
@@ -243,10 +251,12 @@ func New(cfg Config) *Server {
 		llmAudit:            cfg.LLMAudit,
 		jwtSecret:           cfg.JWTSecret,
 		apiKey:              cfg.APIKey,
+		backupDir:           cmp.Or(cfg.BackupDir, "data/backups"),
 	}
 	if cfg.DB != nil {
 		s.apiDB = cfg.DB
 		s.assistantDB = cfg.DB
+		s.resetDB = cfg.DB
 	}
 	s.assistant = cfg.Assistant
 	s.recPerf = newRecPerfStore(s.db, s.history)
