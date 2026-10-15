@@ -11,12 +11,6 @@ import (
 	"argus/internal/sinopac"
 )
 
-// SinopacSyncLookbackDays is how far FetchTrades re-checks on every run —
-// cheap since dedup is by transactions.ext_id/pending_actions payload, not
-// by "have I run since date X", so a missed day (bot downtime, daemon
-// session drop) gets picked up for free on the next run.
-const SinopacSyncLookbackDays = 7
-
 // SinopacClient is the subset of *sinopac.Client BrokerSyncService needs —
 // narrow so tests can fake it without a real Shioaji server.
 type SinopacClient interface {
@@ -43,10 +37,11 @@ func NewBrokerSyncService(client SinopacClient, store BrokerSyncStore) *BrokerSy
 	return &BrokerSyncService{client: client, store: store}
 }
 
-// FetchTrades pulls the current open-position lot detail (buys) and the
-// lookback window's realized sells (profit_loss) and reconstructs Trade
-// events — see internal/sinopac.Trades' doc comment for the reconstruction
-// logic and its known "still-open lots only" gap on the buy side.
+// FetchTrades pulls the open positions with their lot detail (buys) and
+// today's realized sells (profit_loss) and reconstructs today's Trade
+// events — see internal/sinopac.Trades' doc comment for why it is today
+// only. A day the sync didn't run (bot downtime, daemon session drop) is
+// not picked up later; those trades are entered by hand.
 func (s *BrokerSyncService) FetchTrades(ctx context.Context, skip map[string]bool, now time.Time) ([]sinopac.Trade, error) {
 	positions, err := s.client.PositionUnit(ctx)
 	if err != nil {
@@ -61,14 +56,13 @@ func (s *BrokerSyncService) FetchTrades(ctx context.Context, skip map[string]boo
 		details = append(details, d...)
 	}
 
-	end := now
-	begin := end.AddDate(0, 0, -SinopacSyncLookbackDays)
-	pnl, err := s.client.ProfitLoss(ctx, begin.Format("2006-01-02"), end.Format("2006-01-02"))
+	today := now.Format("2006-01-02")
+	pnl, err := s.client.ProfitLoss(ctx, today, today)
 	if err != nil {
 		return nil, fmt.Errorf("profit_loss: %w", err)
 	}
 
-	return sinopac.Trades(details, pnl, skip), nil
+	return sinopac.Trades(positions, details, pnl, skip, today), nil
 }
 
 // QueuedExtIDs collects the ExtID of every trade already sitting in

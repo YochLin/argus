@@ -283,6 +283,9 @@ type Position struct {
 	Direction string  `json:"direction"`
 	Quantity  int     `json:"quantity"`
 	Price     float64 `json:"price"`
+	// YdQuantity is the position's quantity at yesterday's close, so
+	// Quantity-YdQuantity is today's net change (see Trades).
+	YdQuantity int `json:"yd_quantity"`
 }
 
 // PositionUnit lists all currently-open stock positions, in individual
@@ -297,9 +300,9 @@ func (c *Client) PositionUnit(ctx context.Context) ([]Position, error) {
 // PositionDetail is one still-open BUY lot within a position, matching
 // Shioaji's api_v1.portf.position_detail.StockPositionDetail. Dseq is the
 // brokerage's own per-deal sequence number, used verbatim as an
-// idempotency key (see internal/sinopac/trades.go). Price's per-share-vs-
-// total-amount semantics are unconfirmed against a real statement — see
-// that package's doc comment.
+// idempotency key (see internal/sinopac/trades.go). Quantity is in 張 (an
+// odd lot reads 0 — the endpoint takes no unit) and Price is the lot's
+// remaining cost including Fee, not a per-share price; see Trades.
 type PositionDetail struct {
 	Date      string  `json:"date"`
 	Code      string  `json:"code"`
@@ -307,6 +310,7 @@ type PositionDetail struct {
 	Price     float64 `json:"price"`
 	Dseq      string  `json:"dseq"`
 	Direction string  `json:"direction"`
+	Fee       float64 `json:"fee"`
 }
 
 // PositionDetail returns the lot-level breakdown of the position identified

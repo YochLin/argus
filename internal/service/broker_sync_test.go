@@ -16,6 +16,7 @@ type fakeSinopacClient struct {
 	pnl        []sinopac.ProfitLoss
 	balance    sinopac.AccountBalance
 	balanceErr error
+	pnlRange   [2]string
 }
 
 func (f *fakeSinopacClient) PositionUnit(ctx context.Context) ([]sinopac.Position, error) {
@@ -27,6 +28,7 @@ func (f *fakeSinopacClient) PositionDetail(ctx context.Context, detailID int) ([
 }
 
 func (f *fakeSinopacClient) ProfitLoss(ctx context.Context, begin, end string) ([]sinopac.ProfitLoss, error) {
+	f.pnlRange = [2]string{begin, end}
 	return f.pnl, nil
 }
 
@@ -67,22 +69,30 @@ func (m *mockBrokerSyncStore) SetSetting(key, value string) error {
 
 func TestBrokerSyncServiceFetchTrades(t *testing.T) {
 	client := &fakeSinopacClient{
-		positions: []sinopac.Position{{ID: 1, Code: "2330"}},
+		positions: []sinopac.Position{{ID: 1, Code: "2330", Quantity: 2000, YdQuantity: 2000}},
 		details: map[int][]sinopac.PositionDetail{
-			1: {{Date: "2026-08-20", Code: "2330", Quantity: 1000, Price: 900, Dseq: "d1"}},
+			1: {
+				{Date: "2026-08-20", Code: "2330", Quantity: 1, Price: 900000, Dseq: "d1"}, // an older lot
+				{Date: "2026-08-21", Code: "2330", Quantity: 1, Price: 950000, Dseq: "d2"},
+			},
 		},
 		pnl: []sinopac.ProfitLoss{
-			{Date: "2026-08-21", Code: "2330", Quantity: 1000, Price: 950, Dseq: "d2"},
+			{Date: "2026-08-21", Code: "2330", Quantity: 1000, Price: 950, Dseq: "d3"},
 		},
 	}
 	s := NewBrokerSyncService(client, newMockBrokerSyncStore())
 
-	trades, err := s.FetchTrades(context.Background(), nil, time.Now())
+	now := time.Date(2026, 8, 21, 14, 50, 0, 0, time.UTC)
+	trades, err := s.FetchTrades(context.Background(), nil, now)
 	if err != nil {
 		t.Fatalf("FetchTrades() error = %v", err)
 	}
+	if client.pnlRange != [2]string{"2026-08-21", "2026-08-21"} {
+		t.Errorf("profit_loss range = %v, want today only", client.pnlRange)
+	}
+	// Today: bought 2000-2000+1000 = 1000, sold 1000. The 08-20 lot is not today's.
 	if len(trades) != 2 {
-		t.Fatalf("len(trades) = %d, want 2", len(trades))
+		t.Fatalf("trades = %+v, want today's BUY and SELL", trades)
 	}
 }
 

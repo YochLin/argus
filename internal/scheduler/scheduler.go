@@ -180,13 +180,14 @@ var LogRotation = Job{"log rotation", "0 0 0 * * *"}
 // post-close data.
 var Backup = Job{"backup", "0 0 6 * * *"}
 
-// SinopacSync runs Phase 16's Shioaji auto-bookkeeping sync at 14:00 CST,
-// Monday-Friday — after the 13:30 TW close, before TWClosingSnapshot (14:30)
-// so the sync's cash-balance write (see internal/bot/sinopac.go) lands ahead
-// of that day's other post-close bookkeeping. A no-op (SHIOAJI_ADDR unset)
-// when Sinopac isn't configured — fn handles that internally, same as every
-// other job here.
-var SinopacSync = Job{"sinopac sync", "0 0 14 * * 1-5"}
+// SinopacSync runs Phase 16's Shioaji auto-bookkeeping sync at 14:50 CST,
+// Monday-Friday — after the after-hours odd-lot session's 14:30 match, since
+// the sync only proposes the day's own trades (see sinopac.Trades) and a
+// trade it misses is never proposed later. On its own minute, apart from
+// TWClosingSnapshot (14:30) and TWUniverseScan (14:40). A no-op
+// (SHIOAJI_ADDR unset) when Sinopac isn't configured — fn handles that
+// internally, same as every other job here.
+var SinopacSync = Job{"sinopac sync", "0 50 14 * * 1-5"}
 
 // TWUniverseRefresh runs the TW scan pool's liquidity rotation at 08:30 CST
 // on the 1st of every month. Monthly, not daily: the top-300 by turnover
