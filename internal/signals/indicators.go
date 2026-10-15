@@ -89,6 +89,36 @@ func StochasticSeries(highs, lows, closes []float64, rsvPeriod, smooth int) (k, 
 	return k, d
 }
 
+// kdSeedBars is how much history KDSeries computes BEFORE the window it
+// returns. K and D are exponential recursions with a 2/3 memory factor, so a
+// bar this far back still carries (2/3)^60 ~= 2e-11 of the returned value —
+// below the price resolution of any market this reads. Same trade-off, and
+// the same reasoning, as EMA's emaSeedMultiple.
+const kdSeedBars = 60
+
+// KDSeries returns the KD(9,3) series for the LAST tail bars of candles —
+// k[i] and d[i] belong to candles[len(candles)-tail+i]. nil, nil when there
+// isn't enough history for the window.
+//
+// It exists because every caller here wants the last handful of KD values on
+// a growing slice, and StochasticSeries over the whole slice makes that
+// O(n) per bar, i.e. O(n^2) over a backtest — minutes of wall clock on a
+// whole-market cache, computing 2,000 bars of KD to read two of them.
+func KDSeries(candles []data.Candle, tail int) (k, d []float64) {
+	if tail < 1 || len(candles) < tail {
+		return nil, nil
+	}
+	w := candles
+	if n := tail + kdSeedBars; len(w) > n {
+		w = w[len(w)-n:]
+	}
+	k, d = StochasticSeries(data.Highs(w), data.Lows(w), data.Closes(w), 9, 3)
+	if k == nil {
+		return nil, nil
+	}
+	return k[len(k)-tail:], d[len(d)-tail:]
+}
+
 // BollingerBandwidthSeries computes (upper - lower) / middle for every point where period closes exist.
 // Returns nil if len(closes) < period.
 func BollingerBandwidthSeries(closes []float64, period int, numStdDev float64) []float64 {
