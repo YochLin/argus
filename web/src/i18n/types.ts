@@ -1,0 +1,1546 @@
+// docs/phase-5-web-dashboard.md's UI language decision: the backend never
+// sends display strings (see api/), so the frontend picks a dictionary
+// itself from /api/config's lang. Both dictionaries independently declare
+// every key as a full object literal (not one spread from the other) so
+// TypeScript's excess/missing-property checking on a typed literal catches
+// a forgotten translation at compile time — the same discipline
+// i18n_test.go's TestTablesMatch enforces on the Go side's zh/en tables,
+// just carried by tsc instead of a unit test.
+//
+// Per the design doc, metric names stay English in both dictionaries
+// (WIN RATE / PROFIT FACTOR / EXPECTANCY) — only supporting copy is
+// translated.
+export interface Dictionary {
+  netPnL: string;
+  winRate: string;
+  profitFactor: string;
+  expectancy: string;
+  maxDrawdown: string;
+  ytdReturn: string;
+  qtdReturn: string;
+  htdReturn: string;
+  positions: string;
+  ticker: string;
+  shares: string;
+  avgCost: string;
+  price: string;
+  marketValue: string;
+  unrealizedPnL: string;
+  watching: string;
+  lastClose: string;
+  loading: string;
+  error: string;
+  noPositions: string;
+  navDashboard: string;
+  navCalendar: string;
+  weekTotal: string;
+  monthTotal: string;
+  noData: string;
+  side: string;
+  buy: string;
+  sell: string;
+  fee: string;
+  realizedPnL: string;
+  noTransactions: string;
+  deleteTransaction: string;
+  confirmDeleteTransaction: string;
+  today: string;
+  weekdays: [string, string, string, string, string, string, string];
+  navRounds: string;
+  startDate: string;
+  endDate: string;
+  open: string;
+  noRounds: string;
+  roundsClosedSuffix: string;
+  roundsWon: string;
+  roundsNet: string;
+  roundsAll: string;
+  roundsStatusOpen: string;
+  roundsStatusClosed: string;
+  roundsExpandAll: string;
+  roundsCollapseAll: string;
+  roundsHeld: string;
+  roundsDaySuffix: string;
+  roundsCountSuffix: string;
+  roundsNoMatch: string;
+  roundsFootnote: string;
+  back: string;
+  navChart: string;
+  support: string;
+  resistance: string;
+  touches: string;
+  lastTouch: string;
+  levelType: string;
+  noLevels: string;
+  pickTicker: string;
+  navReports: string;
+  reportsByTicker: string;
+  reportsByHoldingDays: string;
+  reportsByEntryMonth: string;
+  reportsByEntryWeekday: string;
+  group: string;
+  trades: string;
+  avgReturn: string;
+  totalPnL: string;
+  avgHold: string;
+  lowSampleTag: string;
+  feeSummary: string;
+  totalFees: string;
+  feePctOfPnL: string;
+  mfeCaptured: string;
+  mfeCapturedNote: string;
+  maeMfeRoundNote: string;
+  tradeStats: string;
+  bestTrade: string;
+  worstTrade: string;
+  avgWin: string;
+  avgLoss: string;
+  longestWinStreak: string;
+  longestLossStreak: string;
+  noReportData: string;
+  reportsEdgeTitle: string;
+  reportsEdgeSubtitle: string;
+  reportsEdgeBothGood: string;
+  reportsEdgeWinRateOnly: string;
+  reportsEdgePayoffOnly: string;
+  reportsEdgeBothWeak: string;
+  payoffRatio: string;
+  groupBreakdown: string;
+  months: [string, string, string, string, string, string, string, string, string, string, string, string];
+  navRisk: string;
+  portfolioHeat: string;
+  accountValue: string;
+  cashLevel: string;
+  weight: string;
+  stopPriceCol: string;
+  buyAlertPriceCol: string;
+  openRisk: string;
+  noStopSet: string;
+  belowStop: string;
+  benchmarkAlpha: string;
+  myPortfolio: string;
+  benchmarkReplay: string;
+  cumPnl: string;
+  drawdownChart: string;
+  monthlyPnl: string;
+  yearTotal: string;
+  navRecs: string;
+  navLlm: string;
+  llmDevTag: string;
+  llmSubtitle: string;
+  llmKind: string;
+  llmModel: string;
+  llmLatency: string;
+  llmCreated: string;
+  llmWatchlist: string;
+  llmCandidates: string;
+  llmNews: string;
+  llmRunRecommend: string;
+  llmRunDailyReport: string;
+  llmRunPriceEvent: string;
+  llmEventGap: string;
+  llmEventChange: string;
+  llmEventCumulative: string;
+  llmNoRuns: string;
+  llmNewsMarket: string;
+  llmNewsPerTicker: string;
+  llmSource: string;
+  llmHeadline: string;
+  llmPublishedAt: string;
+  llmBlockSource: string;
+  llmBlocked: string;
+  llmDataQuality: string;
+  llmLowQualitySource: string;
+  llmStaleNews: string;
+  llmDuplicateTitles: string;
+  llmDuplicateTitlesSameTicker: string;
+  llmDuplicateTitlesCrossTicker: string;
+  llmCandleGaps: string;
+  llmNoSummaryRate: string;
+  llmBlockedSources: string;
+  llmUnblock: string;
+  llmNoBlockedSources: string;
+  llmBlockedHint: string;
+  llmCandlesSummary: string;
+  llmMarketContext: string;
+  llmCrossTickerLessons: string;
+  llmPerTickerLessons: string;
+  llmStrategyHits: string;
+  llmScanReason: string;
+  llmPrevRecommendation: string;
+  llmRawReply: string;
+  llmScope: string;
+  llmInsiderTx: string;
+  llmStocksTitle: string;
+  recCounts: string;
+  recTotal: string;
+  recScorable: string;
+  recHoldKept: string;
+  recCollapsed: string;
+  recUnscorable: string;
+  recHold: string;
+  recBySource: string;
+  recByAction: string;
+  recBest: string;
+  recWorst: string;
+  horizonDays: string;
+  hitRate: string;
+  avgExcessReturn: string;
+  noRecData: string;
+  // Recs hero (Task #6): signal-checkup narrative card (built from fragments
+  // since embedded numbers can't go through a plain dict lookup, same
+  // convention as CalendarView's eventNote), followed-vs-skipped comparison
+  // bars, excess-by-horizon chart, new stat labels, and source-value labels
+  // for the four real recPerfExtreme/recPerfActiveSignal source strings
+  // (watchlist/movers/scan/explore — there is no "news" source in the real
+  // system despite the mockup showing one).
+  recSignalCheckup: string;
+  recFollowedVsSkipped: string;
+  recFollowed: string;
+  recSkipped: string;
+  recExcessByHorizon: string;
+  recSignalHitRate: string;
+  recRandomBaseline: string;
+  recBestHoldingWindow: string;
+  recExcessReturnNote: string;
+  recInsufficientData: string;
+  recActiveSignals: string;
+  recIssuedTime: string;
+  recSource: string;
+  recSourceWatchlist: string;
+  recSourceMovers: string;
+  recSourceScan: string;
+  recSourceExplore: string;
+  recEntryPrice: string;
+  recDaysAgo: string;
+  recSinceSignal: string;
+  recNarrativePeakPrefix: string;
+  recNarrativePeakMid: string;
+  recNarrativePeakSuffix: string;
+  recNarrativeSkipBetterPrefix: string;
+  recNarrativeSkipBetterSuffix: string;
+  recNarrativeFollowBetterPrefix: string;
+  recNarrativeFollowBetterSuffix: string;
+  thesisLabel: string;
+  thesisAddToggle: string;
+  thesisAdd: string;
+  thesisEdit: string;
+  thesisEdited: string;
+  thesisSave: string;
+  thesisPlaceholder: string;
+  currentThesisNote: string;
+  thesisFieldPlaceholder: string;
+  thesisSaveFailedNote: string;
+  thesisEmptyOpen: string;
+  thesisEmptyClosed: string;
+  patTitle: string;
+  pvChip: string;
+  pvChipTip: string;
+  maChip: string;
+  maChipTip: string;
+  pvLegend: string;
+  pvUpVu: string;
+  pvUpVd: string;
+  pvDnVu: string;
+  pvDnVd: string;
+  pvReadPrice: string;
+  pvReadVol: string;
+  patHighOnly: string;
+  patHighTip: string;
+  patEvents: string;
+  patEventsNote: string;
+  patNone: string;
+  patPick: string;
+  patConf: string;
+  patWhy: string;
+  patWhyGap: string;
+  patHist: string;
+  patHistN: string;
+  patHistAvg: string;
+  patHistHit: string;
+  patHistUp: string;
+  patThisFwd: string;
+  patFwdPending: string;
+  patLowSample: string;
+  patDisclaimer: string;
+  patGapOpen: string;
+  patGapFilled: string;
+  patBars: string;
+  patLegBull: string;
+  patLegBear: string;
+  patLegNeu: string;
+  patLegGap: string;
+  stratChip: string;
+  stratChipTip: string;
+  stratLeg: string;
+  stratPushedWatchlist: string;
+  stratPushedScan: string;
+  stratMsgTitle: string;
+  stratVerdictTitle: string;
+  stratVerdictNone: string;
+  stratValid_ok: string;
+  stratValid_warn: string;
+  stratValid_bad: string;
+  stratNote_warn: string;
+  stratNote_breakout: string;
+  stratNote_mtfTw: string;
+  stratNote_mtfUs: string;
+  stratDisclaimer: string;
+  stratCode_squeeze: string;
+  stratName_squeeze: string;
+  stratCode_box: string;
+  stratName_box: string;
+  stratCode_breakout: string;
+  stratName_breakout: string;
+  stratCode_pullback: string;
+  stratName_pullback: string;
+  stratCode_trust: string;
+  stratName_trust: string;
+  stratCode_mtf: string;
+  stratName_mtf: string;
+  tkTabPat: string;
+  condBody: string;
+  condVol: string;
+  condPrior5: string;
+  condBodyPrev: string;
+  condCloseInto: string;
+  condLowerShadow: string;
+  condUpperShadow: string;
+  condPrior20High: string;
+  condPrior20Low: string;
+  condPriorHighDate: string;
+  condVolVsHigh: string;
+  condRange10: string;
+  condGapRange: string;
+  condGapSize: string;
+  condGapStatus: string;
+  gapStatusOpen: string;
+  gapStatusFilled: string;
+  patCode_bullEngulf: string;
+  patName_bullEngulf: string;
+  patDef_bullEngulf: string;
+  patCode_bearEngulf: string;
+  patName_bearEngulf: string;
+  patDef_bearEngulf: string;
+  patCode_hammer: string;
+  patName_hammer: string;
+  patDef_hammer: string;
+  patCode_shooting: string;
+  patName_shooting: string;
+  patDef_shooting: string;
+  patCode_morning: string;
+  patName_morning: string;
+  patDef_morning: string;
+  patCode_evening: string;
+  patName_evening: string;
+  patDef_evening: string;
+  patCode_soldiers: string;
+  patName_soldiers: string;
+  patDef_soldiers: string;
+  patCode_crows: string;
+  patName_crows: string;
+  patDef_crows: string;
+  patCode_doji: string;
+  patName_doji: string;
+  patDef_doji: string;
+  patCode_volBreak: string;
+  patName_volBreak: string;
+  patDef_volBreak: string;
+  patCode_hangingMan: string;
+  patName_hangingMan: string;
+  patDef_hangingMan: string;
+  patCode_invHammer: string;
+  patName_invHammer: string;
+  patDef_invHammer: string;
+  patCode_bullHarami: string;
+  patName_bullHarami: string;
+  patDef_bullHarami: string;
+  patCode_bearHarami: string;
+  patName_bearHarami: string;
+  patDef_bearHarami: string;
+  patCode_piercing: string;
+  patName_piercing: string;
+  patDef_piercing: string;
+  patCode_darkCloud: string;
+  patName_darkCloud: string;
+  patDef_darkCloud: string;
+  patCode_volDry: string;
+  patName_volDry: string;
+  patDef_volDry: string;
+  patCode_volDiverge: string;
+  patName_volDiverge: string;
+  patDef_volDiverge: string;
+  patCode_gapUp: string;
+  patName_gapUp: string;
+  patDef_gapUp: string;
+  patCode_gapDown: string;
+  patName_gapDown: string;
+  patDef_gapDown: string;
+  patCode_volDump: string;
+  patName_volDump: string;
+  patDef_volDump: string;
+  patCat_rev: string;
+  patCat_cont: string;
+  patCat_gap: string;
+  patCat_vol: string;
+  patCat_indec: string;
+  patDir_bull: string;
+  patDir_bear: string;
+  patDir_neu: string;
+  patConfLabel_high: string;
+  patConfLabel_mid: string;
+  patConfLabel_low: string;
+  patCatTip_rev: string;
+  patCatTip_cont: string;
+  patCatTip_gap: string;
+  patCatTip_vol: string;
+  patCatTip_indec: string;
+  lessonsLabel: string;
+  rMultipleHistogram: string;
+  rMultipleNote: string;
+  rMultipleInfo: string;
+  rMultipleXAxis: string;
+  rMultipleYAxis: string;
+  noStopSamples: string;
+  noStopExplanation: string;
+  holdingDaysScatter: string;
+  holdingDaysInfo: string;
+  holdingDaysXAxis: string;
+  holdingDaysYAxis: string;
+  maeReturnScatter: string;
+  maeReturnNote: string;
+  maeReturnInfo: string;
+  maeXAxis: string;
+  maeYAxis: string;
+  skippedSamples: string;
+  // themeLight/themeDark are TopBar's toggle-button label — shown for the
+  // *action* the button performs (switch to X), not the current state, same
+  // convention as Sidebar's market/lang pills labeling the destination.
+  themeLight: string;
+  themeDark: string;
+  wealthDisplayCurrency: string;
+  // Phase 10 (docs/phase-10-web-trade-input.md §4.3): TradeModal/LoginModal
+  // copy plus PositionsTable/ChartListView's new write-affordance labels.
+  // Server-side confirmation/error text (e.g. TradeResponse.message) is
+  // never re-translated here — these keys are only for chrome the backend
+  // never sends a string for.
+  addTrade: string;
+  tradeBuyTitle: string;
+  tradeSellTitle: string;
+  tradeStopTitle: string;
+  tradeBuyAlertTitle: string;
+  advancedOptions: string;
+  tradeDate: string;
+  submit: string;
+  cancel: string;
+  close: string;
+  loginTitle: string;
+  password: string;
+  login: string;
+  addTickerPlaceholder: string;
+  add: string;
+  remove: string;
+  addBuyAlert: string;
+  searchPlaceholder: string;
+  watchlistCount: string;
+  noMatch: string;
+  heldOnly: string;
+  nearestSup: string;
+  nearestRes: string;
+  ma20: string;
+  ma60: string;
+  atr14: string;
+  ret20: string;
+  fromHigh: string;
+  vsAvg20: string;
+  volume: string;
+  above: string;
+  below: string;
+  rangeHigh: string;
+  rangeLow: string;
+  rangeNote: string;
+  thisPosition: string;
+  noPositionHere: string;
+  riskIfStopped: string;
+  pctOfAccount: string;
+  tickerRounds: string;
+  noRoundsHere: string;
+  peerTitle: string;
+  peerRel: string;
+  roundPicker: string;
+  tradesInRound: string;
+  allTrades: string;
+  // Calendar's earnings-event dots/legend/day-detail table (Task #9) — note
+  // text is built client-side from kind/hour/estimated (see api/dashboard.ts's
+  // CalendarEvent), same "backend never sends display strings" rule.
+  eventsTitle: string;
+  eventType: string;
+  eventNote: string;
+  noEventsToday: string;
+  heldLegend: string;
+  eventKindEarnings: string;
+  eventHeld: string;
+  eventHourBmo: string;
+  eventHourAmc: string;
+  eventHourDmh: string;
+  eventHourUnknown: string;
+  eventEstimated: string;
+  // Phase 17: the connection/credential settings page. Field labels are the
+  // env var names themselves (rendered from /api/settings), so only the
+  // section headings and the surrounding copy live here — adding a variable
+  // server-side needs no new key unless it introduces a new group.
+  navSettings: string;
+  // setNavNote/acctDevMode/acctDevNote back the account-switcher dropdown's
+  // two static entries (design-canvas reference's account menu — see
+  // Sidebar.tsx's sidebar-account-menu). Real multi-account switching isn't
+  // built yet, so the dropdown only ever shows these two rows. devMode
+  // (App.tsx, persisted client-side) gates the /llm nav link + route —
+  // App.tsx's own comment on devModeStorageKey has the full rationale.
+  setNavNote: string;
+  acctDevMode: string;
+  acctDevNote: string;
+  settingsTitle: string;
+  settingsIntro: string;
+  settingsGroupTelegram: string;
+  settingsGroupData: string;
+  settingsGroupSinopac: string;
+  settingsSinopacDaemonNote: string;
+  settingsSecretSet: string;
+  settingsSecretUnset: string;
+  settingsSave: string;
+  settingsRevert: string;
+  settingsDirty: string;
+  settingsRulesTitle: string;
+  settingsRule1: string;
+  settingsRule2: string;
+  settingsRestarting: string;
+  settingsReload: string;
+  // Phase 28 D: the settings page's danger zone (wealth account only) and its
+  // reset dialog. The wipe/keep lists name what db.ResetWealthData clears and
+  // leaves; rstBackupHint replaces the design's export button (the server
+  // backs the database up itself, into rstBackupHint's folder).
+  rstZone: string;
+  rstZoneNote: string;
+  rstKey: string;
+  rstDesc: string;
+  rstBtn: string;
+  rstLast: string;
+  rstNever: string;
+  rstTitle: string;
+  rstIrrev: string;
+  rstBody: string;
+  rstWipeLabel: string;
+  rstWipe1: string;
+  rstWipe2: string;
+  rstWipe3: string;
+  rstWipe4: string;
+  rstWipe5: string;
+  rstKeepLabel: string;
+  rstKeep1: string;
+  rstKeep2: string;
+  rstKeep3: string;
+  rstBackupHint: string;
+  rstAck: string;
+  rstOk: string;
+  rstDone: string;
+  // Phase 5 §B (optional): CSV transaction import page (nav link gated on
+  // status.writable, same convention as every other write-only entry point).
+  navImport: string;
+  importTitle: string;
+  importInstructions: string;
+  importTemplateHint: string;
+  importTextareaPlaceholder: string;
+  importChooseFile: string;
+  importPreview: string;
+  importConfirm: string;
+  importLine: string;
+  importDate: string;
+  importStatus: string;
+  importMessage: string;
+  importStatusOk: string;
+  importStatusWarning: string;
+  importStatusDuplicate: string;
+  importStatusError: string;
+  importStatusApplied: string;
+  importNoRows: string;
+  importAppliedPrefix: string;
+  importAppliedSuffix: string;
+  // Phase 11 PR4 (docs/phase-11-paper-account.md §7.2): the read-only Paper
+  // Account page — sidebar nav link gated on /api/config's paperEnabled,
+  // same "hidden entirely when the feature is off" convention as navImport.
+  navPaper: string;
+  paperReadOnlyBadge: string;
+  paperReadOnlyNotice: string;
+  paperEquity: string;
+  paperInitialCash: string;
+  paperTotalReturn: string;
+  paperBenchmarkReturn: string;
+  paperAlpha: string;
+  paperSince: string;
+  closedPositions: string;
+  entryDate: string;
+  exitDate: string;
+  exitPrice: string;
+  exitReason: string;
+  exitReasonStop: string;
+  exitReasonLlmSell: string;
+  distToStop: string;
+  noClosedPositions: string;
+  // Phase 12 PR4: the read-only Options page — always in the sidebar (no
+  // feature flag; the options ledger is always present, just usually
+  // empty), unlike navPaper's paperEnabled gating.
+  navOptions: string;
+  optionContract: string;
+  optionRight: string;
+  optionStrike: string;
+  optionExpiry: string;
+  optionDTE: string;
+  optionContracts: string;
+  optionAvgPremium: string;
+  optionMark: string;
+  optionMarketValue: string;
+  optionDelta: string;
+  optionAction: string;
+  optionCalendar: string;
+  optionCollateral: string;
+  optionLockedCash: string;
+  optionLockedShares: string;
+  optionHeldShares: string;
+  optionNaked: string;
+  noOptionPositions: string;
+  noClosedOptions: string;
+  noOptionCollateral: string;
+  // Phase 12 PR4's write half (design-parity pass): Add/Close modals wired
+  // to POST /api/options/open|close (internal/web/options.go), same
+  // requireTrade/writable gate as PositionsTable's buy/sell/stop buttons.
+  optAddBtn: string;
+  optCloseBtn: string;
+  optionCollateralNote: string;
+  optionNoPnlNote: string;
+  optAddTitle: string;
+  optCloseTitle: string;
+  optFieldPremium: string;
+  optOutcomeHint: string;
+  optBuyToClose: string;
+  optSellToClose: string;
+  optExpiredBtn: string;
+  optAssignedBtn: string;
+  optExercisedBtn: string;
+  optCall: string;
+  optPut: string;
+  // Phase 18: the sector money-flow treemap page.
+  navFlow: string;
+  sectorFlowSubtitle: string;
+  sectorFlowHeldHint: string;
+  sectorFlowNotReady: string;
+  sectorFlowSizeBy: string;
+  sectorFlowSizeByCap: string;
+  sectorFlowSizeByFlow: string;
+  sectorFlowHeld: string;
+  sectorFlowNetFlow: string;
+  sectorFlowChange: string;
+  sectorFlowTickerCount: string;
+  sectorFlowRanking: string;
+  sectorFlowTWCapNote: string;
+  sectorFlowTotalNetFlow: string;
+  sectorFlowBreadth: string;
+  sectorFlowStrongest: string;
+  sectorFlowWeakest: string;
+  sectorFlowRefresh: string;
+  sectorFlowRefreshing: string;
+  sectorFlowRefreshError: string;
+  // Research-notes card (chart page): one upserted note per ticker per day,
+  // same add/edit-toggle shape as the thesisXxx keys above, plus a fixed
+  // tag taxonomy and a pinned-notes sub-list.
+  notesLabel: string;
+  notesAddToggle: string;
+  notesEditToggle: string;
+  notesFieldPlaceholder: string;
+  notesEmptyNote: string;
+  notesSearchPlaceholder: string;
+  notesClearSearch: string;
+  notesPinnedLabel: string;
+  notesPinLabel: string;
+  notesUnpinLabel: string;
+  notesDeleteLabel: string;
+  notesDeleteConfirm: string;
+  notesLoadMore: string;
+  notesFilterAllLabel: string;
+  notesTagTechnical: string;
+  notesTagFlow: string;
+  notesTagNews: string;
+  notesTagOther: string;
+  notesTagObservation: string;
+  notesTagValuation: string;
+  notesTagRisk: string;
+  notesTagCatalyst: string;
+  notesNote: string;
+  notesCount: string;
+  notesMatched: string;
+  notesToThesis: string;
+  notesShowing: string;
+  notesAllShown: string;
+  notesCollapse: string;
+  notesNoMatch: string;
+  notesMonthFmt: string;
+  tkRoundLabel: string;
+  tkPickRound: string;
+  roundOlderTip: string;
+  roundNewerTip: string;
+  roundHolding: string;
+  roundDaysUnit: string;
+  roundsSummary: string;
+  roundSpan: string;
+  tkTabLvl: string;
+  tkTabRound: string;
+  snapTab: string;
+  snapEmpty: string;
+  snapPrevTip: string;
+  snapNextTip: string;
+  snapPickTip: string;
+  snapRound: string;
+  snapFillLine: string;
+  snapDayLine: string;
+  snapDayLineLive: string;
+  snapProvenance: string;
+  snapProvenanceLive: string;
+  snapIntradayTag: string;
+  snapVolPending: string;
+  snapBarNote: string;
+  snapNoData: string;
+  snapLoadFail: string;
+  snapAligned: string;
+  snapAgainst: string;
+  snapReadAsBuy: string;
+  snapSellNote: string;
+  indRsi: string;
+  indMacd: string;
+  indTrend: string;
+  indVol: string;
+  rsiHot: string;
+  rsiCold: string;
+  rsiMid: string;
+  rsiSub: string;
+  macdGolden: string;
+  macdDeath: string;
+  macdSub: string;
+  macdWiden: string;
+  macdNarrow: string;
+  trendBullVal: string;
+  trendBearVal: string;
+  trendRangeVal: string;
+  trendBullTag: string;
+  trendBearTag: string;
+  trendRangeTag: string;
+  trendSub: string;
+  volUpTag: string;
+  volDownTag: string;
+  volFlatTag: string;
+  volSub: string;
+  snapPatTitle: string;
+  snapPatNone: string;
+  snapNewsTitle: string;
+  snapNewsNote: string;
+  snapNewsNone: string;
+  newsTag_earn: string;
+  newsTag_guide: string;
+  newsTag_analyst: string;
+  newsTag_sector: string;
+  newsTag_macro: string;
+  newsTag_flow: string;
+  newsTag_other: string;
+  newsSent_bull: string;
+  newsSent_bear: string;
+  newsSent_neutral: string;
+  newsSent_none: string;
+  newsMajor: string;
+  hindTitle: string;
+  hindNote: string;
+  hind5: string;
+  hind20: string;
+  hindBest: string;
+  hindWorst: string;
+  hindPending: string;
+  snapDataTitle: string;
+  snapDataNote: string;
+  snapJsonView: string;
+  snapJsonHide: string;
+  snapCopy: string;
+  snapCopied: string;
+  levelsNote: string;
+  pctOfRange: string;
+  // Phase 9 wealth platform (docs/phase-9-asset-platform.md) — the /w net
+  // worth home page (variant B: hero number + YTD/MoM) and its quick-add
+  // form. Keyed off asset_group (liquid/growth/income/hard), the schema's
+  // own four-bucket taxonomy, not the design mock's finer 9-category split.
+  navWealth: string;
+  acctTrading: string;
+  acctWealth: string;
+  wealthNetWorth: string;
+  wealthYTD: string;
+  wealthMoM: string;
+  wealthAllocation: string;
+  wealthModelConserv: string;
+  wealthModelBalanced: string;
+  wealthModelGrowth: string;
+  wealthGroupLiquid: string;
+  wealthGroupGrowth: string;
+  wealthGroupIncome: string;
+  wealthGroupHard: string;
+  // wealthSheet* are the balance sheet's own four headings (design balanceModel:
+  // grouped by asset type, not asset_group) — see wealthCategory.ts sheetGroups.
+  wealthSheetLiquid: string;
+  wealthSheetInvestment: string;
+  wealthSheetHard: string;
+  wealthSheetRetirement: string;
+  // wealthCategory* back /w/alloc's own nine-category taxonomy
+  // (assets.AllocCategories, §8.5) — distinct from the four wealthGroup*
+  // keys above, which the home page still uses.
+  wealthCategoryCash: string;
+  wealthCategoryEquity: string;
+  wealthCategoryFund: string;
+  wealthCategoryBond: string;
+  wealthCategoryInsurance: string;
+  wealthCategoryEstate: string;
+  wealthCategoryGold: string;
+  wealthCategoryCrypto: string;
+  wealthCategoryPension: string;
+  wealthHomeVariantLabel: string;
+  wealthHomeVariantBoard: string;
+  wealthHomeVariantStory: string;
+  wealthHomeAddNew: string;
+  wealthHomeNetWorth: string;
+  wealthHomeYtd: string;
+  wealthHomeMom: string;
+  wealthHomeDriftLabel: string;
+  wealthHomeRebalanceLabel: string;
+  wealthHomeDriftOnTarget: string;
+  wealthHomeDriftNoRebal: string;
+  wealthHomeDriftCount: string;
+  wealthHomeDriftOff: string;
+  wealthHomeDriftHead: string;
+  wealthHomeHeadOk: string;
+  wealthHomeThinShort: string;
+  wealthHomeNeedAssets: string;
+  wealthNeedModel: string;
+  wealthNeedSpend: string;
+  wealthNeedHist: string;
+  wealthOrdersThin: string; // %s = why
+  wealthHomeAllocTitle: string;
+  wealthHomeClass: string;
+  wealthHomeCurrent: string;
+  wealthHomeTarget: string;
+  wealthHomeDrift: string;
+  wealthHomeAction: string;
+  wealthHomeActionTrim: string;
+  wealthHomeActionAdd: string;
+  wealthHomeActionOk: string;
+  wealthHomeOffTitle: string;
+  wealthHomeGroupTitle: string;
+  wealthHomeLiabTitle: string;
+  wealthHomeRate: string;
+  wealthHomeLiquidLabel: string;
+  wealthHomeMonths: string;
+  wealthHomeStaleBanner: string;
+  wealthHomeStaleGo: string;
+  wealthHomeTipDrift: string;
+  wealthHomeTipRebal: string;
+  wealthHomeTipDebt: string;
+  wealthHomeTipLiquid: string;
+  wealthHomeTipYtd: string;
+  wealthHomeYearsLeft: string;
+  wealthHomePayFirst: string;
+  wealthHomeMonthlyPay: string;
+  wealthCurrentPct: string;
+  wealthTargetPct: string;
+  wealthDeviation: string;
+  wealthMarketValue: string;
+  wealthAssetsLabel: string;
+  wealthAddAsset: string;
+  wealthEmpty: string;
+  wealthType: string;
+  wealthName: string;
+  wealthGroupLabel: string;
+  wealthVenue: string;
+  wealthVenueUnset: string;
+  wealthCurrency: string;
+  wealthValue: string;
+  wealthArchive: string;
+  // %s = the asset's name in the title and in the two flash toasts.
+  wealthArchiveTitle: string;
+  wealthArchiveBody: string;
+  wealthFlashArchived: string;
+  wealthFlashPaused: string;
+  // /w/balance's 使用中/已封存 tabs and the archived table.
+  wealthTabActive: string;
+  wealthTabArchived: string;
+  wealthArcDesc: string;
+  wealthArcColKind: string;
+  wealthArcColDate: string;
+  wealthArcColValue: string;
+  wealthArcNone: string;
+  wealthRestore: string;
+  wealthFlashRestored: string; // %s = name
+  wealthRoNoChange: string;
+  wealthRoNoAdd: string;
+  wealthSideAsset: string;
+  wealthSideLiability: string;
+  // A balance-sheet row's ⋯ button and click-to-edit value.
+  wealthRowMore: string;
+  wealthRowLinkGo: string;
+  wealthRowLinkTitle: string;
+  wealthRowEditHint: string;
+  // The edit drawer (RowEditDrawer). %s placeholders are noted per key.
+  wealthEdTitle: string;
+  wealthEdTitleArchived: string;
+  wealthEdLastRecord: string; // %s = date
+  wealthEdNoRecord: string;
+  wealthEdArchNote: string; // %s = archive date
+  wealthEdRoNote: string;
+  wealthEdLockSide: string;
+  wealthEdLockCurrency: string;
+  wealthEdLockSource: string;
+  wealthEdLockNote: string;
+  wealthEdInstPhAsset: string;
+  wealthEdInstPhLiab: string;
+  wealthEdLogTitle: string;
+  wealthEdFixTitle: string;
+  wealthEdCancelFix: string;
+  wealthEdHintTwd: string;
+  wealthEdHintFx: string; // %s = currency code
+  wealthEdAdd: string;
+  wealthEdUpdate: string;
+  wealthEdErrAmount: string;
+  wealthEdErrFuture: string;
+  wealthEdErrName: string;
+  wealthEdErrLocked: string;
+  wealthEdHistTitle: string;
+  wealthEdHistEmpty: string;
+  wealthEdTagToday: string;
+  wealthEdTagHistory: string;
+  wealthEdFix: string;
+  wealthEdDel: string;
+  wealthEdHistNote: string;
+  wealthEdSave: string;
+  wealthEdClose: string;
+  wealthEdArchive: string;
+  wealthEdFlashSaved: string;
+  wealthEdFlashLogged: string;
+  wealthEdFlashFixed: string;
+  wealthEdFlashDeleted: string;
+  // Read-only mode (WEB_PASSWORD unset): the shell banner, its "how to
+  // enable editing" steps, and the import pages' stand-in panels.
+  roTag: string;
+  roMsg: string;
+  roHow: string;
+  roHide: string;
+  roStep1: string;
+  roStep2: string;
+  roStep3: string;
+  roImportTitle: string;
+  roImportBodyWealth: string;
+  roImportBodyTrade: string;
+  wealthKindDeposit: string;
+  wealthKindLoan: string;
+  wealthKindInsurance: string;
+  wealthKindFund: string;
+  wealthKindBond: string;
+  wealthKindEstate: string;
+  wealthKindGold: string;
+  wealthKindCrypto: string;
+  wealthKindPension: string;
+  wealthKindOther: string;
+  wealthKindCreditCard: string;
+  wealthBank: string;
+  wealthAccountNote: string;
+  wealthLender: string;
+  wealthRatePct: string;
+  wealthOriginalPrincipal: string;
+  wealthRemainingMonths: string;
+  wealthAddTitle: string;
+  wealthAddStep: string; // %s = 1 or 2
+  wealthAddSave: string;
+  wealthAddChange: string;
+  wealthAddPickHint: string;
+  wealthKindNoteDeposit: string;
+  wealthKindNoteLoan: string;
+  wealthKindNoteFund: string;
+  wealthKindNoteBond: string;
+  wealthKindNoteEstate: string;
+  wealthKindNoteGold: string;
+  wealthKindNoteCrypto: string;
+  wealthKindNotePension: string;
+  wealthKindNoteOther: string;
+  wealthKindFlow: string;
+  wealthKindNoteFlow: string;
+  wealthKindNotePolicy: string;
+  wealthKindImport: string;
+  wealthKindNoteImport: string;
+  wealthClassNoteLiquid: string;
+  wealthClassNoteGrowth: string;
+  wealthClassNoteIncome: string;
+  wealthClassNoteHard: string;
+  wealthFValue: string;
+  wealthFBalance: string;
+  wealthFInst: string;
+  wealthPhAssetName: string;
+  wealthPhLoanName: string;
+  wealthPhInst: string;
+  wealthLoanHint: string;
+  wealthErrRequired: string;
+  wealthErrAmount: string;
+  wealthErrBlocked: string;
+  wealthAddHintLive: string;
+  wealthWarnDup: string;
+  wealthWarnDupMsg: string;
+  wealthAddedToast: string;
+  wealthInitialValue: string;
+  wealthEditValueTitle: string;
+  // Phase 9 PR2 (partial): balance sheet page (/w/balance), health-metric
+  // ratios, and the debt-payoff (snowball/avalanche) calculator. Mirrors
+  // internal/web/wealth_balance.go.
+  navWealthBalance: string;
+  wealthTotalAssets: string;
+  wealthTotalLiabilities: string;
+  wealthDebtRatio: string;
+  wealthLiquidityMonths: string;
+  wealthSavingsRate: string;
+  wealthExpenseRatio: string;
+  wealthMonthlySalary: string;
+  wealthAnnualSalary: string;
+  wealthSetSalary: string;
+  wealthSalarySave: string;
+  wealthNoSalarySet: string;
+  wealthPctOfAssets: string;
+  wealthLiabilitiesLabel: string;
+  wealthQuarterlyTrend: string;
+  wealthEquityUS: string;
+  wealthEquityTW: string;
+  wealthMinPayment: string;
+  wealthDebtPayoffTitle: string;
+  wealthExtraPayment: string;
+  wealthCalculate: string;
+  wealthSnowball: string;
+  wealthAvalanche: string;
+  wealthPayoffOrder: string;
+  wealthPayoffMonths: string;
+  wealthPayoffMonthsSaved: string;
+  wealthPayoffTotalInterest: string;
+  wealthPayoffInterestDiff: string;
+  wealthPayoffNoLoans: string;
+  wealthOffTargetTitle: string;
+  wealthSrcManual: string;
+  wealthSrcImport: string;
+  wealthSrcSync: string;
+  // Phase 9 波次1 PR3' (§8.15.1): CSV paste import for initial data entry
+  // (/w/import), replacing the dropped PDF-statement-parsing plan. Mirrors
+  // internal/web/wealth_import.go.
+  navWealthImport: string;
+  wealthImportTitle: string;
+  wealthImportInstructions: string;
+  wealthImportHintNote: string; // beside the header line: what is required, and that line 1 is the header
+  wealthImportGuide: [string, string][]; // [what goes in the CSV, what it means], one per column / value
+  wealthImportSample: string; // example rows, no header line — the template file and "load sample" both put one on top
+  wealthImportTemplateName: string;
+  wealthImportDownload: string;
+  wealthImportLoadSample: string;
+  wealthImportClear: string;
+  wealthImportSummary: string;
+  wealthImportNoHeader: string;
+  wealthImportDuplicateMsg: string; // the server's own text for this status is English only
+  wealthImportTextareaPlaceholder: string;
+  wealthImportColSide: string;
+  wealthImportColType: string;
+  wealthImportColName: string;
+  wealthImportColGroup: string;
+  wealthImportColValue: string;
+  // Phase 9 §9.4 PR4: allocation & rebalance page (/w/alloc). Mirrors
+  // internal/web/wealth_alloc.go.
+  navWealthAlloc: string;
+  wealthTargetModelLabel: string;
+  wealthMixTitle: string;
+  wealthOrdersTitle: string;
+  wealthOrdersHint: string;
+  wealthOrderBuy: string;
+  wealthOrderSell: string;
+  wealthNoOrders: string;
+  wealthLockedTitle: string;
+  wealthVenueLabel: string;
+  wealthRiskTitle: string;
+  wealthRiskBand: string;
+  wealthFxExposure: string;
+  wealthConcentrationTitle: string;
+  wealthConcentrationHint: string;
+  wealthNoConcentration: string;
+  wealthRebalTotal: string;
+  wealthAllocVsTarget: string;
+  wealthAllocClass: string;
+  wealthAllocCurrent: string;
+  wealthAllocTarget: string;
+  wealthAllocVenue: string;
+  wealthRiskShare: string;
+  wealthTipRisk: string;
+  wealthTipFx: string;
+  wealthRiskAggressive: string;
+  wealthRiskBalanced: string;
+  wealthRiskConservative: string;
+  wealthGeoExposure: string;
+  wealthNeedGeo: string;
+  wealthRateLabel: string;
+  wealthNetWorthFormula: string;
+  wealthStaleDaysSuffix: string;
+  wealthPctOfLiabilities: string;
+  wealthLiabShortTerm: string;
+  wealthLiabLongTerm: string;
+  wealthDebtRatioNote: string;
+  wealthLiquidityNote: string;
+  wealthSavingsRateNote: string;
+  wealthExpenseRatioNote: string;
+  // Phase 9 波次2 PR5: cash flow page (/w/cash) — recurring income/expense
+  // lines (hand-maintained monthly amounts, not a transaction ledger) and
+  // the 90-day cash event table derived from them. Mirrors
+  // internal/web/wealth_cash.go.
+  navWealthCash: string;
+  wealthCashMonthlyIn: string;
+  wealthCashMonthlyOut: string;
+  wealthCashMonthlyNet: string;
+  wealthCashSaveRateLabel: string;
+  wealthCashDcaShareLabel: string;
+  wealthCashFixedShareLabel: string;
+  wealthCashAnnualNetLabel: string;
+  wealthCashNet90Label: string;
+  wealthCashInBreakdownTitle: string;
+  wealthCashOutBreakdownTitle: string;
+  wealthCashEventsTitle: string;
+  wealthCashNoItems: string;
+  wealthCashNoEvents: string;
+  wealthCashAddTitle: string;
+  wealthCashDirectionIn: string;
+  wealthCashDirectionOut: string;
+  wealthCashNameLabel: string;
+  wealthCashAmountLabel: string;
+  wealthCashDayOfMonthLabel: string;
+  wealthCashCategoryLabel: string;
+  wealthCashAdd: string;
+  wealthCashPause: string;
+  wealthCashPauseTitle: string; // tooltip on a row's pause button
+  wealthCashPaused: string;
+  wealthCashPausedNote: string;
+  wealthCashPausedSince: string; // %s = date
+  wealthCashPerMonth: string;
+  wealthCashTagIn: string; // the paused card's per-row direction tag
+  wealthCashTagOut: string;
+  wealthNoRate: string; // %s = currency code; tooltip on an amount that couldn't be converted to TWD
+  wealthCashResume: string;
+  wealthCashDelete: string;
+  wealthCashDeleteTitle: string; // %s = name
+  wealthCashDeleteBody: string;
+  wealthFlashResumed: string; // %s = name
+  wealthFlashDeleted: string; // %s = name
+  // Onboarding: the empty-page card (one line per page) and the /w setup guide.
+  wealthEmptyNet: string;
+  wealthEmptyAlloc: string;
+  wealthEmptyBalance: string;
+  wealthEmptyCash: string;
+  wealthEmptyRetire: string;
+  wealthEmptyInsure: string;
+  wealthGuideTitle: string;
+  // Phase 28's wealth assistant (Argus Wealth Assistant.dc.html's T).
+  asstTitle: string;
+  asstPageSub: string;
+  asstChat: string;
+  asstDrafts: string;
+  asstTabDrafts: string;
+  asstNewChat: string;
+  asstNewChatQ: string;
+  asstNewChatBody: string;
+  asstGreet: string;
+  asstGreetCompact: string;
+  asstSugTitle: string;
+  asstSugs: string;
+  asstGoTrades: string;
+  asstRestart: string;
+  asstThink: string;
+  asstThinkNote: string;
+  asstSec: string;
+  asstInputPh: string;
+  asstInputPhBusy: string;
+  asstInputPhRo: string;
+  asstSend: string;
+  asstHintIdle: string;
+  asstHintBusy: string;
+  asstHintErr: string;
+  asstErrTitle: string;
+  asstErrBody: string;
+  asstRetry: string;
+  asstStillAnswering: string;
+  asstNotSaved: string;
+  asstDraftNote: string;
+  asstEmptyDraft: string;
+  asstKinds: string;
+  asstClear: string;
+  asstCommitNone: string;
+  asstRoTag: string;
+  asstRoMsg: string;
+  asstRoToast: string;
+  asstExpand: string;
+  asstMinimize: string;
+  asstCollapse: string;
+  asstNoteBusy: string;
+  asstNoteErr: string;
+  asstChatBuild: string;
+  asstGuideLine: string;
+  // B2 drafts. %s is a count; asstCommitNM / asstSysApplied take n then m.
+  asstNewChatBodyDrafts: string;
+  asstAddedTo: string;
+  asstKindAsset: string;
+  asstKindBalance: string;
+  asstKindCash: string;
+  asstKindIns: string;
+  asstKindProfile: string;
+  asstKindGoal: string;
+  asstProfileName: string;
+  asstFTarget: string;
+  asstFFlow: string;
+  asstDayN: string;
+  asstStOk: string;
+  asstStPending: string;
+  asstStError: string;
+  asstPendingVal: string;
+  asstPendingNote: string;
+  asstUpdNote: string;
+  asstFrom: string;
+  asstTo: string;
+  asstFType: string;
+  asstFAmt: string;
+  asstFCur: string;
+  asstFRate: string;
+  asstFTerm: string;
+  asstFDate: string;
+  asstTermMonths: string;
+  asstFailPre: string;
+  // A draft's rule problems by the server's code (assets.Problem.Code); %s
+  // are its args in order. An unknown code shows the server's English text.
+  asstErrSideInvalid: string;
+  asstErrGroupInvalid: string;
+  asstErrDateInvalid: string;
+  asstErrDateFuture: string;
+  asstErrStockAsAsset: string;
+  asstErrTypeInvalid: string;
+  asstErrDirectionInvalid: string;
+  asstErrAmountPositive: string;
+  asstErrDayOfMonthRange: string;
+  asstErrCategoryInvalid: string;
+  asstErrKindInvalid: string;
+  asstErrPremiumNegative: string;
+  asstErrPremiumYearsNegative: string;
+  asstErrSalaryNegative: string;
+  asstErrBirthYearRange: string;
+  asstErrRetireContribNegative: string;
+  asstErrDependentsNegative: string;
+  asstErrChildAgeRange: string;
+  asstErrRetireAgeRange: string;
+  asstErrRetireSpendPositive: string;
+  asstErrProfileEmpty: string;
+  asstErrTargetPositive: string;
+  asstErrSavedNegative: string;
+  asstErrMonthlyNegative: string;
+  asstErrStartYearNegative: string;
+  asstErrTargetYearRange: string;
+  asstErrDuplicateAsset: string;
+  asstErrDuplicatePolicy: string;
+  asstErrAssetGone: string;
+  asstEdit: string;
+  asstDel: string;
+  asstFix: string;
+  asstNewTag: string;
+  asstCommitN: string;
+  asstCommitNM: string;
+  asstFootNote: string;
+  asstAppliedTitle: string;
+  asstAppliedBody: string;
+  asstAppliedKept: string;
+  asstSysApplied: string;
+  asstSysAppliedAll: string;
+  asstSeeOn: string;
+  asstClearQ: string;
+  asstClearBody: string;
+  asstClearOk: string;
+  asstEditTitle: string;
+  asstEditNote: string;
+  asstSaveDraft: string;
+  asstAiUnsure: string;
+  asstNoteDrafts: string;
+  asstUnseen: string;
+  wealthGuideDone: string; // %s = steps done, %s = total
+  wealthGuideHide: string;
+  wealthGuideWhyBalance: string;
+  wealthGuideWhyCash: string;
+  wealthGuideWhyRetire: string;
+  wealthGuideWhyAlloc: string;
+  wealthGuideWhyInsure: string;
+  wealthCashDateLabel: string;
+  wealthCashCatSalary: string;
+  wealthCashCatRent: string;
+  wealthCashCatDividend: string;
+  wealthCashCatBondInterest: string;
+  wealthCashCatFundDividend: string;
+  wealthCashCatLiving: string;
+  wealthCashCatMortgage: string;
+  wealthCashCatSip: string;
+  wealthCashCatLoan: string;
+  wealthCashCatInsurance: string;
+  wealthCashCatTax: string;
+  wealthCashForecastTitle: string;
+  wealthCashForecastNote: string;
+  // Phase 9 波次3 PR6: goal tracking page (/w/goals) — goals table +
+  // goal_assets earmark. Retirement (kind "retirement") is the same table
+  // (§8.8); PR7 owns computing its targetAmount, this page just renders it
+  // like any other goal. Read-only, matching the design template's
+  // isWGoals section — no add/earmark/delete keys here since the page has
+  // no write UI. Mirrors internal/web/wealth_goals.go.
+  navWealthGoals: string;
+  wealthGoalsNoGoals: string;
+  wealthGoalsSavedLabel: string;
+  wealthGoalsTargetLabel: string;
+  wealthGoalsStatusAhead: string;
+  wealthGoalsStatusOnTrack: string;
+  wealthGoalsStatusBehind: string;
+  wealthGoalsTotalProgress: string;
+  wealthGoalsMonthlyLabel: string;
+  wealthGoalsBehindCountLabel: string;
+  wealthGoalsEtaLabel: string;
+  wealthGoalsExpectedLabel: string;
+  wealthGoalsSeeRetireLink: string;
+  wealthGoalsAddBtn: string;
+  wealthGoalsAddTitle: string;
+  wealthGoalsEditTitle: string;
+  wealthGoalsEditBtn: string;
+  wealthGoalsKindLabel: string;
+  wealthGoalsNameLabel: string;
+  wealthGoalsNamePlaceholder: string;
+  wealthGoalsNoteLabel: string;
+  wealthGoalsStartYearLabel: string;
+  wealthGoalsEtaYearLabel: string;
+  wealthGoalsSave: string;
+  wealthGoalsDelete: string;
+  wealthGoalsProgressLabel: string;
+  wealthGoalsRemainLabel: string;
+  wealthGoalsPaceLabel: string;
+  wealthGoalsPaceNone: string;
+  wealthGoalsPaceDone: string;
+  wealthGoalsPaceAt: string;
+  wealthGoalsRetireNote: string;
+  wealthGoalsAgeSuffix: string;
+  wealthGoalsRetireLocked: string;
+  wealthGoalsKindEdu: string;
+  wealthGoalsKindEduNote: string;
+  wealthGoalsKindHome: string;
+  wealthGoalsKindHomeNote: string;
+  wealthGoalsKindEmg: string;
+  wealthGoalsKindEmgNote: string;
+  wealthGoalsKindTravel: string;
+  wealthGoalsKindTravelNote: string;
+  wealthGoalsKindCar: string;
+  wealthGoalsKindCarNote: string;
+  wealthGoalsKindStudy: string;
+  wealthGoalsKindStudyNote: string;
+  wealthGoalsKindWed: string;
+  wealthGoalsKindWedNote: string;
+  wealthGoalsKindCustom: string;
+
+  // Retirement page (`/w/retire`, Phase 9 波次3 PR7, §8.7) — real-return
+  // projection off the retirement-earmarked pool, plus three named §10.2②
+  // scenarios. Copy lifted verbatim from the design template's t.wRet* keys.
+  // Mirrors internal/web/wealth_retire.go.
+  navWealthRetire: string;
+  wealthRetireTargetAgeLabel: string;
+  wealthRetireSpendLabel: string;
+  wealthRetireNeedLabel: string;
+  wealthRetireProjLabel: string;
+  wealthRetireGapLabel: string;
+  wealthRetireRateLabel: string;
+  wealthRetireChartLabel: string;
+  wealthRetireDepleteLabel: string;
+  wealthRetireDepleteNever: string;
+  wealthRetireFundedLabel: string;
+  wealthRetireAssumption: string;
+  wealthRetirePoolLabel: string;
+  wealthRetireContribLabel: string;
+  wealthRetireScenarioBaseline: string;
+  wealthRetireScenarioCrash: string;
+  wealthRetireScenarioLowReturn: string;
+  wealthRetireSetupTitle: string;
+  wealthRetireBirthYearLabel: string;
+  wealthRetireContribInputLabel: string;
+  wealthRetireSetupSave: string;
+  wealthRetireSeeGoalsLink: string;
+  wealthRetireGoalProgressLabel: string;
+  // Settings drawer ("設定我的假設") — a live, unpersisted what-if preview
+  // over every assumption the projection above depends on (design template
+  // lines 1073-1139/4585-4619). wealthRetireChartLabelWithAge/
+  // wealthRetireDepleteNeverWithAge carry a literal "{age}" token the
+  // component substitutes with the live horizon age, mirroring the
+  // template's own string concatenation for the same dynamic text.
+  wealthRetireSettingsButton: string;
+  wealthRetireCfgTitle: string;
+  wealthRetireCfgNote: string;
+  wealthRetireCfgEdited: string;
+  wealthRetireCfgReset: string;
+  wealthRetireCfgDone: string;
+  wealthRetireAssignEmptyTitle: string;
+  wealthRetireAssignEmptyBody: string;
+  wealthRetireAssignBtn: string;
+  wealthRetireAdjustBtn: string;
+  wealthRetireAssignedCount: string;
+  wealthRetireAssignPoolHint: string;
+  wealthRetireAssignTitle: string;
+  wealthRetireAssignIntro: string;
+  wealthRetireAssignNoGoal: string;
+  wealthRetireAssignAdvLabel: string;
+  wealthRetireAssignAdvHint: string;
+  wealthRetireAssignNoAssets: string;
+  wealthRetireAssignGoBalance: string;
+  wealthRetireAssignSuggested: string;
+  wealthRetireAssignOtherFull: string;
+  wealthRetireAssignOtherPart: string;
+  wealthRetireAssignMax: string;
+  wealthRetireAssignCounts: string;
+  wealthRetireAssignCountsRemain: string;
+  wealthRetireAssignOverAlone: string;
+  wealthRetireAssignOverWith: string;
+  wealthRetireAssignSumLabel: string;
+  wealthRetireAssignSumCount: string;
+  wealthRetireAssignOverMsg: string;
+  wealthRetireAssignReadOnly: string;
+  wealthRetireAssignSave: string;
+  wealthRetireCfgSecTime: string;
+  wealthRetireCfgSecFlow: string;
+  wealthRetireCfgSecAssume: string;
+  wealthRetireCurrentAgeLabel: string;
+  wealthRetireLifeLabel: string;
+  wealthRetireOtherIncomeLabel: string;
+  wealthRetireOtherIncomeHint: string;
+  wealthRetireCfgContribLabel: string;
+  wealthRetirePreRLabel: string;
+  wealthRetirePostRLabel: string;
+  wealthRetireSwrLabel: string;
+  wealthRetireSwrHint: string;
+  wealthRetireNetSpendLabel: string;
+  wealthRetireChartLabelWithAge: string;
+  wealthRetireDepleteNeverWithAge: string;
+  // wealthRetireTipDeplete/wealthRetireTipSwr back the design's two
+  // dotted-underline tooltips (native title attr, DOTTED style) on
+  // "資產耗盡"/the settings drawer's 提領率 field's read-only summary chip.
+  // wealthRetireChip* are the read-only assumption chips next to the
+  // header's quick-switch buttons (design's wrm.summary) — short, distinct
+  // wording from the KPI/drawer labels above, each carrying a "{v}"-style
+  // token the component substitutes (same convention as
+  // wealthRetireChartLabelWithAge above).
+  wealthRetireTipDeplete: string;
+  wealthRetireTipSwr: string;
+  wealthRetireChipSpend: string;
+  wealthRetireChipContrib: string;
+  wealthRetireChipReturn: string;
+  wealthRetireChipSwr: string;
+  wealthRetireChipLifeAge: string;
+  // Sample-mode banner ("範例") shown instead of a real projection when no
+  // birth year is on file yet (design's wrm.isSample) — the projection
+  // still renders (using a sample age), tagged so it never reads as real.
+  wealthRetireSampleTag: string;
+  wealthRetireSampleMsg: string;
+  wealthRetireSampleBtn: string;
+
+  // Insurance gap-analysis page (`/w/insure`, Phase 9 波次3 PR8, §8.6/
+  // §8.16.1) — six-coverage-kind have/need table (a pure-function survivor-
+  // needs estimate, never LLM-derived) plus the policy list. Mirrors
+  // internal/web/wealth_insure.go.
+  navWealthInsure: string;
+  wealthInsureAdd: string;
+  wealthInsureAddTitle: string;
+  wealthInsureInsurerLabel: string;
+  wealthInsurePolicyNameLabel: string;
+  wealthInsureKindLabel: string;
+  wealthInsureAmountLabel: string;
+  wealthInsuredLabel: string;
+  wealthInsureAnnualPremiumLabel: string;
+  wealthInsurePremiumYearsLabel: string;
+  wealthInsureBiggestGapLabel: string;
+  wealthInsureCoverageLabel: string;
+  wealthInsureTotalGapLabel: string;
+  wealthInsurePremiumLabel: string;
+  wealthInsurePremShareLabel: string;
+  wealthInsureCountLabel: string;
+  wealthInsureGapTitle: string;
+  // wealthInsureNeedHow is the gap card's subtitle explaining the need
+  // figures are this app's own estimate, not an insurer's number.
+  // wealthInsureTipCoverage/wealthInsureTipNeed back the design's two
+  // dotted-underline hover tooltips (native title attr + DOTTED style) on
+  // "覆蓋率"/"需求保額" — same pattern WealthHomeView/WealthAllocView
+  // already use for their own dotted-underline labels.
+  wealthInsureNeedHow: string;
+  wealthInsureTipCoverage: string;
+  wealthInsureTipNeed: string;
+  wealthInsureHaveLabel: string;
+  wealthInsureNeedLabel: string;
+  wealthInsureGapLabel: string;
+  wealthInsureCoveredLabel: string;
+  wealthInsureKindLife: string;
+  wealthInsureKindAccident: string;
+  wealthInsureKindCi: string;
+  wealthInsureKindCancer: string;
+  wealthInsureKindDisability: string;
+  wealthInsureKindHospital: string;
+  wealthInsurePerMonthSuffix: string;
+  wealthInsurePerDaySuffix: string;
+  wealthInsurePoliciesTitle: string;
+  // wealthInsureColType/wealthInsureColTerm are the policy table's own
+  // column-header wording (design reuses shorter contextual text there —
+  // "類型"/"繳費／保障期間" — distinct from wealthInsureKindLabel/
+  // wealthInsurePremiumYearsLabel, which stay the add-form field labels).
+  wealthInsureColType: string;
+  wealthInsureColTerm: string;
+  wealthInsureNoPolicies: string;
+  wealthInsureSetupTitle: string;
+  wealthInsureDependentsLabel: string;
+  wealthInsureYoungestChildAgeLabel: string;
+  wealthInsureSpouseIncomeLabel: string;
+  wealthInsureSpouseIncomeYes: string;
+  wealthInsureSpouseIncomeNo: string;
+  wealthInsureSetupSave: string;
+  wealthInsureNeedPendingNote: string;
+
+  // wealthLastImport/wealthImportSourceCsv back the design's 最後匯入 hint —
+  // shared across every wealth page with a CSV import path (funds today,
+  // bonds/tax later), same "generic label, page supplies the date" shape
+  // the design template itself reuses (t.wLastImport/t.wDataSource).
+  wealthLastImport: string;
+  wealthImportSourceCsv: string;
+
+  navWealthFunds: string;
+  wealthFundsMvLabel: string;
+  wealthFundsCostLabel: string;
+  wealthFundsPnlLabel: string;
+  wealthFundsMonthlyLabel: string;
+  wealthFundsChartTitle: string;
+  wealthFundsCostLeg: string;
+  wealthFundsMvLeg: string;
+  wealthFundsChartAxis24: string;
+  wealthFundsChartAxis12: string;
+  wealthFundsChartAxisNow: string;
+  wealthFundsScheduleTitle: string;
+  wealthFundsScheduleEmpty: string;
+  wealthFundsTableTitle: string;
+  wealthFundsColCode: string;
+  wealthFundsColPlatform: string;
+  wealthFundsColMonthly: string;
+  wealthFundsColCost: string;
+  wealthFundsColMv: string;
+  wealthFundsColReturn: string;
+  wealthFundsColOneYear: string;
+  wealthFundsColNext: string;
+  wealthFundsStopped: string;
+  wealthFundsNoFunds: string;
+}
+
+export type Lang = "zh" | "en";

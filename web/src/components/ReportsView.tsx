@@ -34,7 +34,7 @@ function fmtSignedMoney(v: number, currency: string): string {
 
 // weekdayIndex maps Go's time.Weekday.String() (what ByEntryWeekday's keys
 // are, see internal/web/reports.go's weekdayOrder) onto dict.weekdays'
-// Sunday-first index (i18n.ts's existing convention, shared with
+// Sunday-first index (i18n/'s existing convention, shared with
 // CalendarView).
 const weekdayIndex: Record<string, number> = {
   Sunday: 0,
