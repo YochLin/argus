@@ -53,9 +53,13 @@ func TestDraftErrorCodesTranslated(t *testing.T) {
 			t.Errorf("Problem without a Code (use bad()): %s", lit)
 		}
 	}
-	dict, err := os.ReadFile("../../web/src/i18n.ts")
-	if err != nil {
-		t.Fatal(err)
+	dicts := map[string]string{}
+	for _, lang := range []string{"en", "zh"} {
+		b, err := os.ReadFile("../../web/src/i18n/" + lang + ".ts")
+		if err != nil {
+			t.Fatal(err)
+		}
+		dicts[lang] = string(b)
 	}
 	ms := codeRe.FindAllStringSubmatch(src.String(), -1)
 	if len(ms) < 20 {
@@ -63,8 +67,10 @@ func TestDraftErrorCodesTranslated(t *testing.T) {
 	}
 	for _, m := range ms {
 		code := m[1] + m[2]
-		if n := strings.Count(string(dict), "asstErr"+code+`: "`); n != 2 {
-			t.Errorf("asstErr%s: %d strings in i18n.ts, want 2 (zh, en)", code, n)
+		for lang, dict := range dicts {
+			if n := strings.Count(dict, "asstErr"+code+`: "`); n != 1 {
+				t.Errorf("asstErr%s: %d strings in i18n/%s.ts, want 1", code, n, lang)
+			}
 		}
 	}
 }
