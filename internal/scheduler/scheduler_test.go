@@ -52,7 +52,7 @@ func TestJobOrdering(t *testing.T) {
 	}{
 		{"US morning", usDay, []Job{ClosingSnapshot, UniverseScan, Backup, SectorFlowScan}},
 		{"US briefing after the day's data", usDay, []Job{UniverseScan, MorningBriefing}},
-		{"TW afternoon", twDay, []Job{SinopacSync, TWClosingSnapshot, TWUniverseScan, TWSectorFlowScan}},
+		{"TW afternoon", twDay, []Job{TWClosingSnapshot, TWUniverseScan, SinopacSync, TWSectorFlowScan}},
 		{"TW before the open and the report", twDay, []Job{TWMorningBriefing, TWDailyReport, SinopacSync}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

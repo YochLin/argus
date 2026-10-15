@@ -26,8 +26,8 @@ func (b *Bot) handleSinopac(ctx context.Context, args string) {
 }
 
 // RunSinopacSync is Phase 16's TW-only auto-bookkeeping job: reconstructs
-// manual (non-定期定額) trades from the last sinopacSyncLookbackDays of
-// Shioaji portfolio data and files each new one as a pending_action for the
+// today's manual (non-定期定額) trades from Shioaji portfolio data and
+// files each new one as a pending_action for the
 // user to confirm via Telegram, exactly like an LLM-proposed trade — see
 // internal/sinopac's Trade doc comment for why this never writes directly.
 // dryRun lists what would be proposed without creating anything, which the

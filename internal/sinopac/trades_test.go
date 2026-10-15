@@ -2,42 +2,64 @@ package sinopac
 
 import "testing"
 
+// The 6669/2368 rows are live daemon output for 2026-10-13, checked against
+// the user's own records: 6669 bought 5 @2205, 2368 bought 10 @1175 and
+// sold 15 @1305 (the sell was 10-07, moved to today here to exercise it).
 func TestTrades(t *testing.T) {
+	const today = "2026-10-13"
+	positions := []Position{
+		{Code: "6669", Quantity: 15, YdQuantity: 10},
+		{Code: "2368", Quantity: 25, YdQuantity: 30},
+		{Code: "2330", Quantity: 1000, YdQuantity: 1000}, // no trade today
+		{Code: "0050", Quantity: 5099, YdQuantity: 5000},
+	}
 	details := []PositionDetail{
-		{Date: "2026-08-10", Code: "2330", Quantity: 1000, Price: 950, Dseq: "d1", Direction: "Buy"},
-		{Date: "2026-08-11", Code: "0050", Quantity: 4000, Price: 152.3, Dseq: "d2", Direction: "Buy"},
-		{Date: "2026-08-12", Code: "0050", Quantity: 1000, Price: 153, Dseq: ""}, // empty dseq -> synthetic
+		{Date: "2026-10-06", Code: "6669", Quantity: 0, Price: 22832, Fee: 32, Dseq: "X0AJV"},
+		{Date: today, Code: "6669", Quantity: 0, Price: 11040, Fee: 15, Dseq: "X0F5E"},
+		{Date: "2026-09-24", Code: "2368", Quantity: 0, Price: 16523, Fee: 23, Dseq: "X054J"},
+		{Date: today, Code: "2368", Quantity: 0, Price: 11766, Fee: 16, Dseq: "X0FA5"},
+		{Date: "2026-08-01", Code: "2330", Quantity: 1, Price: 950000, Dseq: "d1"},
+		{Date: today, Code: "0050", Quantity: 0, Price: 10000, Dseq: "d2"},
 	}
 	pnl := []ProfitLoss{
-		{Code: "2317", Quantity: 2000, Price: 105, Date: "2026-08-13", Dseq: "d3"},
+		{Code: "2368", Quantity: 15, Price: 1305, Date: today, Dseq: "X03JZ"},
+		{Code: "2327", Quantity: 35, Price: 635, Date: "2026-10-08", Dseq: "X03MX"}, // not today
 	}
-	skip := map[string]bool{"0050": true}
 
-	got := Trades(details, pnl, skip)
+	got := Trades(positions, details, pnl, map[string]bool{"0050": true}, today)
 
-	if len(got) != 2 {
-		t.Fatalf("len(got) = %d, want 2 (0050 rows skipped)", len(got))
+	want := []Trade{
+		{ExtID: "X0FA5", Date: today, Ticker: "2368", Side: "BUY", Shares: 10, Price: 1175},
+		{ExtID: "X03JZ", Date: today, Ticker: "2368", Side: "SELL", Shares: 15, Price: 1305},
+		{ExtID: "X0F5E", Date: today, Ticker: "6669", Side: "BUY", Shares: 5, Price: 2205},
 	}
-	if got[0].Ticker != "2330" || got[0].Side != "BUY" || got[0].ExtID != "d1" || got[0].Synthetic {
-		t.Errorf("got[0] = %+v, want 2330 BUY d1 non-synthetic", got[0])
+	if len(got) != len(want) {
+		t.Fatalf("got %+v, want %+v", got, want)
 	}
-	if got[1].Ticker != "2317" || got[1].Side != "SELL" || got[1].ExtID != "d3" {
-		t.Errorf("got[1] = %+v, want 2317 SELL d3", got[1])
-	}
-	if got[0].Date > got[1].Date {
-		t.Errorf("results not sorted ascending by date: %s > %s", got[0].Date, got[1].Date)
+	for _, w := range want {
+		found := false
+		for _, g := range got {
+			if g == w {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("missing %+v in %+v", w, got)
+		}
 	}
 }
 
-func TestTradesSyntheticExtID(t *testing.T) {
+// Two buys of one ticker today become one Trade; an empty dseq makes it
+// synthetic.
+func TestTradesMergesTodaysLots(t *testing.T) {
+	const today = "2026-10-13"
+	positions := []Position{{Code: "2330", Quantity: 30, YdQuantity: 0}}
 	details := []PositionDetail{
-		{Date: "2026-08-12", Code: "2330", Quantity: 1000, Price: 950, Dseq: ""},
+		{Date: today, Code: "2330", Price: 10010, Fee: 10, Dseq: "a"},
+		{Date: today, Code: "2330", Price: 20020, Fee: 20, Dseq: ""},
 	}
-	got := Trades(details, nil, nil)
-	if len(got) != 1 {
-		t.Fatalf("len(got) = %d, want 1", len(got))
-	}
-	if !got[0].Synthetic || got[0].ExtID == "" {
-		t.Errorf("got[0] = %+v, want non-empty synthetic ExtID", got[0])
+	got := Trades(positions, details, nil, nil, today)
+	if len(got) != 1 || got[0].Shares != 30 || got[0].Price != 1000 || !got[0].Synthetic {
+		t.Errorf("got %+v, want one synthetic BUY 30 @1000", got)
 	}
 }
