@@ -5,7 +5,7 @@ interface Props {
   dict: Dictionary;
   transactions: Transaction[];
   emptyMessage?: string;
-  // currency is Phase 6's per-market symbol ("$"/"NT$", see api.ts's
+  // currency is Phase 6's per-market symbol ("$"/"NT$", see api/common.ts's
   // currencySymbol) — defaults to "$" so every pre-Phase-6 caller is
   // unaffected.
   currency?: string;

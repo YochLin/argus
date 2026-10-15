@@ -31,7 +31,7 @@ function eventHourLabel(dict: Dictionary, hour: string): string {
 
 // eventNote builds the day-detail table's "Detail" cell client-side from
 // kind/hour/estimated — the backend never sends display strings (see
-// api.ts's CalendarEvent doc comment).
+// api/dashboard.ts's CalendarEvent doc comment).
 function eventNote(dict: Dictionary, e: CalendarEvent): string {
   const base = `${eventKindLabel(dict, e.kind)} · ${eventHourLabel(dict, e.hour)}`;
   return e.estimated ? `${base} (${dict.eventEstimated})` : base;

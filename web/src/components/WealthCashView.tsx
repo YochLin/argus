@@ -274,7 +274,7 @@ function BreakdownCard({
 // WebUI.dc.html lines 991-1014, cashModel()'s wcm.forecast) — an up-area/
 // baseline/down-area column per month so a negative net renders below the
 // line instead of just a shorter positive bar. Every bar here is the same
-// height since the backend projects a flat monthlyNet (see api.ts's
+// height since the backend projects a flat monthlyNet (see api/wealthCash.ts's
 // CashForecastMonth doc comment) rather than fabricating the design mock's
 // Taiwan-calendar lumps — still the same chart mechanism, just honest data.
 function ForecastChart({ dict, forecast, annualNet }: { dict: Dictionary; forecast: CashForecastMonth[]; annualNet: number | null }) {

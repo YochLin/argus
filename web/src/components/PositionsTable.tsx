@@ -5,7 +5,7 @@ import type { TradeMode } from "./TradeModal";
 interface Props {
   positions: Position[];
   dict: Dictionary;
-  // currency is Phase 6's per-market symbol ("$"/"NT$", see api.ts's
+  // currency is Phase 6's per-market symbol ("$"/"NT$", see api/common.ts's
   // currencySymbol) — defaults to "$" so every pre-Phase-6 caller is
   // unaffected.
   currency?: string;
