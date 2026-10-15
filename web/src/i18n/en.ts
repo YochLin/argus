@@ -1186,7 +1186,7 @@ export const en: Dictionary = {
   asstErrGroupInvalid: "Unknown group: %s",
   asstErrDateInvalid: "Date should be YYYY-MM-DD: %s",
   asstErrDateFuture: "The date can't be in the future",
-  asstErrStockAsAsset: "Stocks are recorded as trades in the trading account, not as assets",
+  asstErrStockAsAsset: "Stocks bought by hand are recorded as trades in the trading account; a DCA stock or ETF is a fund",
   asstErrTypeInvalid: "Unknown asset type: %s",
   asstErrDirectionInvalid: "Should be income or expense: %s",
   asstErrAmountPositive: "The amount must be more than 0",

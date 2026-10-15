@@ -29,7 +29,7 @@ var stockTypes = []string{"stock", "stocks", "etf", "equity", "equities", "share
 // "asset", and the propose_asset tool's input. The detail fields only apply
 // to their type (deposit; loan/credit_card; fund) and are ignored otherwise.
 type AssetDraft struct {
-	Type     string   `json:"type" jsonschema:"one of deposit, loan, credit_card, fund, bond, estate, gold, crypto, pension, other — never a stock"`
+	Type     string   `json:"type" jsonschema:"one of deposit, loan, credit_card, fund, bond, estate, gold, crypto, pension, other — a DCA stock or ETF is a fund; a hand-traded stock is never an asset"`
 	Name     string   `json:"name" jsonschema:"what the user calls it, e.g. 國泰活存 or 房貸"`
 	Group    string   `json:"group" jsonschema:"liquid, growth, income or hard (deposit→liquid, fund/crypto→growth, bond→income, loan/estate/gold/pension→hard)"`
 	Currency string   `json:"currency" jsonschema:"ISO code, e.g. TWD or USD"`
@@ -45,7 +45,7 @@ type AssetDraft struct {
 	OriginalPrincipal *float64 `json:"original_principal,omitempty" jsonschema:"loan only"`
 	RemainingMonths   *int64   `json:"remaining_months,omitempty" jsonschema:"loan only"`
 
-	FundCode                 string   `json:"fund_code,omitempty" jsonschema:"fund only"`
+	FundCode                 string   `json:"fund_code,omitempty" jsonschema:"fund only; for a DCA stock or ETF, its ticker (e.g. 0050)"`
 	FundPlatform             string   `json:"fund_platform,omitempty" jsonschema:"fund only"`
 	FundMonthlyAmount        *float64 `json:"fund_monthly_amount,omitempty" jsonschema:"fund only: monthly DCA amount"`
 	FundNextContributionDate string   `json:"fund_next_contribution_date,omitempty" jsonschema:"fund only: YYYY-MM-DD"`
@@ -77,7 +77,7 @@ func (d AssetDraft) Problems() []Problem {
 	switch {
 	case d.Type == "":
 	case slices.Contains(stockTypes, d.Type):
-		ps = append(ps, bad("type", "StockAsAsset", "stocks are recorded as trades, not as assets"))
+		ps = append(ps, bad("type", "StockAsAsset", "stocks bought by hand are recorded as trades, not as assets; for a DCA stock or ETF use type fund with fund_code set to its ticker"))
 	case !slices.Contains(DraftAssetTypes, d.Type):
 		ps = append(ps, bad("type", "TypeInvalid", "type must be one of "+strings.Join(DraftAssetTypes, ", ")+": "+d.Type, d.Type))
 	}

@@ -80,6 +80,9 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context, m market.MarketID) {
 		b.checkOptionExpiry(prices, date)
 		b.recordDailyATMIV(tickers, prices, date)
 	}
+	if m == market.TW {
+		b.syncDCAFundValues(ctx, date)
+	}
 }
 
 // recordPriceEvents is RunClosingSnapshot's Phase 20 tail step (see
