@@ -495,11 +495,18 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   `KeyRecMarketSummaryTask`'s `%s` verb rather than a hardcoded literal, same reasoning as the other two.
 - `Multi` provider fallback depends on provider order in `main.go` (Finnhub before Yahoo); don't reorder
   without reason since Finnhub is considered the more reliable/richer source.
-- The Dockerfile/docker-compose setup predates the ACP-based LLM client and has **not** been updated for
-  it: the `alpine` image has no Node.js, and the Pro/Max login (macOS Keychain locally) has no equivalent
-  credential path solved for a Linux container yet. Running the bot in Docker currently only works for the
-  Telegram/data/DB parts, not `/recommend` or `/check`. Treat this as an open problem, not an oversight, if
-  asked to containerize this.
+- The `Dockerfile` is three-stage (Vite build → Go build → `ubuntu` runtime with Node and a global
+  `claude-agent-acp`), so the image now has the real SPA and can launch the ACP agent. **Not yet verified
+  end to end** — it was written without a local Docker, so the first CI build/k3s rollout is its first real
+  run. The binary lives at `/usr/local/bin/argus`, never under `/app`, because the k3s manifest mounts a host
+  directory over the working directory. The credential path is still *not* solved for a Linux container with
+  no host login to borrow: `deploy/k8s/argus.yaml` works only by bind-mounting the operator's existing home
+  (`.env`, `~/.claude`, `~/.local/bin/agy`) into the pod, with `hostNetwork` so Shioaji stays on the host's
+  systemd. That manifest is a same-VPS stepping stone, **not** a portable one: leaving this VPS means
+  PVC + Secret/ConfigMap, a Shioaji sidecar, and an answer for dashboard read auth (there is none — every GET
+  is open, `WEB_PASSWORD` gates writes only). `deploy.yml` (systemd) and `deploy-k3s.yml` (manual-only) are
+  two mutually exclusive paths; never run both against the same VPS. `docker-compose.yml` is unchanged and
+  still only covers the Telegram/data/DB parts.
 - Migration steps append at the end of `db.migrations` and never get edited/reordered once shipped (see
   `internal/db` above) — this now also applies to `positions`/`transactions`/`net_worth_snapshots`
   (migration 3). `db.Backup`'s `VACUUM INTO` runs against the live DB via the same `*sql.DB` handle the
