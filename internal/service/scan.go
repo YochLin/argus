@@ -65,7 +65,7 @@ type RestrictedProvider interface {
 // shared by the daily watchlist report and the universe scan (both call
 // CheckStatefulSignals per ticker). detector holds the already-localized
 // signals.Detector (its Signal.Message text is built with i18n internally,
-// see internal/signals/strategies.go) — bear-regime warning decoration is
+// see internal/signals's strategy files) — bear-regime warning decoration is
 // left to the caller (formatting stays in the adapter, see
 // docs/architecture/backend.md); every strategy hit's Type carries a
 // "strategy_" prefix so callers can find them without re-deriving which

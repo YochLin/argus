@@ -10,8 +10,8 @@ import (
 )
 
 // Phase 25 §8.5: cross-sectional native-form momentum — see
-// docs/phase-25-new-strategy-candidates.md §8.5. Every screen in
-// strategies.go asks "is THIS ticker a signal today"; this asks a
+// docs/phase-25-new-strategy-candidates.md §8.5. Every strategy screen
+// in internal/signals asks "is THIS ticker a signal today"; this asks a
 // structurally different question — "rank the WHOLE pool and hold the top
 // decile" — which is why it needed its own engine rather than slotting into
 // runPortfolioBacktest's per-signal entry loop (that loop only ever sees
