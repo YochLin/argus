@@ -28,7 +28,7 @@ const (
 	defaultNewsLimit = 5
 	// defaultEarningsWindowDays mirrors bot.go's earningsPromptWindowDays.
 	defaultEarningsWindowDays = 14
-	// defaultInsiderTxLimit mirrors pipeline.go's fetchStockData call.
+	// defaultInsiderTxLimit mirrors internal/bot/stockdata.go's fetchStockData call.
 	defaultInsiderTxLimit = 10
 
 	// quoteCacheTTL is short — a quote is the one thing a chat model might

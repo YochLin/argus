@@ -112,7 +112,7 @@ type Bot struct {
 	// fundamentalsCache/analystRatingCache/insiderTxCache/earningsSurpriseCache
 	// hold cachedFundamentals/cachedAnalystRating/cachedInsiderTx/
 	// cachedEarningsSurprises' results, keyed by ticker (see slowDataCacheTTL
-	// in pipeline.go) — these change slowly enough that refetching them from
+	// in stockdata.go) — these change slowly enough that refetching them from
 	// Finnhub every single daily report wastes free-tier quota as the
 	// watchlist grows. Quote/news stay uncached since those need to be fresh
 	// every report. Four separate typed caches, not one any-typed map keyed
@@ -163,8 +163,8 @@ type Bot struct {
 	// borrowed "account" column, so the real portfolio is physically
 	// unreachable from paper-trading code. nil means the feature is off
 	// (PAPER_DB_PATH unset), same presence-of-config convention as webAddr.
-	// paperMu serializes every load-apply-persist cycle (pipeline.go's
-	// applyPaperTrades, jobs.go's runPaperClose, /paper) — those run from
+	// paperMu serializes every load-apply-persist cycle (paper.go's
+	// applyPaperTrades/runPaperClose, /paper) — those run from
 	// goroutines dispatch spins up per command/job, and each one does a
 	// cash read-modify-write across multiple DB statements that isn't
 	// otherwise atomic. ponytail: one global lock, not per-market —
@@ -371,7 +371,7 @@ func NewWithChannel(channel Channel, cfg Config) *Bot {
 }
 
 // newScanService builds b's ScanService, wiring the revenue-growth gate
-// through b.cachedFundamentals (cached + rate-limited, see pipeline.go)
+// through b.cachedFundamentals (cached + rate-limited, see stockdata.go)
 // only when a fundamentals provider is configured — nil leaves the gate
 // failing closed, same as the pre-extraction b.fundamentals nil-check.
 //

@@ -16,7 +16,7 @@ import (
 // Phase 26's post-sell follow-up review constants (see
 // docs/phase-26-sell-followup.md §6) — starting-point values, not
 // calibrated against real trigger frequency yet, same caveat convention as
-// priceEventWriteupCap (jobs.go).
+// priceEventWriteupCap (closing_snapshot.go).
 const (
 	// sellFollowupTradingDays is both the "how long to wait" trigger and
 	// the fixed evaluation window size (§4.2): the follow-up always looks

@@ -23,7 +23,7 @@ import (
 // recommendation pipeline has something to render and save; everything else
 // (news, movers, history) degrades exactly like a live API error would,
 // which every call site along RunDailyReport's path already handles
-// gracefully (see pipeline.go's fetchStockData/computeTechnicals).
+// gracefully (see stockdata.go's fetchStockData and loaders.go's computeTechnicals).
 type fakeE2EProvider struct{}
 
 func (fakeE2EProvider) Name() string { return "fake" }

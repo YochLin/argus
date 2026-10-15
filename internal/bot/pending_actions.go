@@ -217,7 +217,7 @@ func (b *Bot) resolvePendingAction(ctx context.Context, id int64, confirm bool) 
 
 // executePendingAction runs the confirmed action, reusing exactly the same
 // code path (and confirmation text) /buy and /sell themselves use — see
-// recordBuy/recordSell in handlers.go. A confirmed record_sell that fully
+// recordBuy/recordSell in trade.go. A confirmed record_sell that fully
 // closes the position triggers Phase 3.8's sell-review exactly like /sell
 // itself does, so a chat-confirmed sell gets the same follow-up as a manual
 // one.

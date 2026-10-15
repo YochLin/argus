@@ -186,9 +186,9 @@ func SuggestShares(equity, riskPct, price, stop float64) int {
 	return shares
 }
 
-// TrailingStopThreshold is internal/bot/jobs.go's trailing-stop distance
+// TrailingStopThreshold is internal/bot/alerts.go's trailing-stop distance
 // formula, moved here for the same no-drift reason as SuggestShares — see
-// jobs.go's checkTrailingStopAlerts, which now calls this instead. It is the
+// alerts.go's checkTrailingStopAlerts, which now calls this instead. It is the
 // single choke point both the paper/backtest engine (MarkClose) and the live
 // alert path (service.RiskService.EvaluateTrailingStopAlerts) go through, so
 // the rule below only exists once.

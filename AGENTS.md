@@ -291,10 +291,15 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
 - `internal/bot` — Telegram command dispatch (`/add`, `/remove`, `/list`, `/status`, `/recommend`,
   `/check`, `/track`, `/buy`, `/sell`, `/portfolio`, `/dailyreport`, `/fundamentals`, `/universe`,
   `/stop`, `/review`, `/reset`, `/paper`, `/sinopac`, `/podcast`, and more) plus scheduler-invoked jobs (`RunDailyReport`,
-  `RunClosingSnapshot`, `RunUniverseScan`, `RunWeeklyReview`). Split across five files along the
-  transport-vs-business line: `bot.go` (dispatch), `handlers.go` (command handlers), `jobs.go`
-  (scheduler jobs + alert checks), `pipeline.go` (recommendation data assembly), `format.go` (pure
-  formatting helpers) — post-Phase-24, most of the actual rule logic behind those handlers/jobs is a call
+  `RunClosingSnapshot`, `RunUniverseScan`, `RunWeeklyReview`). Split along the
+  transport-vs-business line, then by feature (there is no catch-all `handlers.go`/`jobs.go`): `bot.go`
+  (dispatch), one file per command family — `watchlist.go`, `recommend.go`, `trade.go` (buy/sell/undo and
+  the `Execute*` methods `web.TradeExecutor` calls), `stop.go`, `buy_alert.go`, `review.go`, `lookup.go`,
+  `portfolio.go`, `cash.go`, `chat.go` — one per scheduled job — `closing_snapshot.go`,
+  `daily_report.go`, `periodic_reports.go` (weekly/monthly), `alerts.go` (every `check*Alerts`) — and
+  `pipeline.go` (recommendation send/save) with its data assembly in `stockdata.go` (`fetchStockData` and
+  the cached slow fields) and `loaders.go` (`load*`/`compute*`); `jobs.go` is only `recoverJobPanic`,
+  `format.go` the pure formatting helpers — post-Phase-24, most of the actual rule logic behind those handlers/jobs is a call
   into `internal/service` (see above); what's left here is Telegram-specific glue: parsing command
   arguments, assembling `service` calls, and formatting the reply. `internal/bot/channel.go`'s `Channel`
   interface abstracts the transport —
@@ -310,7 +315,7 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   only via a `pending_actions` confirm/reject, never automatically — an ITM expiry is an
   assignment/exercise, not a zero). `/option TICKER [call|put|csp|cc]` (defaults to `call`) runs
   `internal/option.Select` against a live chain and replies with the passing contracts. Phase 14's Trend
-  Breakout/Trend Pullback strategies are wired into `checkStatefulSignals` (`jobs.go`) alongside the
+  Breakout/Trend Pullback strategies are wired into `checkStatefulSignals` (`alerts.go`) alongside the
   existing Squeeze Breakout/Box Bottom Rebound screens; Trend Breakout additionally short-circuits its own
   signal via `revenueGrowthOK` when `ScreenParams.RequireRevenueGrowth` is set — a fundamentals-based gate
   evaluated in `internal/bot` (reading `MonthRevenueYoYPct` for TW vs `RevenueGrowthYoY` for US via
