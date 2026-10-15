@@ -1,0 +1,412 @@
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 208px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  padding: 16px 12px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.sidebar-wordmark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  font-size: 15px;
+  padding: 0 8px;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* TopBar (Figma reference layout: market switch top-left, language + theme
+   toggles grouped top-right) replaces the sidebar's old market-toggle
+   position. */
+.topbar {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar-tabs {
+  display: flex;
+}
+
+.topbar-tab {
+  position: relative;
+  padding: 12px 20px;
+  background: none;
+  border: none;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.topbar-tab:hover {
+  color: var(--ink-2);
+}
+
+.topbar-tab.active {
+  color: var(--ink);
+}
+
+.topbar-tab.active::after {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+/* Right-hand cluster (Figma reference layout): language toggle paired
+   directly beside the theme toggle, in that order, both right-aligned. */
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 16px;
+}
+
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  color: var(--ink-2);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  background: var(--surface);
+}
+
+/* Language switcher (Figma reference layout): a globe+code trigger button
+   that opens a dropdown panel of flag/label rows, replacing the old
+   inline two-button pill. */
+.lang-dropdown {
+  position: relative;
+}
+
+.lang-dropdown-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  color: var(--ink-2);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lang-dropdown-trigger:hover {
+  background: var(--surface);
+}
+
+.lang-dropdown-chevron {
+  transition: transform 0.15s ease;
+}
+
+.lang-dropdown-chevron.open {
+  transform: rotate(180deg);
+}
+
+.lang-dropdown-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 160px;
+  border-radius: 12px;
+  overflow: hidden;
+  z-index: 50;
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
+}
+
+.lang-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lang-dropdown-item:hover {
+  background: var(--bg);
+}
+
+.lang-dropdown-item.active {
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+.lang-dropdown-item-label {
+  flex: 1;
+}
+
+.lang-dropdown-item-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+/* Sidebar's bottom account-overview card, now doubling as the
+   design-canvas reference's account-switcher trigger (Sidebar.tsx's
+   AccountMenu). The wrap is the positioning root — pinned to the bottom via
+   margin-top: auto in the sidebar's flex column — and anchors the dropdown
+   panel above it. */
+.sidebar-account-wrap {
+  margin-top: auto;
+  position: relative;
+}
+
+.sidebar-account {
+  display: block;
+  width: 100%;
+  border: 1px solid transparent;
+  font-family: var(--font-sans);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-account:hover {
+  border-color: var(--accent-tint-border);
+}
+
+.sidebar-account-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 50;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
+}
+
+.sidebar-account-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-decoration: none;
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-account-menu-item:hover {
+  background: var(--surface-2);
+}
+
+.sidebar-account-menu-icon {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--ink-3);
+}
+
+.sidebar-account-menu-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-account-menu-text > span:first-child {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.sidebar-account-menu-note {
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.sidebar-account-menu-item-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.sidebar-switch {
+  flex-shrink: 0;
+  display: block;
+  width: 28px;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--border);
+  padding: 2px;
+}
+
+.sidebar-switch.on {
+  background: var(--accent);
+}
+
+.sidebar-switch-knob {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ink);
+  transition: transform 0.15s ease;
+}
+
+.sidebar-switch.on .sidebar-switch-knob {
+  transform: translateX(12px);
+  background: #fff;
+}
+
+.sidebar-account-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sidebar-account-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-account-chevron {
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.sidebar-account-chevron.open {
+  transform: rotate(180deg);
+}
+
+.sidebar-account-label {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10px;
+  color: var(--ink-3);
+  margin-top: 8px;
+}
+
+.sidebar-account-value {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+  margin-top: 3px;
+}
+
+.sidebar-account-pnl {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.sidebar-account-stats {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.side-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  text-decoration: none;
+}
+
+.side-link:hover {
+  background: var(--surface);
+}
+
+.side-link.active {
+  background: var(--accent-tint-bg);
+  border-color: var(--accent-tint-border);
+}
+
+.side-link.active .side-link-label {
+  color: var(--ink);
+}
+
+.side-link.active .side-link-icon {
+  color: var(--accent);
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0; /* flex children default to min-width:auto, which would let
+    lightweight-charts' container push the whole column wider instead of
+    shrinking to fit. */
+}
+
+.content {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 16px 16px;
+}
+
+/* Chart detail page (main column + right rail) uses the full viewport width. */
+.content.content-wide {
+  max-width: none;
+}

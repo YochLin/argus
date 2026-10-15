@@ -1,0 +1,303 @@
+/* Settings page danger zone and its reset dialog (WealthResetZone.tsx,
+   Phase 28 D — the design's resetModel / rst.*). */
+.settings-rules + .rst-zone,
+.rst-zone + .card {
+  margin-top: 16px;
+}
+
+.rst-zone {
+  border: 1px solid var(--loss);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--asst-loss-bg);
+}
+
+.rst-zone-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--loss);
+}
+
+.rst-zone-label {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  color: var(--loss);
+}
+
+.rst-zone-note {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.rst-zone-row {
+  display: grid;
+  grid-template-columns: minmax(210px, 290px) 1fr;
+  gap: 18px;
+  padding: 15px 0 4px;
+  align-items: center;
+}
+
+/* The design's two columns don't fit a phone (210px + the button); stack. */
+@media (max-width: 640px) {
+  .rst-zone-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rst-zone-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.rst-zone-key {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.rst-zone-desc {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-3);
+  text-wrap: pretty;
+}
+
+.rst-zone-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.rst-open {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 15px;
+  border-radius: 8px;
+  border: 1px solid var(--loss);
+  background: transparent;
+  color: var(--loss);
+  cursor: pointer;
+}
+
+.rst-open:hover {
+  background: var(--loss);
+  color: #fff;
+}
+
+.rst-last {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.rst-backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.rst-dialog {
+  position: relative;
+  width: min(460px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  background: linear-gradient(145deg, var(--surface) 0%, var(--surface-2) 100%);
+  box-shadow: var(--card-glow-shadow);
+  border-radius: 13px;
+  border-top: 3px solid var(--loss);
+  padding: 22px 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rst-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.rst-dialog-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--asst-loss-bg);
+  border: 1px solid var(--loss);
+  color: var(--loss);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.rst-dialog-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.rst-dialog-title {
+  margin: 0;
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.rst-dialog-irrev {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  color: var(--loss);
+}
+
+.rst-dialog-body {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  line-height: 1.7;
+  text-wrap: pretty;
+}
+
+.rst-lists {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.rst-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px 12px;
+  border-radius: 9px;
+}
+
+.rst-list--wipe {
+  background: var(--asst-loss-bg);
+  border: 1px solid var(--loss);
+}
+
+.rst-list--keep {
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.rst-list-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.rst-list--wipe .rst-list-label {
+  color: var(--loss);
+}
+
+.rst-list-item {
+  display: flex;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--ink-2);
+  line-height: 1.4;
+}
+
+.rst-list--wipe .rst-list-item {
+  color: var(--ink);
+}
+
+.rst-list--wipe .rst-list-mark {
+  color: var(--loss);
+}
+
+.rst-list--keep .rst-list-mark {
+  color: var(--profit);
+}
+
+.rst-backup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  border: 1px dashed var(--border);
+}
+
+.rst-backup-hint {
+  font-size: 11.5px;
+  color: var(--ink-2);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.rst-backup-path {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink);
+  word-break: break-all;
+}
+
+.rst-ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.rst-ack input {
+  margin-top: 3px;
+  accent-color: var(--loss);
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.rst-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+
+.rst-actions button {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 15px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.rst-cancel {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+}
+
+.rst-actions .rst-ok {
+  padding: 8px 16px;
+  border: 1px solid var(--loss);
+  background: var(--loss);
+  color: #fff;
+  transition: opacity 0.15s ease;
+}
+
+.rst-actions .rst-ok:disabled {
+  background: transparent;
+  color: var(--loss);
+  opacity: 0.45;
+  cursor: not-allowed;
+}

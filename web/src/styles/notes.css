@@ -1,0 +1,301 @@
+/* Research-notes card (chart page): reuses .form-field/.modal-actions/
+   .btn-primary (compose form) and .thesis-header/.thesis-edit-btn (title row)
+   from above; tag pills and filter chips take their colour from --tag. */
+.note-tag-observation { --tag: var(--accent); }
+.note-tag-valuation { --tag: #a78bfa; }
+.note-tag-risk { --tag: var(--loss); }
+.note-tag-catalyst { --tag: #f59e0b; }
+
+.note-title-meta {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.note-title-meta.match {
+  color: var(--accent);
+}
+
+.note-sub {
+  color: var(--ink-3);
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.note-compose {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid var(--accent-tint-border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.note-compose .form-field textarea {
+  background: var(--surface);
+}
+
+.note-chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.note-chip.active {
+  border-color: var(--tag, var(--accent));
+  background: var(--accent-tint-bg);
+  color: var(--tag, var(--accent));
+}
+
+.note-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.note-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.note-search {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  align-items: center;
+}
+
+.note-search-icon {
+  position: absolute;
+  left: 11px;
+  color: var(--ink-3);
+}
+
+.note-search-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px 8px 32px;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+}
+
+.note-search-clear {
+  position: absolute;
+  right: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.note-search-clear:hover {
+  color: var(--accent);
+}
+
+.note-month-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  padding: 16px 0 3px;
+  border-bottom: 1px solid var(--border);
+}
+
+.note-pinned-block {
+  margin-top: 14px;
+  padding: 2px 14px 10px;
+  border: 1px solid var(--accent-tint-border);
+  border-radius: 12px;
+  background: var(--accent-tint-bg);
+}
+
+.note-pinned-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+  color: var(--accent);
+}
+
+.note-pinned-title {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10.5px;
+}
+
+.note-pinned-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+}
+
+.note-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.note-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.note-row-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  flex-shrink: 0;
+  width: 104px;
+}
+
+.note-row-date {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Legacy tags (技術面/籌碼面/消息面/其他) carry no --tag, so they fall back
+   to neutral ink-3 rather than borrowing one of the four current colours. */
+.note-tag-pill {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--tag, var(--ink-3));
+  color: var(--tag, var(--ink-3));
+  white-space: nowrap;
+}
+
+.note-row-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
+.note-row-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.note-row-action {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.note-row-action:hover {
+  color: var(--accent);
+}
+
+.note-row-action.active {
+  border-color: var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+.note-row-action-quote {
+  border-color: var(--border);
+  color: var(--accent);
+}
+
+.note-row-action-quote:hover {
+  border-color: var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+}
+
+.note-row-action-danger:hover {
+  color: var(--loss);
+  border-color: var(--border);
+}
+
+.note-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.note-foot-btn {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.note-foot-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent-tint-border);
+}
+
+.note-foot-more {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.note-foot-more:hover {
+  background: var(--accent-tint-bg);
+  border-color: var(--accent-tint-border);
+}
+
+.note-empty {
+  margin-top: 12px;
+  padding: 20px 14px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  line-height: 1.7;
+  text-align: center;
+}
