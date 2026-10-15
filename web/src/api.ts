@@ -121,7 +121,7 @@ export interface Transaction {
 // CalendarEvent is a single earnings-date marker (Calendar's scope is
 // earnings-only, see internal/web/calendar.go's calendarEvent). Note text is
 // deliberately not sent — the frontend builds display copy from
-// kind/hour/estimated via i18n.ts, same "backend never sends display
+// kind/hour/estimated via i18n/, same "backend never sends display
 // strings" rule every other endpoint here follows.
 export interface CalendarEvent {
   date: string;
@@ -1841,7 +1841,7 @@ export function unblockNewsSource(source: string): Promise<{ message: string }> 
 
 export interface Setting {
   key: string;
-  // group is an id ("telegram"/"data"/"sinopac"), not a heading — i18n.ts
+  // group is an id ("telegram"/"data"/"sinopac"), not a heading — i18n/
   // holds the display text, same split as calendar events' `kind`.
   group: string;
   // secret keys never send their value back; read isSet instead.

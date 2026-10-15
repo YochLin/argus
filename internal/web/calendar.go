@@ -32,7 +32,7 @@ type calendarResponse struct {
 
 // calendarEvent is a single earnings-date marker. Note text is deliberately
 // not included — the frontend builds display copy from Kind/Hour/Estimated
-// via its own i18n dictionary (web/src/i18n.ts), same "backend never sends
+// via its own i18n dictionary (web/src/i18n/), same "backend never sends
 // display strings" rule every other endpoint in this package follows. Kind
 // is carried as a string (not hardcoded to "earnings" in the frontend) so a
 // future event type can slot in without a response-shape change.
