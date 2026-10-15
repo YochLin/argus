@@ -161,7 +161,7 @@ func TestAdjustCash(t *testing.T) {
 }
 
 // TestExecuteDeleteTransaction covers the /undo path end to end — not just
-// db.DeleteTransaction's own lot math (see db_test.go's TestDeleteTransaction)
+// db.DeleteTransaction's own lot math (see internal/db/trades_test.go's TestDeleteTransaction)
 // but the bot-layer effects it doesn't touch: cash reversal, and a
 // full-close SELL's stop_price surviving the round trip back through a
 // deleted positions row.

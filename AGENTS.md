@@ -171,7 +171,6 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   added `sell_followups` (`sell_followups.go`) — Phase 26's post-sell follow-up dedup table, one row per
   `(ticker, exit_date)` unique index, written only after a follow-up message actually sends (see
   `internal/bot`'s `sell_followup.go` entry below for why that's deliberate, not an oversight).
-  Full table/method rationale: **[docs/architecture/db.md](docs/architecture/db.md)**.
 
 - `internal/histcache` — a persistent read-through cache in front of `data.HistoryProvider`
   (`Boot` wraps `core.Yahoo` once and hands it to the bot, the scan service and the dashboard; the MCP
@@ -207,7 +206,11 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   does), and `Chat`'s `fresh` result tells the caller the agent just forgot everything before this
   turn. `StockData` carries optional attach-and-render
   fields (`Position`, `Earnings`, `ScanReason`, `Technicals`, `Candles`, `PrevRec`) that degrade
-  independently when their source data isn't available. Also home to `WeeklyReview`, `InsightPortfolio`,
+  independently when their source data isn't available. Each task's prompt builder sits beside the input
+  type it takes — `stock_data.go` (`StockData` and the per-stock section every prompt reuses),
+  `recommend.go`, `market_context.go` (morning briefing), `portfolio.go` (insight and weekly review),
+  `trade_review.go`, `wealth_health.go`, `price_event.go` — and `prompt.go` keeps only the shared news
+  helpers and the explore/podcast prompts. Also home to `WeeklyReview`, `InsightPortfolio`,
   and `ReviewTrade` (closed-trade analysis). `ExtractPodcastInsights` is `/podcast`'s one-shot call over
   a fetched transcript, reusing `checkModel` (same reasoning as `ExploreCandidates`); its
   `parsePodcastInsights` parser mirrors `parseExploreNominations` but flushes a block even when its
@@ -248,7 +251,11 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   prevState) (*Signal, newState)` (adds alert-once-per-occurrence dedup on top). All four screens take a
   `ScreenParams` (from `DefaultScreenParams(market.MarketID)`, Phase 13) rather than package-level constants,
   since thresholds differ between TW and US. Stateful checks (`CheckRSIState`, `CheckMACDCross`, etc.) take
-  and return persisted state as parameters — the DB round-trip lives in `internal/bot`, not here.
+  and return persisted state as parameters — the DB round-trip lives in `internal/bot`, not here. Files
+  follow the screens: `squeeze_breakout.go`, `box_bottom.go`, `trend.go` (pullback + breakout),
+  `post_gap_drift.go`, `insider_cluster.go`, `ema_cross.go`, `mtf.go` and `trust.go` each hold one screen's
+  layers; `strategies.go` is only what they share (`ScreenParams`/`DefaultScreenParams`, `StrategyHit`,
+  the `Type*`/`Family*` constants).
 
 - `internal/scheduler` — thin wrapper around `robfig/cron` fixed to `time.FixedZone("CST", 8*3600)`
   (avoids needing `tzdata` in the Alpine Docker image). Registers the daily report, morning briefing,
