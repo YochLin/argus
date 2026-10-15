@@ -441,6 +441,9 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   history and details, cash flows, goals, `profile.*`, the assistant's drafts and conversation — in one
   transaction, and the assistant's session starts over. **The trading account is never touched**
   (positions, transactions, snapshots, `cash_balance*`), and the assistant cannot reach this route.
+  Its UI (`WealthResetZone.tsx`) is the danger zone at the bottom of `/settings`, shown only in the
+  wealth account — which is why App, not the path, decides the account: `/settings` keeps the one
+  it was opened from (opened directly, it's the trading account).
 
 - `internal/paper` — Phase 11's pure rule engine shared by `argus backtest`'s historical replay
   (`cmd/server/backtest.go`) and the live paper account's forward accumulation

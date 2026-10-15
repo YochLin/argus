@@ -1863,6 +1863,22 @@ async function getJSONAuthed<T>(url: string): Promise<T> {
   return data as T;
 }
 
+// The settings page's 重設整個管理帳戶 (Phase 28 D): when it last ran (null:
+// never), and where the server writes the backup it takes first.
+export interface WealthResetInfo {
+  lastResetAt: string | null;
+  backupDir?: string;
+  backup?: string;
+}
+
+export function fetchWealthReset(): Promise<WealthResetInfo> {
+  return getJSONAuthed("/api/wealth/reset");
+}
+
+export function resetWealth(): Promise<WealthResetInfo> {
+  return movesNetWorth(postJSON("/api/wealth/reset", {}));
+}
+
 export function fetchSettings(): Promise<{ settings: Setting[] }> {
   return getJSONAuthed("/api/settings");
 }

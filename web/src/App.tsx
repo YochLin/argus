@@ -230,7 +230,14 @@ export default function App() {
   // (assets aren't market-scoped) or the trading status bar, so the shell
   // hides both below when here, same "don't render, don't just disable"
   // convention as every other feature-gated chrome element.
-  const isWealth = path === "/w" || path.startsWith("/w/");
+  //
+  // /settings belongs to both accounts: like the design, it stays in the one
+  // it was opened from (the sidebar, and the wealth account's reset zone).
+  // Opened directly, there is no "from", and it's the trading account.
+  const onWealthPath = path === "/w" || path.startsWith("/w/");
+  const [fromWealth, setFromWealth] = useState(onWealthPath);
+  if (path !== "/settings" && fromWealth !== onWealthPath) setFromWealth(onWealthPath);
+  const isWealth = path === "/settings" ? fromWealth : onWealthPath;
   const [wealthRev, setWealthRev] = useState(0);
 
   // 顯示幣別: fmtMoney reads the module-level currency during this render,
@@ -401,7 +408,7 @@ export default function App() {
     // Same writable gate as /import: /api/settings 404s without WEB_PASSWORD
     // (requireWritable), so the page would have nothing to show anyway.
     body = status?.writable ? (
-      <SettingsView dict={dict} onUnauthorized={(retry) => setAuthRetry(() => retry)} />
+      <SettingsView dict={dict} wealth={isWealth} onUnauthorized={(retry) => setAuthRetry(() => retry)} />
     ) : null;
   } else if (path === "/import") {
     body = !status ? null : status.writable ? (
@@ -490,6 +497,7 @@ export default function App() {
       <div className="app-shell">
         <Sidebar
           path={path}
+          wealth={isWealth}
           onNavigate={navigate}
           dict={dict}
           market={market}
@@ -520,7 +528,7 @@ export default function App() {
           <div className={`content${path === "/chart" && params.get("ticker") ? " content-wide" : ""}`}>
             {readOnly && <ReadOnlyBanner dict={dict} howOpen={roHow} onToggleHow={() => setRoHow((o) => !o)} />}
             <ErrorBoundary key={`${path}:${market}`} message={dict.error}>
-              {isWealth ? (
+              {onWealthPath ? (
                 <AssistantPageSwitch dict={dict} onNavigate={navigate}>
                   {/* Remounted after the assistant writes drafts, so the page reloads its data. */}
                   <Fragment key={wealthRev}>{body}</Fragment>
@@ -554,7 +562,7 @@ export default function App() {
             }}
           />
         )}
-        {isWealth && <AssistantFloat dict={dict} onNavigate={navigate} />}
+        {onWealthPath && <AssistantFloat dict={dict} onNavigate={navigate} />}
       </div>
     </AssistantProvider>
   );

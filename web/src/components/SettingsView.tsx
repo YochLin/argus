@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import { ApiError, fetchSettings, saveSettings, type Setting } from "../api";
 import type { Dictionary } from "../i18n";
+import { WealthResetZone } from "./WealthResetZone";
 
 interface Props {
   dict: Dictionary;
   onUnauthorized: (retry: () => void) => void;
+  // wealth: the page was opened from the wealth account, which adds the
+  // reset danger zone at the bottom (Phase 28 D).
+  wealth?: boolean;
 }
 
 // group ids come from internal/web/settings.go's settingKeys; an id with no
@@ -24,7 +28,7 @@ const groupLabelKey: Record<string, keyof Dictionary> = {
 // Saving is a one-way door within the page's lifetime: the server writes .env
 // and exits so its supervisor restarts it, so there's nothing to re-fetch
 // afterwards and the form stays disabled behind a reload button.
-export function SettingsView({ dict, onUnauthorized }: Props) {
+export function SettingsView({ dict, onUnauthorized, wealth = false }: Props) {
   const [settings, setSettings] = useState<Setting[] | null>(null);
   // edits holds only what the user typed. Untouched fields are never sent, so
   // a blank secret input can't wipe a working token (see saveSettings).
@@ -132,6 +136,8 @@ export function SettingsView({ dict, onUnauthorized }: Props) {
         <p>{dict.settingsRule1}</p>
         <p>{dict.settingsRule2}</p>
       </div>
+
+      {wealth && <WealthResetZone dict={dict} onUnauthorized={onUnauthorized} />}
 
       {(error || saved) && (
         <div className="card">

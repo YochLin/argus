@@ -515,6 +515,34 @@ export interface Dictionary {
   settingsRule2: string;
   settingsRestarting: string;
   settingsReload: string;
+  // Phase 28 D: the settings page's danger zone (wealth account only) and its
+  // reset dialog. The wipe/keep lists name what db.ResetWealthData clears and
+  // leaves; rstBackupHint replaces the design's export button (the server
+  // backs the database up itself, into rstBackupHint's folder).
+  rstZone: string;
+  rstZoneNote: string;
+  rstKey: string;
+  rstDesc: string;
+  rstBtn: string;
+  rstLast: string;
+  rstNever: string;
+  rstTitle: string;
+  rstIrrev: string;
+  rstBody: string;
+  rstWipeLabel: string;
+  rstWipe1: string;
+  rstWipe2: string;
+  rstWipe3: string;
+  rstWipe4: string;
+  rstWipe5: string;
+  rstKeepLabel: string;
+  rstKeep1: string;
+  rstKeep2: string;
+  rstKeep3: string;
+  rstBackupHint: string;
+  rstAck: string;
+  rstOk: string;
+  rstDone: string;
   // Phase 5 §B (optional): CSV transaction import page (nav link gated on
   // status.writable, same convention as every other write-only entry point).
   navImport: string;
@@ -1971,6 +1999,32 @@ const en: Dictionary = {
   settingsRule2: "Saving any field restarts Argus to apply it.",
   settingsRestarting: "Saved. The bot is restarting…",
   settingsReload: "Reload",
+  rstZone: "Danger zone",
+  rstZoneNote: "Wealth account only · trading accounts untouched",
+  rstKey: "Reset entire wealth account",
+  rstDesc: "Wipes every asset, liability, cash-flow item and retirement plan, returning to a blank first-run state.",
+  rstBtn: "Reset wealth account…",
+  rstLast: "Last reset: %s",
+  rstNever: "Never reset",
+  rstTitle: "Reset the entire wealth account?",
+  rstIrrev: "THIS CANNOT BE UNDONE",
+  rstBody:
+    "All records in the wealth account are permanently deleted and net worth drops to zero. You'll need to re-enter or re-import your data.",
+  rstWipeLabel: "Will be deleted",
+  rstWipe1: "Assets & liabilities, incl. archive",
+  rstWipe2: "Cash-flow items",
+  rstWipe3: "Retirement plan, profile & goals",
+  rstWipe4: "Funds & policies",
+  rstWipe5: "AI assistant drafts & conversation",
+  rstKeepLabel: "Kept",
+  rstKeep1: "TW / US trading accounts",
+  rstKeep2: "System settings & API keys",
+  rstKeep3: "Interface preferences",
+  rstBackupHint:
+    "The whole database is backed up to this folder first. To restore, swap the backup in for the database file and restart; it's pruned along with the nightly backups.",
+  rstAck: "I understand all wealth data will be permanently deleted and cannot be recovered.",
+  rstOk: "Reset permanently",
+  rstDone: "Wealth account reset",
   navImport: "Import",
   importTitle: "Import Transactions",
   importInstructions: "Paste or upload CSV transactions to backfill your trade history.",
@@ -3368,6 +3422,30 @@ const zh: Dictionary = {
   settingsRule2: "任一欄位存檔後，Argus 都會重新啟動以套用設定。",
   settingsRestarting: "已儲存，bot 重新啟動中…",
   settingsReload: "重新整理",
+  rstZone: "危險區域",
+  rstZoneNote: "只影響管理帳戶，交易帳戶不受影響",
+  rstKey: "重設整個管理帳戶",
+  rstDesc: "清除所有資產、負債、現金流與退休規劃，回到第一次使用時的空白狀態。",
+  rstBtn: "重設管理帳戶…",
+  rstLast: "上次重設：%s",
+  rstNever: "從未重設",
+  rstTitle: "確定要重設整個管理帳戶？",
+  rstIrrev: "此操作無法復原",
+  rstBody: "管理帳戶內的所有紀錄都會被永久刪除，淨值會歸零。重設後需要重新建檔或匯入資料。",
+  rstWipeLabel: "將被刪除",
+  rstWipe1: "資產與負債（含封存紀錄）",
+  rstWipe2: "現金流項目",
+  rstWipe3: "退休規劃、個人設定與目標",
+  rstWipe4: "基金、保單",
+  rstWipe5: "AI 建檔助理草稿與對話",
+  rstKeepLabel: "會保留",
+  rstKeep1: "台股 / 美股交易帳戶",
+  rstKeep2: "系統設定與 API 金鑰",
+  rstKeep3: "介面偏好",
+  rstBackupHint: "重設前會先把整個資料庫備份到這個資料夾。要還原，把備份檔換回原本的資料庫檔並重新啟動；備份會跟每晚的備份一起定期清理。",
+  rstAck: "我了解管理帳戶的所有資料將被永久刪除，且無法復原。",
+  rstOk: "永久重設",
+  rstDone: "管理帳戶已重設",
   navImport: "匯入",
   importTitle: "匯入交易紀錄",
   importInstructions: "貼上或上傳 CSV 交易紀錄以補建歷史交易。",
