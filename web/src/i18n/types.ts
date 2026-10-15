@@ -1,5 +1,5 @@
 // docs/phase-5-web-dashboard.md's UI language decision: the backend never
-// sends display strings (see api.ts), so the frontend picks a dictionary
+// sends display strings (see api/), so the frontend picks a dictionary
 // itself from /api/config's lang. Both dictionaries independently declare
 // every key as a full object literal (not one spread from the other) so
 // TypeScript's excess/missing-property checking on a typed literal catches
