@@ -8,7 +8,7 @@ interface Props {
   value: number | null;
   format: KpiFormat;
   colorMode?: KpiColorMode;
-  // currency is Phase 6's per-market symbol ("$"/"NT$", see api.ts's
+  // currency is Phase 6's per-market symbol ("$"/"NT$", see api/common.ts's
   // currencySymbol) — only meaningful when format is "currency"; ignored
   // otherwise. Defaults to "$" so every pre-Phase-6 caller is unaffected.
   currency?: string;
@@ -25,7 +25,7 @@ export function formatValue(value: number, format: KpiFormat, currency: string):
     case "percent":
       return `${(value * 100).toFixed(1)}%`;
     // percentValue is the already-scaled-percentage counterpart of
-    // "percent" (see api.ts's KPIs.ytdReturnPct doc) — used for return%
+    // "percent" (see api/dashboard.ts's KPIs.ytdReturnPct doc) — used for return%
     // KPIs, which are directional like a P&L number, so it also carries an
     // explicit sign the way "percent" (win rate, never negative) doesn't.
     case "percentValue": {
