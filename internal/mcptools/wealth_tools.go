@@ -80,7 +80,7 @@ func registerWealthTools(s *mcp.Server, wt *wealthTools) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "propose_asset",
-		Description: "Propose a new asset or liability as a draft. Nothing is saved: the user reviews the drafts and confirms them on the page. Fill in what the user said and leave out what they didn't — the draft is then pending and you should ask for the missing fields. Never for stocks or ETFs (they are trade records) or for something list_assets already has (propose_balance_update instead). Pass draft_id to replace an earlier draft once the user answers a follow-up question.",
+		Description: "Propose a new asset or liability as a draft. Nothing is saved: the user reviews the drafts and confirms them on the page. Fill in what the user said and leave out what they didn't — the draft is then pending and you should ask for the missing fields. Never for stocks or ETFs bought by hand (they are trade records); a stock or ETF bought through a monthly DCA plan is a fund with fund_code set to its ticker or for something list_assets already has (propose_balance_update instead). Pass draft_id to replace an earlier draft once the user answers a follow-up question.",
 	}, wt.proposeAsset)
 
 	mcp.AddTool(s, &mcp.Tool{

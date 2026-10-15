@@ -1170,7 +1170,7 @@ export const zh: Dictionary = {
   asstErrGroupInvalid: "分類不正確：%s",
   asstErrDateInvalid: "日期格式應為 YYYY-MM-DD：%s",
   asstErrDateFuture: "日期不能是未來",
-  asstErrStockAsAsset: "股票請用交易帳戶記錄買賣，不建成資產",
+  asstErrStockAsAsset: "手動買賣的股票請用交易帳戶記錄；定期定額的股票或 ETF 請建成基金",
   asstErrTypeInvalid: "資產類型不正確：%s",
   asstErrDirectionInvalid: "應為收入或支出：%s",
   asstErrAmountPositive: "金額要大於 0",
