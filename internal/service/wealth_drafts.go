@@ -17,9 +17,18 @@ type DraftCheck struct {
 	Status  string   `json:"status"`
 	Missing []string `json:"missing"`
 	Error   string   `json:"error,omitempty"`
+	// Errors are Error's rule problems as codes, for the drafts pane to show
+	// in the interface language; empty when Error isn't a rule (a failed
+	// write, an unreadable draft), which the pane shows as is.
+	Errors []DraftError `json:"errors,omitempty"`
 	// Failed says Error is why the last write failed, rather than a rule the
 	// draft breaks (the card prefixes 寫入失敗 only then).
 	Failed bool `json:"failed,omitempty"`
+}
+
+type DraftError struct {
+	Code string   `json:"code"`
+	Args []string `json:"args,omitempty"`
 }
 
 // CheckWealthDraft evaluates one draft against the records as they are now —
@@ -33,7 +42,7 @@ type DraftCheck struct {
 func CheckWealthDraft(d db.WealthDraft, existing []db.AssetWithValue, birthYear *int, today string) DraftCheck {
 	c := checkDraft(d.Kind, d.TargetID, d.Payload, existing, birthYear, today)
 	if d.ApplyError != "" {
-		c.Status, c.Error, c.Failed = "error", d.ApplyError, true
+		c.Status, c.Error, c.Errors, c.Failed = "error", d.ApplyError, nil, true
 	}
 	return c
 }
@@ -51,7 +60,7 @@ func checkDraft(kind string, targetID *int64, payload string, existing []db.Asse
 		key := assets.AssetKey(d.Name, d.Type)
 		for _, a := range existing {
 			if d.Name != "" && assets.AssetKey(a.Name, a.Type) == key {
-				ps = append(ps, assets.Problem{Field: "name", Msg: "an asset with this name and type already exists — update its balance instead"})
+				ps = append(ps, assets.Problem{Field: "name", Code: "DuplicateAsset", Msg: "an asset with this name and type already exists — update its balance instead"})
 				break
 			}
 		}
@@ -66,7 +75,7 @@ func checkDraft(kind string, targetID *int64, payload string, existing []db.Asse
 		}
 		ps = assets.ValidateBalance(id, d.Value, d.Date, today)
 		if id > 0 && FindAsset(existing, id) == nil {
-			ps = append(ps, assets.Problem{Field: "assetId", Msg: "the asset no longer exists"})
+			ps = append(ps, assets.Problem{Field: "assetId", Code: "AssetGone", Msg: "the asset no longer exists"})
 		}
 	case assets.DraftCashflow:
 		// No duplicate check: two flows may share a name (two policies'
@@ -85,7 +94,7 @@ func checkDraft(kind string, targetID *int64, payload string, existing []db.Asse
 		key := assets.AssetKey(d.Name, "insurance")
 		for _, a := range existing {
 			if d.Name != "" && assets.AssetKey(a.Name, a.Type) == key {
-				ps = append(ps, assets.Problem{Field: "name", Msg: "a policy with this name already exists — add another coverage to it on the insurance page"})
+				ps = append(ps, assets.Problem{Field: "name", Code: "DuplicatePolicy", Msg: "a policy with this name already exists — add another coverage to it on the insurance page"})
 				break
 			}
 		}
@@ -113,6 +122,7 @@ func checkDraft(kind string, targetID *int64, payload string, existing []db.Asse
 			c.Missing = append(c.Missing, p.Field)
 		} else {
 			errs = append(errs, p.Msg)
+			c.Errors = append(c.Errors, DraftError{Code: p.Code, Args: p.Args})
 		}
 	}
 	switch {

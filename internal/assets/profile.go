@@ -2,6 +2,7 @@ package assets
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -24,19 +25,19 @@ type Profile struct {
 func ValidateProfile(p Profile, thisYear int) []Problem {
 	var ps []Problem
 	if p.AnnualSalary != nil && *p.AnnualSalary < 0 {
-		ps = append(ps, Problem{Field: "annual_salary", Msg: "annual salary must not be negative"})
+		ps = append(ps, bad("annual_salary", "SalaryNegative", "annual salary must not be negative"))
 	}
 	if p.BirthYear != nil && (*p.BirthYear < 1900 || *p.BirthYear > thisYear) {
-		ps = append(ps, Problem{Field: "birth_year", Msg: fmt.Sprintf("birth year must be between 1900 and %d", thisYear)})
+		ps = append(ps, bad("birth_year", "BirthYearRange", fmt.Sprintf("birth year must be between 1900 and %d", thisYear), strconv.Itoa(thisYear)))
 	}
 	if p.RetirementMonthlyContribution != nil && *p.RetirementMonthlyContribution < 0 {
-		ps = append(ps, Problem{Field: "retirement_monthly_contribution", Msg: "monthly retirement contribution must not be negative"})
+		ps = append(ps, bad("retirement_monthly_contribution", "RetireContribNegative", "monthly retirement contribution must not be negative"))
 	}
 	if p.Dependents != nil && *p.Dependents < 0 {
-		ps = append(ps, Problem{Field: "dependents", Msg: "dependents must not be negative"})
+		ps = append(ps, bad("dependents", "DependentsNegative", "dependents must not be negative"))
 	}
 	if p.YoungestChildAge != nil && (*p.YoungestChildAge < 0 || *p.YoungestChildAge > 30) {
-		ps = append(ps, Problem{Field: "youngest_child_age", Msg: "youngest child's age must be between 0 and 30"})
+		ps = append(ps, bad("youngest_child_age", "ChildAgeRange", "youngest child's age must be between 0 and 30"))
 	}
 	return ps
 }
@@ -55,12 +56,12 @@ func ValidateRetirement(age *int, monthlySpend *float64, birthYear *int, thisYea
 	} else if birthYear == nil {
 		ps = append(ps, missing("birth_year"))
 	} else if *age <= thisYear-*birthYear || *age > RetirementHorizonAge {
-		ps = append(ps, Problem{Field: "retirement_age", Msg: fmt.Sprintf("retirement age must be above the current age and at most %d", RetirementHorizonAge)})
+		ps = append(ps, bad("retirement_age", "RetireAgeRange", fmt.Sprintf("retirement age must be above the current age and at most %d", RetirementHorizonAge), strconv.Itoa(RetirementHorizonAge)))
 	}
 	if monthlySpend == nil {
 		ps = append(ps, missing("retirement_monthly_spend"))
 	} else if *monthlySpend <= 0 {
-		ps = append(ps, Problem{Field: "retirement_monthly_spend", Msg: "monthly spending in retirement must be positive"})
+		ps = append(ps, bad("retirement_monthly_spend", "RetireSpendPositive", "monthly spending in retirement must be positive"))
 	}
 	return ps
 }
@@ -90,7 +91,7 @@ func (d ProfileDraft) Profile() Profile {
 // carry its own.
 func (d ProfileDraft) Problems(storedBirthYear *int, thisYear int) []Problem {
 	if d == (ProfileDraft{}) {
-		return []Problem{{Field: "profile", Msg: "the draft changes nothing"}}
+		return []Problem{bad("profile", "ProfileEmpty", "the draft changes nothing")}
 	}
 	ps := ValidateProfile(d.Profile(), thisYear)
 	by := d.BirthYear
@@ -119,16 +120,16 @@ func ValidateGoal(g NewGoal) []Problem {
 	if g.TargetAmount == nil {
 		ps = append(ps, missing("target_amount"))
 	} else if *g.TargetAmount <= 0 {
-		ps = append(ps, Problem{Field: "target_amount", Msg: "target amount must be positive"})
+		ps = append(ps, bad("target_amount", "TargetPositive", "target amount must be positive"))
 	}
 	if g.SavedAmount != nil && *g.SavedAmount < 0 {
-		ps = append(ps, Problem{Field: "saved_amount", Msg: "saved amount must not be negative"})
+		ps = append(ps, bad("saved_amount", "SavedNegative", "saved amount must not be negative"))
 	}
 	if g.MonthlyContribution != nil && *g.MonthlyContribution < 0 {
-		ps = append(ps, Problem{Field: "monthly_contribution", Msg: "monthly contribution must not be negative"})
+		ps = append(ps, bad("monthly_contribution", "MonthlyNegative", "monthly contribution must not be negative"))
 	}
 	if g.StartYear < 0 {
-		ps = append(ps, Problem{Field: "start_year", Msg: "start year must not be negative"})
+		ps = append(ps, bad("start_year", "StartYearNegative", "start year must not be negative"))
 	}
 	return ps
 }
@@ -152,7 +153,7 @@ func (d *GoalDraft) Normalize() {
 func (d GoalDraft) Problems(thisYear int) []Problem {
 	ps := ValidateGoal(NewGoal{Name: d.Name, TargetAmount: d.TargetAmount, SavedAmount: d.SavedAmount, MonthlyContribution: d.MonthlyContribution})
 	if d.TargetYear != nil && (*d.TargetYear < thisYear || *d.TargetYear > thisYear+100) {
-		ps = append(ps, Problem{Field: "target_year", Msg: fmt.Sprintf("target year must be between %d and %d", thisYear, thisYear+100)})
+		ps = append(ps, bad("target_year", "TargetYearRange", fmt.Sprintf("target year must be between %d and %d", thisYear, thisYear+100), strconv.Itoa(thisYear), strconv.Itoa(thisYear+100)))
 	}
 	return ps
 }

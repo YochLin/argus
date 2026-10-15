@@ -60,19 +60,19 @@ func ValidatePolicy(p NewPolicy) []Problem {
 	if p.Kind == "" {
 		ps = append(ps, missing("kind"))
 	} else if _, ok := InsurancePerPeriod(p.Kind); !ok {
-		ps = append(ps, Problem{Field: "kind", Msg: "kind must be one of " + insuranceKindNames() + ": " + p.Kind})
+		ps = append(ps, bad("kind", "KindInvalid", "kind must be one of "+insuranceKindNames()+": "+p.Kind, p.Kind))
 	}
 	switch {
 	case p.Amount == nil:
 		ps = append(ps, missing("amount"))
 	case *p.Amount <= 0:
-		ps = append(ps, Problem{Field: "amount", Msg: "amount must be positive"})
+		ps = append(ps, bad("amount", "AmountPositive", "amount must be positive"))
 	}
 	if p.AnnualPremium != nil && *p.AnnualPremium < 0 {
-		ps = append(ps, Problem{Field: "annual_premium", Msg: "annual premium can't be negative"})
+		ps = append(ps, bad("annual_premium", "PremiumNegative", "annual premium can't be negative"))
 	}
 	if p.PremiumYears != nil && *p.PremiumYears < 0 {
-		ps = append(ps, Problem{Field: "premium_years", Msg: "premium years can't be negative"})
+		ps = append(ps, bad("premium_years", "PremiumYearsNegative", "premium years can't be negative"))
 	}
 	return ps
 }

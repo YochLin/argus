@@ -3,6 +3,7 @@ package assets
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -31,7 +32,7 @@ func ValidateCashflow(c NewCashflow) []Problem {
 		ps = append(ps, missing("direction"))
 	case "in", "out":
 	default:
-		ps = append(ps, Problem{Field: "direction", Msg: `direction must be "in" or "out": ` + c.Direction})
+		ps = append(ps, bad("direction", "DirectionInvalid", `direction must be "in" or "out": `+c.Direction, c.Direction))
 	}
 	if c.Name == "" {
 		ps = append(ps, missing("name"))
@@ -40,10 +41,10 @@ func ValidateCashflow(c NewCashflow) []Problem {
 	case c.Amount == nil:
 		ps = append(ps, missing("amount"))
 	case *c.Amount <= 0:
-		ps = append(ps, Problem{Field: "amount", Msg: "amount must be positive"})
+		ps = append(ps, bad("amount", "AmountPositive", "amount must be positive"))
 	}
 	if c.DayOfMonth != nil && (*c.DayOfMonth < 1 || *c.DayOfMonth > 31) {
-		ps = append(ps, Problem{Field: "day_of_month", Msg: fmt.Sprintf("day of month must be between 1 and 31: %d", *c.DayOfMonth)})
+		ps = append(ps, bad("day_of_month", "DayOfMonthRange", fmt.Sprintf("day of month must be between 1 and 31: %d", *c.DayOfMonth), strconv.FormatInt(*c.DayOfMonth, 10)))
 	}
 	return ps
 }
@@ -84,7 +85,7 @@ func (d CashflowDraft) Problems() []Problem {
 	case d.Category == "":
 		ps = append(ps, missing("category"))
 	case (d.Direction == "in" || d.Direction == "out") && !slices.Contains(cats, d.Category):
-		ps = append(ps, Problem{Field: "category", Msg: "category must be one of " + strings.Join(cats, ", ") + ": " + d.Category})
+		ps = append(ps, bad("category", "CategoryInvalid", "category must be one of "+strings.Join(cats, ", ")+": "+d.Category, d.Category))
 	}
 	return ps
 }
