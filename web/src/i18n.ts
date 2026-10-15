@@ -1219,6 +1219,37 @@ export interface Dictionary {
   asstFDate: string;
   asstTermMonths: string;
   asstFailPre: string;
+  // A draft's rule problems by the server's code (assets.Problem.Code); %s
+  // are its args in order. An unknown code shows the server's English text.
+  asstErrSideInvalid: string;
+  asstErrGroupInvalid: string;
+  asstErrDateInvalid: string;
+  asstErrDateFuture: string;
+  asstErrStockAsAsset: string;
+  asstErrTypeInvalid: string;
+  asstErrDirectionInvalid: string;
+  asstErrAmountPositive: string;
+  asstErrDayOfMonthRange: string;
+  asstErrCategoryInvalid: string;
+  asstErrKindInvalid: string;
+  asstErrPremiumNegative: string;
+  asstErrPremiumYearsNegative: string;
+  asstErrSalaryNegative: string;
+  asstErrBirthYearRange: string;
+  asstErrRetireContribNegative: string;
+  asstErrDependentsNegative: string;
+  asstErrChildAgeRange: string;
+  asstErrRetireAgeRange: string;
+  asstErrRetireSpendPositive: string;
+  asstErrProfileEmpty: string;
+  asstErrTargetPositive: string;
+  asstErrSavedNegative: string;
+  asstErrMonthlyNegative: string;
+  asstErrStartYearNegative: string;
+  asstErrTargetYearRange: string;
+  asstErrDuplicateAsset: string;
+  asstErrDuplicatePolicy: string;
+  asstErrAssetGone: string;
   asstEdit: string;
   asstDel: string;
   asstFix: string;
@@ -2694,6 +2725,35 @@ const en: Dictionary = {
   asstFDate: "As of",
   asstTermMonths: "%s mo",
   asstFailPre: "Save failed: ",
+  asstErrSideInvalid: "Unknown side: %s",
+  asstErrGroupInvalid: "Unknown group: %s",
+  asstErrDateInvalid: "Date should be YYYY-MM-DD: %s",
+  asstErrDateFuture: "The date can't be in the future",
+  asstErrStockAsAsset: "Stocks are recorded as trades in the trading account, not as assets",
+  asstErrTypeInvalid: "Unknown asset type: %s",
+  asstErrDirectionInvalid: "Should be income or expense: %s",
+  asstErrAmountPositive: "The amount must be more than 0",
+  asstErrDayOfMonthRange: "Day of month must be 1–31: %s",
+  asstErrCategoryInvalid: "Unknown category: %s",
+  asstErrKindInvalid: "Unknown coverage type: %s",
+  asstErrPremiumNegative: "The annual premium can't be negative",
+  asstErrPremiumYearsNegative: "Premium years can't be negative",
+  asstErrSalaryNegative: "The annual salary can't be negative",
+  asstErrBirthYearRange: "Birth year must be between 1900 and %s",
+  asstErrRetireContribNegative: "The monthly retirement contribution can't be negative",
+  asstErrDependentsNegative: "Dependents can't be negative",
+  asstErrChildAgeRange: "The youngest child's age must be 0–30",
+  asstErrRetireAgeRange: "Retirement age must be above your current age and at most %s",
+  asstErrRetireSpendPositive: "Monthly spending in retirement must be more than 0",
+  asstErrProfileEmpty: "This draft changes nothing",
+  asstErrTargetPositive: "The target amount must be more than 0",
+  asstErrSavedNegative: "The amount saved can't be negative",
+  asstErrMonthlyNegative: "The monthly contribution can't be negative",
+  asstErrStartYearNegative: "The start year can't be negative",
+  asstErrTargetYearRange: "Target year must be between %s and %s",
+  asstErrDuplicateAsset: "An asset with this name and type already exists — update its balance instead",
+  asstErrDuplicatePolicy: "A policy with this name already exists — add the coverage to it on the insurance page",
+  asstErrAssetGone: "This asset no longer exists",
   asstEdit: "Edit",
   asstDel: "Delete",
   asstFix: "Fix →",
@@ -4109,6 +4169,35 @@ const zh: Dictionary = {
   asstFDate: "日期",
   asstTermMonths: "%s 期",
   asstFailPre: "寫入失敗：",
+  asstErrSideInvalid: "資產／負債不正確：%s",
+  asstErrGroupInvalid: "分類不正確：%s",
+  asstErrDateInvalid: "日期格式應為 YYYY-MM-DD：%s",
+  asstErrDateFuture: "日期不能是未來",
+  asstErrStockAsAsset: "股票請用交易帳戶記錄買賣，不建成資產",
+  asstErrTypeInvalid: "資產類型不正確：%s",
+  asstErrDirectionInvalid: "應為收入或支出：%s",
+  asstErrAmountPositive: "金額要大於 0",
+  asstErrDayOfMonthRange: "每月日期要在 1～31 之間：%s",
+  asstErrCategoryInvalid: "類別不正確：%s",
+  asstErrKindInvalid: "保障種類不正確：%s",
+  asstErrPremiumNegative: "年繳保費不能是負數",
+  asstErrPremiumYearsNegative: "繳費年期不能是負數",
+  asstErrSalaryNegative: "年薪不能是負數",
+  asstErrBirthYearRange: "出生年要在 1900～%s 之間",
+  asstErrRetireContribNegative: "每月退休提撥不能是負數",
+  asstErrDependentsNegative: "扶養人數不能是負數",
+  asstErrChildAgeRange: "最小孩子的年齡要在 0～30 之間",
+  asstErrRetireAgeRange: "退休年齡要大於目前年齡，且不超過 %s 歲",
+  asstErrRetireSpendPositive: "退休後每月支出要大於 0",
+  asstErrProfileEmpty: "這筆草稿沒有任何變更",
+  asstErrTargetPositive: "目標金額要大於 0",
+  asstErrSavedNegative: "已存金額不能是負數",
+  asstErrMonthlyNegative: "每月投入不能是負數",
+  asstErrStartYearNegative: "起始年不能是負數",
+  asstErrTargetYearRange: "目標年份要在 %s～%s 之間",
+  asstErrDuplicateAsset: "已有同名同類型的資產，請改成更新它的餘額",
+  asstErrDuplicatePolicy: "已有同名保單，請到保險頁替它新增保障",
+  asstErrAssetGone: "這筆資產已不存在",
   asstEdit: "編輯",
   asstDel: "刪除",
   asstFix: "修正 →",

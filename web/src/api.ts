@@ -2712,6 +2712,9 @@ export type AssistantDraft = {
   status: "ok" | "pending" | "error";
   missing: string[];
   error?: string;
+  // errors: error's rule problems as codes (i18n asstErr<code>); absent for
+  // a failed write, whose error is shown as is.
+  errors?: { code: string; args?: string[] }[];
   // failed: error is why the last write failed, not a rule the draft breaks.
   failed?: boolean;
   current?: { name: string; type: string; currency: string; value: number | null };
