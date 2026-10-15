@@ -77,15 +77,15 @@ func (d AssetDraft) Problems() []Problem {
 	switch {
 	case d.Type == "":
 	case slices.Contains(stockTypes, d.Type):
-		ps = append(ps, Problem{Field: "type", Msg: "stocks are recorded as trades, not as assets"})
+		ps = append(ps, bad("type", "StockAsAsset", "stocks are recorded as trades, not as assets"))
 	case !slices.Contains(DraftAssetTypes, d.Type):
-		ps = append(ps, Problem{Field: "type", Msg: "type must be one of " + strings.Join(DraftAssetTypes, ", ") + ": " + d.Type})
+		ps = append(ps, bad("type", "TypeInvalid", "type must be one of "+strings.Join(DraftAssetTypes, ", ")+": "+d.Type, d.Type))
 	}
 	if d.Currency == "" {
 		ps = append(ps, missing("currency"))
 	}
 	if d.FundNextContributionDate != "" && !validDate(d.FundNextContributionDate) {
-		ps = append(ps, Problem{Field: "fund_next_contribution_date", Msg: "invalid date, expected YYYY-MM-DD: " + d.FundNextContributionDate})
+		ps = append(ps, badDate("fund_next_contribution_date", d.FundNextContributionDate))
 	}
 	return ps
 }

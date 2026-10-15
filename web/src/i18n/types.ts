@@ -471,7 +471,7 @@ export interface Dictionary {
   tradesInRound: string;
   allTrades: string;
   // Calendar's earnings-event dots/legend/day-detail table (Task #9) — note
-  // text is built client-side from kind/hour/estimated (see api.ts's
+  // text is built client-side from kind/hour/estimated (see api/dashboard.ts's
   // CalendarEvent), same "backend never sends display strings" rule.
   eventsTitle: string;
   eventType: string;
@@ -1219,6 +1219,37 @@ export interface Dictionary {
   asstFDate: string;
   asstTermMonths: string;
   asstFailPre: string;
+  // A draft's rule problems by the server's code (assets.Problem.Code); %s
+  // are its args in order. An unknown code shows the server's English text.
+  asstErrSideInvalid: string;
+  asstErrGroupInvalid: string;
+  asstErrDateInvalid: string;
+  asstErrDateFuture: string;
+  asstErrStockAsAsset: string;
+  asstErrTypeInvalid: string;
+  asstErrDirectionInvalid: string;
+  asstErrAmountPositive: string;
+  asstErrDayOfMonthRange: string;
+  asstErrCategoryInvalid: string;
+  asstErrKindInvalid: string;
+  asstErrPremiumNegative: string;
+  asstErrPremiumYearsNegative: string;
+  asstErrSalaryNegative: string;
+  asstErrBirthYearRange: string;
+  asstErrRetireContribNegative: string;
+  asstErrDependentsNegative: string;
+  asstErrChildAgeRange: string;
+  asstErrRetireAgeRange: string;
+  asstErrRetireSpendPositive: string;
+  asstErrProfileEmpty: string;
+  asstErrTargetPositive: string;
+  asstErrSavedNegative: string;
+  asstErrMonthlyNegative: string;
+  asstErrStartYearNegative: string;
+  asstErrTargetYearRange: string;
+  asstErrDuplicateAsset: string;
+  asstErrDuplicatePolicy: string;
+  asstErrAssetGone: string;
   asstEdit: string;
   asstDel: string;
   asstFix: string;
