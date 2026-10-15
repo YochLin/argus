@@ -3,7 +3,7 @@ package bot
 import "context"
 
 // Channel is this project's messaging-transport boundary — it decouples
-// command dispatch (bot.go/handlers.go/pending_actions.go/quick_actions.go)
+// command dispatch (bot.go, the per-command files such as trade.go/portfolio.go, pending_actions.go, quick_actions.go)
 // from any specific chat platform. telegramChannel (telegram.go) is the
 // only implementation today; per CLAUDE.md's 訊息通道介面 note, a future
 // second channel (Discord/CLI) should get its own package implementing this

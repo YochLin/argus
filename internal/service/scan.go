@@ -61,7 +61,7 @@ type RestrictedProvider interface {
 	RegulatoryNotice(ctx context.Context) (map[string]string, error)
 }
 
-// ScanService is jobs.go's stateful RSI/MACD/strategy signal detection,
+// ScanService is internal/bot/alerts.go's stateful RSI/MACD/strategy signal detection,
 // shared by the daily watchlist report and the universe scan (both call
 // CheckStatefulSignals per ticker). detector holds the already-localized
 // signals.Detector (its Signal.Message text is built with i18n internally,

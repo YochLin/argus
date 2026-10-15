@@ -134,7 +134,7 @@ type MonthlyReportStore interface {
 // MonthlyReportBlock is one market's monthly-report numeric content —
 // BuildMonthlyReportBlock's pure output. Every field past Values/Latest is
 // independently optional (Have* guards it) rather than 0-sentinel, matching
-// this job's existing "查無資料就跳過該行" convention (see jobs.go's
+// this job's existing "查無資料就跳過該行" convention (see internal/bot/periodic_reports.go's
 // buildMonthlyReportBlock, which renders each Have* field as its own
 // i18n line) — the business logic and the per-language text stay in
 // separate places, same split every other Phase 24 service extraction uses.

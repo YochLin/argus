@@ -272,7 +272,7 @@ type TradeOutcome struct {
 const simulatedAccountCash = 1e15
 
 // atrPeriod matches every other ATR(14) read in this codebase (see
-// stopCandidateATRMult's doc comment in internal/bot/pipeline.go) — the live
+// stopCandidateATRMult's doc comment in internal/bot/loaders.go) — the live
 // paper account's stop/target/trailing formulas are all calibrated to 14,
 // not parameterized, so this can't be a flag without silently drifting from
 // what simulateTrade is trying to replicate.
@@ -406,7 +406,7 @@ func main() {
 	rangeFlag := flag.String("range", "5y", "history range: 1y|2y|5y")
 	// PR3 (docs/phase-23-strategy-data-uplift.md §5): these five default to
 	// exactly the live paper account's own defaults (stopCandidateATRMult in
-	// internal/bot/pipeline.go, STOP_LOSS_PCT/TRAILING_STOP_PCT/
+	// internal/bot/loaders.go, STOP_LOSS_PCT/TRAILING_STOP_PCT/
 	// TRAILING_STOP_ATR_MULT/PAPER_TAKE_PROFIT_ATR_MULT in .env.example, and
 	// cmd/server/backtest.go's own flags) — same names as that tool's flags on
 	// purpose, so a user familiar with one recognizes the other.

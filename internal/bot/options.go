@@ -111,7 +111,7 @@ func (b *Bot) recordOption(symbol, side string, contracts, premium, fee float64,
 	return msg, nil
 }
 
-// ExecuteOptionOpen is options.go's counterpart to ExecuteBuy (handlers.go)
+// ExecuteOptionOpen is options.go's counterpart to ExecuteBuy (trade.go)
 // — internal/web's POST /api/options/open calls this instead of
 // db.RecordOption directly, so a web-submitted order gets the exact same
 // naked-call warning /obuy and /osell produce (nakedCallWarning). side is
@@ -249,7 +249,7 @@ func (b *Bot) handleOExercise(args string) {
 // existing RecordBuy/RecordSell — no new stock-side write path, so
 // positions/transactions/net_worth_snapshots stay exactly as trustworthy as
 // they were before this feature existed. Also the pending-action executor
-// for the daily expiry scan (jobs.go), which always resolves as
+// for the daily expiry scan (closing_snapshot.go), which always resolves as
 // EXPIRED/ASSIGNED — EXERCISED is manual-only (/oexercise), since a buyer
 // choosing to exercise is a deliberate decision a scan can't infer.
 func (b *Bot) resolveOption(symbol, date, action string) (string, error) {

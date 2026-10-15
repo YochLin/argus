@@ -302,7 +302,7 @@ const (
 	KeyTargetReached Key = "target_reached"
 	KeyMA5Break      Key = "ma5_break"
 
-	// checkBuyAlerts (jobs.go) — a buy alert is one-shot (deleted on fire),
+	// checkBuyAlerts (alerts.go) — a buy alert is one-shot (deleted on fire),
 	// so unlike the stop-loss/trailing-stop pairs above there's no reset/
 	// re-alert state, just a title + one line per triggered alert.
 	KeyBuyAlertTitle   Key = "buy_alert_title"
