@@ -24,6 +24,18 @@ function money(v: number, currency?: string, negative?: boolean): string {
   return `${negative && v > 0 ? "−" : ""}${sym}${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 }
 
+// draftError is an error draft's reason in the interface language: each rule
+// problem by its code, or the server's text when there are no codes (a failed
+// write) or one has no string here.
+export function draftError(dict: Dictionary, d: AssistantDraft): string {
+  const strs = dict as unknown as Record<string, string | undefined>;
+  const parts = (d.errors ?? []).map((e) =>
+    (e.args ?? []).reduce<string | undefined>((t, a) => t?.replace("%s", () => a), strs[`asstErr${e.code}`]),
+  );
+  if (!parts.length || parts.includes(undefined)) return d.error ?? "";
+  return parts.join(" / ");
+}
+
 // draftTitle is a card's (and a chip's) name.
 export function draftTitle(dict: Dictionary, d: AssistantDraft): string {
   if (d.kind === "balance") return d.current?.name ?? "—";
@@ -432,7 +444,7 @@ function DraftCard({
         <div className="asst-dcard-err">
           <span>
             ⚠ {d.failed ? dict.asstFailPre : ""}
-            {d.error}
+            {draftError(dict, d)}
           </span>
           <button onClick={onEdit}>{dict.asstFix}</button>
         </div>
@@ -628,7 +640,7 @@ function DraftEditDrawer({
               {d.status === "error" && (
                 <div className="asst-edit-err">
                   ⚠ {d.failed ? dict.asstFailPre : ""}
-                  {d.error}
+                  {draftError(dict, d)}
                 </div>
               )}
               {flow ? (

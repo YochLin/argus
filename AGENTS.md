@@ -434,7 +434,9 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   `/w/insure`'s form; a profile via `saveWealthProfile` plus, for a retirement age and spend, `saveRetirement`
   — the retirement goal row, as `/w/retire`'s quick switch; a goal via `CreateGoal`). A draft's status (ok/pending/error) is never stored —
   `service.CheckWealthDraft` recomputes it on every read, for the model's `list_drafts` and the web
-  alike, from the shared rules in `internal/assets`.
+  alike, from the shared rules in `internal/assets`. A rule problem carries an English `Msg` (what the
+  model and the forms read) and a `Code` that the drafts pane translates (`asstErr<Code>` in `i18n.ts`);
+  `internal/service`'s `TestDraftErrorCodesTranslated` fails when a code has no zh/en string.
   `wealth_reset.go`'s `/api/wealth/reset` (Phase 28 D) is the settings page's 重設整個管理帳戶: it
   backs the database up into `BACKUP_DIR` first (a failed backup deletes nothing; the nightly pruning
   applies to that file too), then `db.ResetWealthData` empties the wealth account — assets with their
