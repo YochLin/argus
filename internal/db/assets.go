@@ -1,6 +1,31 @@
 package db
 
-import "database/sql"
+import (
+	"database/sql"
+	"errors"
+)
+
+// ErrAssetNotFound is returned by UpdateAsset when id doesn't exist.
+var ErrAssetNotFound = errors.New("asset not found")
+
+// ErrAssetNoDetails is returned by UpdateAsset when the edit carries a
+// deposit/loan block but the asset has no matching detail row — i.e. the
+// caller tried to give an asset of one type another type's fields.
+var ErrAssetNoDetails = errors.New("asset has no such detail row")
+
+// ErrAssetArchived is returned by LogAssetValue/DeleteAssetSnapshot for an
+// archived asset: archiving freezes its value history (it is what past
+// net-worth totals are replayed from).
+var ErrAssetArchived = errors.New("asset is archived")
+
+// ErrSnapshotLocked is returned by LogAssetValue when the date already has a
+// record and isn't today, and by DeleteAssetSnapshot for any date but today —
+// a day that has passed is history and is never rewritten.
+var ErrSnapshotLocked = errors.New("only today's value record can be changed")
+
+// ErrSnapshotNotFound is returned by DeleteAssetSnapshot when the asset has no
+// record for that date.
+var ErrSnapshotNotFound = errors.New("no value record for that date")
 
 // Asset is one row of the Phase 9 wealth platform's spine table (migration
 // 29, see docs/phase-9-asset-platform.md §9.1) — deposits, loans, and every

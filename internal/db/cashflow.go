@@ -5,6 +5,15 @@ import (
 	"errors"
 )
 
+// ErrCashflowNotFound is returned by the recurring-cashflow update, pause,
+// resume and delete methods when id doesn't exist.
+var ErrCashflowNotFound = errors.New("recurring cashflow not found")
+
+// ErrCashflowActive is returned by DeleteRecurringCashflow for a flow that
+// isn't paused: it still counts toward the monthly totals, and deleting is
+// irreversible, so it has to be paused first.
+var ErrCashflowActive = errors.New("pause the cash flow before deleting it")
+
 // RecurringCashflow is one recurring_cashflows row (migration 30, see
 // docs/phase-9-asset-platform.md §8.4) — a hand-maintained monthly amount,
 // not a transaction ledger. DayOfMonth/AssetID/Category are nil/"" when

@@ -20,7 +20,7 @@ const (
 // BuyAlert is one user-set price point to watch for a ticker the user may or
 // may not currently hold. Unlike Position.StopPrice (a single column on a
 // one-row-per-ticker table), a ticker can have any number of BuyAlert rows —
-// see migration 14's doc comment in db.go.
+// see migration 14's doc comment in migrations.go.
 type BuyAlert struct {
 	ID        int64
 	Ticker    string

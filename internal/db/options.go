@@ -2,13 +2,22 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"math"
 	"time"
 
 	"argus/internal/option"
 )
 
-// OptionPosition is one open contract (migration 15, see db.go). Contracts
+// ErrCrossesZero is returned by RecordOption when an order would flip a
+// position from long to short (or vice versa) in one trade — e.g. selling 3
+// contracts against a 2-long position. Rejected rather than split into
+// "close 2, open short 1" automatically: ponytail: allowing it would double
+// RecordOption's branch count for a mistake nobody makes by accident (see
+// docs/phase-12-options.md §3.3).
+var ErrCrossesZero = errors.New("order crosses zero — close the position before reversing it")
+
+// OptionPosition is one open contract (migration 15, see migrations.go). Contracts
 // is signed — positive for a long (buyer) position, negative for a short
 // (seller) position — the single abstraction RecordOption's realized P&L
 // formula depends on (docs/phase-12-options.md §3.2). AvgPremium is always
