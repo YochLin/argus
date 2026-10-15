@@ -1,0 +1,460 @@
+.quality-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+}
+
+.report-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.group-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.group-tab-btn {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 14px;
+  cursor: pointer;
+}
+
+.group-tab-btn.active {
+  color: var(--ink);
+  background: var(--surface-2);
+  border-color: var(--accent);
+}
+
+.winrate-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.winrate-bar-track {
+  width: 60px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.winrate-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.pnl-bar-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.pnl-bar-track {
+  width: 80px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.pnl-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+
+.pnl-bar-fill.profit {
+  background: var(--profit);
+}
+
+.pnl-bar-fill.loss {
+  background: var(--loss);
+}
+
+@media (max-width: 640px) {
+  .quality-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.low-sample-row {
+  color: var(--ink-2);
+}
+
+.tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* Phase 8 PR1's /risk page (docs/phase-8-trader-analytics.md §3.3): a red
+   variant of .tag for "no stop set" / "already below stop" badges — these
+   are warnings, not neutral metadata like the reports page's low-sample
+   tag. */
+.tag.warn {
+  color: var(--loss);
+  border-color: var(--loss);
+}
+
+.stat-note {
+  color: var(--ink-2);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.mae-mfe-track {
+  display: flex;
+  align-items: center;
+  height: 10px;
+  background: var(--bg);
+  border-radius: 4px;
+  margin-top: 8px;
+}
+
+.mae-mfe-half {
+  flex: 1;
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+.mae-mfe-half-loss {
+  justify-content: flex-end;
+}
+
+.mae-mfe-loss {
+  height: 100%;
+  background: var(--loss);
+}
+
+.mae-mfe-zero {
+  width: 2px;
+  height: 100%;
+  background: var(--ink-3);
+  flex-shrink: 0;
+}
+
+.mae-mfe-win {
+  height: 100%;
+  background: var(--profit);
+}
+
+.mae-mfe-labels {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+/* Phase 8 PR4's distribution views (docs/phase-8-trader-analytics.md §6.1):
+   a hand-rolled bar histogram and SVG scatter plot, no charting library —
+   see Histogram.tsx/ScatterChart.tsx's own doc comments for why. Readability
+   pass (2026-08-08) added axis names/ticks and hover explainers throughout. */
+.histogram-wrap {
+  margin-top: 8px;
+}
+
+.histogram-body {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.histogram-y-label {
+  writing-mode: vertical-rl;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.histogram-y-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  height: 160px;
+  padding-bottom: 18px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+}
+
+.histogram-x-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  text-align: center;
+  margin-top: 4px;
+}
+
+.histogram {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 160px;
+}
+
+.histogram-col {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+
+.histogram-tip {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 4px;
+  width: max-content;
+  padding: 4px 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.histogram-col:hover .histogram-tip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.histogram-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  height: 14px;
+}
+
+.histogram-bar-track {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.histogram-bar {
+  width: 100%;
+  min-height: 1px;
+  border-radius: 2px 2px 0 0;
+}
+
+.histogram-bar-profit {
+  background: var(--profit);
+}
+
+.histogram-bar-loss {
+  background: var(--loss);
+}
+
+.histogram-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  margin-top: 4px;
+}
+
+.scatter-chart {
+  width: 100%;
+  height: 240px;
+  margin-top: 8px;
+}
+
+.scatter-axis {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.scatter-tick {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--ink-3);
+}
+
+.scatter-axis-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--ink-3);
+}
+
+.scatter-hit {
+  fill: transparent;
+}
+
+.scatter-point-group {
+  cursor: pointer;
+}
+
+.scatter-point-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--ink);
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+}
+
+.scatter-point-group:hover .scatter-point-label,
+.scatter-point-group:focus .scatter-point-label {
+  opacity: 1;
+}
+
+.scatter-point-profit {
+  fill: var(--profit);
+  fill-opacity: 0.75;
+}
+
+.scatter-point-loss {
+  fill: var(--loss);
+  fill-opacity: 0.75;
+}
+
+.info-tip {
+  position: relative;
+  display: inline-flex;
+  margin-left: 6px;
+  color: var(--ink-3);
+  cursor: help;
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+.info-tip-bubble {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  margin-top: 6px;
+  width: max-content;
+  max-width: 260px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--ink);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.info-tip:hover .info-tip-bubble,
+.info-tip:focus-within .info-tip-bubble {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Phase 8 PR4's round-detail thesis/lessons blocks (§6.2). */
+.lessons-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.thesis-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.thesis-edit-btn {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.thesis-edit-btn:hover {
+  border-color: var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+}
+
+.thesis-edited-tag {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+.thesis-note {
+  color: var(--ink-3);
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.thesis-text {
+  margin-top: 10px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.thesis-empty-box {
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  line-height: 1.7;
+}

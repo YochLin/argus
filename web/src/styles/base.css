@@ -1,0 +1,174 @@
+/* Design tokens, retheme applied 2026-07-26 to match a Figma reference design
+   ("股市交易平台"): amber gives way to an indigo accent on a slate base,
+   green-up/red-down (US convention, not Taiwan's red-up/green-down)
+   unchanged, P&L always signed. Dark is still the default (matches every
+   pre-existing screenshot/expectation); :root.light below is a real,
+   working light mode (values ported from the same Figma reference's own
+   light-mode branch, not eyeballed) toggled by App.tsx's theme switch. */
+:root {
+  /* Tells the browser which palette to draw its own controls in — a <select>'s
+     arrow and dropdown list, date pickers, scrollbars — otherwise a dark page
+     gets a bright white option list. */
+  color-scheme: dark;
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --surface-2: #182033; /* .card's gradient's second stop (dark only — flat in light mode) */
+  --card-shadow: 0 0 0 1px var(--border), 0 4px 20px -4px rgba(0, 0, 0, 0.5);
+  --card-glow-shadow: 0 0 0 1px rgba(129, 140, 248, 0.22), 0 8px 32px -8px rgba(0, 0, 0, 0.7),
+    0 0 40px -24px #818cf8;
+  --border: #334155;
+  --ink: #f1f5f9;
+  --ink-2: #cbd5e1;
+  --ink-3: #94a3b8;
+  --accent: #818cf8;
+  --accent-tint-bg: rgba(129, 140, 248, 0.12);
+  --accent-tint-border: rgba(129, 140, 248, 0.2);
+  --profit: #10b981;
+  --loss: #ef4444;
+  --s1: #f59e0b;
+  --s2: #60a5fa;
+  --s3: #31a08d;
+  --s4: #a78bfa;
+  --s5: #f472b6;
+  --s6: #64748b;
+  --s7: #84cc16;
+  --s8: #fb923c;
+  --s9: #22d3ee;
+
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-sans: "Plus Jakarta Sans", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei",
+    -apple-system, sans-serif;
+}
+
+/* Light mode — ported from the Figma reference's own light :root values.
+   profit/loss/series colors (--s1..--s4/--profit/--loss) are theme-invariant
+   in that same reference (plain constants, not gated by dark/light), so they
+   aren't repeated here. lightweight-charts' own configs (PnlChart,
+   DrawdownChart, ChartView, RoundDetailView) are a known exception — see the
+   ponytail note on those files: their grid/axis colors stay fixed to the
+   dark palette regardless of this toggle. */
+:root.light {
+  color-scheme: light;
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-2: #ffffff;
+  --card-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 0 0 1px rgba(226, 232, 240, 0.8);
+  --card-glow-shadow: 0 0 0 1px rgba(99, 102, 241, 0.28), 0 4px 20px -4px rgba(99, 102, 241, 0.14);
+  --border: #e2e8f0;
+  --ink: #0f172a;
+  --ink-2: #475569;
+  --ink-3: #94a3b8;
+  --accent: #6366f1;
+  --accent-tint-bg: rgba(99, 102, 241, 0.08);
+  --accent-tint-border: rgba(99, 102, 241, 0.15);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+a {
+  color: inherit;
+}
+
+/* Design template's in-page links (a{color:accent;text-decoration:none}) —
+   opt-in rather than on bare `a`, since table ticker links and the sidebar
+   already carry their own styling. */
+.accent-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+input {
+  font-family: var(--font-mono);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  color: var(--ink);
+}
+
+.profit {
+  color: var(--profit);
+}
+
+.loss {
+  color: var(--loss);
+}
+
+.card {
+  background: linear-gradient(145deg, var(--surface) 0%, var(--surface-2) 100%);
+  box-shadow: var(--card-shadow);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+/* Optional glow modifier for hero cards (net worth KPI, main P&L chart) —
+   pure box-shadow, no extra DOM element needed. */
+.card--glow {
+  box-shadow: var(--card-glow-shadow);
+}
+
+.status-bar {
+  font-family: var(--font-mono);
+  color: var(--ink);
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  margin-bottom: 16px;
+}
+
+.cursor {
+  display: inline-block;
+  animation: blink 1s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cursor {
+    animation: none;
+  }
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}

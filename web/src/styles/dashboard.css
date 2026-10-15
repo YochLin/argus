@@ -1,0 +1,129 @@
+/* Grid wrappers (.kpi-grid, .dash-charts-grid, ...) carry their own
+   margin-bottom, but a bare .card has none — stacked pages built from
+   consecutive top-level .card sections (OptionsView, PaperView, ...) need
+   this to not render as one fused block. */
+.content > .card + .card {
+  margin-top: 16px;
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: auto;
+    height: auto;
+    position: static;
+    flex-direction: row;
+    align-items: center;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+  }
+
+  .side-link.active {
+    border-left-color: transparent;
+  }
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+/* container-type lets .kpi-value's font-size below query the card's own
+   width (cqw) rather than the viewport's — a wide TWD figure (e.g.
+   "+NT$3,850,000") shrinks to fit its own card instead of overflowing it,
+   without needing JS to measure text. */
+.kpi-card {
+  container-type: inline-size;
+}
+
+.kpi-value {
+  font-family: var(--font-mono);
+  font-size: clamp(13px, 10cqw, 28px);
+  font-variant-numeric: tabular-nums;
+  margin-top: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.dash-kpi-strip {
+  display: flex;
+  flex-wrap: wrap;
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
+  border-radius: 12px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.dash-kpi-strip-item {
+  flex: 1 1 130px;
+  padding: 10px 14px;
+  border-right: 1px solid var(--border);
+  min-width: 0;
+}
+
+.dash-kpi-strip-label {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-kpi-strip-value {
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  margin-top: 3px;
+}
+
+.distributions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+/* .report-section's own margin-bottom would stack on top of the grid gap
+   and make row spacing bigger than column spacing — the grid gap alone
+   already keeps every card evenly spaced. */
+.distributions-grid .report-section {
+  margin-bottom: 0;
+}
+
+.distributions-grid .span-2 {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 640px) {
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+  .distributions-grid {
+    grid-template-columns: 1fr;
+  }
+  .detail-grid-2col {
+    grid-template-columns: 1fr;
+  }
+  .ticker-stats-inline {
+    margin-left: 0;
+  }
+}

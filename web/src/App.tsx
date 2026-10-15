@@ -168,7 +168,7 @@ export default function App() {
     setDevMode(next);
   };
 
-  // :root.light (theme.css) carries every light-mode token override — see
+  // :root.light (styles/base.css) carries every light-mode token override — see
   // its own doc comment for what's ported from the Figma reference and what
   // known corner (lightweight-charts' fixed dark grid/axis colors) is cut.
   useEffect(() => {

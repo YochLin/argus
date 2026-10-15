@@ -1,0 +1,284 @@
+/* Merged Chart View elements */
+.ticker-header-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.ticker-header-id {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.ticker-header-idrow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.ticker-header-name {
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+.ticker-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.ticker-price-val {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ticker-stats-inline {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.ticker-stat-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+.ticker-stat-val {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
+.ticker-stat-note {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  margin-top: 1px;
+  color: var(--ink-3);
+  min-height: 1em;
+}
+
+/* Declared after .ticker-stat-note so the tint wins over its ink-3 (same
+   specificity as the bare .profit/.loss, which sit earlier in the file). */
+.ticker-stat-note.profit {
+  color: var(--profit);
+}
+
+.ticker-stat-note.loss {
+  color: var(--loss);
+}
+
+.ticker-header-actions {
+  display: flex;
+  gap: 6px;
+  align-self: center;
+}
+
+/* Base for the chart header's buy/sell buttons (paired with .btn-tint-buy/-sell).
+   Deliberately not named .btn-tint: the accent-tinted .btn-tint further down is
+   the same specificity and wins by source order, which painted both trade
+   buttons indigo (#192). */
+.btn-tint-trade {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.btn-tint-buy {
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.14);
+  color: var(--profit);
+}
+
+.btn-tint-buy:hover {
+  border-color: var(--profit);
+}
+
+.btn-tint-sell {
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.14);
+  color: var(--loss);
+}
+
+.btn-tint-sell:hover {
+  border-color: var(--loss);
+}
+
+/* Neutral sibling of the buy/sell pair (停損價 / 購買點位). */
+.btn-tint-plain {
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--ink-2);
+}
+
+.btn-tint-plain:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.range-bar-wrap {
+  margin-bottom: 16px;
+}
+
+.range-bar-track {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, rgba(239, 68, 68, 0.14), var(--border), rgba(16, 185, 129, 0.14));
+}
+
+.range-bar-marker {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 14px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.range-bar-labels {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-top: 6px;
+}
+
+.round-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.round-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--ink-2);
+  cursor: pointer;
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+  transition: all 0.15s ease;
+}
+
+.round-chip:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.round-chip.active {
+  background: var(--accent-tint-bg);
+  border-color: var(--accent-tint-border);
+  color: var(--accent);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: right;
+  padding: 8px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+th:first-child,
+td:first-child {
+  text-align: left;
+}
+
+th {
+  color: var(--ink-3);
+  font-weight: 400;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.chart-card {
+  margin-bottom: 16px;
+  padding: 8px;
+}
+
+/* The design's min(520px, 100vh - 360px); the 260px floor keeps a short
+   window from collapsing the chart to a sliver. */
+.tk-chart {
+  position: relative;
+  height: max(260px, min(520px, calc(100vh - 360px)));
+}
+
+.chart-panel {
+  padding: 8px;
+  min-width: 0;
+}
+
+.chart-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px 0;
+}
+
+.chart-mount {
+  height: 300px;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 16px;
+  color: var(--ink-2);
+  font-size: 11px;
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-legend-dot {
+  width: 10px;
+  height: 2px;
+  background: var(--ink-3);
+}
+
+.chart-legend-dot-dashed {
+  background: repeating-linear-gradient(to right, var(--ink-3) 0 3px, transparent 3px 6px);
+}
+
+.loading,
+.error-message,
+.empty-message {
+  color: var(--ink-2);
+  padding: 32px;
+  text-align: center;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

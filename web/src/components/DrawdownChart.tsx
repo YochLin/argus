@@ -24,7 +24,7 @@ export function DrawdownChart({ drawdown, dict }: Props) {
     // ponytail: fixed dark-palette grid/axis colors regardless of the App.tsx
       // light/dark toggle -- lightweight-charts takes plain JS config, not CSS
       // vars, and no view threads isDark down to this component yet. Upgrade:
-      // accept an isDark prop and branch these per theme.css:root.light.
+      // accept an isDark prop and branch these per styles/base.css:root.light.
 const chart = createChart(containerRef.current, {
       layout: { background: { color: "transparent" }, textColor: "#9AA6BC" },
       grid: {

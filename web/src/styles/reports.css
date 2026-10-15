@@ -1,0 +1,82 @@
+/* Phase 5 PR4's report page (docs/phase-5-web-dashboard.md §A1/A2/A5). */
+.report-section {
+  margin-bottom: 16px;
+}
+
+/* Monthly grid: a heatmap chip per month cell (mirrors the calendar day
+   cells' profit-bg/loss-bg convention) instead of plain colored text. */
+.month-cell {
+  border-radius: 6px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Reports page hero row: a narrative "edge checkup" card (win/loss
+   magnitude bars) beside a compact win-rate/payoff/profit-factor/
+   expectancy/best-worst stat grid — mirrors the design mockup's Reports
+   hero, replacing the old plain stat-grid of the same numbers. */
+.reports-hero {
+  margin-bottom: 16px;
+}
+
+/* The mockup's edge-checkup card runs wider than its stat-grid neighbor
+   (~3:2, not an even split) — narrower stat grid needs less room. */
+.reports-checkup-hero {
+  grid-template-columns: 3fr 2fr;
+}
+
+.edge-narrative {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+.edge-bars {
+  margin-top: 20px;
+}
+
+.edge-bars-title {
+  margin-bottom: 10px;
+}
+
+.edge-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.edge-bar-label {
+  flex: 0 0 64px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.edge-bar-track {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.edge-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+}
+
+.edge-bar-fill.profit {
+  background: var(--profit);
+}
+
+.edge-bar-fill.loss {
+  background: var(--loss);
+}
+
+.edge-bar-value {
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  text-align: right;
+}

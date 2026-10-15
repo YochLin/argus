@@ -1,0 +1,202 @@
+/* Goal progress bar (/w/goals, Phase 9 波次3 PR6) — same track/fill shape as
+   .edge-bar-track/.edge-bar-fill but with room for .goal-progress-mark, a
+   tick at the design template's "expected progress" position (wrm.goal.mark
+   in Argus Trading WebUI.dc.html) so a goal reads as ahead/behind at a
+   glance instead of only via the text status chip beside it. */
+.goal-progress-track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg);
+}
+
+.goal-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+}
+
+.goal-progress-fill.profit {
+  background: var(--profit);
+}
+
+.goal-progress-fill.loss {
+  background: var(--loss);
+}
+
+/* Template's third bucket: under the expected line but not flagged late —
+   accent (not gray), so "no signal yet" doesn't read the same as "behind". */
+.goal-progress-fill.accent {
+  background: var(--accent);
+}
+
+.goal-progress-mark {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 14px;
+  background: var(--ink-2);
+  transform: translateX(-50%);
+}
+
+/* Template's stateStyle is an outlined chip (colored text + 1px border, no
+   fill), not a filled pill — matches wrm.goal.stateStyle /
+   Argus Trading WebUI.dc.html's goalRow(). */
+.goal-state-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.goal-state-chip.ahead {
+  color: var(--profit);
+}
+
+.goal-state-chip.behind {
+  color: var(--loss);
+}
+
+.goal-state-chip.onTrack {
+  color: var(--accent);
+}
+
+/* /w/goals add/edit drawer (design template's goalEditModel): kind chips,
+   a two-up number grid, and the live progress footer. */
+.goal-kind-chip {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+}
+
+.goal-kind-chip.active {
+  border-color: var(--accent);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+.goal-edit-btn {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-3);
+}
+
+.goal-drawer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 13px;
+}
+
+.goal-live-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.goal-live-stat > span:first-child {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+.goal-delete-btn {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid var(--loss);
+  background: rgba(239, 68, 68, 0.14);
+  color: var(--loss);
+}
+
+/* Template's "+ 新增目標": sans 12.5px/700, a step larger than .btn-tint. */
+.goal-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 7px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+/* The template's goals drawer diverges from the shared wealth drawer shell
+   (add-asset et al.): 430px, ink-2 labels, tighter inputs, boxed close, a
+   surface Cancel and a tint Save (own class: .btn-primary is !important) (grey until a kind is picked). Scoped here
+   so the other drawers keep matching their own template markup. */
+.wealth-drawer-panel.goal-drawer {
+  width: min(430px, 100%);
+}
+
+.goal-drawer .modal-close {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: normal;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.goal-drawer .wealth-drawer-field-label {
+  color: var(--ink-2);
+}
+
+.goal-drawer .wealth-drawer-field input {
+  padding: 8px 10px;
+}
+
+.goal-drawer .wealth-drawer-cancel {
+  font-size: 12.5px;
+  font-weight: 400;
+  padding: 8px 14px;
+  background: var(--surface);
+}
+
+.goal-drawer .goal-save-btn {
+  font-family: var(--font-sans);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 8px 14px;
+  border: 1px solid var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+.goal-drawer .goal-save-btn:disabled {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.goal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
