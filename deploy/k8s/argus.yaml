@@ -1,0 +1,86 @@
+# Stage one: move argus from systemd to a single-node k3s on the SAME VPS, behaving
+# exactly like deploy/argus.service and changing only how it is run. This is not a
+# portable manifest; the two shortcuts below must be replaced before leaving this
+# machine:
+#
+#   hostNetwork  Shioaji stays under systemd (127.0.0.1:8080) and the dashboard stays
+#                loopback-only (WEB_ADDR=127.0.0.1:8090). The dashboard has no read
+#                auth, so it must never be put behind a Service or Ingress as-is.
+#   hostPath     The whole home is mounted: .env, data/, ~/.claude and
+#                ~/.local/bin/agy all stay where they are. A directory rather than
+#                single files, because claude rewrites ~/.claude.json via rename and a
+#                single-file bind mount breaks on that.
+#
+# Before the first apply, stop the systemd copy. Running both means Telegram 409s,
+# duplicated cron jobs, and two writers on one SQLite file:
+#   systemctl --user disable --now argus && systemctl --user mask argus
+# Mask rather than just disable: the old deploy.yml still runs
+# `systemctl --user restart argus`, and on a masked unit that fails loudly instead of
+# quietly starting a second copy.
+# If you forget: the pod can't bind 127.0.0.1:8090 and exits (app.Run treats a
+# listener failure as fatal), so it crash-loops rather than silently running twice.
+#
+# Rollback:
+#   kubectl delete -f deploy/k8s/argus.yaml
+#   systemctl --user unmask argus && systemctl --user start argus
+# The data directory is the same one, so rolling back loses nothing.
+#
+# The image is built by CI and `k3s ctr images import`ed (there is no registry), tagged
+# with the git sha, hence imagePullPolicy: Never. The workflow substitutes the real
+# tag for argus:dev below before applying.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argus
+spec:
+  replicas: 1
+  # Recreate, not RollingUpdate: single-file SQLite plus in-process cron plus
+  # Telegram long-polling means even a few seconds of old and new pods coexisting
+  # would duplicate reports and fight over getUpdates.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: argus
+  template:
+    metadata:
+      labels:
+        app: argus
+    spec:
+      hostNetwork: true
+      containers:
+        - name: argus
+          image: argus:dev
+          imagePullPolicy: Never
+          # Same as argus.service's WorkingDirectory: .env and data/ are found by
+          # relative path.
+          workingDir: /home/yoch/apps/argus
+          env:
+            - name: HOME
+              value: /home/yoch
+          securityContext:
+            # uid/gid match the host's yoch so the hostPath is writable and file
+            # ownership doesn't change.
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          # Requests only, no limits: claude-agent-acp is a Node child process, and an
+          # OOMKill from a limit would cut an LLM call off mid-flight with no warning.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+          volumeMounts:
+            - name: home
+              mountPath: /home/yoch
+      volumes:
+        - name: home
+          hostPath:
+            path: /home/yoch
+            type: Directory
+      # No liveness/readiness probes: there is no /healthz yet, so recovery relies on
+      # the process exiting and the kubelet restarting it, the same as systemd's
+      # Restart=on-failure. The Settings page's os.Exit(1) after a save goes through
+      # this path too.

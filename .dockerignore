@@ -1,0 +1,12 @@
+# Keep these out of the build context: .env holds every credential and data/ is
+# the live database.
+.git
+.github
+.env
+.claude
+.serena
+.DS_Store
+data
+web/data
+web/node_modules
+internal/web/dist/assets
