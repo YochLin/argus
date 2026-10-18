@@ -40,27 +40,29 @@ func (b *Bot) handleChat(ctx context.Context, text string) {
 
 // handleChatArticle is handleChat's "article digestion" path (Phase 3): the
 // user pasted a URL, possibly alongside their own comment/question in text.
-// The page is fetched and its text extracted bot-side (the ACP chat session
-// has no tools of its own — see internal/llm's acp_provider.go), then
+// The page is fetched and its text extracted bot-side (WebFetch in the chat
+// session only returns a summary — see internal/llm's acp_provider.go), then
 // wrapped in KeyArticleTaskBlock and sent through the same persistent chat
 // session as an ordinary message, so the digestion happens inline in the
 // conversation rather than as a separate one-shot analysis call. A fetch
-// failure (dead link, paywall, JS-only page — see webfetch.Fetch) is
-// reported directly rather than forwarded to the LLM, since there's nothing
-// useful for it to reason about without the article text.
+// failure (dead link, paywall, JS-only page — see webfetch.Fetch) forwards
+// the user's message unchanged instead: the chat session's WebFetch gets a
+// second try at the link, as a summary rather than the full text.
 func (b *Bot) handleChatArticle(ctx context.Context, text, url string) {
 	b.Send(i18n.T(b.lang, i18n.KeyFetchingArticle))
 
+	prompt := text
 	article, err := webfetch.Fetch(ctx, url)
 	if err != nil {
-		logger.Errorf("chat: article fetch %s: %v", url, err)
-		b.Send(i18n.T(b.lang, i18n.KeyArticleFetchFailed, err))
-		return
+		// Send the message, URL included, as it is: the chat session has
+		// WebFetch for exactly this case, and says so if that fails too.
+		logger.Warnf("chat: article fetch %s: %v; leaving it to the session's WebFetch", url, err)
+	} else {
+		prompt = i18n.T(b.lang, i18n.KeyArticleTaskBlock, article.Title, url, article.Text, text)
 	}
 
 	b.Send(i18n.T(b.lang, i18n.KeyThinking))
 
-	prompt := i18n.T(b.lang, i18n.KeyArticleTaskBlock, article.Title, url, article.Text, text)
 	if ctxBlock := b.buildChatContext(); ctxBlock != "" {
 		prompt = ctxBlock + prompt
 	}

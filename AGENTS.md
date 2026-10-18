@@ -281,7 +281,11 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
 - `internal/webfetch` — Phase 3's "article digestion" chat mode: `ExtractURL` (pure regex) finds a URL
   in a chat message, `Fetch` downloads and extracts readable text via `golang.org/x/net/html`, treating
   extraction under ~200 chars as a failure (paywall/JS-rendered signature). Extracted text is capped at
-  20,000 runes.
+  60,000 runes (a ~58-min podcast transcript is ~26k; 20,000 used to cut those mid-episode). It stays
+  bot-side rather than handing the agent a link because the agent's own WebFetch returns a summary, not the
+  page. When `Fetch` fails, `handleChatArticle` forwards the message as-is and the Telegram chat session's
+  WebFetch (the one built-in tool enabled anywhere; `internal/llm`'s `acp_provider.go`) gets a second try —
+  `/podcast` has no such fallback, since a summary is useless for extraction.
 
 - `internal/service` — the business-logic layer Phase 24 pulled out of `internal/bot`: 15 services
   (`RiskService`, `ScanService`, `PaperService`, `OptionsService`, `BrokerSyncService`,

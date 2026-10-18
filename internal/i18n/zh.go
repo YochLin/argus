@@ -172,9 +172,8 @@ var zhMessages = map[Key]string{
 	KeyChatContextPositionLine: "- %s：%s 收盤 %s (%+.2f%%)｜持倉 %g 股，均價 %s，未實現損益 %+.2f%%\n",
 	KeyChatContextFooter:       "[背景資料結束，請針對以下訊息回覆]\n\n",
 
-	KeyFetchingArticle:    "正在讀取文章內容，請稍候...",
-	KeyArticleFetchFailed: "無法擷取這個網址的內容：%v\n（可能是付費牆或該網站阻擋自動存取，也可以直接把文章內文貼給我）",
-	KeyArticleTaskBlock:   "使用者在聊天中分享了一篇文章連結。請先用 3-5 句摘要文章重點，再說明這篇文章跟使用者的自選股/持倉有沒有關聯、有什麼潛在影響——如果沒有實質關聯，直接說沒有即可，不要牽強附會。\n\n標題：%s\n網址：%s\n\n內文：\n%s\n\n使用者的訊息：%s\n",
+	KeyFetchingArticle:  "正在讀取文章內容，請稍候...",
+	KeyArticleTaskBlock: "使用者在聊天中分享了一篇文章連結。請先用 3-5 句摘要文章重點，再說明這篇文章跟使用者的自選股/持倉有沒有關聯、有什麼潛在影響——如果沒有實質關聯，直接說沒有即可，不要牽強附會。\n\n標題：%s\n網址：%s\n\n內文：\n%s\n\n使用者的訊息：%s\n",
 
 	KeyEarningsAlertTitle:         "📅 *財報日提醒*\n\n",
 	KeyEarningsAlertLine:          "• *%s* 將於 %s 公布財報（%d 天內）\n",
@@ -309,7 +308,7 @@ var zhMessages = map[Key]string{
 	KeyStrategyBoxName:                    "箱型地板抄底",
 
 	KeySystemPromptAnalyst: "你是一位專業的美股分析師，只負責針對使用者提供的市場數據給出文字分析。你沒有任何工具可用，也不需要使用工具；請直接依照使用者訊息中的格式要求回覆，不要輸出與分析無關的內容。",
-	KeySystemPromptChat:    "你是使用者的個人助理，請用繁體中文自然對話，記住這段對話中先前提到的內容。你沒有任何工具可用，也不需要使用工具。",
+	KeySystemPromptChat:    "你是使用者的個人助理，請用繁體中文自然對話，記住這段對話中先前提到的內容。你可用的工具只有 argus 的行情／持倉查詢，以及 WebFetch：使用者貼了連結、但訊息中沒附上文章內文時才用 WebFetch。WebFetch 回傳的是摘要而不是原文，回答時要照實說明，不要當成逐字內容。",
 	KeySystemPromptWealth: "你是 Argus 的資產建檔助理，幫使用者把存款、貸款、信用卡、基金、保險、每月固定收支、退休與其他目標記錄進資產帳戶。請用繁體中文、口語、簡短地回答，一次只追問一兩件事。畫面只顯示純文字：不要用 Markdown（不要 ** 粗體、# 標題、表格），要條列就直接換行。\n" +
 		"你可以用工具查詢使用者已經記錄的資料：list_assets、list_cashflows、list_insurance、get_profile_and_goals，以及還沒寫入的草稿 list_drafts。回答「還缺什麼」或追問之前，先查一次現有資料和草稿，不要問已經記錄過的東西。對話中途你可能會重新開始、忘記先前聊過的內容，這時一樣先查資料和草稿再接續。\n" +
 		"規則：\n" +

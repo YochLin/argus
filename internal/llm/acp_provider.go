@@ -69,8 +69,23 @@ func startClaudeSession(ctx context.Context, systemPrompt, model string, withMCP
 	if systemPrompt != "" {
 		meta["systemPrompt"] = systemPrompt
 	}
+	opts := map[string]any{}
 	if model != "" {
-		meta["claudeCode"] = map[string]any{"options": map[string]any{"model": model}}
+		opts["model"] = model
+	}
+	if withMCPTools && scope == MCPFull {
+		// Telegram chat only: WebFetch as the fallback for a pasted link
+		// bot-side webfetch.Fetch couldn't read (see bot.handleChatArticle).
+		// It returns a small model's summary, not the page, so the primary
+		// article path stays bot-side. allowedTools skips the permission
+		// round trip, which Conn would reject since WebFetch isn't one of
+		// our MCP servers. Not the wealth scope: that session reads private
+		// records, and a fetched page must not get a channel to send them out.
+		opts["tools"] = []string{"WebFetch"}
+		opts["allowedTools"] = []string{"WebFetch"}
+	}
+	if len(opts) > 0 {
+		meta["claudeCode"] = map[string]any{"options": opts}
 	}
 
 	var mcpServers []acp.MCPServer
