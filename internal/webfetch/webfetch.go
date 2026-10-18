@@ -3,10 +3,12 @@
 // URL into chat, and the extracted text gets fed to the LLM as plain text.
 // This lives outside internal/bot so ExtractURL/Fetch stay independently
 // testable, and outside internal/data since it isn't a stock-quote data
-// source. Fetching happens here rather than via an ACP tool call because
-// every chat session disables the agent's built-in tools (see
-// internal/llm's acp_provider.go) — the agent never gets network access of
-// its own.
+// source. Fetching happens here rather than via the agent's own WebFetch
+// because that returns a small model's summary, not the page (live-checked
+// 2026-10-18 on a 58-minute transcript: ~450 words back) — the digestion
+// and /podcast paths need the full text. The Telegram chat session keeps
+// WebFetch only as the fallback for a link Fetch fails on (see
+// internal/llm's acp_provider.go).
 package webfetch
 
 import (
@@ -36,8 +38,11 @@ const maxBodyBytes = 5 << 20 // 5MB
 
 // maxArticleRunes caps the extracted text handed to the LLM. Claude via ACP
 // has no metered per-token cost (see internal/llm), but an unbounded page
-// still means an unbounded prompt and a slower reply.
-const maxArticleRunes = 20000
+// still means an unbounded prompt and a slower reply. It has to clear a full
+// podcast transcript for /podcast: a 58-minute episode is ~26k runes, and the
+// old 20,000 cut one off at minute 45 (2026-10-18). 60,000 covers ~2h+ while
+// staying well inside the model's context.
+const maxArticleRunes = 60000
 
 // skipTags holds elements whose entire subtree carries no readable article
 // text (scripts, styles, nav chrome, embedded media) and should be skipped

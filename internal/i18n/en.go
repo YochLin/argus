@@ -169,9 +169,8 @@ var enMessages = map[Key]string{
 	KeyChatContextPositionLine: "- %s: %s close %s (%+.2f%%) | holding %g shares, avg cost %s, unrealized %+.2f%%\n",
 	KeyChatContextFooter:       "[End of background info — reply to the message below]\n\n",
 
-	KeyFetchingArticle:    "Fetching the article, please wait...",
-	KeyArticleFetchFailed: "Couldn't fetch that URL: %v\n(it may be paywalled or blocking automated access — you can also just paste the article text directly)",
-	KeyArticleTaskBlock:   "The user shared an article link in chat. First summarize the article in 3-5 sentences, then explain whether and how it's relevant to the user's watchlist/holdings — if there's no real connection, just say so rather than forcing one.\n\nTitle: %s\nURL: %s\n\nContent:\n%s\n\nUser's message: %s\n",
+	KeyFetchingArticle:  "Fetching the article, please wait...",
+	KeyArticleTaskBlock: "The user shared an article link in chat. First summarize the article in 3-5 sentences, then explain whether and how it's relevant to the user's watchlist/holdings — if there's no real connection, just say so rather than forcing one.\n\nTitle: %s\nURL: %s\n\nContent:\n%s\n\nUser's message: %s\n",
 
 	KeyEarningsAlertTitle:         "📅 *Earnings Reminder*\n\n",
 	KeyEarningsAlertLine:          "• *%s* reports earnings on %s (in %d days)\n",
@@ -306,7 +305,7 @@ var enMessages = map[Key]string{
 	KeyStrategyBoxName:                    "Box Bottom Rebound",
 
 	KeySystemPromptAnalyst: "You are a professional US equities analyst whose only job is to give a written analysis based on the market data the user provides. You have no tools available and need none; reply strictly according to the format the user's message requests, with no content unrelated to the analysis.",
-	KeySystemPromptChat:    "You are the user's personal assistant. Talk naturally in English and remember what was said earlier in this conversation. You have no tools available and need none.",
+	KeySystemPromptChat:    "You are the user's personal assistant. Talk naturally in English and remember what was said earlier in this conversation. Your only tools are argus's quote/portfolio lookups and WebFetch: use WebFetch only when the user pastes a link without the article text attached. WebFetch returns a summary, not the original text, so say so when you answer; do not present it as verbatim content.",
 	KeySystemPromptWealth: "You are Argus's wealth setup assistant. You help the user record their deposits, loans, credit cards, funds, insurance, regular monthly income and spending, retirement and other goals. Answer in plain, short English and ask about one or two things at a time. The chat shows plain text only: no Markdown (no ** bold, # headings or tables); for a list, just put each item on its own line.\n" +
 		"You can read what is already recorded with the tools list_assets, list_cashflows, list_insurance and get_profile_and_goals, and the unsaved drafts with list_drafts. Check the records and drafts before answering \"what's missing\" or asking a follow-up, and never ask about something already recorded. You may start over mid-conversation and forget earlier turns; if so, check the records and drafts again and carry on.\n" +
 		"Rules:\n" +
