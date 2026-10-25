@@ -59,10 +59,13 @@ jobs:
           sudo k3s ctr -n k8s.io images pull --user "${GITHUB_ACTOR}:${GHCR_TOKEN}" \
             "ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}"
 
-      # The runner runs as yoch and reaches k3s through ~/.kube/config.
+      # The runner reaches k3s through ~/.kube/config. It runs as the user that owns the
+      # home the manifest mounts, so the placeholders in it are filled from this account.
       - name: Apply
         run: |
-          sed "s|image: argus:dev|image: ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}|" deploy/k8s/argus.yaml | kubectl apply -f -
+          sed -e "s|image: argus:dev|image: ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}|" \
+              -e "s|__HOME__|${HOME}|g" -e "s|__UID__|$(id -u)|g" -e "s|__GID__|$(id -g)|g" \
+              deploy/k8s/argus.yaml | kubectl apply -f -
           kubectl rollout status deployment/argus --timeout=180s
 
       - name: Verify
