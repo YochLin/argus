@@ -15,45 +15,54 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
       # The frontend and Go builds both happen inside the Dockerfile, so no
-      # setup-node/setup-go here.
-      - name: Build image
+      # setup-node/setup-go here. The image goes to GHCR rather than through an Actions
+      # artifact: the VPS sits behind a home-VPN tunnel, and the artifact blob is in the
+      # US, where that path measured ~126 KB/s (371 MB took 47 minutes). GHCR is served
+      # from a nearby CDN and measured ~3.3 MB/s over the same tunnel. The image name
+      # must be lowercase, hence ${GITHUB_REPOSITORY,,}. The source label is what links
+      # the package to this repo, so the deploy job's GITHUB_TOKEN may read it.
+      - name: Build and push image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          docker build -t "argus:${GITHUB_SHA}" .
-          docker save "argus:${GITHUB_SHA}" | gzip > argus.tar.gz
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: argus-image
-          path: argus.tar.gz
-          retention-days: 1
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}"
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker build --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" -t "$IMAGE" .
+          docker push "$IMAGE"
 
   deploy:
     needs: build
     runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: read
     steps:
       # Only to get the manifest; the rest of the repo isn't needed.
       - uses: actions/checkout@v4
         with:
           sparse-checkout: deploy/k8s
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: argus-image
-
-      # k3s has no docker daemon to load into, and the k8s.io containerd namespace is
-      # the one the kubelet sees. Piped through stdin rather than passed as a file so
-      # we don't depend on ctr recognising gzip.
-      - name: Import image into k3s
-        run: gunzip -c argus.tar.gz | sudo k3s ctr -n k8s.io images import -
+      # k3s has no docker daemon to pull into, and the k8s.io containerd namespace is
+      # the one the kubelet sees. Pulling here (rather than leaving it to the kubelet)
+      # is why the manifest can stay imagePullPolicy: Never with no imagePullSecret.
+      - name: Pull image into k3s
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sudo k3s ctr -n k8s.io images pull --user "${GITHUB_ACTOR}:${GHCR_TOKEN}" \
+            "ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}"
 
       # The runner runs as yoch and reaches k3s through ~/.kube/config.
       - name: Apply
         run: |
-          sed "s|image: argus:dev|image: argus:${GITHUB_SHA}|" deploy/k8s/argus.yaml | kubectl apply -f -
+          sed "s|image: argus:dev|image: ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}|" deploy/k8s/argus.yaml | kubectl apply -f -
           kubectl rollout status deployment/argus --timeout=180s
 
       - name: Verify
