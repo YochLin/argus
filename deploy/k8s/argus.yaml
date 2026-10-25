@@ -21,13 +21,19 @@
 # listener failure as fatal), so it crash-loops rather than silently running twice.
 #
 # Rollback:
-#   kubectl delete -f deploy/k8s/argus.yaml
+#   kubectl delete deployment/argus
 #   systemctl --user unmask argus && systemctl --user start argus
 # The data directory is the same one, so rolling back loses nothing.
 #
-# The image is built by CI and `k3s ctr images import`ed (there is no registry), tagged
-# with the git sha, hence imagePullPolicy: Never. The workflow substitutes the real
-# tag for argus:dev below before applying.
+# The image is built by CI, pushed to GHCR and `k3s ctr images pull`ed onto the node by
+# the deploy job, tagged with the git sha. That pre-pull is why imagePullPolicy is
+# Never: the kubelet never talks to the registry, so no imagePullSecret is needed. The
+# workflow substitutes the real ghcr.io reference for argus:dev below before applying.
+#
+# __HOME__, __UID__ and __GID__ are filled the same way, from the account the runner
+# runs as (the one that owns the home that is mounted), so no user name is written
+# here. Kubernetes has no variable for "the home directory", and hostPath.path and
+# workingDir can't reference an env var, hence a placeholder rather than $(HOME).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -54,15 +60,21 @@ spec:
           imagePullPolicy: Never
           # Same as argus.service's WorkingDirectory: .env and data/ are found by
           # relative path.
-          workingDir: /home/yoch/apps/argus
+          workingDir: __HOME__/apps/argus
           env:
             - name: HOME
-              value: /home/yoch
+              value: __HOME__
+            # The host finds agy through a /usr/local/bin symlink that this image's
+            # /usr/local/bin doesn't have; without this the Antigravity fallback fails
+            # with "executable not found" the first time Claude errors out. $(HOME) is
+            # expanded by Kubernetes from the HOME entry above, which has to come first.
+            - name: ANTIGRAVITY_CLI_COMMAND
+              value: $(HOME)/.local/bin/agy
           securityContext:
-            # uid/gid match the host's yoch so the hostPath is writable and file
-            # ownership doesn't change.
-            runAsUser: 1000
-            runAsGroup: 1000
+            # uid/gid of the account that owns the home, so the hostPath is writable
+            # and file ownership doesn't change.
+            runAsUser: __UID__
+            runAsGroup: __GID__
             allowPrivilegeEscalation: false
             capabilities:
               drop: [ALL]
@@ -74,11 +86,11 @@ spec:
               memory: 512Mi
           volumeMounts:
             - name: home
-              mountPath: /home/yoch
+              mountPath: __HOME__
       volumes:
         - name: home
           hostPath:
-            path: /home/yoch
+            path: __HOME__
             type: Directory
       # No liveness/readiness probes: there is no /healthz yet, so recovery relies on
       # the process exiting and the kubelet restarting it, the same as systemd's
