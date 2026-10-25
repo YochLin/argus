@@ -42,7 +42,7 @@ type configResponse struct {
 // source has to live at the repo root but its build output has to land
 // here). A placeholder index.html is committed so a fresh clone's
 // `go build ./...`/`go test ./...` never depends on Node having run first;
-// CI and deploy.yml both run `npm run build` before the Go build step,
+// CI and the Dockerfile's web stage both run `npm run build` before the Go build step,
 // which overwrites this directory with the real SPA.
 //
 //go:embed all:dist

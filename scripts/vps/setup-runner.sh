@@ -3,9 +3,10 @@
 # Installs and registers a GitHub Actions self-hosted runner on a VPS set up
 # by scripts/vps/setup-env.sh (whether or not the box itself came from
 # scripts/vps/create-vultr-instance.sh), and installs deploy/argus.service
-# as a systemd --user unit. .github/workflows/deploy.yml runs on
-# `runs-on: self-hosted` and does `systemctl --user restart argus`, so both
-# of these need to exist on the box before the first deploy can succeed.
+# as a systemd --user unit. .github/workflows/deploy-k3s.yml runs its deploy job
+# on `runs-on: self-hosted`, so the runner needs to exist on the box before the
+# first deploy can succeed; argus.service is now only the rollback path (see
+# deploy/k8s/argus.yaml), not what the deploy starts.
 #
 # Also installs deploy/shioaji.service (pipx install shioaji + enable --now)
 # when ~/apps/argus/.env already has a real SJ_API_KEY — unlike claude/agy,
@@ -98,6 +99,7 @@ cat <<EOF
      # log in once with your Google Antigravity account (interactive OAuth) —
      # the --sandbox runtime requirement noted in internal/llm/antigravity_provider.go
      # is still unverified against a real install, watch the first fallback call closely
-  5. trigger .github/workflows/deploy.yml (workflow_dispatch) once to build
-     the binary and start the bot for the first time
+  5. trigger .github/workflows/deploy-k3s.yml (workflow_dispatch) once to build
+     the image and start the bot for the first time (needs k3s on the box, see
+     deploy/k8s/argus.yaml)
 EOF

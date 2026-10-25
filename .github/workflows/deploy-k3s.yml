@@ -1,13 +1,21 @@
 name: Deploy (k3s)
 
-# Manual trigger only. This and deploy.yml are two mutually exclusive deploy paths
-# (systemd binary vs. k3s image); don't let this one run on its own until the
-# cutover steps at the top of deploy/k8s/argus.yaml are done. After cutover, change
-# `on:` to the same workflow_run trigger deploy.yml uses and delete deploy.yml.
+# Runs after CI succeeds on main, or by hand. This replaced the systemd deploy (a binary
+# copied to ~/apps/argus plus `systemctl --user restart argus`).
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
 
-# Same group as deploy.yml, so the two paths can't overlap either.
+# In a workflow_run, GITHUB_SHA is the tip of the default branch, not the commit CI just
+# passed (they differ when another merge lands in between), so the image is built from,
+# tagged with and deployed with the CI run's head sha instead.
+env:
+  IMAGE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+# One deploy at a time: a second run queues behind the first instead of overlapping it.
 concurrency:
   group: deploy
   cancel-in-progress: false
@@ -15,11 +23,18 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # A workflow_run fires whatever CI's outcome was; only a green one deploys. A manual
+    # run has no workflow_run and is let through.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.IMAGE_SHA }}
 
       # The frontend and Go builds both happen inside the Dockerfile, so no
       # setup-node/setup-go here. The image goes to GHCR rather than through an Actions
@@ -32,7 +47,7 @@ jobs:
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}"
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}:${IMAGE_SHA}"
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker build --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" -t "$IMAGE" .
           docker push "$IMAGE"
@@ -47,6 +62,7 @@ jobs:
       # Only to get the manifest; the rest of the repo isn't needed.
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.IMAGE_SHA }}
           sparse-checkout: deploy/k8s
 
       # k3s has no docker daemon to pull into, and the k8s.io containerd namespace is
@@ -57,13 +73,13 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           sudo k3s ctr -n k8s.io images pull --user "${GITHUB_ACTOR}:${GHCR_TOKEN}" \
-            "ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}"
+            "ghcr.io/${GITHUB_REPOSITORY,,}:${IMAGE_SHA}"
 
       # The runner reaches k3s through ~/.kube/config. It runs as the user that owns the
       # home the manifest mounts, so the placeholders in it are filled from this account.
       - name: Apply
         run: |
-          sed -e "s|image: argus:dev|image: ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}|" \
+          sed -e "s|image: argus:dev|image: ghcr.io/${GITHUB_REPOSITORY,,}:${IMAGE_SHA}|" \
               -e "s|__HOME__|${HOME}|g" -e "s|__UID__|$(id -u)|g" -e "s|__GID__|$(id -g)|g" \
               deploy/k8s/argus.yaml | kubectl apply -f -
           kubectl rollout status deployment/argus --timeout=180s

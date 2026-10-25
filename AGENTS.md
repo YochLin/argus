@@ -53,8 +53,7 @@ has to stay in *this* binary: `llm.argusMCPServer` spawns a chat session's MCP s
 `os.Executable() mcp`, so a deployed binary that ignored the argument would boot a second copy of the
 whole daemon against the live DB. The old Telegram-first `cmd/bot` is gone — once nothing but the
 long-poll loop was gated on a token, it differed only in what an empty `WEB_ADDR` meant. Deploy units,
-the Dockerfile and `docker-compose.yml` all build `./cmd/server`; the deployed binary is still installed
-as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
+the Dockerfile and `docker-compose.yml` all build `./cmd/server`.
 
 - `internal/data` — `Provider` interface (`GetQuote`/`GetNews`/`GetMarketMovers`), implemented
   independently by `finnhub.go` (primary) and `yahoo.go` (fallback via `Multi`). Separate optional
@@ -522,8 +521,9 @@ as `~/apps/argus/argus`, so `deploy/argus.service` is unchanged.
   (`.env`, `~/.claude`, `~/.local/bin/agy`) into the pod, with `hostNetwork` so Shioaji stays on the host's
   systemd. That manifest is a same-VPS stepping stone, **not** a portable one: leaving this VPS means
   PVC + Secret/ConfigMap, a Shioaji sidecar, and an answer for dashboard read auth (there is none — every GET
-  is open, `WEB_PASSWORD` gates writes only). `deploy.yml` (systemd) and `deploy-k3s.yml` (manual-only) are
-  two mutually exclusive paths; never run both against the same VPS. `docker-compose.yml` is unchanged and
+  is open, `WEB_PASSWORD` gates writes only). `deploy-k3s.yml` (after CI succeeds on main, or by hand) is the one deploy path: the old
+  systemd one (`deploy.yml`) is gone, and `deploy/argus.service` stays on the VPS masked, as a rollback
+  only — never unmask it while the pod runs. `docker-compose.yml` is unchanged and
   still only covers the Telegram/data/DB parts.
 - Migration steps append at the end of `db.migrations` and never get edited/reordered once shipped (see
   `internal/db` above) — this now also applies to `positions`/`transactions`/`net_worth_snapshots`

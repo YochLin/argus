@@ -14,16 +14,18 @@
 # Before the first apply, stop the systemd copy. Running both means Telegram 409s,
 # duplicated cron jobs, and two writers on one SQLite file:
 #   systemctl --user disable --now argus && systemctl --user mask argus
-# Mask rather than just disable: the old deploy.yml still runs
-# `systemctl --user restart argus`, and on a masked unit that fails loudly instead of
-# quietly starting a second copy.
+# Mask rather than just disable: anything that restarts the unit (a stray
+# `systemctl --user start`, a leftover runner job) fails loudly on a masked unit
+# instead of quietly starting a second copy.
 # If you forget: the pod can't bind 127.0.0.1:8090 and exits (app.Run treats a
 # listener failure as fatal), so it crash-loops rather than silently running twice.
 #
 # Rollback:
 #   kubectl delete deployment/argus
 #   systemctl --user unmask argus && systemctl --user start argus
-# The data directory is the same one, so rolling back loses nothing.
+# The data directory is the same one, so rolling back loses nothing. The binary the unit
+# runs (~/apps/argus/argus) is the last one the old systemd deploy installed and is no
+# longer updated, so a rollback runs that older build.
 #
 # The image is built by CI, pushed to GHCR and `k3s ctr images pull`ed onto the node by
 # the deploy job, tagged with the git sha. That pre-pull is why imagePullPolicy is
