@@ -61,9 +61,10 @@ spec:
               value: /home/yoch
             # The host finds agy through a /usr/local/bin symlink that this image's
             # /usr/local/bin doesn't have; without this the Antigravity fallback fails
-            # with "executable not found" the first time Claude errors out.
+            # with "executable not found" the first time Claude errors out. $(HOME) is
+            # expanded by Kubernetes from the HOME entry above, which has to come first.
             - name: ANTIGRAVITY_CLI_COMMAND
-              value: /home/yoch/.local/bin/agy
+              value: $(HOME)/.local/bin/agy
           securityContext:
             # uid/gid match the host's yoch so the hostPath is writable and file
             # ownership doesn't change.
