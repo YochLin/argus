@@ -42,6 +42,10 @@ metadata:
   name: argus
 spec:
   replicas: 1
+  # A pod has to stay Ready this long before it counts as available, so the deploy
+  # workflow's `kubectl rollout status` also catches a process that comes up and dies
+  # within seconds; the readiness probe alone would pass in that window.
+  minReadySeconds: 10
   # Recreate, not RollingUpdate: single-file SQLite plus in-process cron plus
   # Telegram long-polling means even a few seconds of old and new pods coexisting
   # would duplicate reports and fight over getUpdates.
@@ -86,6 +90,15 @@ spec:
             requests:
               cpu: 100m
               memory: 512Mi
+          # The dashboard listener: app.Run exits when it can't bind, so a connect means
+          # the process got through boot. host is spelled out because the dashboard
+          # listens on loopback only (WEB_ADDR=127.0.0.1:8090 in .env, keep the port in
+          # step), and the default, the pod IP, is the node's address under hostNetwork.
+          readinessProbe:
+            tcpSocket:
+              host: 127.0.0.1
+              port: 8090
+            periodSeconds: 5
           volumeMounts:
             - name: home
               mountPath: __HOME__
@@ -94,7 +107,7 @@ spec:
           hostPath:
             path: __HOME__
             type: Directory
-      # No liveness/readiness probes: there is no /healthz yet, so recovery relies on
-      # the process exiting and the kubelet restarting it, the same as systemd's
-      # Restart=on-failure. The Settings page's os.Exit(1) after a save goes through
-      # this path too.
+      # Readiness only, no liveness probe: there is no /healthz yet, and a tcp connect
+      # can't tell a hung process from a busy one, so recovery relies on the process
+      # exiting and the kubelet restarting it, the same as systemd's Restart=on-failure.
+      # The Settings page's os.Exit(1) after a save goes through this path too.
