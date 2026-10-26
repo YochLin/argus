@@ -226,7 +226,11 @@ the Dockerfile and `docker-compose.yml` all build `./cmd/server`.
   independent of Telegram/LLM/DB. `patterns.go`'s `DetectPatterns` (Phase 27 P4b) is the stock chart's 21
   candlestick/volume/gap patterns — textbook heuristics with **no backtest behind them**, so they are
   descriptive only: `/api/chart` returns them as numbers for the chart page and nothing (alerts, the LLM
-  prompt, recommendation ranking) may consume them. `mtf.go`'s 【日週共振穿越】 is the one *watchlist* tag here rather than
+  prompt, recommendation ranking) may consume them. `momentum_breakout.go`'s `DetectMomentumBase`/`ADRPct`
+  are the momentum-breakout watch's base rule, shared by `cmd/strategyscan -mb-backtest` (`breakout.go`)
+  and `service.ScanMomentumBreakout`: measured over five pools/ADR floors and **none passed** (the edge
+  follows whichever group led the market), so it is pushed only because the user asked to watch S&P 500
+  at ADR ≥ 3%, labelled unvalidated, and like the patterns nothing else may consume it. `mtf.go`'s 【日週共振穿越】 is the one *watchlist* tag here rather than
   an entry signal, and the only screen whose annotation depends on the market. Since 2026-09-04 the rule
   is a two-timeframe **angle** gate — daily MA5/MA7 and weekly MA5/MA7 each rising at ≥20°/≥30°, plus
   RSI14 ≤ 80 — where the angle is `atan(MA rise / that timeframe's trailing stdev of bar-to-bar moves)`,
@@ -346,7 +350,10 @@ the Dockerfile and `docker-compose.yml` all build `./cmd/server`.
   only exists for a session that actually traded (US holidays, TW multi-day breaks, and individual-ticker
   halts are then all automatically correct); the `sell_followups` table's `(ticker, exit_date)` row is
   only written once the follow-up message actually sends, so an LLM failure or not-yet-enough history
-  just retries on the next closing snapshot rather than being treated as done. `fill_news.go`'s
+  just retries on the next closing snapshot rather than being treated as done. `momentum.go`'s
+  `runMomentumWatch` rides the end of the US daily report (a `defer`, so an LLM failure doesn't skip it):
+  one message listing S&P 500 bases that broke out so far today and those still waiting, each recorded as
+  a `strategy_alerts` row (channel `momentum`) for the chart. `fill_news.go`'s
   `captureFillNews` (Phase 27 P7, migration 36) runs in a goroutine from `recordBuy`/`recordSell` — the
   one choke point for Telegram, the web trade form, MCP confirmations and Sinopac sync (CSV import bypasses
   it, and its dates are too old to have news anyway) — and keeps the headlines around the fill date, with

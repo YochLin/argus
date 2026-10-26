@@ -88,6 +88,9 @@ func (b *Bot) runDailyReport(ctx context.Context, m market.MarketID) {
 			b.Send(i18n.T(b.lang, i18n.KeyDailyReportMarketClosed))
 			return
 		}
+		// After the report, whichever way it ends (an LLM failure returns
+		// early); see runMomentumWatch.
+		defer b.runMomentumWatch(ctx)
 	} else if b.isTWMarketClosed() {
 		b.Send(i18n.T(b.lang, i18n.KeyTWDailyReportMarketClosed))
 		return

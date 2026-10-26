@@ -35,6 +35,7 @@ describe("stratText / stratKey / stratChannelNote", () => {
   it("names the six screens", () => {
     expect(stratText(dict, "strategy_squeeze_breakout")).toEqual({ code: dict.stratCode_squeeze, name: dict.stratName_squeeze });
     expect(stratText(dict, "strategy_mtf_cross").code).toBe(dict.stratCode_mtf);
+    expect(stratText(dict, "strategy_momentum_breakout")).toEqual({ code: dict.stratCode_mbBreak, name: dict.stratName_mbBreak });
   });
   it("shows an unknown type as itself instead of blank", () => {
     expect(stratText(dict, "strategy_new_thing")).toEqual({ code: "strategy_new_thing", name: "strategy_new_thing" });

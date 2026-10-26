@@ -628,6 +628,9 @@ func main() {
 	// screen-entries bookkeeping. See momentum.go's doc comment.
 	momentumBacktestFlag := flag.Bool("momentum-backtest", false, "Phase 25 §8.5: monthly-rebalanced, equal-weight top-decile 12-1 cross-sectional momentum backtest over the whole -universe pool, plus an equal-weight buy-and-hold control of the same pool — independent of the six screens, default off")
 	momentumCashFlag := flag.Float64("momentum-cash", 100000, "momentum backtest: starting cash")
+	mbBacktestFlag := flag.Bool("mb-backtest", false, "momentum-breakout study (breakout.go): pre-registered breakout entries and their random control over the whole cache, reported per 2021-11 slice — needs US -history-file and -earnings-dates-file, then exits")
+	flag.Float64Var(&mbMinADRPct, "mb-min-adr", mbMinADRPct, "momentum-breakout study: the candidate list's ADR20 floor, %")
+	mbTradesOutFlag := flag.String("mb-trades-out", "", "momentum-breakout study: where the main rule's per-trade rows are written (default: not written)")
 	flag.Parse()
 
 	if *volTargetFlag && !*portfolioBacktestFlag {
@@ -1050,6 +1053,15 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf("%s loaded with %d daily bars.\n", benchTicker, len(benchCandles))
+
+	if *mbBacktestFlag {
+		if m != market.US || cache == nil || earningsDates == nil {
+			fmt.Printf("Error: -mb-backtest needs -market=us, -history-file and -earnings-dates-file\n")
+			os.Exit(1)
+		}
+		runMBBacktest(cache, benchCandles, benchTicker, earningsDates, *mbTradesOutFlag)
+		return
+	}
 
 	// Map benchmark date string -> index
 	benchDateIdx := make(map[string]int)

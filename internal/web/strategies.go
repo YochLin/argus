@@ -28,7 +28,7 @@ type strategyVerdict struct {
 type strategyAlertResponse struct {
 	Type    string `json:"type"`    // signals.Type* ("strategy_squeeze_breakout", ...)
 	Date    string `json:"date"`    // the candle the alert was computed on
-	Channel string `json:"channel"` // watchlist | scan
+	Channel string `json:"channel"` // watchlist | scan | momentum
 	Message string `json:"message"` // the text that was pushed
 	// Verdict is the first recommendation for this ticker within
 	// verdictWindowDays of Date; null when the LLM never weighed in.

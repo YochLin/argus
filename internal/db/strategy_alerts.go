@@ -4,6 +4,7 @@ package db
 const (
 	AlertChannelWatchlist = "watchlist" // watchlist/position ticker, daily report
 	AlertChannelScan      = "scan"      // universe-scan hit
+	AlertChannelMomentum  = "momentum"  // momentum-breakout watch (S&P 500)
 )
 
 // StrategyAlert is one strategy signal that was pushed to the user

@@ -982,4 +982,24 @@ const (
 	// prompt and parser cannot drift (same rule as KeyMarketSummaryMarker).
 	KeyNewsClassifyIntro Key = "news_classify_intro"
 	KeyNewsClassifyTask  Key = "news_classify_task"
+
+	// The momentum-breakout watch (bot.runMomentumWatch, after the US daily
+	// report). Header takes the date; RegimeOn/Off the SPY MA10/MA20 now and
+	// five sessions earlier; Broke one breakout (ticker, price, pivot, open,
+	// open-gap note, today's low, stop %, ADR %, wide-stop note); Setup one
+	// waiting base (ticker, pivot, price, gap to pivot %, ADR %, 3-month %,
+	// base days).
+	KeyMomentumHeader          Key = "momentum_header"
+	KeyMomentumRegimeOn        Key = "momentum_regime_on"
+	KeyMomentumRegimeOff       Key = "momentum_regime_off"
+	KeyMomentumBrokeTitle      Key = "momentum_broke_title"
+	KeyMomentumBroke           Key = "momentum_broke"
+	KeyMomentumOpenBreak       Key = "momentum_open_break"
+	KeyMomentumWideStop        Key = "momentum_wide_stop"
+	KeyMomentumSetupTitle      Key = "momentum_setup_title"
+	KeyMomentumSetup           Key = "momentum_setup"
+	KeyMomentumNone            Key = "momentum_none"
+	KeyMomentumEarningsUnknown Key = "momentum_earnings_unknown"
+	KeyMomentumUnvalidated     Key = "momentum_unvalidated"
+	KeyMomentumFailed          Key = "momentum_failed"
 )

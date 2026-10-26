@@ -275,6 +275,7 @@ export interface Dictionary {
   stratLeg: string;
   stratPushedWatchlist: string;
   stratPushedScan: string;
+  stratPushedMomentum: string;
   stratMsgTitle: string;
   stratVerdictTitle: string;
   stratVerdictNone: string;
@@ -298,6 +299,10 @@ export interface Dictionary {
   stratName_trust: string;
   stratCode_mtf: string;
   stratName_mtf: string;
+  stratCode_mbSetup: string;
+  stratName_mbSetup: string;
+  stratCode_mbBreak: string;
+  stratName_mbBreak: string;
   tkTabPat: string;
   condBody: string;
   condVol: string;
