@@ -16,6 +16,8 @@ const STRAT_KEY: Record<string, string> = {
   strategy_trend_pullback: "pullback",
   strategy_trust_follow: "trust",
   strategy_mtf_cross: "mtf",
+  strategy_momentum_setup: "mbSetup",
+  strategy_momentum_breakout: "mbBreak",
 };
 
 export function stratText(dict: Dictionary, type: string): { code: string; name: string } {
@@ -58,6 +60,7 @@ export function stratValid(dict: Dictionary, type: string, ticker: string): { to
 }
 
 export function stratChannelNote(dict: Dictionary, a: StrategyAlert): string {
-  const t = a.channel === "scan" ? dict.stratPushedScan : dict.stratPushedWatchlist;
+  const t =
+    a.channel === "scan" ? dict.stratPushedScan : a.channel === "momentum" ? dict.stratPushedMomentum : dict.stratPushedWatchlist;
   return t.replace("%s", () => a.date);
 }

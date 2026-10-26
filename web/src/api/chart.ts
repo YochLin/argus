@@ -58,7 +58,7 @@ export interface Chart {
 export interface StrategyAlert {
   type: string;
   date: string;
-  channel: "watchlist" | "scan";
+  channel: "watchlist" | "scan" | "momentum";
   message: string;
   verdict: { date: string; action: "BUY" | "SELL" | "HOLD"; reason: string } | null;
 }
