@@ -293,3 +293,57 @@ func TestBuildChart_RoundMAEMFE(t *testing.T) {
 		t.Errorf("round A = %+v, want HasMAEMFE=false (starts before candles)", a)
 	}
 }
+
+func TestBuildChart_Drops(t *testing.T) {
+	candles := levelBaseCandlesForTest(40)
+	candles[30].Close, candles[31].Close, candles[32].Close = 98, 96, 93
+	for i := 33; i < 40; i++ {
+		candles[i].Close = 94
+	}
+	index := levelBaseCandlesForTest(40)
+	index[32].Close = 99
+	hist := &fakeHistory{candles: map[string][]data.Candle{"AAPL": candles, "SPY": index}}
+	day := func(i int) string { return candles[i].Date.Format("2006-01-02") }
+	database := &fakeDB{priceEvents: []db.PriceEvent{
+		{Ticker: "AAPL", Date: day(31), Summary: "earlier"},
+		{Ticker: "AAPL", Date: day(32), Summary: "latest"},
+	}}
+
+	got, benchmark := buildDrops(database, hist, "AAPL", candles)
+	if benchmark != "SPY" || len(got) != 1 {
+		t.Fatalf("benchmark = %q, drops = %+v", benchmark, got)
+	}
+	d := got[0]
+	if d.Kind != "streak" || d.Start != day(30) || d.End != day(32) || d.PreClose != 100 {
+		t.Errorf("drop = %+v", d)
+	}
+	if d.IndexPct == nil || *d.IndexPct > -0.99 || *d.IndexPct < -1.01 {
+		t.Errorf("IndexPct = %v, want -1", d.IndexPct)
+	}
+	if d.Summary != "latest" {
+		t.Errorf("Summary = %q, want the last writeup inside the drop", d.Summary)
+	}
+}
+
+func TestBuildDrops_DegradesWithoutBenchmarkOrDB(t *testing.T) {
+	candles := levelBaseCandlesForTest(40)
+	candles[30].Close, candles[31].Close, candles[32].Close = 98, 96, 93
+	hist := &fakeHistory{candles: map[string][]data.Candle{"AAPL": candles}, err: errors.New("down")}
+
+	got, _ := buildDrops(nil, hist, "AAPL", candles)
+	if len(got) != 1 || got[0].IndexPct != nil || got[0].Summary != "" {
+		t.Fatalf("drops = %+v", got)
+	}
+}
+
+func TestBuildDrops_SkipsBarStillInSession(t *testing.T) {
+	candles := levelBaseCandlesForTest(10)
+	candles[9].Date = time.Now().AddDate(0, 0, 1) // its session can't have ended
+	candles[9].Open, candles[9].Close = 90, 90
+	candles[9].High, candles[9].Low = 90, 90
+	hist := &fakeHistory{candles: map[string][]data.Candle{"AAPL": candles}}
+
+	if got, _ := buildDrops(nil, hist, "AAPL", candles); len(got) != 0 {
+		t.Fatalf("drops = %+v, want none from a forming bar", got)
+	}
+}

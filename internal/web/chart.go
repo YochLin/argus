@@ -41,6 +41,10 @@ type chartResponse struct {
 	// first (Phase 27 P5). Empty until the bot has pushed one — there is
 	// nothing to backfill from.
 	Strategies []strategyAlertResponse `json:"strategies"`
+	// Drops is the 下跌事件 tab, oldest first; Benchmark is what each drop's
+	// indexPct is measured on (drops.go).
+	Drops     []dropResponse `json:"drops"`
+	Benchmark string         `json:"benchmark"`
 }
 
 // patternResponse is one signals.DetectPatterns hit, dates instead of candle
@@ -118,6 +122,7 @@ func buildChart(database dbReader, quotes quoteGetter, history data.HistoryProvi
 
 		Strategies: buildStrategyAlerts(database, ticker),
 	}
+	resp.Drops, resp.Benchmark = buildDrops(database, history, ticker, candles)
 	for _, c := range candles {
 		resp.Candles = append(resp.Candles, candleResponse{
 			Date:   c.Date.Format("2006-01-02"),

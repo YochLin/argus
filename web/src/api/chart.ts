@@ -49,6 +49,25 @@ export interface Chart {
   rounds: RoundSummary[];
   fills: Fill[]; // oldest first
   strategies?: StrategyAlert[]; // oldest first; absent from a pre-P5 backend
+  drops?: DropEvent[]; // oldest first; absent from an older backend
+  benchmark?: string; // what each drop's indexPct is measured on
+}
+
+// DropEvent is one 下跌事件 from /api/chart: a run of lower closes or a gap
+// down, computed from the candles. summary is the Telegram price event's
+// writeup for a day inside it, "" when none was recorded (the usual case).
+export interface DropEvent {
+  kind: "streak" | "gap";
+  start: string;
+  end: string;
+  pct: number;
+  gapPct: number | null;
+  preClose: number;
+  low: number;
+  recoverBars: number | null;
+  fwd10Pct: number | null;
+  indexPct: number | null;
+  summary: string;
 }
 
 // StrategyAlert is one strategy signal that was pushed to the user (Phase 27

@@ -226,7 +226,7 @@ the Dockerfile and `docker-compose.yml` all build `./cmd/server`.
   independent of Telegram/LLM/DB. `patterns.go`'s `DetectPatterns` (Phase 27 P4b) is the stock chart's 21
   candlestick/volume/gap patterns — textbook heuristics with **no backtest behind them**, so they are
   descriptive only: `/api/chart` returns them as numbers for the chart page and nothing (alerts, the LLM
-  prompt, recommendation ranking) may consume them. `momentum_breakout.go`'s `DetectMomentumBase`/`ADRPct`
+  prompt, recommendation ranking) may consume them. `drops.go`'s `DetectDrops` is the chart page's 下跌事件 tab, ported from the design and on the same footing: unbacktested, descriptive only, and deliberately a separate rule from `CheckPriceEvent` (which decides Telegram pushes). `momentum_breakout.go`'s `DetectMomentumBase`/`ADRPct`
   are the momentum-breakout watch's base rule, shared by `cmd/strategyscan -mb-backtest` (`breakout.go`)
   and `service.ScanMomentumBreakout`: measured over five pools/ADR floors and **none passed** (the edge
   follows whichever group led the market), so it is pushed only because the user asked to watch S&P 500
@@ -422,6 +422,7 @@ the Dockerfile and `docker-compose.yml` all build `./cmd/server`.
   A snapshot of a session still in progress (`service.BarForming`: the last candle, before that
   market's close) comes back `provisional`: the readings are of the latest price and the page shows
   no volume ratio for it — a part-day volume would read as a dried-up market.
+  `drops.go` adds `/api/chart`'s `drops`: `signals.DetectDrops` over the chart's candles per request (a bar still in session is left out), each compared to `service.BenchmarkFor` over the same span, with the `price_events` writeup of a day inside it as `summary` when there is one. Nothing is stored, so any ticker has its whole window; the cause usually reads "not recorded" because a past day's news can't be fetched.
   `strategies.go` (P5) adds `/api/chart`'s `strategies`: the strategy signals that were actually pushed
   (`strategy_alerts`, written by `service.ScanService.RecordStrategyAlerts`), each with the LLM's
   BUY/SELL/HOLD joined from `recommendations` — the first one for that ticker within 4 days of the

@@ -39,6 +39,7 @@ import { defaultFill, fillRows } from "../fillSnapshot";
 import { DEFAULT_PAT_ON, PAT_CATS, PAT_COLORS, patKey, patText, visiblePatterns, type PatOn } from "../patterns";
 import { STRAT_COLOR, stratKey, stratText } from "../strategies";
 import { MA_COLORS, MA_PERIODS, loadMaOn, saveMaOn, sma } from "../ma";
+import { DROP_COLOR, DropPanel, dropKey } from "./DropPanel";
 import { PatternPanel } from "./PatternPanel";
 import { FillSnapshotPanel } from "./FillSnapshotPanel";
 import { TradesTable } from "./TradesTable";
@@ -258,7 +259,7 @@ export function ChartView({
   const [roundMenuOpen, setRoundMenuOpen] = useState(false);
   // railTab is only set by an explicit click / round pick; until then the tab
   // follows the selection (a picked round opens 回合, otherwise 支撐壓力).
-  const [railTab, setRailTab] = useState<"pat" | "lvl" | "round" | "snap" | null>(null);
+  const [railTab, setRailTab] = useState<"pat" | "drop" | "lvl" | "round" | "snap" | null>(null);
   // The fill the 成交快照 tab was last pointed at; null follows the selected round.
   const [snapPick, setSnapPick] = useState<number | null>(null);
   const [wide, setWide] = useState(false);
@@ -269,6 +270,8 @@ export function ChartView({
   const [stratOn, setStratOn] = useState(true);
   const [patHigh, setPatHigh] = useState(true);
   const [selPat, setSelPat] = useState<string | null>(null);
+  const [dropOn, setDropOn] = useState(true);
+  const [selDrop, setSelDrop] = useState<string | null>(null);
   const [roundDetail, setRoundDetail] = useState<RoundDetail | null>(null);
   const [thesisDraft, setThesisDraft] = useState("");
   const [thesisEditing, setThesisEditing] = useState(false);
@@ -306,6 +309,7 @@ export function ChartView({
     setRoundMenuOpen(false);
     setRailTab(null);
     setSelPat(null);
+    setSelDrop(null);
     setSnapPick(null);
     setRoundDetail(null);
     if (!ticker) {
@@ -545,6 +549,9 @@ export function ChartView({
       if (typeof id === "string" && id.startsWith("pat:")) {
         setSelPat(id.slice(4));
         setRailTab("pat");
+      } else if (typeof id === "string" && id.startsWith("drop:")) {
+        setSelDrop(id.slice(5));
+        setRailTab("drop");
       }
     });
 
@@ -589,6 +596,7 @@ export function ChartView({
   const hits = useMemo(() => chart?.patterns ?? [], [chart]);
   const visPats = useMemo(() => visiblePatterns(hits, patOn, patHigh), [hits, patOn, patHigh]);
   const strategies = useMemo(() => chart?.strategies ?? [], [chart]);
+  const drops = useMemo(() => chart?.drops ?? [], [chart]);
   const visStrats = useMemo(() => (stratOn ? strategies : []), [strategies, stratOn]);
   const patCounts = useMemo(() => {
     const n = Object.fromEntries(PAT_CATS.map((k) => [k, 0])) as Record<(typeof PAT_CATS)[number], number>;
@@ -820,8 +828,26 @@ export function ChartView({
         text: isSel ? stratText(dict, a.type).name : "",
       };
     });
-    series.setMarkers([...trades, ...pats, ...strats].sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0)));
-  }, [chart, roundDetail, visPats, visStrats, selPat, dict]);
+    // A drop is an amber arrow on its last bar; only a big or picked one says how much.
+    const dropMarks: SeriesMarker<Time>[] =
+      dropOn || railTab === "drop"
+        ? drops.map((d) => {
+            const isSel = dropKey(d) === selDrop;
+            return {
+              time: d.end as Time,
+              id: `drop:${dropKey(d)}`,
+              position: "aboveBar",
+              shape: "arrowDown",
+              color: isSel ? "#a5b4fc" : DROP_COLOR,
+              size: isSel ? 1.5 : 1,
+              text: isSel || d.pct <= -10 ? `${d.pct.toFixed(1)}%` : "",
+            };
+          })
+        : [];
+    series.setMarkers(
+      [...trades, ...pats, ...strats, ...dropMarks].sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0)),
+    );
+  }, [chart, roundDetail, visPats, visStrats, selPat, drops, dropOn, selDrop, railTab, dict]);
 
   useEffect(() => {
     gapsRef.current?.set(
@@ -849,6 +875,18 @@ export function ChartView({
     const sa = selPat ? strategies.find((a) => stratKey(a) === selPat) : undefined;
     // A pattern shades its own bars (a gap has its band instead); a strategy alert, its one bar.
     const span = sp && sp.cat !== "gap" ? { from: sp.start, to: sp.end } : sa ? { from: sa.date, to: sa.date } : null;
+    // On the 下跌事件 tab the picked drop takes over, from the last bar before it fell.
+    const sd = railTab === "drop" && selDrop ? drops.find((d) => dropKey(d) === selDrop) : undefined;
+    if (sd) {
+      const from = Math.max(chart.candles.findIndex((c) => c.date === sd.start) - 1, 0);
+      const to = chart.candles.findIndex((c) => c.date === sd.end);
+      shade.setData(
+        chart.candles
+          .slice(from, to + 1)
+          .map((c) => ({ time: c.date as Time, value: 1, color: "rgba(245,158,11,0.14)" })),
+      );
+      return;
+    }
     shade.setData(
       span
         ? chart.candles
@@ -856,7 +894,7 @@ export function ChartView({
             .map((c) => ({ time: c.date as Time, value: 1, color: "rgba(129,140,248,0.16)" }))
         : [],
     );
-  }, [chart, hits, strategies, selPat]);
+  }, [chart, hits, strategies, selPat, drops, selDrop, railTab]);
 
   // Picking a pattern that's off-screen (the chart opens on the latest year of
   // two) scrolls it into view, keeping the current zoom.
@@ -864,8 +902,9 @@ export function ChartView({
     const ts = chartRef.current?.timeScale();
     const sp = selPat ? hits.find((p) => patKey(p) === selPat) : undefined;
     const sa = selPat ? strategies.find((a) => stratKey(a) === selPat) : undefined;
-    const from = sp?.start ?? sa?.date;
-    const to = sp?.end ?? sa?.date;
+    const sd = selDrop ? drops.find((d) => dropKey(d) === selDrop) : undefined;
+    const from = sd?.start ?? sp?.start ?? sa?.date;
+    const to = sd?.end ?? sp?.end ?? sa?.date;
     if (!ts || !from || !to || !chart) return;
     const i0 = chart.candles.findIndex((c) => c.date >= from);
     const i1 = chart.candles.findIndex((c) => c.date >= to);
@@ -876,7 +915,7 @@ export function ChartView({
       ts.setVisibleLogicalRange({ from: mid - w / 2, to: mid + w / 2 });
     }
     // Only a change of selection scrolls; a data refresh must not.
-  }, [selPat]);
+  }, [selPat, selDrop]);
 
   if (error) {
     return (
@@ -1130,6 +1169,14 @@ export function ChartView({
               </button>
               <button
                 type="button"
+                className={`tk-tab${tab === "drop" ? " active" : ""}`}
+                onClick={() => setRailTab("drop")}
+              >
+                {dict.dropTab}
+                <span className="tk-tab-count">{drops.length}</span>
+              </button>
+              <button
+                type="button"
                 className={`tk-tab${tab === "lvl" ? " active" : ""}`}
                 onClick={() => setRailTab("lvl")}
               >
@@ -1181,6 +1228,21 @@ export function ChartView({
                 candles={chart.candles}
                 selKey={selPat}
                 onSelect={setSelPat}
+              />
+            )}
+
+            {tab === "drop" && (
+              <DropPanel
+                key={chart.ticker}
+                dict={dict}
+                drops={drops}
+                dates={chart.candles.map((c) => c.date)}
+                benchmark={chart.benchmark ?? ""}
+                currency={currency}
+                selKey={selDrop}
+                onSelect={setSelDrop}
+                showOnChart={dropOn}
+                onToggleShow={() => setDropOn((v) => !v)}
               />
             )}
 
@@ -1567,6 +1629,12 @@ export function ChartView({
                   <span className="pat-leg-gap" />
                   {dict.patLegGap}
                 </span>
+                {dropOn && (
+                  <span className="pv-legend-item">
+                    <span className="pat-leg-drop" />
+                    {dict.dropTab}
+                  </span>
+                )}
               </span>
               <span className="pv-readout" ref={readoutRef} />
             </div>
