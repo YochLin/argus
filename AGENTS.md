@@ -360,7 +360,7 @@ the Dockerfile and `docker-compose.yml` all build `./cmd/server`.
   their links, plus an LLM reading of each (`llm.ClassifyNews`: sentiment / kind / major event). It exists
   because `GetNews` has no date parameter, so a past day's news can never be fetched again. The labels are
   headline-only and descriptive: like the chart patterns, nothing (alerts, ranking, trade decisions) may
-  act on them. `trade_snapshot.go`'s `reviewSnapshots` (P7b) hands every trade review (at close, the
+  act on them. `drop_cause.go`'s `recordDropCauses` rides the tail of `RunClosingSnapshot`: for a watchlist drop first seen that day it keeps the headlines (`drop_causes`, migration 41) and, for the deepest `dropCauseCap` a run, asks `llm.AttributeDrop` for a cause, because a past day's news can't be fetched later. It pushes nothing, and like the chart patterns nothing may act on the result. `trade_snapshot.go`'s `reviewSnapshots` (P7b) hands every trade review (at close, the
   5-day follow-up, `/review`) the entry and exit fill days' indicator readings (`service.SnapshotAt`,
   that day's close only — or, for a fill whose session was still open, the latest price with the
   volume ratio left out) and stored headlines via `llm.ClosedTrade.Snapshots`; it deliberately leaves
@@ -422,7 +422,7 @@ the Dockerfile and `docker-compose.yml` all build `./cmd/server`.
   A snapshot of a session still in progress (`service.BarForming`: the last candle, before that
   market's close) comes back `provisional`: the readings are of the latest price and the page shows
   no volume ratio for it — a part-day volume would read as a dried-up market.
-  `drops.go` adds `/api/chart`'s `drops`: `signals.DetectDrops` over the chart's candles per request (a bar still in session is left out), each compared to `service.BenchmarkFor` over the same span, with the `price_events` writeup of a day inside it as `summary` when there is one. Nothing is stored, so any ticker has its whole window; the cause usually reads "not recorded" because a past day's news can't be fetched.
+  `drops.go` adds `/api/chart`'s `drops`: `signals.DetectDrops` over the chart's candles per request (a bar still in session is left out), each compared to `service.DropIndexFor` (the index itself, ^GSPC/^TWII, not `BenchmarkFor`'s ETF) over the same span, with the `price_events` writeup of a day inside it as `summary` when there is one. Nothing is stored, so any ticker has its whole window; causes and headlines come from `drop_causes`, so older drops and non-watchlist tickers read "not recorded".
   `strategies.go` (P5) adds `/api/chart`'s `strategies`: the strategy signals that were actually pushed
   (`strategy_alerts`, written by `service.ScanService.RecordStrategyAlerts`), each with the LLM's
   BUY/SELL/HOLD joined from `recommendations` — the first one for that ticker within 4 days of the

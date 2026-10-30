@@ -302,7 +302,7 @@ func TestBuildChart_Drops(t *testing.T) {
 	}
 	index := levelBaseCandlesForTest(40)
 	index[32].Close = 99
-	hist := &fakeHistory{candles: map[string][]data.Candle{"AAPL": candles, "SPY": index}}
+	hist := &fakeHistory{candles: map[string][]data.Candle{"AAPL": candles, "^GSPC": index}}
 	day := func(i int) string { return candles[i].Date.Format("2006-01-02") }
 	database := &fakeDB{priceEvents: []db.PriceEvent{
 		{Ticker: "AAPL", Date: day(31), Summary: "earlier"},
@@ -310,7 +310,7 @@ func TestBuildChart_Drops(t *testing.T) {
 	}}
 
 	got, benchmark := buildDrops(database, hist, "AAPL", candles)
-	if benchmark != "SPY" || len(got) != 1 {
+	if benchmark != "^GSPC" || len(got) != 1 {
 		t.Fatalf("benchmark = %q, drops = %+v", benchmark, got)
 	}
 	d := got[0]
@@ -322,6 +322,29 @@ func TestBuildChart_Drops(t *testing.T) {
 	}
 	if d.Summary != "latest" {
 		t.Errorf("Summary = %q, want the last writeup inside the drop", d.Summary)
+	}
+}
+
+func TestBuildDrops_CauseJoinsByRange(t *testing.T) {
+	candles := levelBaseCandlesForTest(40)
+	candles[30].Close, candles[31].Close, candles[32].Close = 98, 96, 93
+	hist := &fakeHistory{candles: map[string][]data.Candle{"AAPL": candles}}
+	day := func(i int) string { return candles[i].Date.Format("2006-01-02") }
+	database := &fakeDB{
+		priceEvents: []db.PriceEvent{{Ticker: "AAPL", Date: day(32), Summary: "telegram writeup"}},
+		dropCauses: []db.DropCause{{
+			Ticker: "AAPL", StartDate: day(31), EndDate: day(31), Cause: "earn", Secondary: []string{"flow"},
+			Confidence: "high", Summary: "Guidance cut.", News: []db.DropNews{{Headline: "Apple cuts guidance"}},
+		}},
+	}
+
+	got, _ := buildDrops(database, hist, "AAPL", candles)
+	if len(got) != 1 {
+		t.Fatalf("drops = %+v", got)
+	}
+	d := got[0]
+	if d.Cause != "earn" || d.Summary != "Guidance cut." || d.LoggedOn != day(31) || len(d.Secondary) != 1 || len(d.News) != 1 {
+		t.Errorf("drop = %+v, want the recorded cause over the price event's writeup", d)
 	}
 }
 

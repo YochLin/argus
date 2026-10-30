@@ -86,7 +86,7 @@ export interface LLMRunInput {
   marketContext?: Record<string, unknown>;
   recentLessons?: LLMPastLesson[];
   isTW?: boolean;
-  // price_event only (internal/bot/pipeline.go recordPriceEventLLMRun)
+  // price_event and drop_cause only (recordPriceEventLLMRun, recordDropCauseLLMRun)
   ticker?: string;
   gapPct?: number;
   changePct?: number;

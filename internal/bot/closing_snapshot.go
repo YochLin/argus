@@ -83,6 +83,9 @@ func (b *Bot) RunClosingSnapshot(ctx context.Context, m market.MarketID) {
 	if m == market.TW {
 		b.syncDCAFundValues(ctx, date)
 	}
+
+	// Last: its LLM calls are the slowest thing here, and nothing waits on them.
+	b.recordDropCauses(ctx, tickers, m, date)
 }
 
 // recordPriceEvents is RunClosingSnapshot's Phase 20 tail step (see

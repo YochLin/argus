@@ -591,7 +591,15 @@ const (
 	KeyPriceEventTriggerSuffix  Key = "price_event_trigger_suffix"
 	KeyPriceEventScaleLine      Key = "price_event_scale_line"
 	KeyPriceEventPromptTask     Key = "price_event_prompt_task"
-	KeyPriceEventResultTitle    Key = "price_event_result_title"
+	// KeyDropCauseTask carries llm.dropCauseFormat through its %s, same as
+	// KeyNewsClassifyTask, so prompt and parser can't drift apart.
+	KeyDropCauseIntro        Key = "drop_cause_intro"
+	KeyDropCauseGapLine      Key = "drop_cause_gap_line"
+	KeyDropCauseIndexLine    Key = "drop_cause_index_line"
+	KeyDropCauseBrokeMA60    Key = "drop_cause_broke_ma60"
+	KeyDropCauseBrokeLow     Key = "drop_cause_broke_low"
+	KeyDropCauseTask         Key = "drop_cause_task"
+	KeyPriceEventResultTitle Key = "price_event_result_title"
 	// KeyPriceEventOverflowLine wraps the whole overflow-notice message
 	// (%s = the joined per-ticker list); KeyPriceEventOverflowTickerLine
 	// formats each of that list's lines individually.

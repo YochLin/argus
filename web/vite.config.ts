@@ -214,20 +214,28 @@ function getMockData(urlStr: string): any {
       candles,
       patterns,
       strategies,
-      benchmark: isTW ? "0050" : "SPY",
+      benchmark: isTW ? "^TWII" : "^GSPC",
       drops: [
         {
           kind: "streak", start: at(380), end: at(384), pct: -12.4, gapPct: -2.9, preClose: candles[379].close,
           low: candles[384].low, recoverBars: 16, fwd10Pct: 5.2, indexPct: -8.1,
           summary: "美國 CPI 高於預期，降息預期降溫，科技股普遍走弱。",
+          cause: "macro", secondary: ["sector"], confidence: "high", loggedOn: at(382),
+          news: [
+            { headline: "CPI 高於預期 主要指數齊跌", source: "Reuters", url: "https://example.com/a", publishedAt: "2026-02-12T13:40:00Z" },
+            { headline: "10 年期美債殖利率升破 4.6%", source: "Bloomberg", url: "", publishedAt: "" },
+          ],
         },
         {
           kind: "streak", start: at(440), end: at(443), pct: -8.4, gapPct: null, preClose: candles[439].close,
-          low: candles[443].low, recoverBars: null, fwd10Pct: -1.3, indexPct: -1.1, summary: "",
+          low: candles[443].low, recoverBars: null, fwd10Pct: -1.3, indexPct: -1.1, summary: "", cause: "",
+          secondary: [], confidence: "", loggedOn: at(443),
+          news: [{ headline: "同業示警下半年需求轉弱", source: "CNBC", url: "", publishedAt: "" }],
         },
         {
           kind: "gap", start: at(495), end: at(495), pct: -3.6, gapPct: -3.1, preClose: candles[494].close,
-          low: candles[495].low, recoverBars: null, fwd10Pct: null, indexPct: null, summary: "",
+          low: candles[495].low, recoverBars: null, fwd10Pct: null, indexPct: null, summary: "", cause: "",
+          secondary: [], confidence: "", loggedOn: "", news: [],
         },
       ],
       levels: [

@@ -50,12 +50,13 @@ export interface Chart {
   fills: Fill[]; // oldest first
   strategies?: StrategyAlert[]; // oldest first; absent from a pre-P5 backend
   drops?: DropEvent[]; // oldest first; absent from an older backend
-  benchmark?: string; // what each drop's indexPct is measured on
+  benchmark?: string; // the index each drop's indexPct is measured on: ^GSPC or ^TWII
 }
 
 // DropEvent is one 下跌事件 from /api/chart: a run of lower closes or a gap
-// down, computed from the candles. summary is the Telegram price event's
-// writeup for a day inside it, "" when none was recorded (the usual case).
+// down, computed from the candles. cause down to news were recorded when a
+// watchlist drop was first seen; older drops and other tickers have none.
+// summary falls back to the Telegram price event's writeup, "" if neither.
 export interface DropEvent {
   kind: "streak" | "gap";
   start: string;
@@ -68,7 +69,14 @@ export interface DropEvent {
   fwd10Pct: number | null;
   indexPct: number | null;
   summary: string;
+  cause: DropCause | "";
+  secondary: DropCause[];
+  confidence: "high" | "mid" | "";
+  loggedOn: string; // the bar the cause was recorded on, "" if none was
+  news: { headline: string; source: string; url: string; publishedAt: string }[];
 }
+
+export type DropCause = "earn" | "macro" | "sector" | "flow" | "corp" | "tech";
 
 // StrategyAlert is one strategy signal that was pushed to the user (Phase 27
 // P5). type is the signal type ("strategy_squeeze_breakout", ...), date the
