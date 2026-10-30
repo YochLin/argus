@@ -70,6 +70,8 @@ type dbReader interface {
 	// headlines (with links and LLM labels) stored when a fill on that day was
 	// recorded (Phase 27 P7a).
 	FillNewsFor(ticker, fillDate string) ([]db.FillNews, error)
+	// DropCausesFor backs drops.go's cause and headlines.
+	DropCausesFor(ticker string) ([]db.DropCause, error)
 	// StrategyAlertsFor and GetRecommendationsForTicker back strategies.go —
 	// the chart's strategy markers, each with the LLM's call on it (Phase 27 P5).
 	StrategyAlertsFor(ticker string) ([]db.StrategyAlert, error)

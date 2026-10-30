@@ -56,9 +56,9 @@ function Badge({ d, days, big }: { d: DropEvent; days: number; big?: boolean }) 
 }
 
 // The rail's 下跌事件 tab: the picked drop on top, the filterable list below.
-// The numbers are computed from the candles for any ticker. The cause section
-// carries the Telegram event's writeup when there is one, and says so when
-// there isn't: a past day's news can't be fetched, so most drops have none.
+// The numbers are computed from the candles for any ticker. Causes and news
+// exist only for watchlist drops seen after close (a past day's news can't be
+// fetched), so a drop without them says so.
 export function DropPanel({
   dict,
   drops,
@@ -120,9 +120,19 @@ export function DropPanel({
         <div className="drop-cause">
           <span className="pat-sub">{dict.dropCause}</span>
           {sel.summary ? (
-            <span className="drop-cause-text">{sel.summary}</span>
+            <span className={sel.cause ? "drop-cause-title" : "drop-cause-text"}>{sel.summary}</span>
           ) : (
-            <span className="drop-cause-none">{dict.dropNoCause}</span>
+            <span className="drop-cause-none">{sel.news.length > 0 ? dict.dropNoCauseNews : dict.dropNoCause}</span>
+          )}
+          {sel.cause && (
+            <div className="drop-tags">
+              <span className="drop-tag primary">{dict[`dropCat_${sel.cause}`]}</span>
+              {sel.secondary.map((c) => (
+                <span key={c} className="drop-tag">
+                  {dict[`dropCat_${c}`]}
+                </span>
+              ))}
+            </div>
           )}
         </div>
         {sel.indexPct !== null && (
@@ -142,7 +152,38 @@ export function DropPanel({
         <span className="drop-range">
           {fill(dict.dropPriceNote, `${currency}${sel.preClose.toFixed(2)}`, `${currency}${sel.low.toFixed(2)}`)}
         </span>
-        {sel.summary && <div className="pat-disclaimer">{dict.dropDisclaimer}</div>}
+        {sel.news.length > 0 && (
+          <div>
+            <div className="pat-sub drop-news-title">{dict.dropEvidence}</div>
+            <div className="drop-news">
+              {sel.news.map((n) => (
+                <div key={n.headline} className="drop-news-row">
+                  {n.url ? (
+                    <a className="drop-news-head" href={n.url} target="_blank" rel="noreferrer">
+                      {n.headline}
+                    </a>
+                  ) : (
+                    <span className="drop-news-head">{n.headline}</span>
+                  )}
+                  <span className="drop-news-meta">
+                    <span>{n.source}</span>
+                    {n.publishedAt && <span>{n.publishedAt.slice(5, 16).replace("T", " ")}</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {(sel.summary || sel.news.length > 0) && (
+          <div className="pat-disclaimer">
+            {sel.confidence && (
+              <div className="drop-conf">
+                {fill(dict.dropConfidence, sel.confidence === "high" ? dict.dropConfHigh : dict.dropConfMid, sel.loggedOn)}
+              </div>
+            )}
+            {dict.dropDisclaimer}
+          </div>
+        )}
       </div>
     );
   }
@@ -182,9 +223,12 @@ export function DropPanel({
               >
                 <Badge d={d} days={barsOf(d, dates)} />
                 <div className="drop-row-body">
-                  <span className={d.summary ? "drop-row-summary" : "drop-row-summary none"}>
-                    {d.summary || dict.dropNoCauseShort}
-                  </span>
+                  <div className="drop-row-line">
+                    {d.cause && <span className="drop-row-cause">{dict[`dropCat_${d.cause}`]}</span>}
+                    <span className={d.summary ? "drop-row-summary" : "drop-row-summary none"}>
+                      {d.summary || dict.dropNoCauseShort}
+                    </span>
+                  </div>
                   <div className="drop-row-meta">
                     <span className="drop-range">
                       {d.start === d.end ? d.end.slice(2) : `${d.start.slice(2)} → ${d.end.slice(5)}`}

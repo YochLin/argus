@@ -867,4 +867,24 @@ var migrations = []string{
 		created_at  TEXT NOT NULL
 	);
 	`,
+	// 41: the 下跌事件 tab's cause and headlines, kept when a watchlist drop is
+	// first seen because a past day's news can't be fetched. The drop itself
+	// isn't stored (signals.DetectDrops recomputes it); start_date is how a
+	// row finds it. secondary is comma-joined, news a JSON array.
+	`
+	CREATE TABLE IF NOT EXISTS drop_causes (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		ticker     TEXT NOT NULL,
+		market     TEXT NOT NULL,
+		start_date TEXT NOT NULL,
+		end_date   TEXT NOT NULL,
+		cause      TEXT NOT NULL DEFAULT '',
+		secondary  TEXT NOT NULL DEFAULT '',
+		confidence TEXT NOT NULL DEFAULT '',
+		summary    TEXT NOT NULL DEFAULT '',
+		news       TEXT NOT NULL DEFAULT '[]',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE (ticker, start_date)
+	);
+	`,
 }

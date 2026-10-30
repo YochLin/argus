@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"argus/internal/data"
+	"argus/internal/db"
 	"argus/internal/logger"
 	"argus/internal/market"
 	"argus/internal/service"
@@ -11,11 +12,12 @@ import (
 )
 
 // dropResponse is one signals.DetectDrops hit, dates instead of candle
-// indices. Everything but Summary is computed per request from the candles, so
-// any ticker has its whole chart window. Summary is the Telegram price event's
-// LLM writeup for a day inside the drop, "" when there is none — the usual case,
-// because a past day's news can't be fetched (data.Provider.GetNews takes no
-// date) and price_events runs on different thresholds.
+// indices. The numbers are computed per request from the candles, so any
+// ticker has its whole chart window. Cause down to News come from drop_causes,
+// recorded only for a watchlist ticker from the day this shipped: a past day's
+// news can't be fetched (data.Provider.GetNews takes no date). Summary falls
+// back to the Telegram price event's writeup for a day inside the drop, and
+// is "" when there is neither.
 type dropResponse struct {
 	Kind        string   `json:"kind"` // "streak"/"gap"
 	Start       string   `json:"start"`
@@ -28,24 +30,37 @@ type dropResponse struct {
 	Fwd10Pct    *float64 `json:"fwd10Pct"`
 	IndexPct    *float64 `json:"indexPct"` // benchmark over the same span; null if it has no bars for it
 	Summary     string   `json:"summary"`
+
+	Cause      string             `json:"cause"` // "" | "earn" | "macro" | "sector" | "flow" | "corp"
+	Secondary  []string           `json:"secondary"`
+	Confidence string             `json:"confidence"` // "" | "high" | "mid"
+	LoggedOn   string             `json:"loggedOn"`   // the bar the cause was recorded on
+	News       []dropNewsResponse `json:"news"`
+}
+
+type dropNewsResponse struct {
+	Headline    string `json:"headline"`
+	Source      string `json:"source"`
+	URL         string `json:"url"`
+	PublishedAt string `json:"publishedAt"`
 }
 
 // buildDrops assembles /api/chart's drops and the benchmark their IndexPct is
 // measured on. A bar still in session is left out: the events say "after the
 // close", and a part-day close could make one that's gone by the end of the day.
 func buildDrops(database dbReader, history data.HistoryProvider, ticker string, candles []data.Candle) ([]dropResponse, string) {
-	benchmark := service.BenchmarkFor(market.Of(ticker))
 	if n := len(candles); n > 0 && service.BarForming(candles, n-1, ticker, time.Now()) {
 		candles = candles[:n-1]
 	}
 	drops := signals.DetectDrops(candles)
 	out := make([]dropResponse, 0, len(drops))
 	if len(drops) == 0 {
-		return out, benchmark
+		return out, service.BenchmarkFor(market.Of(ticker))
 	}
 
-	indexCloses := benchmarkCloses(history, benchmark, ticker, candles)
+	benchmark, indexCloses := service.BenchmarkCloses(history, ticker, candles)
 	summaries := priceEventSummaries(database, ticker)
+	causes := dropCauses(database, ticker)
 	for _, d := range drops {
 		r := dropResponse{
 			Kind:        d.Kind,
@@ -57,12 +72,17 @@ func buildDrops(database dbReader, history data.HistoryProvider, ticker string, 
 			Low:         d.Low,
 			RecoverBars: d.RecoverBars,
 			Fwd10Pct:    d.Fwd10Pct,
+			IndexPct:    service.DropIndexPct(indexCloses, candles, d),
+			Secondary:   []string{},
+			News:        []dropNewsResponse{},
 		}
-		from, ok1 := indexCloses[candles[d.Start-1].Date.Format("2006-01-02")]
-		to, ok2 := indexCloses[r.End]
-		if ok1 && ok2 && from > 0 {
-			pct := (to/from - 1) * 100
-			r.IndexPct = &pct
+		// By range, not equal start: a gap recorded on one day can turn out to
+		// be the second bar of a longer run.
+		for _, c := range causes {
+			if c.StartDate >= r.Start && c.StartDate <= r.End {
+				r.attach(c)
+				break
+			}
 		}
 		// Latest day first, so a streak reads its last writeup.
 		for i := d.End; i >= d.Start && r.Summary == ""; i-- {
@@ -73,22 +93,26 @@ func buildDrops(database dbReader, history data.HistoryProvider, ticker string, 
 	return out, benchmark
 }
 
-// benchmarkCloses maps date to the benchmark's close, nil if it can't be had:
-// the drops still stand without their market comparison.
-func benchmarkCloses(history data.HistoryProvider, benchmark, ticker string, candles []data.Candle) map[string]float64 {
-	bars := candles
-	if ticker != benchmark {
-		var err error
-		if bars, err = history.GetHistory(benchmark, chartHistoryRange); err != nil {
-			logger.Errorf("web: drops for %s: benchmark %s unavailable: %v", ticker, benchmark, err)
-			return nil
-		}
+func (r *dropResponse) attach(c db.DropCause) {
+	r.Cause, r.Confidence, r.Summary, r.LoggedOn = c.Cause, c.Confidence, c.Summary, c.EndDate
+	if c.Secondary != nil {
+		r.Secondary = c.Secondary
 	}
-	closes := make(map[string]float64, len(bars))
-	for _, c := range bars {
-		closes[c.Date.Format("2006-01-02")] = c.Close
+	for _, n := range c.News {
+		r.News = append(r.News, dropNewsResponse(n))
 	}
-	return closes
+}
+
+func dropCauses(database dbReader, ticker string) []db.DropCause {
+	if database == nil {
+		return nil
+	}
+	causes, err := database.DropCausesFor(ticker)
+	if err != nil {
+		logger.Errorf("web: drops for %s: causes: %v", ticker, err)
+		return nil
+	}
+	return causes
 }
 
 func priceEventSummaries(database dbReader, ticker string) map[string]string {

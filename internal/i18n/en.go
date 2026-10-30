@@ -523,6 +523,19 @@ Keep the reply concise — under 300 words total.
 	KeyTradeFollowupVerdictGoodExit:  "Good exit / correct stop-loss",
 	KeyTradeFollowupVerdictNeutral:   "Exit timing was roughly a wash",
 
+	KeyDropCauseIntro:     "*%s* fell for %d consecutive session(s), %+.1f%% in total (for a single-day gap, that day's change). Work out the main cause of the drop.\n\n",
+	KeyDropCauseGapLine:   "Opening gap: %+.1f%%\n",
+	KeyDropCauseIndexLine: "%s over the same span: %+.1f%%\n",
+	KeyDropCauseTask: `
+Judge only from the numbers and news above; add nothing the news doesn't say. Categories: earn (earnings or outlook), macro (economy or broad market), sector (industry or peers), flow (institutional selling, positioning), corp (company events: share offerings, insider sales, lawsuits).
+- If the news doesn't explain the drop, set CAUSE to unknown rather than guessing.
+- Use macro only if the index also fell hard and the news shows nothing stock-specific.
+- Set CONFIDENCE to high only if the news states the cause directly, otherwise mid.
+- SUMMARY is one sentence of at most 20 words.
+
+Reply in exactly this format and nothing else:
+%s
+`,
 	KeyPriceEventPromptIntro:    "You are a stock analyst. *%s* triggered a price event worth recording today — based on the data below, summarize what happened.\n\n",
 	KeyPriceEventGapLine:        "Opening gap: %+.1f%% (vs prior close)%s\n",
 	KeyPriceEventChangeLine:     "Day's change: %+.1f%% (close vs prior close)%s\n",

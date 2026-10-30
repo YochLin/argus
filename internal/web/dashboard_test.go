@@ -62,6 +62,7 @@ type fakeDB struct {
 	llmRunByID map[int64]db.LLMRunDetail
 	// blockedSources backs ListBlockedNewsSources for newssources_test.go.
 	blockedSources []db.BlockedNewsSource
+	dropCauses     []db.DropCause
 	// priceEvents backs GetRecentPriceEvents/GetPriceEventsForTicker for
 	// events_test.go.
 	priceEvents []db.PriceEvent
@@ -205,6 +206,9 @@ func (f *fakeDB) GetRecentPriceEvents(limit int) ([]db.PriceEvent, error) {
 		return f.priceEvents[:limit], nil
 	}
 	return f.priceEvents, nil
+}
+func (f *fakeDB) DropCausesFor(ticker string) ([]db.DropCause, error) {
+	return f.dropCauses, nil
 }
 func (f *fakeDB) GetPriceEventsForTicker(ticker string, limit int) ([]db.PriceEvent, error) {
 	var out []db.PriceEvent

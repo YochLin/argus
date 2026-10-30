@@ -508,6 +508,19 @@ var zhMessages = map[Key]string{
 	KeyTradeFollowupVerdictGoodExit:  "賣在相對高點／止損正確",
 	KeyTradeFollowupVerdictNeutral:   "出場時點差不多",
 
+	KeyDropCauseIntro:     "*%s* 連續 %d 個交易日下跌，累計 %+.1f%%（單日跳空時為當日漲跌）。請判斷下跌的主要原因。\n\n",
+	KeyDropCauseGapLine:   "開盤跳空：%+.1f%%\n",
+	KeyDropCauseIndexLine: "同期 %s：%+.1f%%\n",
+	KeyDropCauseTask: `
+只根據上方的數字與新聞判斷，不要補充新聞裡沒有的資訊。類別：earn 財報或展望、macro 總經或大盤、sector 產業或同業、flow 籌碼或法人賣超、corp 公司事件（增資、大股東賣股、訴訟等）。
+- 新聞沒有說明下跌原因時，CAUSE 填 unknown，不要猜測。
+- 大盤同期也大跌且新聞沒有個股因素時，才可填 macro。
+- CONFIDENCE 只有新聞直接寫出原因時才填 high，其餘填 mid。
+- SUMMARY 用繁體中文一句話，40 字以內。
+
+嚴格依下列格式回覆，不要有其他文字：
+%s
+`,
 	KeyPriceEventPromptIntro:    "你是一位股票分析師，*%s* 今天觸發了值得記錄的價格事件，請根據以下資料整理這次事件的情況說明。\n\n",
 	KeyPriceEventGapLine:        "開盤跳空：%+.1f%%（相對前收）%s\n",
 	KeyPriceEventChangeLine:     "當日漲跌：%+.1f%%（收盤相對前收）%s\n",

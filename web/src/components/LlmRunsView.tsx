@@ -80,6 +80,7 @@ export function runInput(input: LLMRunInput): RunInput {
 export function runKindLabel(kind: string, dict: Dictionary): string {
   if (kind === "recommend") return dict.llmRunRecommend;
   if (kind === "price_event") return dict.llmRunPriceEvent;
+  if (kind === "drop_cause") return dict.llmRunDropCause;
   return dict.llmRunDailyReport;
 }
 
@@ -414,7 +415,7 @@ function RunDetail({
   const input = runInput(detail.input);
   const news = allNews(input);
   const stocks = [...input.watchlist, ...input.candidates];
-  const event = detail.kind === "price_event" ? detail.input : null;
+  const event = detail.kind === "price_event" || detail.kind === "drop_cause" ? detail.input : null;
   const dupes = duplicateTitleSet(news);
 
   return (

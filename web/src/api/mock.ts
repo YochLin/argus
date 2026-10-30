@@ -265,11 +265,13 @@ export function getMockData(url: string): any {
           kind: "streak", start: candles[60].date, end: candles[63].date, pct: -8.4, gapPct: -2.9,
           preClose: candles[59].close, low: candles[63].low, recoverBars: 11, fwd10Pct: 5.2, indexPct: -1.1,
           summary: "法說會下修展望，外資連續賣超。",
+          cause: "earn", secondary: ["flow"], confidence: "high", loggedOn: candles[63].date,
+          news: [{ headline: "法說會下修展望", source: "經濟日報", url: "https://example.com", publishedAt: "2026-05-02T07:30:00Z" }],
         },
         {
           kind: "gap", start: candles[100].date, end: candles[100].date, pct: -3.6, gapPct: -3.1,
           preClose: candles[99].close, low: candles[100].low, recoverBars: null, fwd10Pct: null, indexPct: -2.4,
-          summary: "",
+          summary: "", cause: "", secondary: [], confidence: "", loggedOn: "", news: [],
         },
       ],
       position: {
