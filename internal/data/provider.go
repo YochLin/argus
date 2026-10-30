@@ -151,14 +151,26 @@ func (m *Multi) GetQuote(ticker string) (*Quote, error) {
 	return nil, lastErr
 }
 
+// GetNews moves on from an empty result as well as an error: Finnhub answers
+// a thinly covered ticker with an empty list and a nil error, and stopping
+// there would leave Yahoo, which often does have coverage, unasked. An empty
+// answer from any source still beats an error from a later one.
 func (m *Multi) GetNews(ticker string, limit int) ([]NewsItem, error) {
 	var lastErr error
+	answered := false
 	for _, p := range m.providers {
 		items, err := p.GetNews(ticker, limit)
-		if err == nil {
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if len(items) > 0 {
 			return items, nil
 		}
-		lastErr = err
+		answered = true
+	}
+	if answered {
+		return nil, nil
 	}
 	return nil, lastErr
 }

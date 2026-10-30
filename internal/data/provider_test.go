@@ -95,6 +95,22 @@ func TestMultiGetNews(t *testing.T) {
 	if len(items) != 1 || items[0].Headline != "ok" {
 		t.Errorf("GetNews() = %+v, want fallback's items", items)
 	}
+
+	t.Run("empty result falls through", func(t *testing.T) {
+		m := NewMulti(&fakeProvider{name: "primary"}, fallback)
+		items, err := m.GetNews("LNTH", 5)
+		if err != nil || len(items) != 1 {
+			t.Errorf("GetNews() = %+v, %v, want fallback's items", items, err)
+		}
+	})
+
+	t.Run("empty beats a later error", func(t *testing.T) {
+		m := NewMulti(&fakeProvider{name: "primary"}, primary)
+		items, err := m.GetNews("LNTH", 5)
+		if err != nil || len(items) != 0 {
+			t.Errorf("GetNews() = %+v, %v, want empty and no error", items, err)
+		}
+	})
 }
 
 func TestMultiGetMarketMovers(t *testing.T) {
