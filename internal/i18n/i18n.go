@@ -596,6 +596,8 @@ const (
 	KeyDropCauseIntro        Key = "drop_cause_intro"
 	KeyDropCauseGapLine      Key = "drop_cause_gap_line"
 	KeyDropCauseIndexLine    Key = "drop_cause_index_line"
+	KeyDropCauseBrokeMA60    Key = "drop_cause_broke_ma60"
+	KeyDropCauseBrokeLow     Key = "drop_cause_broke_low"
 	KeyDropCauseTask         Key = "drop_cause_task"
 	KeyPriceEventResultTitle Key = "price_event_result_title"
 	// KeyPriceEventOverflowLine wraps the whole overflow-notice message

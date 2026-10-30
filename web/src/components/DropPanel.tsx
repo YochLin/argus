@@ -89,7 +89,7 @@ export function DropPanel({
     const stats: { label: string; value: string; cls: string }[] = [
       { label: dict.dropStatPct, value: spct(sel.pct), cls: tone(sel.pct) },
       {
-        label: fill(dict.dropStatIndex, benchmark),
+        label: fill(dict.dropStatIndex, benchmark === "^TWII" ? dict.dropIndexTW : dict.dropIndexUS),
         value: sel.indexPct === null ? "—" : spct(sel.indexPct),
         cls: sel.indexPct === null ? "drop-dim" : tone(sel.indexPct),
       },

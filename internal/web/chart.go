@@ -41,8 +41,8 @@ type chartResponse struct {
 	// first (Phase 27 P5). Empty until the bot has pushed one — there is
 	// nothing to backfill from.
 	Strategies []strategyAlertResponse `json:"strategies"`
-	// Drops is the 下跌事件 tab, oldest first; Benchmark is what each drop's
-	// indexPct is measured on (drops.go).
+	// Drops is the 下跌事件 tab, oldest first; Benchmark is the index (^GSPC or
+	// ^TWII) each drop's indexPct is measured on (drops.go).
 	Drops     []dropResponse `json:"drops"`
 	Benchmark string         `json:"benchmark"`
 }

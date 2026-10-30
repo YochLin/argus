@@ -302,7 +302,7 @@ func TestBuildChart_Drops(t *testing.T) {
 	}
 	index := levelBaseCandlesForTest(40)
 	index[32].Close = 99
-	hist := &fakeHistory{candles: map[string][]data.Candle{"AAPL": candles, "SPY": index}}
+	hist := &fakeHistory{candles: map[string][]data.Candle{"AAPL": candles, "^GSPC": index}}
 	day := func(i int) string { return candles[i].Date.Format("2006-01-02") }
 	database := &fakeDB{priceEvents: []db.PriceEvent{
 		{Ticker: "AAPL", Date: day(31), Summary: "earlier"},
@@ -310,7 +310,7 @@ func TestBuildChart_Drops(t *testing.T) {
 	}}
 
 	got, benchmark := buildDrops(database, hist, "AAPL", candles)
-	if benchmark != "SPY" || len(got) != 1 {
+	if benchmark != "^GSPC" || len(got) != 1 {
 		t.Fatalf("benchmark = %q, drops = %+v", benchmark, got)
 	}
 	d := got[0]

@@ -511,10 +511,13 @@ var zhMessages = map[Key]string{
 	KeyDropCauseIntro:     "*%s* 連續 %d 個交易日下跌，累計 %+.1f%%（單日跳空時為當日漲跌）。請判斷下跌的主要原因。\n\n",
 	KeyDropCauseGapLine:   "開盤跳空：%+.1f%%\n",
 	KeyDropCauseIndexLine: "同期 %s：%+.1f%%\n",
+	KeyDropCauseBrokeMA60: "技術面：收盤跌破 60 日均線\n",
+	KeyDropCauseBrokeLow:  "技術面：收盤跌破前 20 日低點\n",
 	KeyDropCauseTask: `
-只根據上方的數字與新聞判斷，不要補充新聞裡沒有的資訊。類別：earn 財報或展望、macro 總經或大盤、sector 產業或同業、flow 籌碼或法人賣超、corp 公司事件（增資、大股東賣股、訴訟等）。
+只根據上方的數字與新聞判斷，不要補充新聞裡沒有的資訊。類別：earn 財報或展望、macro 總經或大盤、sector 產業或同業、flow 籌碼或法人賣超、corp 公司事件（增資、大股東賣股、訴訟等）、tech 技術面（跌破支撐引發賣壓）。
 - 新聞沒有說明下跌原因時，CAUSE 填 unknown，不要猜測。
 - 大盤同期也大跌且新聞沒有個股因素時，才可填 macro。
+- 只有上方列出技術面事實時才可填 tech；新聞另有原因時放在 ALSO。
 - CONFIDENCE 只有新聞直接寫出原因時才填 high，其餘填 mid。
 - SUMMARY 用繁體中文一句話，40 字以內。
 

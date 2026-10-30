@@ -310,6 +310,9 @@ export interface Dictionary {
   dropCat_sector: string;
   dropCat_flow: string;
   dropCat_corp: string;
+  dropCat_tech: string;
+  dropIndexTW: string;
+  dropIndexUS: string;
   dropEvidence: string;
   dropNoCauseNews: string;
   dropConfidence: string;

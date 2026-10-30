@@ -21,8 +21,9 @@ const (
 	// session per market, more than 5 on 7% of sessions, up to 19. Those are
 	// market-wide days, where the causes repeat, so the tail costs little.
 	dropCauseCap = 5
-	// dropCauseHistory reaches back past any run of lower closes.
-	dropCauseHistory = "3mo"
+	// dropCauseHistory reaches back past any run of lower closes, plus the
+	// 60 bars service.DropTechBreaks looks at before it.
+	dropCauseHistory = "6mo"
 )
 
 // recordDropCauses keeps why a watchlist ticker's drop happened while that can
@@ -108,11 +109,12 @@ func (b *Bot) dropRecorded(ticker string, candles []data.Candle, d signals.DropE
 }
 
 func (b *Bot) attributeDrop(ctx context.Context, ticker string, candles []data.Candle, d signals.DropEvent, m market.MarketID, news []data.NewsItem) llm.DropAttribution {
-	benchmark, closes := service.BenchmarkCloses(b.history, ticker, candles)
+	index, closes := service.DropIndexCloses(b.history, ticker)
 	facts := llm.DropFacts{
 		Ticker: ticker, Bars: d.End - d.Start + 1, Pct: d.Pct, GapPct: d.GapPct,
-		IndexPct: service.DropIndexPct(closes, candles, d), Benchmark: benchmark,
+		IndexPct: service.DropIndexPct(closes, candles, d), Benchmark: index,
 	}
+	facts.BrokeMA60, facts.BrokeLow = service.DropTechBreaks(candles, d)
 	a, raw, model, latencyMs, err := b.llm.AttributeDrop(ctx, facts, news)
 	b.recordDropCauseLLMRun(facts, m, news, raw, model, latencyMs)
 	if err != nil {

@@ -214,7 +214,7 @@ function getMockData(urlStr: string): any {
       candles,
       patterns,
       strategies,
-      benchmark: isTW ? "0050" : "SPY",
+      benchmark: isTW ? "^TWII" : "^GSPC",
       drops: [
         {
           kind: "streak", start: at(380), end: at(384), pct: -12.4, gapPct: -2.9, preClose: candles[379].close,

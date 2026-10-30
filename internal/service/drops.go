@@ -10,24 +10,51 @@ import (
 // dropBenchmarkRange is enough for any drop on the 2y chart.
 const dropBenchmarkRange = "2y"
 
-// BenchmarkCloses maps date to the close of ticker's market benchmark, nil if
-// it can't be had: a drop still stands without its market comparison. candles
-// are ticker's own, reused when ticker is the benchmark.
-func BenchmarkCloses(history data.HistoryProvider, ticker string, candles []data.Candle) (string, map[string]float64) {
-	benchmark := BenchmarkFor(market.Of(ticker))
-	bars := candles
-	if ticker != benchmark {
-		var err error
-		if bars, err = history.GetHistory(benchmark, dropBenchmarkRange); err != nil {
-			logger.Errorf("drops %s: benchmark %s unavailable: %v", ticker, benchmark, err)
-			return benchmark, nil
-		}
+// DropIndexFor is the index a drop is compared with. It is the index itself
+// rather than BenchmarkFor's ETF: "did the market fall too" is a question
+// about the market, and a dividend-paying ETF's ex-date would read as a fall.
+func DropIndexFor(m market.MarketID) string {
+	if m == market.TW {
+		return "^TWII"
+	}
+	return "^GSPC"
+}
+
+// DropIndexCloses maps date to the close of ticker's market index, nil if it
+// can't be had: a drop still stands without its market comparison.
+func DropIndexCloses(history data.HistoryProvider, ticker string) (string, map[string]float64) {
+	index := DropIndexFor(market.Of(ticker))
+	bars, err := history.GetHistory(index, dropBenchmarkRange)
+	if err != nil {
+		logger.Errorf("drops %s: index %s unavailable: %v", ticker, index, err)
+		return index, nil
 	}
 	closes := make(map[string]float64, len(bars))
 	for _, c := range bars {
 		closes[c.Date.Format("2006-01-02")] = c.Close
 	}
-	return benchmark, closes
+	return index, closes
+}
+
+// DropTechBreaks says which chart levels d's last close fell through: the
+// 60-day average, and the lowest low of the 20 bars before the drop. These are
+// the facts a "technical" cause rests on; false when the history is too short.
+func DropTechBreaks(candles []data.Candle, d signals.DropEvent) (ma60, low20 bool) {
+	last := candles[d.End].Close
+	if pre := d.Start - 1; pre+1 >= 60 {
+		ma := signals.MA(data.Closes(candles[pre-59:pre+1]), 60)
+		ma60 = d.PreClose >= ma && last < ma
+	}
+	if d.Start >= 20 {
+		low := candles[d.Start-20].Low
+		for _, c := range candles[d.Start-20 : d.Start] {
+			if c.Low < low {
+				low = c.Low
+			}
+		}
+		low20 = last < low
+	}
+	return ma60, low20
 }
 
 // DropIndexPct is the benchmark's move over d: from the last close before it

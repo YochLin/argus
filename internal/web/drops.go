@@ -28,10 +28,10 @@ type dropResponse struct {
 	Low         float64  `json:"low"`
 	RecoverBars *int     `json:"recoverBars"`
 	Fwd10Pct    *float64 `json:"fwd10Pct"`
-	IndexPct    *float64 `json:"indexPct"` // benchmark over the same span; null if it has no bars for it
+	IndexPct    *float64 `json:"indexPct"` // the market index over the same span; null if it has no bars for it
 	Summary     string   `json:"summary"`
 
-	Cause      string             `json:"cause"` // "" | "earn" | "macro" | "sector" | "flow" | "corp"
+	Cause      string             `json:"cause"` // "" | "earn" | "macro" | "sector" | "flow" | "corp" | "tech"
 	Secondary  []string           `json:"secondary"`
 	Confidence string             `json:"confidence"` // "" | "high" | "mid"
 	LoggedOn   string             `json:"loggedOn"`   // the bar the cause was recorded on
@@ -45,7 +45,7 @@ type dropNewsResponse struct {
 	PublishedAt string `json:"publishedAt"`
 }
 
-// buildDrops assembles /api/chart's drops and the benchmark their IndexPct is
+// buildDrops assembles /api/chart's drops and the index their IndexPct is
 // measured on. A bar still in session is left out: the events say "after the
 // close", and a part-day close could make one that's gone by the end of the day.
 func buildDrops(database dbReader, history data.HistoryProvider, ticker string, candles []data.Candle) ([]dropResponse, string) {
@@ -55,10 +55,10 @@ func buildDrops(database dbReader, history data.HistoryProvider, ticker string, 
 	drops := signals.DetectDrops(candles)
 	out := make([]dropResponse, 0, len(drops))
 	if len(drops) == 0 {
-		return out, service.BenchmarkFor(market.Of(ticker))
+		return out, service.DropIndexFor(market.Of(ticker))
 	}
 
-	benchmark, indexCloses := service.BenchmarkCloses(history, ticker, candles)
+	index, indexCloses := service.DropIndexCloses(history, ticker)
 	summaries := priceEventSummaries(database, ticker)
 	causes := dropCauses(database, ticker)
 	for _, d := range drops {
@@ -90,7 +90,7 @@ func buildDrops(database dbReader, history data.HistoryProvider, ticker string, 
 		}
 		out = append(out, r)
 	}
-	return out, benchmark
+	return out, index
 }
 
 func (r *dropResponse) attach(c db.DropCause) {

@@ -526,10 +526,13 @@ Keep the reply concise — under 300 words total.
 	KeyDropCauseIntro:     "*%s* fell for %d consecutive session(s), %+.1f%% in total (for a single-day gap, that day's change). Work out the main cause of the drop.\n\n",
 	KeyDropCauseGapLine:   "Opening gap: %+.1f%%\n",
 	KeyDropCauseIndexLine: "%s over the same span: %+.1f%%\n",
+	KeyDropCauseBrokeMA60: "Technical: closed below the 60-day average\n",
+	KeyDropCauseBrokeLow:  "Technical: closed below the prior 20-day low\n",
 	KeyDropCauseTask: `
-Judge only from the numbers and news above; add nothing the news doesn't say. Categories: earn (earnings or outlook), macro (economy or broad market), sector (industry or peers), flow (institutional selling, positioning), corp (company events: share offerings, insider sales, lawsuits).
+Judge only from the numbers and news above; add nothing the news doesn't say. Categories: earn (earnings or outlook), macro (economy or broad market), sector (industry or peers), flow (institutional selling, positioning), corp (company events: share offerings, insider sales, lawsuits), tech (selling after a support level broke).
 - If the news doesn't explain the drop, set CAUSE to unknown rather than guessing.
 - Use macro only if the index also fell hard and the news shows nothing stock-specific.
+- Use tech only if a technical fact is listed above; if the news gives another cause, put tech in ALSO.
 - Set CONFIDENCE to high only if the news states the cause directly, otherwise mid.
 - SUMMARY is one sentence of at most 20 words.
 

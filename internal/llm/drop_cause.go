@@ -16,12 +16,14 @@ type DropFacts struct {
 	GapPct    *float64
 	IndexPct  *float64
 	Benchmark string
+	BrokeMA60 bool // closed below the 60-day average it was above before the drop
+	BrokeLow  bool // closed below the lowest low of the 20 bars before the drop
 }
 
 // DropAttribution is the model's reading of why a stock fell. All empty when
 // the headlines don't say, which the prompt asks for rather than a guess.
 type DropAttribution struct {
-	Cause      string // "" | "earn" | "macro" | "sector" | "flow" | "corp"
+	Cause      string // "" | "earn" | "macro" | "sector" | "flow" | "corp" | "tech"
 	Secondary  []string
 	Confidence string // "high" | "mid"
 	Summary    string
@@ -29,11 +31,10 @@ type DropAttribution struct {
 
 // dropCauseFormat is the reply the prompt asks for and parseDropAttribution
 // reads, injected into both languages' prompts via %s (KeyDropCauseTask) so the
-// two cannot drift apart. There is no "technical" cause, though the design has
-// one: the model is given no chart levels to base it on.
-const dropCauseFormat = "CAUSE: <earn|macro|sector|flow|corp|unknown>\nALSO: <earn|macro|sector|flow|corp|none>\nCONFIDENCE: <high|mid>\nSUMMARY: <one sentence>"
+// two cannot drift apart.
+const dropCauseFormat = "CAUSE: <earn|macro|sector|flow|corp|tech|unknown>\nALSO: <earn|macro|sector|flow|corp|tech|none>\nCONFIDENCE: <high|mid>\nSUMMARY: <one sentence>"
 
-var dropCauses = map[string]bool{"earn": true, "macro": true, "sector": true, "flow": true, "corp": true}
+var dropCauses = map[string]bool{"earn": true, "macro": true, "sector": true, "flow": true, "corp": true, "tech": true}
 
 // AttributeDrop is the 下跌事件 tab's cause: one one-shot call on checkModel,
 // over the ticker's own headlines around the drop. Descriptive only: nothing
@@ -54,6 +55,12 @@ func buildDropCausePrompt(lang i18n.Lang, f DropFacts, news []data.NewsItem) str
 	}
 	if f.IndexPct != nil {
 		sb.WriteString(i18n.T(lang, i18n.KeyDropCauseIndexLine, f.Benchmark, *f.IndexPct))
+	}
+	if f.BrokeMA60 {
+		sb.WriteString(i18n.T(lang, i18n.KeyDropCauseBrokeMA60))
+	}
+	if f.BrokeLow {
+		sb.WriteString(i18n.T(lang, i18n.KeyDropCauseBrokeLow))
 	}
 	sb.WriteString(i18n.T(lang, i18n.KeyNewsHeader))
 	for i, n := range news {

@@ -24,7 +24,7 @@ type DropCause struct {
 	Market     string
 	StartDate  string // the drop's first falling bar when it was recorded
 	EndDate    string // the bar it was recorded on
-	Cause      string // "" | "earn" | "macro" | "sector" | "flow" | "corp"
+	Cause      string // "" | "earn" | "macro" | "sector" | "flow" | "corp" | "tech"
 	Secondary  []string
 	Confidence string // "" | "high" | "mid"
 	Summary    string

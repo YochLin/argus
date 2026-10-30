@@ -259,7 +259,7 @@ export function getMockData(url: string): any {
         { price: Number((basePrice * 1.08).toFixed(2)), touches: 3, firstDate: "2026-04-01", lastDate: "2026-07-02" },
       ],
       patterns: [],
-      benchmark: isTW ? "0050" : "SPY",
+      benchmark: isTW ? "^TWII" : "^GSPC",
       drops: [
         {
           kind: "streak", start: candles[60].date, end: candles[63].date, pct: -8.4, gapPct: -2.9,

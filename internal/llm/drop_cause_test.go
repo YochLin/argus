@@ -40,9 +40,9 @@ func TestParseDropAttribution_SecondarySameAsCause(t *testing.T) {
 func TestBuildDropCausePrompt(t *testing.T) {
 	gap, idx := -3.1, -1.2
 	for _, lang := range []i18n.Lang{i18n.ZH, i18n.EN} {
-		p := buildDropCausePrompt(lang, DropFacts{Ticker: "AAPL", Bars: 3, Pct: -8.4, GapPct: &gap, IndexPct: &idx, Benchmark: "SPY"},
+		p := buildDropCausePrompt(lang, DropFacts{Ticker: "AAPL", Bars: 3, Pct: -8.4, GapPct: &gap, IndexPct: &idx, Benchmark: "^GSPC", BrokeMA60: true},
 			[]data.NewsItem{{Headline: "Apple cuts guidance", Source: "Reuters"}})
-		for _, want := range []string{"AAPL", "-8.4", "-3.1", "SPY", "-1.2", "Apple cuts guidance", "CAUSE:", "unknown"} {
+		for _, want := range []string{"AAPL", "-8.4", "-3.1", "^GSPC", "-1.2", "60", "Apple cuts guidance", "CAUSE:", "tech", "unknown"} {
 			if !strings.Contains(p, want) {
 				t.Errorf("lang %v: prompt missing %q:\n%s", lang, want, p)
 			}

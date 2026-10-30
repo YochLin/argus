@@ -50,7 +50,7 @@ export interface Chart {
   fills: Fill[]; // oldest first
   strategies?: StrategyAlert[]; // oldest first; absent from a pre-P5 backend
   drops?: DropEvent[]; // oldest first; absent from an older backend
-  benchmark?: string; // what each drop's indexPct is measured on
+  benchmark?: string; // the index each drop's indexPct is measured on: ^GSPC or ^TWII
 }
 
 // DropEvent is one 下跌事件 from /api/chart: a run of lower closes or a gap
@@ -76,7 +76,7 @@ export interface DropEvent {
   news: { headline: string; source: string; url: string; publishedAt: string }[];
 }
 
-export type DropCause = "earn" | "macro" | "sector" | "flow" | "corp";
+export type DropCause = "earn" | "macro" | "sector" | "flow" | "corp" | "tech";
 
 // StrategyAlert is one strategy signal that was pushed to the user (Phase 27
 // P5). type is the signal type ("strategy_squeeze_breakout", ...), date the
