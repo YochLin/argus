@@ -214,6 +214,22 @@ function getMockData(urlStr: string): any {
       candles,
       patterns,
       strategies,
+      benchmark: isTW ? "0050" : "SPY",
+      drops: [
+        {
+          kind: "streak", start: at(380), end: at(384), pct: -12.4, gapPct: -2.9, preClose: candles[379].close,
+          low: candles[384].low, recoverBars: 16, fwd10Pct: 5.2, indexPct: -8.1,
+          summary: "美國 CPI 高於預期，降息預期降溫，科技股普遍走弱。",
+        },
+        {
+          kind: "streak", start: at(440), end: at(443), pct: -8.4, gapPct: null, preClose: candles[439].close,
+          low: candles[443].low, recoverBars: null, fwd10Pct: -1.3, indexPct: -1.1, summary: "",
+        },
+        {
+          kind: "gap", start: at(495), end: at(495), pct: -3.6, gapPct: -3.1, preClose: candles[494].close,
+          low: candles[495].low, recoverBars: null, fwd10Pct: null, indexPct: null, summary: "",
+        },
+      ],
       levels: [
         { price: Number((basePrice * 0.92).toFixed(2)), touches: 4, firstDate: "2026-03-10", lastDate: "2026-06-15" },
         { price: Number((basePrice * 1.08).toFixed(2)), touches: 3, firstDate: "2026-04-01", lastDate: "2026-07-02" },

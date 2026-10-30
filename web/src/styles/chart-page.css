@@ -619,3 +619,230 @@
   color: var(--ink-3);
   padding: 8px;
 }
+
+/* The 下跌事件 tab. */
+.pat-leg-drop {
+  width: 0;
+  height: 0;
+  flex-shrink: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 8px solid #f59e0b;
+}
+
+.drop-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 4px;
+  border: 1px solid #f59e0b;
+  color: #f59e0b;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.drop-badge.big {
+  min-width: 34px;
+  height: 24px;
+  font-size: 11px;
+}
+
+.drop-badge.gap {
+  background: rgba(245, 158, 11, 0.14);
+}
+
+.drop-kind {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: #f59e0b;
+}
+
+.drop-range {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.drop-cause {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.drop-cause-text {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+
+.drop-cause-none {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-3);
+  text-wrap: pretty;
+}
+
+.drop-scope {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.drop-scope-tag {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--ink-3);
+  color: var(--ink-2);
+}
+
+.drop-scope-note {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.pat-hist .drop-dim {
+  color: var(--ink-3);
+}
+
+.drop-list-wrap {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.drop-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.drop-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+}
+
+.drop-filter.active {
+  border-color: var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+.drop-filter-count {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  opacity: 0.7;
+}
+
+.drop-show {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px dashed var(--border);
+  background: none;
+  color: var(--ink-3);
+}
+
+.drop-show.on {
+  border: 1px solid var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+
+.drop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 380px;
+  overflow: auto;
+  margin: 0 -6px;
+}
+
+.drop-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.drop-row:hover {
+  background: var(--surface-2);
+}
+
+.drop-row.selected {
+  background: var(--accent-tint-bg);
+  box-shadow: inset 0 0 0 1px var(--accent-tint-border);
+}
+
+.drop-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.drop-row-summary {
+  font-size: 12.5px;
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drop-row-summary.none {
+  color: var(--ink-3);
+}
+
+.drop-row-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.drop-rec {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+
+.drop-row-pct {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
