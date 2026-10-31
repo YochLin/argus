@@ -226,7 +226,7 @@ the Dockerfile and `docker-compose.yml` all build `./cmd/server`.
   independent of Telegram/LLM/DB. `patterns.go`'s `DetectPatterns` (Phase 27 P4b) is the stock chart's 21
   candlestick/volume/gap patterns — textbook heuristics with **no backtest behind them**, so they are
   descriptive only: `/api/chart` returns them as numbers for the chart page and nothing (alerts, the LLM
-  prompt, recommendation ranking) may consume them. `drops.go`'s `DetectDrops` is the chart page's 下跌事件 tab, ported from the design and on the same footing: unbacktested, descriptive only, and deliberately a separate rule from `CheckPriceEvent` (which decides Telegram pushes). `momentum_breakout.go`'s `DetectMomentumBase`/`ADRPct`
+  prompt, recommendation ranking) may consume them. `drops.go`'s `DetectDrops` is the chart page's 下跌事件 tab, ported from the design and on the same footing: unbacktested, descriptive only, and deliberately a separate rule from `CheckPriceEvent` (which decides Telegram pushes). Its one-day rule (a close down 6%, no gap) isn't in the design: without it a big day had no event until two more lower closes, past its news window. `momentum_breakout.go`'s `DetectMomentumBase`/`ADRPct`
   are the momentum-breakout watch's base rule, shared by `cmd/strategyscan -mb-backtest` (`breakout.go`)
   and `service.ScanMomentumBreakout`: measured over five pools/ADR floors and **none passed** (the edge
   follows whichever group led the market), so it is pushed only because the user asked to watch S&P 500

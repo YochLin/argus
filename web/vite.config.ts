@@ -233,6 +233,11 @@ function getMockData(urlStr: string): any {
           news: [{ headline: "同業示警下半年需求轉弱", source: "CNBC", url: "", publishedAt: "" }],
         },
         {
+          kind: "day", start: at(470), end: at(470), pct: -7.2, gapPct: null, preClose: candles[469].close,
+          low: candles[470].low, recoverBars: 12, fwd10Pct: 3.4, indexPct: -0.4, summary: "", cause: "",
+          secondary: [], confidence: "", loggedOn: "", news: [],
+        },
+        {
           kind: "gap", start: at(495), end: at(495), pct: -3.6, gapPct: -3.1, preClose: candles[494].close,
           low: candles[495].low, recoverBars: null, fwd10Pct: null, indexPct: null, summary: "", cause: "",
           secondary: [], confidence: "", loggedOn: "", news: [],

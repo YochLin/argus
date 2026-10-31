@@ -19,7 +19,7 @@ import (
 // back to the Telegram price event's writeup for a day inside the drop, and
 // is "" when there is neither.
 type dropResponse struct {
-	Kind        string   `json:"kind"` // "streak"/"gap"
+	Kind        string   `json:"kind"` // "streak"/"gap"/"day"
 	Start       string   `json:"start"`
 	End         string   `json:"end"`
 	Pct         float64  `json:"pct"`
@@ -76,8 +76,8 @@ func buildDrops(database dbReader, history data.HistoryProvider, ticker string, 
 			Secondary:   []string{},
 			News:        []dropNewsResponse{},
 		}
-		// By range, not equal start: a gap recorded on one day can turn out to
-		// be the second bar of a longer run.
+		// By range, not equal start: a one-day drop can turn out to be the
+		// second bar of a longer run.
 		for _, c := range causes {
 			if c.StartDate >= r.Start && c.StartDate <= r.End {
 				r.attach(c)

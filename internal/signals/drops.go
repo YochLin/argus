@@ -7,8 +7,10 @@ import (
 )
 
 // The stock chart's 下跌事件 tab, ported from the design's `tkDrops`: a run of
-// consecutive lower closes that adds up, or a gap down past the previous low.
-// Same footing as DetectPatterns — no backtest behind these thresholds, so
+// consecutive lower closes that adds up, a gap down past the previous low, or
+// (not in the design) one close that falls as far as a run has to. Without
+// that last one a day's big fall had no event until two more lower closes, by
+// which time its news was out of the recording window. Same footing as DetectPatterns — no backtest behind these thresholds, so
 // this is descriptive only and must not feed alerts, the LLM prompt or the
 // recommendation ranking. It is a separate rule from CheckPriceEvent on
 // purpose: that one decides what gets pushed to Telegram, this one what gets
@@ -16,10 +18,12 @@ import (
 const (
 	DropKindStreak = "streak"
 	DropKindGap    = "gap"
+	DropKindDay    = "day"
 
 	dropStreakMinBars = 3
 	dropStreakPct     = -6.0
 	dropGapPct        = -2.5
+	dropDayPct        = -6.0
 	dropFwdBars       = 10
 )
 
@@ -63,21 +67,23 @@ func DetectDrops(candles []data.Candle) []DropEvent {
 
 	for i := 1; i < len(candles); i++ {
 		prev := candles[i-1]
-		if prev.Close <= 0 || candles[i].Open >= prev.Low {
+		if prev.Close <= 0 {
 			continue
 		}
 		g := (candles[i].Open/prev.Close - 1) * 100
-		if g > dropGapPct {
-			continue
-		}
+		gapped := candles[i].Open < prev.Low && g <= dropGapPct
 		if n := inStreak[i]; n > 0 {
-			if e := &out[n-1]; e.GapPct == nil || g < *e.GapPct {
+			if e := &out[n-1]; gapped && (e.GapPct == nil || g < *e.GapPct) {
 				e.GapPct = &g
 			}
 			continue
 		}
 		pct := (candles[i].Close/prev.Close - 1) * 100
-		out = append(out, DropEvent{Kind: DropKindGap, Start: i, End: i, Pct: pct, GapPct: &g})
+		if gapped {
+			out = append(out, DropEvent{Kind: DropKindGap, Start: i, End: i, Pct: pct, GapPct: &g})
+		} else if pct <= dropDayPct {
+			out = append(out, DropEvent{Kind: DropKindDay, Start: i, End: i, Pct: pct})
+		}
 	}
 
 	sort.Slice(out, func(a, b int) bool { return out[a].Start < out[b].Start })

@@ -86,6 +86,34 @@ func TestDetectDrops_GapStandsAloneOrJoinsItsStreak(t *testing.T) {
 	}
 }
 
+func TestDetectDrops_SingleDay(t *testing.T) {
+	// Fell from an open with no gap, so only the close makes it an event.
+	got := DetectDrops(dropBars(100, 100, 93, 94))
+	if len(got) != 1 || got[0].Kind != DropKindDay || got[0].Start != 2 || got[0].End != 2 {
+		t.Fatalf("got %+v", got)
+	}
+	if math.Abs(got[0].Pct-(-7)) > 1e-9 || got[0].GapPct != nil {
+		t.Errorf("event = %+v", got[0])
+	}
+
+	if got := DetectDrops(dropBars(100, 100, 94.5, 95)); len(got) != 0 {
+		t.Errorf("above the threshold: got %+v", got)
+	}
+
+	// A gap down that big stays a gap.
+	gapped := dropBars(100, 100, 93, 94)
+	gapped[2].Open, gapped[2].High, gapped[2].Low = 96, 97, 92
+	if got := DetectDrops(gapped); len(got) != 1 || got[0].Kind != DropKindGap {
+		t.Errorf("got %+v", got)
+	}
+
+	// Two more lower closes fold it into the run, from the same first bar.
+	got = DetectDrops(dropBars(100, 100, 90, 88, 85))
+	if len(got) != 1 || got[0].Kind != DropKindStreak || got[0].Start != 2 || got[0].End != 4 {
+		t.Errorf("got %+v", got)
+	}
+}
+
 func TestDetectDrops_OrderedOldestFirst(t *testing.T) {
 	bars := dropBars(100, 100, 100, 100, 98, 96, 93, 93)
 	bars[1].Open, bars[1].High, bars[1].Low = 97, 100, 97

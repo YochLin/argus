@@ -326,7 +326,9 @@ export interface Dictionary {
   dropAll: string;
   dropStreaks: string;
   dropGaps: string;
+  dropDaysKind: string;
   dropKindGap: string;
+  dropKindDay: string;
   dropKindStreak: string;
   dropGapped: string;
   dropPick: string;
