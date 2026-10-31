@@ -58,7 +58,7 @@ export interface Chart {
 // watchlist drop was first seen; older drops and other tickers have none.
 // summary falls back to the Telegram price event's writeup, "" if neither.
 export interface DropEvent {
-  kind: "streak" | "gap";
+  kind: "streak" | "gap" | "day";
   start: string;
   end: string;
   pct: number;

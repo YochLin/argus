@@ -21,7 +21,7 @@ export function dropKey(d: DropEvent): string {
   return d.start;
 }
 
-type KindFilter = "all" | "streak" | "gap";
+type KindFilter = "all" | "streak" | "gap" | "day";
 
 function fill(template: string, ...args: (string | number)[]): string {
   let i = 0;
@@ -107,8 +107,10 @@ export function DropPanel({
     ["all", dict.dropAll, drops.length],
     ["streak", dict.dropStreaks, drops.filter((d) => d.kind === "streak").length],
     ["gap", dict.dropGaps, drops.filter((d) => d.kind === "gap").length],
+    ["day", dict.dropDaysKind, drops.filter((d) => d.kind === "day").length],
   ];
-  const kindLabel = (d: DropEvent) => (d.kind === "gap" ? dict.dropKindGap : fill(dict.dropKindStreak, barsOf(d, dates)));
+  const kindLabel = (d: DropEvent) =>
+    d.kind === "gap" ? dict.dropKindGap : d.kind === "day" ? dict.dropKindDay : fill(dict.dropKindStreak, barsOf(d, dates));
 
   let detail = <div className="pat-pick">{dict.dropPick}</div>;
   if (sel) {

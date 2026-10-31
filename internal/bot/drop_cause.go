@@ -17,8 +17,8 @@ import (
 
 const (
 	// dropCauseCap caps the LLM calls of one closing run, deepest drop first.
-	// Measured on the 2026-10 watchlist over two years: about 1.5 drops a
-	// session per market, more than 5 on 7% of sessions, up to 19. Those are
+	// Measured on the 2026-10 watchlist over two years: about 1.9 drops a
+	// session per market, more than 5 on 10% of sessions, up to 22. Those are
 	// market-wide days, where the causes repeat, so the tail costs little.
 	dropCauseCap = 5
 	// dropCauseHistory reaches back past any run of lower closes, plus the
@@ -93,7 +93,7 @@ func (b *Bot) recordDropCauses(ctx context.Context, tickers []string, m market.M
 }
 
 // dropRecorded reports a row already inside d. Its start can differ from d's:
-// a gap recorded on one day can turn out to be part of a longer run.
+// a one-day drop can turn out to be part of a longer run.
 func (b *Bot) dropRecorded(ticker string, candles []data.Candle, d signals.DropEvent) (bool, error) {
 	rows, err := b.db.DropCausesFor(ticker)
 	if err != nil {
