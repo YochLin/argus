@@ -19,6 +19,21 @@ func TestParseDropAttribution(t *testing.T) {
 		t.Errorf("got %+v", got)
 	}
 
+	// Production run 231: stray text before the first key, on the same line.
+	got = parseDropAttribution("的思考過程：CAUSE: earn\nALSO: tech\nCONFIDENCE: high\nSUMMARY: 財測疲弱：跳空重挫。")
+	if got.Cause != "earn" || got.Summary != "財測疲弱：跳空重挫。" {
+		t.Errorf("got %+v", got)
+	}
+
+	got = parseDropAttribution("CAUSE：sector\nSUMMARY：同業下修。")
+	if got.Cause != "sector" || got.Summary != "同業下修。" {
+		t.Errorf("full-width colons: got %+v", got)
+	}
+
+	if got := parseDropAttribution("Fell because: guidance\nSUMMARY: x"); got.Cause != "" {
+		t.Errorf("'because' read as a key: got %+v", got)
+	}
+
 	for name, raw := range map[string]string{
 		"unknown":    "CAUSE: unknown\nCONFIDENCE: mid\nSUMMARY: Nothing in the headlines.",
 		"no summary": "CAUSE: earn\nCONFIDENCE: mid",
