@@ -228,8 +228,8 @@ function getMockData(urlStr: string): any {
         },
         {
           kind: "streak", start: at(440), end: at(443), pct: -8.4, gapPct: null, preClose: candles[439].close,
-          low: candles[443].low, recoverBars: null, fwd10Pct: -1.3, indexPct: -1.1, summary: "", cause: "",
-          secondary: [], confidence: "", loggedOn: at(443),
+          low: candles[443].low, recoverBars: null, fwd10Pct: -1.3, indexPct: -1.1, summary: "Fed 官員鷹派發言，美債殖利率走高。", cause: "macro",
+          secondary: [], confidence: "mid", loggedOn: at(443),
           news: [{ headline: "同業示警下半年需求轉弱", source: "CNBC", url: "", publishedAt: "" }],
         },
         {

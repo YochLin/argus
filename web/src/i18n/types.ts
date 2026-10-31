@@ -314,6 +314,10 @@ export interface Dictionary {
   dropIndexTW: string;
   dropIndexUS: string;
   dropEvidence: string;
+  dropSimTitle: string;
+  dropSimRecover: string;
+  dropSimUnrecovered: string;
+  dropSimFwd: string;
   dropNoCauseNews: string;
   dropConfidence: string;
   dropConfHigh: string;

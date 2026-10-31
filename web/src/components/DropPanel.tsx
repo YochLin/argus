@@ -42,6 +42,32 @@ function barsOf(d: DropEvent, dates: string[]): number {
   return dates.filter((x) => x >= d.start && x <= d.end).length;
 }
 
+export interface SameCauseHistory {
+  n: number;
+  unrecovered: number;
+  avgRecover: number | null; // days, over the ones that recovered
+  avgFwd10: number | null; // over the ones with 10 days of data behind them
+  lowSample: boolean;
+}
+
+// The other drops on this chart with the same main cause, whatever their
+// outcome so far. Only recorded drops have a cause, so this starts near empty
+// and grows from the day causes began being kept.
+export function sameCauseHistory(drops: DropEvent[], of: DropEvent): SameCauseHistory {
+  const same = drops.filter((d) => d.cause === of.cause && dropKey(d) !== dropKey(of));
+  const recovered = same.flatMap((d) => (d.recoverBars === null ? [] : [d.recoverBars]));
+  const fwd = same.flatMap((d) => (d.fwd10Pct === null ? [] : [d.fwd10Pct]));
+  const avg = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : null);
+  const avgRecover = avg(recovered);
+  return {
+    n: same.length,
+    unrecovered: same.length - recovered.length,
+    avgRecover: avgRecover === null ? null : Math.round(avgRecover),
+    avgFwd10: avg(fwd),
+    lowSample: same.length < 4,
+  };
+}
+
 // An index that fell at least half as far means the stock mostly went with it.
 function isSystemic(d: DropEvent): boolean {
   return d.indexPct !== null && d.indexPct <= d.pct * 0.5;
@@ -104,6 +130,7 @@ export function DropPanel({
         cls: sel.fwd10Pct === null ? "drop-dim" : tone(sel.fwd10Pct),
       },
     ];
+    const hist = sel.cause ? sameCauseHistory(drops, sel) : null;
     detail = (
       <div className="pat-detail">
         <div className="pat-head">
@@ -171,6 +198,34 @@ export function DropPanel({
                   </span>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+        {sel.cause && hist && (
+          <div>
+            <div className="pat-hist-head">
+              <span className="pat-sub">{fill(dict.dropSimTitle, dict[`dropCat_${sel.cause}`])}</span>
+              {hist.lowSample && <span className="pat-low">{dict.patLowSample}</span>}
+            </div>
+            <div className="pat-hist drop-sim">
+              <div>
+                <span>{dict.patHistN}</span>
+                <span>{hist.n}</span>
+              </div>
+              <div>
+                <span>{dict.dropSimRecover}</span>
+                <span>{hist.avgRecover === null ? "—" : fill(dict.dropDays, hist.avgRecover)}</span>
+              </div>
+              <div>
+                <span>{dict.dropSimUnrecovered}</span>
+                <span>{hist.unrecovered}</span>
+              </div>
+              <div>
+                <span>{dict.dropSimFwd}</span>
+                <span className={hist.avgFwd10 === null ? "" : tone(hist.avgFwd10)}>
+                  {hist.avgFwd10 === null ? "—" : spct(hist.avgFwd10)}
+                </span>
+              </div>
             </div>
           </div>
         )}

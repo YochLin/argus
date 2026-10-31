@@ -931,3 +931,7 @@ a.drop-news-head {
 a.drop-news-head:hover {
   text-decoration: underline;
 }
+
+.drop-sim {
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+}

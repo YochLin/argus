@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"regexp"
 	"strings"
 
 	"argus/internal/data"
@@ -70,19 +71,24 @@ func buildDropCausePrompt(lang i18n.Lang, f DropFacts, news []data.NewsItem) str
 	return sb.String()
 }
 
+// dropCauseLine finds a key anywhere in a line. Not only at its start: the model
+// has opened with stray text on the same line ("的思考過程：CAUSE: earn",
+// run 231, the deepest drop of that day), and has to be read past it.
+var dropCauseLine = regexp.MustCompile(`(?i)\b(CAUSE|ALSO|CONFIDENCE|SUMMARY)\*{0,2}\s*[:：](.*)`)
+
 // parseDropAttribution reads dropCauseFormat's lines. An unknown or missing
 // cause, or a missing summary, is no attribution at all: half of one would show
 // a label with nothing behind it. A confidence the model made up reads as mid.
 func parseDropAttribution(raw string) DropAttribution {
 	var a DropAttribution
 	for _, line := range strings.Split(raw, "\n") {
-		k, v, ok := strings.Cut(line, ":")
-		if !ok {
+		m := dropCauseLine.FindStringSubmatch(line)
+		if m == nil {
 			continue
 		}
-		v = strings.TrimSpace(v)
+		v := strings.TrimSpace(m[2])
 		word := strings.ToLower(strings.Trim(v, "<>*` "))
-		switch strings.ToUpper(strings.Trim(k, "*` ")) {
+		switch strings.ToUpper(m[1]) {
 		case "CAUSE":
 			if dropCauses[word] {
 				a.Cause = word
