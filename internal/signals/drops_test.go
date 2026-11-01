@@ -24,7 +24,7 @@ func dropBars(closes ...float64) []data.Candle {
 
 func TestDetectDrops_Streak(t *testing.T) {
 	bars := dropBars(100, 98, 96, 93, 95, 96, 97, 98, 99, 100, 101, 102, 103)
-	got := DetectDrops(bars)
+	got := DetectDrops(bars, StockDrops)
 	if len(got) != 1 {
 		t.Fatalf("got %d events, want 1: %+v", len(got), got)
 	}
@@ -52,7 +52,7 @@ func TestDetectDrops_StreakBelowThresholds(t *testing.T) {
 		"deep, only two bars":     {100, 95, 90, 91},
 		"a flat close ends a run": {100, 97, 97, 94},
 	} {
-		if got := DetectDrops(dropBars(closes...)); len(got) != 0 {
+		if got := DetectDrops(dropBars(closes...), StockDrops); len(got) != 0 {
 			t.Errorf("%s: got %+v", name, got)
 		}
 	}
@@ -61,7 +61,7 @@ func TestDetectDrops_StreakBelowThresholds(t *testing.T) {
 func TestDetectDrops_GapStandsAloneOrJoinsItsStreak(t *testing.T) {
 	alone := dropBars(100, 100, 100, 100)
 	alone[2].Open, alone[2].High, alone[2].Low = 97, 100, 97
-	got := DetectDrops(alone)
+	got := DetectDrops(alone, StockDrops)
 	if len(got) != 1 || got[0].Kind != DropKindGap || got[0].Start != 2 || got[0].End != 2 {
 		t.Fatalf("got %+v", got)
 	}
@@ -72,7 +72,7 @@ func TestDetectDrops_GapStandsAloneOrJoinsItsStreak(t *testing.T) {
 	// Inside a streak the gap annotates it rather than being its own event.
 	in := dropBars(100, 98, 96, 93)
 	in[2].Open, in[2].High = 94, 97
-	got = DetectDrops(in)
+	got = DetectDrops(in, StockDrops)
 	if len(got) != 1 || got[0].Kind != DropKindStreak || got[0].GapPct == nil {
 		t.Fatalf("got %+v", got)
 	}
@@ -81,14 +81,14 @@ func TestDetectDrops_GapStandsAloneOrJoinsItsStreak(t *testing.T) {
 	shallow := dropBars(100, 100, 100)
 	shallow[1].Low = 90
 	shallow[2].Open = 97
-	if got := DetectDrops(shallow); len(got) != 0 {
+	if got := DetectDrops(shallow, StockDrops); len(got) != 0 {
 		t.Errorf("got %+v", got)
 	}
 }
 
 func TestDetectDrops_SingleDay(t *testing.T) {
 	// Fell from an open with no gap, so only the close makes it an event.
-	got := DetectDrops(dropBars(100, 100, 93, 94))
+	got := DetectDrops(dropBars(100, 100, 93, 94), StockDrops)
 	if len(got) != 1 || got[0].Kind != DropKindDay || got[0].Start != 2 || got[0].End != 2 {
 		t.Fatalf("got %+v", got)
 	}
@@ -96,28 +96,42 @@ func TestDetectDrops_SingleDay(t *testing.T) {
 		t.Errorf("event = %+v", got[0])
 	}
 
-	if got := DetectDrops(dropBars(100, 100, 94.5, 95)); len(got) != 0 {
+	if got := DetectDrops(dropBars(100, 100, 94.5, 95), StockDrops); len(got) != 0 {
 		t.Errorf("above the threshold: got %+v", got)
 	}
 
 	// A gap down that big stays a gap.
 	gapped := dropBars(100, 100, 93, 94)
 	gapped[2].Open, gapped[2].High, gapped[2].Low = 96, 97, 92
-	if got := DetectDrops(gapped); len(got) != 1 || got[0].Kind != DropKindGap {
+	if got := DetectDrops(gapped, StockDrops); len(got) != 1 || got[0].Kind != DropKindGap {
 		t.Errorf("got %+v", got)
 	}
 
 	// Two more lower closes fold it into the run, from the same first bar.
-	got = DetectDrops(dropBars(100, 100, 90, 88, 85))
+	got = DetectDrops(dropBars(100, 100, 90, 88, 85), StockDrops)
 	if len(got) != 1 || got[0].Kind != DropKindStreak || got[0].Start != 2 || got[0].End != 4 {
 		t.Errorf("got %+v", got)
+	}
+}
+
+func TestDetectDrops_IndexRule(t *testing.T) {
+	day := dropBars(100, 100, 97.4, 98)
+	if got := DetectDrops(day, IndexDrops); len(got) != 1 || got[0].Kind != DropKindDay {
+		t.Errorf("day: got %+v", got)
+	}
+	run := dropBars(100, 99, 97.5, 95.9, 96)
+	if got := DetectDrops(run, IndexDrops); len(got) != 1 || got[0].Kind != DropKindStreak {
+		t.Errorf("run: got %+v", got)
+	}
+	if got := DetectDrops(run, StockDrops); len(got) != 0 {
+		t.Errorf("a stock's rule fired on the same bars: %+v", got)
 	}
 }
 
 func TestDetectDrops_OrderedOldestFirst(t *testing.T) {
 	bars := dropBars(100, 100, 100, 100, 98, 96, 93, 93)
 	bars[1].Open, bars[1].High, bars[1].Low = 97, 100, 97
-	got := DetectDrops(bars)
+	got := DetectDrops(bars, StockDrops)
 	if len(got) != 2 || got[0].Kind != DropKindGap || got[1].Kind != DropKindStreak {
 		t.Fatalf("got %+v", got)
 	}

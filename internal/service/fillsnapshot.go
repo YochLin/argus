@@ -134,7 +134,7 @@ func BarForming(candles []data.Candle, i int, ticker string, now time.Time) bool
 		return false // a later bar exists, so this one is finished
 	}
 	hour, min := 21, 0
-	if market.Of(ticker) == market.TW {
+	if market.Of(ticker) == market.TW || ticker == market.TWII {
 		hour, min = 5, 30
 	}
 	d := candles[i].Date

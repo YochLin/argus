@@ -92,6 +92,7 @@ function getMockData(urlStr: string): any {
     const list =
       market === "tw"
         ? [
+            { ticker: "^TWII", price: 23120.5, changePct: -0.8, heldShares: 0, sup: 22000, res: 24000 },
             { ticker: "2330", price: 1035, changePct: 2.4, heldShares: 3000, sup: 940, res: 1080 },
             { ticker: "2454", price: 1145, changePct: -1.2, heldShares: 500, sup: 1120, res: 1220 },
             { ticker: "0050", price: 196.2, changePct: 0.8, heldShares: 2000, sup: 185, res: 205 },
@@ -101,6 +102,7 @@ function getMockData(urlStr: string): any {
             { ticker: "2603", price: 188.0, changePct: -0.5, heldShares: 0, sup: 175, res: 198 },
           ]
         : [
+            { ticker: "^GSPC", price: 6840.2, changePct: -0.42, heldShares: 0, sup: 6600, res: 7000 },
             { ticker: "NVDA", price: 141.22, changePct: 3.42, heldShares: 120, sup: 128.0, res: 150.0 },
             { ticker: "AAPL", price: 205.83, changePct: 1.25, heldShares: 80, sup: 188.0, res: 215.0 },
             { ticker: "MSFT", price: 431.55, changePct: -0.45, heldShares: 40, sup: 410.0, res: 445.0 },

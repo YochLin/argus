@@ -37,7 +37,7 @@ func (p dropProvider) GetNews(ticker string, limit int) ([]data.NewsItem, error)
 func (p dropProvider) GetHistory(ticker, rangeParam string) ([]data.Candle, error) {
 	closes := []float64{100, 100, 100, 100, 100}
 	if ticker != "QUIET" {
-		depth := float64(ticker[len(ticker)-1]-'0') * 0.5
+		depth := float64((ticker[len(ticker)-1]-'0')%10) * 0.5
 		closes = []float64{100, 100, 97, 95, 92 - depth}
 	}
 	out := make([]data.Candle, len(closes))
@@ -128,6 +128,36 @@ func TestRecordDropCauses_CapsLLMAndKeepsEveryHeadline(t *testing.T) {
 	b.recordDropCauses(context.Background(), tickers, market.US, date)
 	if provider.calls != dropCauseCap {
 		t.Errorf("rerun made LLM calls: %d", provider.calls)
+	}
+}
+
+type dropMarketNews struct{ last time.Time }
+
+func (n dropMarketNews) GetMarketNews(limit int) ([]data.NewsItem, error) {
+	return []data.NewsItem{{Headline: "Stocks slide on CPI", Source: "Reuters", PublishedAt: n.last}}, nil
+}
+
+func TestRecordDropCauses_IndexUsesMarketNewsOutsideTheCap(t *testing.T) {
+	last := time.Date(2026, 3, 20, 0, 0, 0, 0, time.UTC)
+	provider := &dropLLM{}
+	b, d := newDropBot(t, provider, last)
+	b.marketNews = dropMarketNews{last}
+
+	tickers := make([]string, 0, dropCauseCap)
+	for i := 1; i <= dropCauseCap; i++ {
+		tickers = append(tickers, fmt.Sprintf("TK%d", i))
+	}
+	b.recordDropCauses(context.Background(), tickers, market.US, last.Format("2006-01-02"))
+
+	if provider.calls != dropCauseCap+1 {
+		t.Errorf("LLM calls = %d, want %d", provider.calls, dropCauseCap+1)
+	}
+	rows, err := d.DropCausesFor(market.SP500)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("index rows = %+v, err = %v", rows, err)
+	}
+	if rows[0].Cause != "earn" || rows[0].News[0].Headline != "Stocks slide on CPI" {
+		t.Errorf("index row = %+v", rows[0])
 	}
 }
 

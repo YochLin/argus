@@ -4,6 +4,8 @@ import {
   ApiError,
   currencySymbol,
   fetchWatchlistSummary,
+  isIndex,
+  marketOf,
   removeWatchlistTicker,
   type Market,
   type WatchlistSummaryItem,
@@ -146,13 +148,15 @@ export function ChartListView({
   }
 
   const currency = currencySymbol(market);
+  const tickerName = (t: string) =>
+    isIndex(t) ? (marketOf(t) === "tw" ? dict.dropIndexTW : dict.dropIndexUS) : names[t] || "";
   const heldTotal = items ? items.filter((item) => item.heldShares > 0).length : 0;
   const filteredItems = items
     ? items.filter((item) => {
         if (heldOnly && item.heldShares <= 0) return false;
         const q = search.trim().toLowerCase();
         if (!q) return true;
-        const name = names[item.ticker] || "";
+        const name = tickerName(item.ticker);
         return item.ticker.toLowerCase().includes(q) || name.toLowerCase().includes(q);
       })
     : [];
@@ -230,6 +234,7 @@ export function ChartListView({
         <div className="watchlist-grid">
           {filteredItems.map((item) => {
             const isProfit = item.changePct >= 0;
+            const unit = isIndex(item.ticker) ? "" : currency;
             const supPct =
               item.support !== null && item.price > 0 ? (-(item.price - item.support) / item.price) * 100 : null;
             const resPct =
@@ -249,11 +254,11 @@ export function ChartListView({
                 <div className="watchlist-card-top">
                   <div className="watchlist-card-id">
                     <div className="watchlist-ticker-code mono">{item.ticker}</div>
-                    <div className="watchlist-ticker-name">{names[item.ticker] || ""}</div>
+                    <div className="watchlist-ticker-name">{tickerName(item.ticker)}</div>
                   </div>
                   <div className="watchlist-card-price">
                     <div className="watchlist-price">
-                      {currency}
+                      {unit}
                       {item.price > 0 ? item.price.toFixed(2) : "—"}
                     </div>
                     <span className={`watchlist-change-badge ${isProfit ? "profit" : "loss"}`}>
@@ -276,7 +281,7 @@ export function ChartListView({
                     <div className="watchlist-level-label">{dict.nearestSup}</div>
                     <div className="watchlist-level-val profit">
                       {item.support !== null
-                        ? `${currency}${item.support.toFixed(2)}  ${supPct! >= 0 ? "+" : ""}${supPct!.toFixed(1)}%`
+                        ? `${unit}${item.support.toFixed(2)}  ${supPct! >= 0 ? "+" : ""}${supPct!.toFixed(1)}%`
                         : "—"}
                     </div>
                   </div>
@@ -284,7 +289,7 @@ export function ChartListView({
                     <div className="watchlist-level-label">{dict.nearestRes}</div>
                     <div className="watchlist-level-val loss">
                       {item.resistance !== null
-                        ? `${currency}${item.resistance.toFixed(2)}  ${resPct! >= 0 ? "+" : ""}${resPct!.toFixed(1)}%`
+                        ? `${unit}${item.resistance.toFixed(2)}  ${resPct! >= 0 ? "+" : ""}${resPct!.toFixed(1)}%`
                         : "—"}
                     </div>
                   </div>
@@ -294,7 +299,7 @@ export function ChartListView({
                   <Sparkline data={item.sparkline} />
                 </div>
 
-                {writable && (
+                {writable && !isIndex(item.ticker) && (
                   <button
                     className="watchlist-remove-btn"
                     disabled={busy}

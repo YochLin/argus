@@ -29,6 +29,10 @@ func TestBuildWatchlistSummary(t *testing.T) {
 			"AAPL": candles,
 			"MSFT": candles,
 			"NVDA": candles,
+			"^GSPC": {
+				{Date: candles[0].Date, Close: 100},
+				{Date: candles[1].Date, Close: 75},
+			},
 		},
 	}
 
@@ -37,12 +41,17 @@ func TestBuildWatchlistSummary(t *testing.T) {
 		t.Fatalf("buildWatchlistSummary() error = %v", err)
 	}
 
-	if len(got.Tickers) != 3 {
-		t.Fatalf("len(Tickers) = %d, want 3", len(got.Tickers))
+	if len(got.Tickers) != 4 {
+		t.Fatalf("len(Tickers) = %d, want 4", len(got.Tickers))
 	}
 
-	// Tickers sorted: AAPL, MSFT, NVDA
-	aapl := got.Tickers[0]
+	index := got.Tickers[0]
+	if index.Ticker != "^GSPC" || index.Price != 75 || index.ChangePct != -25 {
+		t.Errorf("index summary mismatch = %+v", index)
+	}
+
+	// Then sorted: AAPL, MSFT, NVDA
+	aapl := got.Tickers[1]
 	if aapl.Ticker != "AAPL" || aapl.Price != 175 || aapl.ChangePct != 2.5 || aapl.HeldShares != 10 {
 		t.Errorf("AAPL summary mismatch = %+v", aapl)
 	}
@@ -50,7 +59,7 @@ func TestBuildWatchlistSummary(t *testing.T) {
 		t.Errorf("AAPL sparkline len = %d, want 40", len(aapl.Sparkline))
 	}
 
-	msft := got.Tickers[1]
+	msft := got.Tickers[2]
 	if msft.Ticker != "MSFT" || msft.HeldShares != 0 {
 		t.Errorf("MSFT summary mismatch = %+v", msft)
 	}

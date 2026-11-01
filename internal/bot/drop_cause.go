@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"sort"
 	"time"
 
@@ -33,6 +34,9 @@ const (
 // this is for the chart's 下跌事件 tab, and the rule fires far more often than
 // the price events that do go to Telegram. Best-effort, one row per drop: a
 // failed LLM call leaves the headlines without a cause and isn't retried.
+// The market's index is checked too, whatever the watchlist holds. It reads
+// market news, since no ticker feed covers an index, and it sits outside the
+// cap: on its rule it fires a few times a year.
 func (b *Bot) recordDropCauses(ctx context.Context, tickers []string, m market.MarketID, date string) {
 	if b.history == nil {
 		return
@@ -43,13 +47,16 @@ func (b *Bot) recordDropCauses(ctx context.Context, tickers []string, m market.M
 		drop    signals.DropEvent
 	}
 	var hits []hit
+	if index := service.DropIndexFor(m); !slices.Contains(tickers, index) {
+		tickers = append(slices.Clip(tickers), index)
+	}
 	for _, ticker := range tickers {
 		candles, err := b.history.GetHistory(ticker, dropCauseHistory)
 		if err != nil {
 			logger.Errorf("drop causes %s: history: %v", ticker, err)
 			continue
 		}
-		d := service.DropOn(candles, date)
+		d := service.DropOn(candles, ticker, date)
 		if d == nil {
 			continue
 		}
@@ -66,7 +73,7 @@ func (b *Bot) recordDropCauses(ctx context.Context, tickers []string, m market.M
 
 	attributed := 0
 	for _, h := range hits {
-		news, err := b.provider.GetNews(h.ticker, service.EventNewsFetch)
+		news, err := b.dropHeadlines(h.ticker, m)
 		if err != nil {
 			logger.Errorf("drop causes %s: news: %v", h.ticker, err)
 			continue
@@ -81,8 +88,11 @@ func (b *Bot) recordDropCauses(ctx context.Context, tickers []string, m market.M
 			StartDate: h.candles[h.drop.Start].Date.Format("2006-01-02"),
 			News:      dropNews(news),
 		}
-		if attributed < dropCauseCap && b.llm != nil {
-			attributed++
+		isIndex := market.IsIndex(h.ticker)
+		if (isIndex || attributed < dropCauseCap) && b.llm != nil {
+			if !isIndex {
+				attributed++
+			}
 			a := b.attributeDrop(ctx, h.ticker, h.candles, h.drop, m, news)
 			row.Cause, row.Secondary, row.Confidence, row.Summary = a.Cause, a.Secondary, a.Confidence, a.Summary
 		}
@@ -90,6 +100,13 @@ func (b *Bot) recordDropCauses(ctx context.Context, tickers []string, m market.M
 			logger.Errorf("drop causes %s: save: %v", h.ticker, err)
 		}
 	}
+}
+
+func (b *Bot) dropHeadlines(ticker string, m market.MarketID) ([]data.NewsItem, error) {
+	if market.IsIndex(ticker) {
+		return b.loadMarketNews(m), nil
+	}
+	return b.provider.GetNews(ticker, service.EventNewsFetch)
 }
 
 // dropRecorded reports a row already inside d. Its start can differ from d's:

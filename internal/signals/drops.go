@@ -21,10 +21,20 @@ const (
 	DropKindDay    = "day"
 
 	dropStreakMinBars = 3
-	dropStreakPct     = -6.0
-	dropGapPct        = -2.5
-	dropDayPct        = -6.0
 	dropFwdBars       = 10
+)
+
+// DropRule is how far a move has to go to count as a drop.
+type DropRule struct {
+	DayPct, StreakPct, GapPct float64
+}
+
+var (
+	StockDrops = DropRule{DayPct: -6, StreakPct: -6, GapPct: -2.5}
+	// IndexDrops is lower because an index averages its stocks' moves away:
+	// StockDrops found 1 event on ^GSPC in two years, this finds 7 (and 20 on
+	// ^TWII). Same footing as StockDrops, no backtest.
+	IndexDrops = DropRule{DayPct: -2.5, StreakPct: -4, GapPct: -1.5}
 )
 
 // DropEvent is one drop in the candles it was detected on. Start and End are
@@ -42,7 +52,7 @@ type DropEvent struct {
 
 // DetectDrops returns candles' drop events, oldest first. Callers must not
 // pass a bar still in session: its close isn't one yet.
-func DetectDrops(candles []data.Candle) []DropEvent {
+func DetectDrops(candles []data.Candle, rule DropRule) []DropEvent {
 	var out []DropEvent
 	inStreak := make([]int, len(candles)) // candle index -> 1 + index into out
 	for i := 1; i < len(candles); {
@@ -55,7 +65,7 @@ func DetectDrops(candles []data.Candle) []DropEvent {
 			j++
 		}
 		if pre := candles[i-1].Close; pre > 0 && j-i+1 >= dropStreakMinBars {
-			if pct := (candles[j].Close/pre - 1) * 100; pct <= dropStreakPct {
+			if pct := (candles[j].Close/pre - 1) * 100; pct <= rule.StreakPct {
 				out = append(out, DropEvent{Kind: DropKindStreak, Start: i, End: j, Pct: pct})
 				for k := i; k <= j; k++ {
 					inStreak[k] = len(out)
@@ -71,7 +81,7 @@ func DetectDrops(candles []data.Candle) []DropEvent {
 			continue
 		}
 		g := (candles[i].Open/prev.Close - 1) * 100
-		gapped := candles[i].Open < prev.Low && g <= dropGapPct
+		gapped := candles[i].Open < prev.Low && g <= rule.GapPct
 		if n := inStreak[i]; n > 0 {
 			if e := &out[n-1]; gapped && (e.GapPct == nil || g < *e.GapPct) {
 				e.GapPct = &g
@@ -81,7 +91,7 @@ func DetectDrops(candles []data.Candle) []DropEvent {
 		pct := (candles[i].Close/prev.Close - 1) * 100
 		if gapped {
 			out = append(out, DropEvent{Kind: DropKindGap, Start: i, End: i, Pct: pct, GapPct: &g})
-		} else if pct <= dropDayPct {
+		} else if pct <= rule.DayPct {
 			out = append(out, DropEvent{Kind: DropKindDay, Start: i, End: i, Pct: pct})
 		}
 	}
