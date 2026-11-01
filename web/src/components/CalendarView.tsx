@@ -18,6 +18,10 @@ import { TradesTable } from "./TradesTable";
 // reworking the dot/legend rendering.
 const EVENT_COLOR: Record<string, string> = { earnings: "#f59e0b" };
 
+// A cell shows this many dots, held tickers first, then "+N"; the day's panel
+// lists them all. TW earnings all share statutory deadlines, ~20 on one day.
+const MAX_CELL_DOTS = 4;
+
 function eventKindLabel(dict: Dictionary, kind: string): string {
   return kind === "earnings" ? dict.eventKindEarnings : kind;
 }
@@ -218,6 +222,7 @@ export function CalendarView({ dict, market, names, writable = false, onUnauthor
                 {week.map((cell, ci) => {
                   if (cell.date === null) return <div className="cal-cell empty" key={`${wi}-${ci}`} />;
                   const dayEvents = eventsByDate.get(cell.date) ?? [];
+                  const shownEvents = [...dayEvents].sort((a, b) => Number(b.held) - Number(a.held)).slice(0, MAX_CELL_DOTS);
                   return (
                     <button
                       key={cell.date}
@@ -228,7 +233,7 @@ export function CalendarView({ dict, market, names, writable = false, onUnauthor
                         <span className="cal-day-num">{Number(cell.date.slice(-2))}</span>
                         {dayEvents.length > 0 && (
                           <span className="cal-event-dots">
-                            {dayEvents.map((e, ei) => {
+                            {shownEvents.map((e, ei) => {
                               const color = EVENT_COLOR[e.kind] ?? "#94a3b8";
                               return (
                                 <span
@@ -242,6 +247,9 @@ export function CalendarView({ dict, market, names, writable = false, onUnauthor
                                 />
                               );
                             })}
+                            {dayEvents.length > shownEvents.length && (
+                              <span className="cal-event-more mono">+{dayEvents.length - shownEvents.length}</span>
+                            )}
                           </span>
                         )}
                       </span>

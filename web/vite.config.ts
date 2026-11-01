@@ -675,6 +675,12 @@ function getMockData(urlStr: string): any {
           held: held.includes(t),
         };
       });
+    if (market === "tw") {
+      // A statutory deadline: every TW ticker's earnings land on one day.
+      for (let i = 0; i < 20; i++) {
+        events.push({ ...events[0], date: `${month}-10`, ticker: String(2300 + i), held: i === 12 });
+      }
+    }
     return { month, days: dayValues, transactions, events };
   }
   if (path === "/api/sectorflow") {
