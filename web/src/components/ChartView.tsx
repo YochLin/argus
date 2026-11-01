@@ -17,6 +17,7 @@ import {
   fetchResearchNotes,
   fetchRoundDetail,
   LEGACY_NOTE_TAGS,
+  isIndex,
   marketOf,
   NOTE_TAGS,
   saveResearchNote,
@@ -931,13 +932,17 @@ export function ChartView({
     return <div className="loading">{dict.loading}</div>;
   }
 
-  const currency = currencySymbol(marketOf(chart.ticker));
+  const currency = isIndex(chart.ticker) ? "" : currencySymbol(marketOf(chart.ticker));
   const stats = computeQuickStats(chart.candles);
   const latestPrice = chart.candles[chart.candles.length - 1]?.close ?? 0;
   const prevClose =
     chart.candles.length > 1 ? chart.candles[chart.candles.length - 2].close : latestPrice;
   const dayChangePct = prevClose ? ((latestPrice - prevClose) / prevClose) * 100 : 0;
-  const tickerName = names[chart.ticker];
+  const tickerName = !isIndex(chart.ticker)
+    ? names[chart.ticker]
+    : marketOf(chart.ticker) === "tw"
+      ? dict.dropIndexTW
+      : dict.dropIndexUS;
 
   const statCells = stats
     ? [
@@ -1047,7 +1052,7 @@ export function ChartView({
           </div>
         )}
 
-        {writable && onTrade && (
+        {writable && onTrade && !isIndex(chart.ticker) && (
           <div className="ticker-header-actions">
             <button
               className="btn-tint-trade btn-tint-buy"
@@ -1235,6 +1240,7 @@ export function ChartView({
               <DropPanel
                 key={chart.ticker}
                 dict={dict}
+                ticker={chart.ticker}
                 drops={drops}
                 dates={chart.candles.map((c) => c.date)}
                 benchmark={chart.benchmark ?? ""}

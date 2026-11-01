@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"argus/internal/data"
+	"argus/internal/market"
 	"argus/internal/signals"
 )
 
@@ -28,6 +29,12 @@ func TestDropTechBreaks(t *testing.T) {
 	}
 }
 
+func TestDropIndexCloses_AnIndexHasNoComparison(t *testing.T) {
+	if index, closes := DropIndexCloses(nil, market.TWII); index != market.TWII || closes != nil {
+		t.Errorf("got %s, %v", index, closes)
+	}
+}
+
 func TestDropOn(t *testing.T) {
 	day := time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC)
 	var bars []data.Candle
@@ -36,15 +43,15 @@ func TestDropOn(t *testing.T) {
 	}
 	date := bars[4].Date.Format("2006-01-02")
 
-	got := DropOn(bars, date)
+	got := DropOn(bars, "AAPL", date)
 	if got == nil || got.Start != 2 || got.End != 4 {
 		t.Fatalf("DropOn = %+v", got)
 	}
-	if got := DropOn(bars, "2026-03-07"); got != nil {
+	if got := DropOn(bars, "AAPL", "2026-03-07"); got != nil {
 		t.Errorf("no candle for the date: got %+v", got)
 	}
 	bars = append(bars, data.Candle{Date: day.AddDate(0, 0, 5), Open: 94, High: 95, Low: 93, Close: 94})
-	if got := DropOn(bars, bars[5].Date.Format("2006-01-02")); got != nil {
+	if got := DropOn(bars, "AAPL", bars[5].Date.Format("2006-01-02")); got != nil {
 		t.Errorf("the drop ended the bar before: got %+v", got)
 	}
 }

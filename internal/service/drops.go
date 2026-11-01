@@ -15,14 +15,26 @@ const dropBenchmarkRange = "2y"
 // about the market, and a dividend-paying ETF's ex-date would read as a fall.
 func DropIndexFor(m market.MarketID) string {
 	if m == market.TW {
-		return "^TWII"
+		return market.TWII
 	}
-	return "^GSPC"
+	return market.SP500
+}
+
+// DropRuleFor is the thresholds ticker's drops are measured with.
+func DropRuleFor(ticker string) signals.DropRule {
+	if market.IsIndex(ticker) {
+		return signals.IndexDrops
+	}
+	return signals.StockDrops
 }
 
 // DropIndexCloses maps date to the close of ticker's market index, nil if it
-// can't be had: a drop still stands without its market comparison.
+// can't be had: a drop still stands without its market comparison. An index
+// isn't compared with anything, so it gets itself and no closes.
 func DropIndexCloses(history data.HistoryProvider, ticker string) (string, map[string]float64) {
+	if market.IsIndex(ticker) {
+		return ticker, nil
+	}
 	index := DropIndexFor(market.Of(ticker))
 	bars, err := history.GetHistory(index, dropBenchmarkRange)
 	if err != nil {
@@ -72,12 +84,12 @@ func DropIndexPct(closes map[string]float64, candles []data.Candle, d signals.Dr
 // DropOn returns the drop still running on date: one whose last bar is the
 // last candle, dated date. nil on a day that added nothing to one, which
 // includes a market holiday (no candle for date).
-func DropOn(candles []data.Candle, date string) *signals.DropEvent {
+func DropOn(candles []data.Candle, ticker, date string) *signals.DropEvent {
 	n := len(candles)
 	if n == 0 || candles[n-1].Date.Format("2006-01-02") != date {
 		return nil
 	}
-	drops := signals.DetectDrops(candles)
+	drops := signals.DetectDrops(candles, DropRuleFor(ticker))
 	if len(drops) == 0 || drops[len(drops)-1].End != n-1 {
 		return nil
 	}

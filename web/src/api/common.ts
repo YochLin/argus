@@ -11,7 +11,13 @@ export type Market = "us" | "tw";
 // its ticker alone determines which currency symbol is correct regardless
 // of which toggle position led there.
 export function marketOf(ticker: string): Market {
-  return /^[0-9]/.test(ticker) ? "tw" : "us";
+  return /^[0-9]/.test(ticker) || ticker === "^TWII" ? "tw" : "us";
+}
+
+// isIndex: a market index on the chart pages. It isn't a listing, so it has
+// no trades, no price currency, and nothing to compare its drops with.
+export function isIndex(ticker: string): boolean {
+  return ticker === "^GSPC" || ticker === "^TWII";
 }
 
 // currencySymbol is the display-side counterpart of internal/bot's

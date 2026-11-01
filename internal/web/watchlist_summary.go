@@ -7,6 +7,7 @@ import (
 	"argus/internal/data"
 	"argus/internal/logger"
 	"argus/internal/market"
+	"argus/internal/service"
 	"argus/internal/signals"
 )
 
@@ -41,10 +42,13 @@ func buildWatchlistSummary(database dbReader, quotes quoteGetter, history data.H
 	}
 
 	quoteMap := fetchQuotes(quotes, tickersResp.Tickers, "watchlist-summary")
-	historyMap := fetchHistories(history, tickersResp.Tickers, "3mo")
+	// The market's index heads the list, read off its candles: it has no quote
+	// on the providers a listing goes through.
+	listed := append([]string{service.DropIndexFor(m)}, tickersResp.Tickers...)
+	historyMap := fetchHistories(history, listed, "3mo")
 
-	items := make([]watchlistSummaryItem, 0, len(tickersResp.Tickers))
-	for _, ticker := range tickersResp.Tickers {
+	items := make([]watchlistSummaryItem, 0, len(listed))
+	for _, ticker := range listed {
 		item := watchlistSummaryItem{
 			Ticker:     ticker,
 			Sparkline:  []float64{},
@@ -62,6 +66,10 @@ func buildWatchlistSummary(database dbReader, quotes quoteGetter, history data.H
 				closes = append(closes, c.Close)
 			}
 			item.Sparkline = closes
+			if n := len(closes); market.IsIndex(ticker) && n >= 2 && closes[n-2] > 0 {
+				item.Price = closes[n-1]
+				item.ChangePct = (closes[n-1]/closes[n-2] - 1) * 100
+			}
 
 			refPrice := item.Price
 			if refPrice == 0 {

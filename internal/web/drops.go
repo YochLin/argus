@@ -52,7 +52,7 @@ func buildDrops(database dbReader, history data.HistoryProvider, ticker string, 
 	if n := len(candles); n > 0 && service.BarForming(candles, n-1, ticker, time.Now()) {
 		candles = candles[:n-1]
 	}
-	drops := signals.DetectDrops(candles)
+	drops := signals.DetectDrops(candles, service.DropRuleFor(ticker))
 	out := make([]dropResponse, 0, len(drops))
 	if len(drops) == 0 {
 		return out, service.DropIndexFor(market.Of(ticker))

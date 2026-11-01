@@ -12,6 +12,19 @@ const (
 	TW MarketID = "tw"
 )
 
+// The market indices, with Yahoo's symbols. They aren't listings: they're never
+// on the watchlist, and Of deliberately leaves TWII as US, because providers
+// route on Of and a TW ticker gets a .TW suffix that doesn't exist for it.
+const (
+	SP500 = "^GSPC"
+	TWII  = "^TWII"
+)
+
+// IsIndex reports one of the market indices above.
+func IsIndex(ticker string) bool {
+	return ticker == SP500 || ticker == TWII
+}
+
 // Of classifies ticker by shape: a leading digit means a Taiwan listing
 // (2330, 0050, 00679B), anything else (including empty string) a US one.
 // This is the single source of truth for market classification across the

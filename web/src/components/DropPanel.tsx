@@ -1,9 +1,10 @@
 import { useState } from "react";
-import type { DropEvent } from "../api";
+import { isIndex, type DropEvent } from "../api";
 import type { Dictionary } from "../i18n";
 
 interface Props {
   dict: Dictionary;
+  ticker: string;
   drops: DropEvent[]; // oldest first
   dates: string[]; // the chart's candle dates; their count is the summary line's window
   benchmark: string;
@@ -87,6 +88,7 @@ function Badge({ d, days, big }: { d: DropEvent; days: number; big?: boolean }) 
 // fetched), so a drop without them says so.
 export function DropPanel({
   dict,
+  ticker,
   drops,
   dates,
   benchmark,
@@ -116,11 +118,15 @@ export function DropPanel({
   if (sel) {
     const stats: { label: string; value: string; cls: string }[] = [
       { label: dict.dropStatPct, value: spct(sel.pct), cls: tone(sel.pct) },
-      {
-        label: fill(dict.dropStatIndex, benchmark === "^TWII" ? dict.dropIndexTW : dict.dropIndexUS),
-        value: sel.indexPct === null ? "—" : spct(sel.indexPct),
-        cls: sel.indexPct === null ? "drop-dim" : tone(sel.indexPct),
-      },
+      ...(isIndex(ticker)
+        ? []
+        : [
+            {
+              label: fill(dict.dropStatIndex, benchmark === "^TWII" ? dict.dropIndexTW : dict.dropIndexUS),
+              value: sel.indexPct === null ? "—" : spct(sel.indexPct),
+              cls: sel.indexPct === null ? "drop-dim" : tone(sel.indexPct),
+            },
+          ]),
       {
         label: dict.dropStatRecover,
         value: sel.recoverBars === null ? dict.dropNotYet : fill(dict.dropDays, sel.recoverBars),
