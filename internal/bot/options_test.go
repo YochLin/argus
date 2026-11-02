@@ -1,11 +1,14 @@
 package bot
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"argus/internal/data"
+	"argus/internal/db"
+	"argus/internal/i18n"
 )
 
 const testOptionSymbol = "AAPL260918C00320000"
@@ -231,5 +234,38 @@ func TestParseOptionSelectArgs(t *testing.T) {
 
 	if _, _, err := parseOptionSelectArgs("AAPL bogus"); err == nil {
 		t.Error("parseOptionSelectArgs(AAPL bogus) expected error, got nil")
+	}
+}
+
+func TestExecuteOptionEditWarnsWhenItLeavesANakedCall(t *testing.T) {
+	b, _ := newPendingActionsTestBot(t)
+	if _, err := b.ExecuteOptionOpen("AAPL260918P00320000", "SELL", 1, 5, 0, "2026-08-01"); err != nil {
+		t.Fatal(err)
+	}
+	msg, err := b.ExecuteOptionEdit("AAPL260918P00320000", "AAPL260918C00320000", "SELL", 1, 5)
+	if err != nil {
+		t.Fatalf("ExecuteOptionEdit: %v", err)
+	}
+	if !strings.Contains(msg, "Naked call warning") {
+		t.Errorf("msg = %q, want the naked-call warning", msg)
+	}
+}
+
+func TestExecuteOptionCloseUndoRefusesAssigned(t *testing.T) {
+	b, d := newPendingActionsTestBot(t)
+	const put = "AAPL260918P00320000"
+	if _, err := b.ExecuteOptionOpen(put, "SELL", 1, 5, 0, "2026-08-01"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.ExecuteOptionClose(put, db.OptionActionAssigned, 0, 0, 0, "2026-09-18"); err != nil {
+		t.Fatal(err)
+	}
+	txs, err := d.GetAllOptionTransactions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg, err := b.ExecuteOptionCloseUndo(txs[0].ID, put)
+	if !errors.Is(err, db.ErrOptionStockLinked) || msg != i18n.T(b.lang, i18n.KeyOptionStockLinked) {
+		t.Errorf("msg=%q err=%v, want the stock-linked refusal", msg, err)
 	}
 }

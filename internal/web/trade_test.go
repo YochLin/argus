@@ -20,13 +20,16 @@ type fakeTrade struct {
 	buyMsg, sellMsg, stopMsg, buyAlertMsg, deleteMsg string
 	buyErr, sellErr, stopErr, buyAlertErr, deleteErr error
 	optOpenMsg, optCloseMsg                          string
-	optOpenErr, optCloseErr                          error
+	optOpenErr, optCloseErr, optFixErr               error
 	lastBuy, lastSell                                tradeRequest
 	lastStop                                         stopRequest
 	lastBuyAlert                                     buyAlertRequest
 	lastDeleteID                                     int64
 	lastOptOpen                                      optionOpenRequest
 	lastOptClose                                     optionCloseRequest
+	lastOptEdit                                      optionEditRequest
+	lastOptDelete                                    string
+	lastOptClosed                                    optionClosedRequest
 	notified                                         []string
 }
 
@@ -62,6 +65,31 @@ func (f *fakeTrade) ExecuteDeleteTransaction(id int64) (string, error) {
 func (f *fakeTrade) ExecuteOptionOpen(symbol, side string, contracts, premium, fee float64, date string) (string, error) {
 	f.lastOptOpen = optionOpenRequest{Symbol: symbol, Side: side, Contracts: contracts, Premium: premium, Fee: fee, Date: date}
 	return f.optOpenMsg, f.optOpenErr
+}
+
+func (f *fakeTrade) ExecuteOptionEdit(symbol, newSymbol, side string, contracts, premium float64) (string, error) {
+	f.lastOptEdit = optionEditRequest{Symbol: symbol, NewSymbol: newSymbol, Side: side, Contracts: contracts, Premium: premium}
+	return "edited", f.optFixErr
+}
+
+func (f *fakeTrade) ExecuteOptionDelete(symbol string) (string, error) {
+	f.lastOptDelete = symbol
+	return "deleted", f.optFixErr
+}
+
+func (f *fakeTrade) ExecuteOptionClosedEdit(id int64, symbol, action string, contracts float64, date string, realizedPnL float64) (string, error) {
+	f.lastOptClosed = optionClosedRequest{ID: id, Symbol: symbol, Action: action, Contracts: contracts, Date: date, RealizedPnL: realizedPnL}
+	return "closed edited", f.optFixErr
+}
+
+func (f *fakeTrade) ExecuteOptionClosedDelete(id int64, symbol string) (string, error) {
+	f.lastOptClosed = optionClosedRequest{ID: id, Symbol: symbol}
+	return "closed deleted", f.optFixErr
+}
+
+func (f *fakeTrade) ExecuteOptionCloseUndo(id int64, symbol string) (string, error) {
+	f.lastOptClosed = optionClosedRequest{ID: id, Symbol: symbol}
+	return "undone", f.optFixErr
 }
 
 func (f *fakeTrade) ExecuteOptionClose(symbol, action string, contracts, premium, fee float64, date string) (string, error) {
@@ -164,6 +192,11 @@ func newTradeTestServer(password string, trade TradeExecutor, wl watchlistWriter
 	s.mux.HandleFunc("POST /api/research-notes/delete", s.requireWritable(s.requireAuth(s.handleResearchNoteDelete)))
 	s.mux.HandleFunc("POST /api/options/open", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionOpen))))
 	s.mux.HandleFunc("POST /api/options/close", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionClose))))
+	s.mux.HandleFunc("POST /api/options/edit", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionEdit))))
+	s.mux.HandleFunc("POST /api/options/delete", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionDelete))))
+	s.mux.HandleFunc("POST /api/options/closed/edit", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionClosedEdit))))
+	s.mux.HandleFunc("POST /api/options/closed/delete", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionClosedDelete))))
+	s.mux.HandleFunc("POST /api/options/closed/undo", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionCloseUndo))))
 	return s
 }
 
@@ -316,6 +349,47 @@ func TestHandleTradeBuy(t *testing.T) {
 			t.Errorf("last Notify() call = %q, want %q (failures still notify)", last, "no position")
 		}
 	})
+}
+
+func TestHandleOptionCorrections(t *testing.T) {
+	trade := &fakeTrade{}
+	s := newTradeTestServer("hunter2", trade, &fakeWatchlistDB{})
+	cookie := loginAndGetCookie(t, s, "hunter2")
+	post := func(path string, v any) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(v)
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+		req.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, req)
+		return rec
+	}
+
+	edit := optionEditRequest{Symbol: "A", NewSymbol: "B", Side: "SELL", Contracts: 2, Premium: 3}
+	if rec := post("/api/options/edit", edit); rec.Code != http.StatusOK || trade.lastOptEdit != edit {
+		t.Errorf("edit: %d, %+v", rec.Code, trade.lastOptEdit)
+	}
+	if rec := post("/api/options/delete", optionDeleteRequest{Symbol: "A"}); rec.Code != http.StatusOK || trade.lastOptDelete != "A" {
+		t.Errorf("delete: %d, %q", rec.Code, trade.lastOptDelete)
+	}
+	closed := optionClosedRequest{ID: 7, Symbol: "A", Action: db.OptionActionClosed, Contracts: 1, Date: "2026-08-01", RealizedPnL: -320}
+	if rec := post("/api/options/closed/edit", closed); rec.Code != http.StatusOK || trade.lastOptClosed != closed {
+		t.Errorf("closed edit: %d, %+v", rec.Code, trade.lastOptClosed)
+	}
+	closed.Date = "07/01/2026"
+	if rec := post("/api/options/closed/edit", closed); rec.Code != http.StatusBadRequest {
+		t.Errorf("closed edit with a bad date: %d, want 400", rec.Code)
+	}
+	for _, path := range []string{"/api/options/closed/delete", "/api/options/closed/undo"} {
+		trade.lastOptClosed = optionClosedRequest{}
+		if rec := post(path, optionClosedRequest{ID: 9, Symbol: "A"}); rec.Code != http.StatusOK || trade.lastOptClosed.ID != 9 {
+			t.Errorf("%s: %d, %+v", path, rec.Code, trade.lastOptClosed)
+		}
+	}
+
+	trade.optFixErr = db.ErrOptionStockLinked
+	if rec := post("/api/options/closed/undo", optionClosedRequest{ID: 9}); rec.Code != http.StatusBadRequest {
+		t.Errorf("failed undo: %d, want 400", rec.Code)
+	}
 }
 
 func TestHandleOptionOpenClose(t *testing.T) {

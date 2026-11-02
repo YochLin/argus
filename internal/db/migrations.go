@@ -887,4 +887,18 @@ var migrations = []string{
 		UNIQUE (ticker, start_date)
 	);
 	`,
+	// 42: the /options page's corrections. edited drives its 已修改 tag.
+	// entry_premium is the average premium a close was realized against, so
+	// undoing a full close can restore the position after its row is gone;
+	// existing closes get it back from their own realized_pnl.
+	`
+	ALTER TABLE option_positions ADD COLUMN edited INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE option_transactions ADD COLUMN edited INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE option_transactions ADD COLUMN entry_premium REAL NOT NULL DEFAULT 0;
+	UPDATE option_transactions SET entry_premium = CASE action
+		WHEN 'STC' THEN premium - (realized_pnl + fee) / (contracts * multiplier)
+		WHEN 'BTC' THEN premium + (realized_pnl + fee) / (contracts * multiplier)
+		ELSE ABS(realized_pnl) / (contracts * multiplier)
+	END WHERE action NOT IN ('BTO', 'STO') AND contracts > 0;
+	`,
 }

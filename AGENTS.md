@@ -412,6 +412,12 @@ the Dockerfile and `docker-compose.yml` all build `./cmd/server`.
   rather than duplicating it, and has no P&L curve — `daily_snapshots`/`DailyPnL` don't cover option
   market value (no free historical option price source), so this page only ever shows realized P&L on
   closed trades, never a portfolio-value line that would silently omit open option exposure.
+  Its corrections (`/api/options/edit`, `/delete`, `/closed/edit`, `/closed/delete`, `/closed/undo`) write
+  `option_positions`/`option_transactions` directly rather than through `RecordOption`, because the
+  values they replace never happened: a position's row is the live state and its BTO/STO rows keep their
+  original sizes and premiums, and a closed record's realized P&L is whatever was typed, so never replay
+  the ledger to rebuild either. An ASSIGNED/EXERCISED close generated a stock trade with no link back to
+  it, so its outcome can't change and it can't be undone (`db.ErrOptionStockLinked`).
   `fillsnapshot.go`'s `/api/fill-snapshot` (Phase 27 P6) is the chart page's 成交快照 tab: the RSI/MACD/
   trend/volume readings and candle patterns on the day of a fill, computed per request by
   `service.SnapshotAt` from candles up to that day only (nothing is stored, so there is nothing to go

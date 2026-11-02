@@ -24,6 +24,9 @@ type optionsResponse struct {
 	Closed     []optionClosedResponse   `json:"closed"`
 	Calendar   []optionExpiryCalEntry   `json:"calendar"`
 	Collateral optionCollateralSummary  `json:"collateral"`
+	// Held is shares held per ticker, for the add form's naked-call check
+	// before any contract exists to appear in Collateral.
+	Held map[string]float64 `json:"held"`
 }
 
 type optionCollateralSummary struct {
@@ -42,6 +45,7 @@ type optionPositionResponse struct {
 	Contracts      float64 `json:"contracts"`
 	AvgPremium     float64 `json:"avgPremium"`
 	StopPremium    float64 `json:"stopPremium"`
+	Edited         bool    `json:"edited"`
 	// Mark/MarketValue/Delta/Gamma/Theta/Vega are 0 when the live chain
 	// fetch for this contract failed — a degraded row, not an error for
 	// the whole endpoint (same "attach what's available" convention as
@@ -55,6 +59,7 @@ type optionPositionResponse struct {
 }
 
 type optionClosedResponse struct {
+	ID             int64   `json:"id"`
 	ContractSymbol string  `json:"contractSymbol"`
 	Underlying     string  `json:"underlying"`
 	Right          string  `json:"right"`
@@ -66,6 +71,7 @@ type optionClosedResponse struct {
 	Fee            float64 `json:"fee"`
 	Date           string  `json:"date"`
 	RealizedPnL    float64 `json:"realizedPnL"`
+	Edited         bool    `json:"edited"`
 }
 
 type optionExpiryCalEntry struct {
@@ -83,6 +89,7 @@ func buildOptions(database dbReader, optionChain data.OptionChainProvider, quote
 		Closed:     []optionClosedResponse{},
 		Calendar:   []optionExpiryCalEntry{},
 		Collateral: optionCollateralSummary{Positions: []optionCollateralResponse{}},
+		Held:       map[string]float64{},
 	}
 	if m != market.US {
 		return resp, nil
@@ -96,6 +103,9 @@ func buildOptions(database dbReader, optionChain data.OptionChainProvider, quote
 	stockPositions, err := database.GetPositions()
 	if err != nil {
 		return resp, err
+	}
+	for _, p := range stockPositions {
+		resp.Held[p.Ticker] = p.Shares
 	}
 	lockedCash, collateral, err := buildOptionCollateral(database, stockPositions, m)
 	if err != nil {
@@ -115,6 +125,7 @@ func buildOptions(database dbReader, optionChain data.OptionChainProvider, quote
 			Contracts:      p.Contracts,
 			AvgPremium:     p.AvgPremium,
 			StopPremium:    p.StopPremium,
+			Edited:         p.Edited,
 		}
 		if optionChain != nil {
 			if mark, dte, g, ok := fetchOptionMarkAndGreeks(optionChain, quotes, p); ok {
@@ -149,6 +160,7 @@ func buildOptions(database dbReader, optionChain data.OptionChainProvider, quote
 			continue // an open, not a close — not part of this list
 		}
 		resp.Closed = append(resp.Closed, optionClosedResponse{
+			ID:             t.ID,
 			ContractSymbol: t.ContractSymbol,
 			Underlying:     t.Underlying,
 			Right:          t.Right,
@@ -160,6 +172,7 @@ func buildOptions(database dbReader, optionChain data.OptionChainProvider, quote
 			Fee:            t.Fee,
 			Date:           t.Date,
 			RealizedPnL:    t.RealizedPnL,
+			Edited:         t.Edited,
 		})
 	}
 	return resp, nil
@@ -233,6 +246,91 @@ func (s *Server) handleOptionClose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, tradeResponse{Message: msg})
+}
+
+// optionEditRequest is POST /api/options/edit's body: Symbol is the position
+// as stored, NewSymbol/Side/Contracts/Premium what it should have been.
+type optionEditRequest struct {
+	Symbol    string  `json:"symbol"`
+	NewSymbol string  `json:"newSymbol"`
+	Side      string  `json:"side"`
+	Contracts float64 `json:"contracts"`
+	Premium   float64 `json:"premium"`
+}
+
+type optionDeleteRequest struct {
+	Symbol string `json:"symbol"`
+}
+
+// optionClosedRequest is the body of the three /api/options/closed routes;
+// delete and undo read only ID and Symbol. Action is db.OptionActionClosed,
+// db.OptionActionExpired or the row's own ASSIGNED/EXERCISED.
+type optionClosedRequest struct {
+	ID          int64   `json:"id"`
+	Symbol      string  `json:"symbol"`
+	Action      string  `json:"action"`
+	Contracts   float64 `json:"contracts"`
+	Date        string  `json:"date"`
+	RealizedPnL float64 `json:"realizedPnL"`
+}
+
+func (s *Server) respondOptionWrite(w http.ResponseWriter, msg string, err error) {
+	s.trade.Notify(msg)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, tradeResponse{Message: msg})
+}
+
+func (s *Server) handleOptionEdit(w http.ResponseWriter, r *http.Request) {
+	var req optionEditRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	msg, err := s.trade.ExecuteOptionEdit(req.Symbol, req.NewSymbol, req.Side, req.Contracts, req.Premium)
+	s.respondOptionWrite(w, msg, err)
+}
+
+func (s *Server) handleOptionDelete(w http.ResponseWriter, r *http.Request) {
+	var req optionDeleteRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	msg, err := s.trade.ExecuteOptionDelete(req.Symbol)
+	s.respondOptionWrite(w, msg, err)
+}
+
+func (s *Server) handleOptionClosedEdit(w http.ResponseWriter, r *http.Request) {
+	var req optionClosedRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	date, ok := resolveTradeDate(req.Date)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid date")
+		return
+	}
+	msg, err := s.trade.ExecuteOptionClosedEdit(req.ID, req.Symbol, req.Action, req.Contracts, date, req.RealizedPnL)
+	s.respondOptionWrite(w, msg, err)
+}
+
+func (s *Server) handleOptionClosedDelete(w http.ResponseWriter, r *http.Request) {
+	var req optionClosedRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	msg, err := s.trade.ExecuteOptionClosedDelete(req.ID, req.Symbol)
+	s.respondOptionWrite(w, msg, err)
+}
+
+func (s *Server) handleOptionCloseUndo(w http.ResponseWriter, r *http.Request) {
+	var req optionClosedRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	msg, err := s.trade.ExecuteOptionCloseUndo(req.ID, req.Symbol)
+	s.respondOptionWrite(w, msg, err)
 }
 
 // fetchOptionMarkAndGreeks fetches p's live chain via service.FindOptionQuote
