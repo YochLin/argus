@@ -156,6 +156,79 @@ func (b *Bot) ExecuteOptionClose(symbol, action string, contracts, premium, fee 
 	}
 }
 
+// ExecuteOptionEdit corrects an open position (POST /api/options/edit). The
+// corrected contract goes through nakedCallWarning like any other sell, since
+// a bigger or different short call can leave the shares short of it.
+func (b *Bot) ExecuteOptionEdit(symbol, newSymbol, side string, contracts, premium float64) (string, error) {
+	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	newSymbol = strings.ToUpper(strings.TrimSpace(newSymbol))
+	if !option.IsOCC(newSymbol) || (side != "BUY" && side != "SELL") || contracts <= 0 || premium < 0 {
+		return i18n.T(b.lang, i18n.KeyOptionUsage), fmt.Errorf("invalid option edit arguments")
+	}
+	pos, err := b.db.EditOptionPosition(symbol, newSymbol, side, contracts, premium)
+	if err != nil {
+		return b.optionCorrectionError(err, newSymbol), err
+	}
+	return i18n.T(b.lang, i18n.KeyOptionPositionEdited, pos.ContractSymbol, pos.Contracts, pos.AvgPremium) + b.nakedCallWarning(pos), nil
+}
+
+// ExecuteOptionDelete removes a mistaken position (POST /api/options/delete).
+func (b *Bot) ExecuteOptionDelete(symbol string) (string, error) {
+	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	if err := b.db.DeleteOptionPosition(symbol); err != nil {
+		return b.optionCorrectionError(err, symbol), err
+	}
+	return i18n.T(b.lang, i18n.KeyOptionPositionDeleted, symbol), nil
+}
+
+// ExecuteOptionClosedEdit corrects a closed record (POST
+// /api/options/closed/edit). symbol is only for the message.
+func (b *Bot) ExecuteOptionClosedEdit(id int64, symbol, action string, contracts float64, date string, realizedPnL float64) (string, error) {
+	if contracts <= 0 {
+		return i18n.T(b.lang, i18n.KeyOptionUsage), fmt.Errorf("invalid option edit arguments")
+	}
+	if err := b.db.EditOptionClosed(id, action, contracts, date, realizedPnL); err != nil {
+		return b.optionCorrectionError(err, symbol), err
+	}
+	return i18n.T(b.lang, i18n.KeyOptionClosedEdited, symbol, realizedPnL), nil
+}
+
+// ExecuteOptionClosedDelete removes a closed record (POST
+// /api/options/closed/delete).
+func (b *Bot) ExecuteOptionClosedDelete(id int64, symbol string) (string, error) {
+	if err := b.db.DeleteOptionClosed(id); err != nil {
+		return b.optionCorrectionError(err, symbol), err
+	}
+	return i18n.T(b.lang, i18n.KeyOptionClosedDeleted, symbol), nil
+}
+
+// ExecuteOptionCloseUndo moves a close back to open (POST
+// /api/options/closed/undo).
+func (b *Bot) ExecuteOptionCloseUndo(id int64, symbol string) (string, error) {
+	pos, err := b.db.UndoOptionClose(id)
+	if err != nil {
+		return b.optionCorrectionError(err, symbol), err
+	}
+	return i18n.T(b.lang, i18n.KeyOptionCloseUndone, pos.ContractSymbol, pos.Contracts, pos.AvgPremium) + b.nakedCallWarning(pos), nil
+}
+
+func (b *Bot) optionCorrectionError(err error, symbol string) string {
+	switch {
+	case errors.Is(err, db.ErrNoPosition):
+		return i18n.T(b.lang, i18n.KeyOptionNoPosition, symbol)
+	case errors.Is(err, db.ErrTransactionNotFound):
+		return i18n.T(b.lang, i18n.KeyOptionRecordNotFound)
+	case errors.Is(err, db.ErrOptionSymbolTaken):
+		return i18n.T(b.lang, i18n.KeyOptionSymbolTaken, symbol)
+	case errors.Is(err, db.ErrOptionStockLinked):
+		return i18n.T(b.lang, i18n.KeyOptionStockLinked)
+	case errors.Is(err, db.ErrCrossesZero):
+		return i18n.T(b.lang, i18n.KeyOptionUndoCrossesZero, symbol)
+	default:
+		return i18n.T(b.lang, i18n.KeyOptionEditFailed, err)
+	}
+}
+
 // nakedCallWarning fires the moment a /osell leaves the underlying with more
 // short-call-locked shares than it actually holds — an uncapped-risk
 // position the user may not have noticed they created (§3.5). "" when the

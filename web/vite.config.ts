@@ -404,7 +404,7 @@ function getMockData(urlStr: string): any {
   }
   if (path === "/api/options") {
     if (market === "tw") {
-      return { positions: [], closed: [], calendar: [], collateral: { lockedCash: 0, positions: [] } };
+      return { positions: [], closed: [], calendar: [], collateral: { lockedCash: 0, positions: [] }, held: {} };
     }
     const positions = [
       {
@@ -421,9 +421,10 @@ function getMockData(urlStr: string): any {
     return {
       positions,
       closed: [
-        { contractSymbol: "NVDA260821C00140000", underlying: "NVDA", right: "C", strike: 140, expiry: "2026-08-21", action: "STC", contracts: 1, premium: 9.2, fee: 1, date: "2026-08-01", realizedPnL: 210 },
+        { id: 2, contractSymbol: "NVDA260821C00140000", underlying: "NVDA", right: "C", strike: 140, expiry: "2026-08-21", action: "STC", contracts: 1, premium: 9.2, fee: 1, date: "2026-08-01", realizedPnL: 210 },
       ],
       calendar: [{ date: "2026-09-18", symbols: positions.map((p) => p.contractSymbol) }],
+      held: { MSFT: 0 },
       collateral: { lockedCash: 40000, positions: [{ underlying: "MSFT", lockedShares: 0, heldShares: 0, naked: false }] },
     };
   }

@@ -57,6 +57,11 @@ func (s *Server) registerStockRoutes() {
 	s.mux.HandleFunc("POST /api/buy-alerts/remove", s.requireWritable(s.requireAuth(s.handleBuyAlertRemove)))
 	s.mux.HandleFunc("POST /api/options/open", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionOpen))))
 	s.mux.HandleFunc("POST /api/options/close", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionClose))))
+	s.mux.HandleFunc("POST /api/options/edit", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionEdit))))
+	s.mux.HandleFunc("POST /api/options/delete", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionDelete))))
+	s.mux.HandleFunc("POST /api/options/closed/edit", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionClosedEdit))))
+	s.mux.HandleFunc("POST /api/options/closed/delete", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionClosedDelete))))
+	s.mux.HandleFunc("POST /api/options/closed/undo", s.requireWritable(s.requireAuth(s.requireTrade(s.handleOptionCloseUndo))))
 	// /api/thesis (Phase 21) is a DB write like any other above — no reason
 	// to give it a looser gate than /api/trade/*.
 	s.mux.HandleFunc("POST /api/thesis", s.requireWritable(s.requireAuth(s.handleThesisSet)))

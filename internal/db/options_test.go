@@ -138,3 +138,181 @@ func TestSaveATMIV(t *testing.T) {
 		t.Fatalf("SaveATMIV overwrite: %v", err)
 	}
 }
+
+func TestEditOptionPosition_ChangesContractAndKeepsStop(t *testing.T) {
+	d := newTestDB(t)
+	if _, _, err := d.RecordOption(testCall, "BUY", 1, 5, 0, "2026-08-01"); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SetOptionStop(testCall, 2); err != nil {
+		t.Fatal(err)
+	}
+	const fixed = "AAPL260918P00300000"
+	if _, err := d.EditOptionPosition(testCall, fixed, "SELL", 3, 4.5); err != nil {
+		t.Fatalf("EditOptionPosition: %v", err)
+	}
+	if _, ok, _ := d.GetOptionPosition(testCall); ok {
+		t.Error("old symbol still held")
+	}
+	p, ok, err := d.GetOptionPosition(fixed)
+	if err != nil || !ok {
+		t.Fatalf("GetOptionPosition(fixed): ok=%v err=%v", ok, err)
+	}
+	if p.Contracts != -3 || p.AvgPremium != 4.5 || p.Right != "P" || p.Strike != 300 || p.StopPremium != 2 || !p.Edited {
+		t.Errorf("position = %+v", p)
+	}
+	txs, err := d.GetAllOptionTransactions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(txs) != 1 || txs[0].ContractSymbol != fixed || txs[0].Action != OptionActionSellToOpen {
+		t.Errorf("ledger = %+v, want the open moved and flipped to STO", txs)
+	}
+}
+
+func TestEditOptionPosition_RejectsHeldContract(t *testing.T) {
+	d := newTestDB(t)
+	const other = "AAPL260918C00330000"
+	d.RecordOption(testCall, "BUY", 1, 5, 0, "2026-08-01")
+	d.RecordOption(other, "BUY", 1, 5, 0, "2026-08-01")
+	if _, err := d.EditOptionPosition(testCall, other, "BUY", 1, 5); !errors.Is(err, ErrOptionSymbolTaken) {
+		t.Fatalf("err = %v, want ErrOptionSymbolTaken", err)
+	}
+}
+
+func TestDeleteOptionPosition_KeepsEarlierCloses(t *testing.T) {
+	d := newTestDB(t)
+	d.RecordOption(testCall, "BUY", 1, 5, 0, "2026-08-01")
+	d.RecordOption(testCall, "SELL", 1, 6, 0, "2026-08-02")
+	d.RecordOption(testCall, "BUY", 1, 7, 0, "2026-08-03")
+	if err := d.DeleteOptionPosition(testCall); err != nil {
+		t.Fatalf("DeleteOptionPosition: %v", err)
+	}
+	if _, ok, _ := d.GetOptionPosition(testCall); ok {
+		t.Error("position still held")
+	}
+	txs, _ := d.GetAllOptionTransactions()
+	if len(txs) != 2 || txs[0].Action != OptionActionSellToClose {
+		t.Errorf("ledger = %+v, want the first round only", txs)
+	}
+}
+
+func TestEditOptionClosed(t *testing.T) {
+	d := newTestDB(t)
+	d.RecordOption(testCall, "SELL", 2, 5, 0, "2026-08-01")
+	d.ResolveOption(testCall, OptionActionExpired, "2026-09-18")
+	id := func() int64 { txs, _ := d.GetAllOptionTransactions(); return txs[0].ID }()
+
+	if err := d.EditOptionClosed(id, OptionActionClosed, 1, "2026-09-01", -320); err != nil {
+		t.Fatalf("EditOptionClosed: %v", err)
+	}
+	txs, _ := d.GetAllOptionTransactions()
+	got := txs[0]
+	if got.Action != OptionActionBuyToClose || got.Contracts != 1 || got.Date != "2026-09-01" || got.RealizedPnL != -320 || !got.Edited {
+		t.Errorf("row = %+v, want BTC (the open was short) with the typed values", got)
+	}
+	if err := d.EditOptionClosed(id, OptionActionAssigned, 1, "2026-09-01", 0); !errors.Is(err, ErrOptionStockLinked) {
+		t.Errorf("into ASSIGNED: err = %v, want ErrOptionStockLinked", err)
+	}
+	if err := d.EditOptionClosed(txs[1].ID, OptionActionExpired, 1, "2026-09-01", 0); !errors.Is(err, ErrTransactionNotFound) {
+		t.Errorf("an open row: err = %v, want ErrTransactionNotFound", err)
+	}
+}
+
+func TestUndoOptionClose(t *testing.T) {
+	cases := []struct {
+		name        string
+		close       func(d *DB)
+		wantLeft    float64
+		wantContr   float64
+		wantPremium float64
+	}{
+		{"full close of a long", func(d *DB) { d.RecordOption(testCall, "SELL", 2, 7, 1, "2026-08-02") }, 0, 2, 5.5},
+		{"partial close", func(d *DB) { d.RecordOption(testCall, "SELL", 1, 7, 0, "2026-08-02") }, 1, 2, 5.5},
+		{"expired", func(d *DB) { d.ResolveOption(testCall, OptionActionExpired, "2026-09-18") }, 0, 2, 5.5},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			d := newTestDB(t)
+			d.RecordOption(testCall, "BUY", 1, 5, 0, "2026-08-01")
+			d.RecordOption(testCall, "BUY", 1, 6, 0, "2026-08-01")
+			c.close(d)
+			txs, _ := d.GetAllOptionTransactions()
+			if _, err := d.UndoOptionClose(txs[0].ID); err != nil {
+				t.Fatalf("UndoOptionClose: %v", err)
+			}
+			p, ok, err := d.GetOptionPosition(testCall)
+			if err != nil || !ok {
+				t.Fatalf("GetOptionPosition: ok=%v err=%v", ok, err)
+			}
+			if p.Contracts != c.wantContr || !approxEqual(p.AvgPremium, c.wantPremium) {
+				t.Errorf("position = %v @ %v, want %v @ %v", p.Contracts, p.AvgPremium, c.wantContr, c.wantPremium)
+			}
+			if after, _ := d.GetAllOptionTransactions(); len(after) != len(txs)-1 {
+				t.Errorf("ledger has %d rows, want the close gone", len(after))
+			}
+		})
+	}
+}
+
+func TestUndoOptionClose_ShortExpired(t *testing.T) {
+	d := newTestDB(t)
+	d.RecordOption(testCall, "SELL", 1, 5, 0, "2026-08-01")
+	d.ResolveOption(testCall, OptionActionExpired, "2026-09-18")
+	txs, _ := d.GetAllOptionTransactions()
+	p, err := d.UndoOptionClose(txs[0].ID)
+	if err != nil || p.Contracts != -1 || !approxEqual(p.AvgPremium, 5) {
+		t.Fatalf("UndoOptionClose = %+v, %v; want -1 @ 5", p, err)
+	}
+}
+
+func TestUndoOptionClose_Refusals(t *testing.T) {
+	d := newTestDB(t)
+	d.RecordOption(testCall, "SELL", 1, 5, 0, "2026-08-01")
+	d.ResolveOption(testCall, OptionActionAssigned, "2026-09-18")
+	txs, _ := d.GetAllOptionTransactions()
+	if _, err := d.UndoOptionClose(txs[0].ID); !errors.Is(err, ErrOptionStockLinked) {
+		t.Errorf("assigned: err = %v, want ErrOptionStockLinked", err)
+	}
+
+	d = newTestDB(t)
+	d.RecordOption(testCall, "BUY", 1, 5, 0, "2026-08-01")
+	d.RecordOption(testCall, "SELL", 1, 6, 0, "2026-08-02")
+	d.RecordOption(testCall, "SELL", 1, 6, 0, "2026-08-03") // reopened short
+	txs, _ = d.GetAllOptionTransactions()
+	if _, err := d.UndoOptionClose(txs[1].ID); !errors.Is(err, ErrCrossesZero) {
+		t.Errorf("reopened other side: err = %v, want ErrCrossesZero", err)
+	}
+}
+
+// Migration 42's backfill, run on rows as they looked before it.
+func TestMigrationBackfillsEntryPremium(t *testing.T) {
+	d := newTestDB(t)
+	d.RecordOption(testCall, "BUY", 2, 5, 0, "2026-08-01")
+	d.RecordOption(testCall, "SELL", 1, 7, 1, "2026-08-02")
+	d.ResolveOption(testCall, OptionActionExpired, "2026-09-18")
+	if _, err := d.conn.Exec(`UPDATE option_transactions SET entry_premium = 0`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.conn.Exec(`UPDATE option_transactions SET entry_premium = CASE action
+		WHEN 'STC' THEN premium - (realized_pnl + fee) / (contracts * multiplier)
+		WHEN 'BTC' THEN premium + (realized_pnl + fee) / (contracts * multiplier)
+		ELSE ABS(realized_pnl) / (contracts * multiplier)
+	END WHERE action NOT IN ('BTO', 'STO') AND contracts > 0`); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := d.conn.Query(`SELECT entry_premium FROM option_transactions WHERE action NOT IN ('BTO','STO')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var got float64
+		if err := rows.Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if !approxEqual(got, 5) {
+			t.Errorf("entry_premium = %v, want 5", got)
+		}
+	}
+}

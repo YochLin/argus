@@ -16,6 +16,7 @@ export interface OptionPosition {
   contracts: number; // signed: + long, - short
   avgPremium: number;
   stopPremium: number;
+  edited: boolean;
   mark: number;
   marketValue: number;
   delta: number;
@@ -25,6 +26,7 @@ export interface OptionPosition {
 }
 
 export interface OptionClosedTrade {
+  id: number;
   contractSymbol: string;
   underlying: string;
   right: string;
@@ -36,6 +38,7 @@ export interface OptionClosedTrade {
   fee: number;
   date: string;
   realizedPnL: number;
+  edited: boolean;
 }
 
 export interface OptionCalendarEntry {
@@ -58,6 +61,7 @@ export interface Options {
     lockedCash: number;
     positions: OptionCollateralPosition[];
   };
+  held: Record<string, number>; // shares held per ticker
 }
 
 export function fetchOptions(market: Market = "us"): Promise<Options> {
@@ -94,4 +98,45 @@ export function executeOptionOpen(req: OptionOpenRequest): Promise<TradeResponse
 
 export function executeOptionClose(req: OptionCloseRequest): Promise<TradeResponse> {
   return postJSON("/api/options/close", req);
+}
+
+// The corrections: an open position typed wrong, and a closed record.
+export interface OptionEditRequest {
+  symbol: string;
+  newSymbol: string;
+  side: "BUY" | "SELL";
+  contracts: number;
+  premium: number;
+}
+
+export interface OptionClosedRef {
+  id: number;
+  symbol: string;
+}
+
+export interface OptionClosedEditRequest extends OptionClosedRef {
+  action: string; // CLOSED | EXPIRED, or the row's own ASSIGNED | EXERCISED
+  contracts: number;
+  date: string;
+  realizedPnL: number;
+}
+
+export function editOptionPosition(req: OptionEditRequest): Promise<TradeResponse> {
+  return postJSON("/api/options/edit", req);
+}
+
+export function deleteOptionPosition(symbol: string): Promise<TradeResponse> {
+  return postJSON("/api/options/delete", { symbol });
+}
+
+export function editOptionClosed(req: OptionClosedEditRequest): Promise<TradeResponse> {
+  return postJSON("/api/options/closed/edit", req);
+}
+
+export function deleteOptionClosed(ref: OptionClosedRef): Promise<TradeResponse> {
+  return postJSON("/api/options/closed/delete", ref);
+}
+
+export function undoOptionClose(ref: OptionClosedRef): Promise<TradeResponse> {
+  return postJSON("/api/options/closed/undo", ref);
 }

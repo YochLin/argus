@@ -497,7 +497,7 @@ export function getMockData(url: string): any {
   }
   if (path === "/api/options") {
     if (market === "tw") {
-      return { positions: [], closed: [], calendar: [], collateral: { lockedCash: 0, positions: [] } };
+      return { positions: [], closed: [], calendar: [], collateral: { lockedCash: 0, positions: [] }, held: {} };
     }
     const positions: any[] = [
       {
@@ -517,13 +517,14 @@ export function getMockData(url: string): any {
       },
     ];
     const closed: any[] = [
-      { contractSymbol: "NVDA260821C00140000", underlying: "NVDA", right: "C", strike: 140, expiry: "2026-08-21", action: "STC", contracts: 1, premium: 9.2, fee: 1, date: "2026-08-01", realizedPnL: 210 },
-      { contractSymbol: "AMD260821P00150000", underlying: "AMD", right: "P", strike: 150, expiry: "2026-08-21", action: "EXPIRED", contracts: 1, premium: 0, fee: 0, date: "2026-08-21", realizedPnL: -320 },
+      { id: 2, contractSymbol: "NVDA260821C00140000", underlying: "NVDA", right: "C", strike: 140, expiry: "2026-08-21", action: "STC", contracts: 1, premium: 9.2, fee: 1, date: "2026-08-01", realizedPnL: 210 },
+      { id: 1, contractSymbol: "AMD260821P00150000", underlying: "AMD", right: "P", strike: 150, expiry: "2026-08-21", action: "EXPIRED", contracts: 1, premium: 0, fee: 0, date: "2026-08-21", realizedPnL: -320 },
     ];
     return {
       positions,
       closed,
       calendar: [{ date: "2026-09-18", symbols: positions.map((p) => p.contractSymbol) }],
+      held: { TSLA: 0 },
       collateral: {
         lockedCash: 40000,
         positions: [

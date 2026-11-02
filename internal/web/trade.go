@@ -42,6 +42,12 @@ type TradeExecutor interface {
 	// db.OptionActionExpired/Assigned/Exercised (a resolution), same
 	// dispatch as bot.ExecuteOptionClose.
 	ExecuteOptionClose(symbol, action string, contracts, premium, fee float64, date string) (string, error)
+	// The /options page's corrections: an open position and a closed record.
+	ExecuteOptionEdit(symbol, newSymbol, side string, contracts, premium float64) (string, error)
+	ExecuteOptionDelete(symbol string) (string, error)
+	ExecuteOptionClosedEdit(id int64, symbol, action string, contracts float64, date string, realizedPnL float64) (string, error)
+	ExecuteOptionClosedDelete(id int64, symbol string) (string, error)
+	ExecuteOptionCloseUndo(id int64, symbol string) (string, error)
 	// Notify pushes a Telegram message. Since Phase 24 tech debt 3,
 	// ExecuteBuy/ExecuteSell/ExecuteSetStop no longer push to Telegram on
 	// their own — the handlers below call Notify explicitly after every

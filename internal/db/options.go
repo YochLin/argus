@@ -17,6 +17,15 @@ import (
 // docs/phase-12-options.md §3.3).
 var ErrCrossesZero = errors.New("order crosses zero — close the position before reversing it")
 
+// ErrOptionSymbolTaken is returned by EditOptionPosition when the corrected
+// contract is already held as a separate position.
+var ErrOptionSymbolTaken = errors.New("that contract already has an open position")
+
+// ErrOptionStockLinked is returned when a correction would take a close into
+// or out of ASSIGNED/EXERCISED: those rows generated a stock trade through
+// resolveOption and nothing links the two, so the stock side couldn't follow.
+var ErrOptionStockLinked = errors.New("assigned or exercised close has a stock trade")
+
 // OptionPosition is one open contract (migration 15, see migrations.go). Contracts
 // is signed — positive for a long (buyer) position, negative for a short
 // (seller) position — the single abstraction RecordOption's realized P&L
@@ -33,6 +42,7 @@ type OptionPosition struct {
 	Contracts      float64
 	AvgPremium     float64
 	StopPremium    float64
+	Edited         bool
 	UpdatedAt      time.Time
 }
 
@@ -55,6 +65,7 @@ type OptionTransaction struct {
 	Fee            float64
 	Date           string
 	RealizedPnL    float64
+	Edited         bool
 	CreatedAt      time.Time
 }
 
@@ -67,6 +78,9 @@ const (
 	OptionActionExpired     = "EXPIRED"
 	OptionActionAssigned    = "ASSIGNED"
 	OptionActionExercised   = "EXERCISED"
+	// OptionActionClosed is what EditOptionClosed takes for "closed by a
+	// trade": whether that row is STC or BTC depends on the position's side.
+	OptionActionClosed = "CLOSED"
 )
 
 const defaultOptionMultiplier = 100
@@ -182,9 +196,9 @@ func (d *DB) RecordOption(symbol, side string, contracts, premium, fee float64, 
 	}
 
 	if _, err := tx.Exec(`
-		INSERT INTO option_transactions (contract_symbol, underlying, right, strike, expiry, multiplier, action, contracts, premium, fee, date, realized_pnl)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		symbol, c.Underlying, string(c.Right), c.Strike, c.Expiry.Format("2006-01-02"), multiplier, action, contracts, premium, fee, date, realizedPnL,
+		INSERT INTO option_transactions (contract_symbol, underlying, right, strike, expiry, multiplier, action, contracts, premium, fee, date, realized_pnl, entry_premium)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		symbol, c.Underlying, string(c.Right), c.Strike, c.Expiry.Format("2006-01-02"), multiplier, action, contracts, premium, fee, date, realizedPnL, existingAvgPremium,
 	); err != nil {
 		return OptionPosition{}, 0, err
 	}
@@ -214,7 +228,7 @@ func sameSign(a, b float64) bool {
 // underlying/expiry/strike.
 func (d *DB) GetOptionPositions() ([]OptionPosition, error) {
 	rows, err := d.conn.Query(`
-		SELECT contract_symbol, underlying, right, strike, expiry, multiplier, contracts, avg_premium, stop_premium, updated_at
+		SELECT contract_symbol, underlying, right, strike, expiry, multiplier, contracts, avg_premium, stop_premium, edited, updated_at
 		FROM option_positions ORDER BY underlying, expiry, strike`)
 	if err != nil {
 		return nil, err
@@ -224,7 +238,7 @@ func (d *DB) GetOptionPositions() ([]OptionPosition, error) {
 	var out []OptionPosition
 	for rows.Next() {
 		var p OptionPosition
-		if err := rows.Scan(&p.ContractSymbol, &p.Underlying, &p.Right, &p.Strike, &p.Expiry, &p.Multiplier, &p.Contracts, &p.AvgPremium, &p.StopPremium, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ContractSymbol, &p.Underlying, &p.Right, &p.Strike, &p.Expiry, &p.Multiplier, &p.Contracts, &p.AvgPremium, &p.StopPremium, &p.Edited, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -236,7 +250,7 @@ func (d *DB) GetOptionPositions() ([]OptionPosition, error) {
 // — backs the covered-call/CSP collateral checks (§3.5) and /oassign.
 func (d *DB) GetOptionPositionsByUnderlying(underlying string) ([]OptionPosition, error) {
 	rows, err := d.conn.Query(`
-		SELECT contract_symbol, underlying, right, strike, expiry, multiplier, contracts, avg_premium, stop_premium, updated_at
+		SELECT contract_symbol, underlying, right, strike, expiry, multiplier, contracts, avg_premium, stop_premium, edited, updated_at
 		FROM option_positions WHERE underlying = ? ORDER BY expiry, strike`, underlying)
 	if err != nil {
 		return nil, err
@@ -246,7 +260,7 @@ func (d *DB) GetOptionPositionsByUnderlying(underlying string) ([]OptionPosition
 	var out []OptionPosition
 	for rows.Next() {
 		var p OptionPosition
-		if err := rows.Scan(&p.ContractSymbol, &p.Underlying, &p.Right, &p.Strike, &p.Expiry, &p.Multiplier, &p.Contracts, &p.AvgPremium, &p.StopPremium, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ContractSymbol, &p.Underlying, &p.Right, &p.Strike, &p.Expiry, &p.Multiplier, &p.Contracts, &p.AvgPremium, &p.StopPremium, &p.Edited, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -259,9 +273,9 @@ func (d *DB) GetOptionPositionsByUnderlying(underlying string) ([]OptionPosition
 func (d *DB) GetOptionPosition(symbol string) (OptionPosition, bool, error) {
 	p := OptionPosition{ContractSymbol: symbol}
 	err := d.conn.QueryRow(`
-		SELECT underlying, right, strike, expiry, multiplier, contracts, avg_premium, stop_premium, updated_at
+		SELECT underlying, right, strike, expiry, multiplier, contracts, avg_premium, stop_premium, edited, updated_at
 		FROM option_positions WHERE contract_symbol = ?`, symbol,
-	).Scan(&p.Underlying, &p.Right, &p.Strike, &p.Expiry, &p.Multiplier, &p.Contracts, &p.AvgPremium, &p.StopPremium, &p.UpdatedAt)
+	).Scan(&p.Underlying, &p.Right, &p.Strike, &p.Expiry, &p.Multiplier, &p.Contracts, &p.AvgPremium, &p.StopPremium, &p.Edited, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return OptionPosition{}, false, nil
 	}
@@ -277,7 +291,7 @@ func (d *DB) GetOptionPosition(symbol string) (OptionPosition, bool, error) {
 // one underlying at a time.
 func (d *DB) GetAllOptionTransactions() ([]OptionTransaction, error) {
 	rows, err := d.conn.Query(`
-		SELECT id, contract_symbol, underlying, right, strike, expiry, multiplier, action, contracts, premium, fee, date, realized_pnl, created_at
+		SELECT id, contract_symbol, underlying, right, strike, expiry, multiplier, action, contracts, premium, fee, date, realized_pnl, edited, created_at
 		FROM option_transactions ORDER BY id DESC`)
 	if err != nil {
 		return nil, err
@@ -287,7 +301,7 @@ func (d *DB) GetAllOptionTransactions() ([]OptionTransaction, error) {
 	var out []OptionTransaction
 	for rows.Next() {
 		var t OptionTransaction
-		if err := rows.Scan(&t.ID, &t.ContractSymbol, &t.Underlying, &t.Right, &t.Strike, &t.Expiry, &t.Multiplier, &t.Action, &t.Contracts, &t.Premium, &t.Fee, &t.Date, &t.RealizedPnL, &t.CreatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.ContractSymbol, &t.Underlying, &t.Right, &t.Strike, &t.Expiry, &t.Multiplier, &t.Action, &t.Contracts, &t.Premium, &t.Fee, &t.Date, &t.RealizedPnL, &t.Edited, &t.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
@@ -352,9 +366,9 @@ func (d *DB) ResolveOption(symbol, action, date string) (OptionPosition, float64
 		return OptionPosition{}, 0, err
 	}
 	if _, err := tx.Exec(`
-		INSERT INTO option_transactions (contract_symbol, underlying, right, strike, expiry, multiplier, action, contracts, premium, fee, date, realized_pnl)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
-		symbol, c.Underlying, string(c.Right), c.Strike, c.Expiry.Format("2006-01-02"), multiplier, action, math.Abs(existingContracts), date, realizedPnL,
+		INSERT INTO option_transactions (contract_symbol, underlying, right, strike, expiry, multiplier, action, contracts, premium, fee, date, realized_pnl, entry_premium)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)`,
+		symbol, c.Underlying, string(c.Right), c.Strike, c.Expiry.Format("2006-01-02"), multiplier, action, math.Abs(existingContracts), date, realizedPnL, existingAvgPremium,
 	); err != nil {
 		return OptionPosition{}, 0, err
 	}
@@ -373,6 +387,267 @@ func (d *DB) ResolveOption(symbol, action, date string) (OptionPosition, float64
 		Contracts:      0,
 		AvgPremium:     existingAvgPremium,
 	}, realizedPnL, nil
+}
+
+// lastOptionCloseID is symbol's newest closing row, 0 if none: the BTO/STO
+// rows after it are the ones that opened the current position.
+func lastOptionCloseID(tx *sql.Tx, symbol string) (int64, error) {
+	var id int64
+	err := tx.QueryRow(`
+		SELECT COALESCE(MAX(id), 0) FROM option_transactions
+		WHERE contract_symbol = ? AND action NOT IN (?, ?)`,
+		symbol, OptionActionBuyToOpen, OptionActionSellToOpen,
+	).Scan(&id)
+	return id, err
+}
+
+// EditOptionPosition corrects an open position: any of its contract, side,
+// size or average premium, for an entry typed wrong. It writes the position
+// directly rather than a new order, because the old values never happened.
+// The ledger follows the contract and the side but keeps its original sizes
+// and premiums; nothing computes from BTO/STO rows, the position row is the
+// live state. side is "BUY" or "SELL", contracts a positive size.
+func (d *DB) EditOptionPosition(symbol, newSymbol, side string, contracts, premium float64) (OptionPosition, error) {
+	c, err := option.Parse(newSymbol)
+	if err != nil {
+		return OptionPosition{}, err
+	}
+	newSymbol = option.Format(c.Underlying, c.Right, c.Expiry, c.Strike)
+	expiry := c.Expiry.Format("2006-01-02")
+	signed, action := contracts, OptionActionBuyToOpen
+	if side == "SELL" {
+		signed, action = -contracts, OptionActionSellToOpen
+	}
+
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return OptionPosition{}, err
+	}
+	defer tx.Rollback()
+
+	if newSymbol != symbol {
+		var n int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM option_positions WHERE contract_symbol = ?`, newSymbol).Scan(&n); err != nil {
+			return OptionPosition{}, err
+		}
+		if n > 0 {
+			return OptionPosition{}, ErrOptionSymbolTaken
+		}
+	}
+	res, err := tx.Exec(`
+		UPDATE option_positions SET contract_symbol = ?, underlying = ?, right = ?, strike = ?, expiry = ?,
+			contracts = ?, avg_premium = ?, edited = 1, updated_at = CURRENT_TIMESTAMP
+		WHERE contract_symbol = ?`,
+		newSymbol, c.Underlying, string(c.Right), c.Strike, expiry, signed, premium, symbol)
+	if err != nil {
+		return OptionPosition{}, err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return OptionPosition{}, err
+	} else if n == 0 {
+		return OptionPosition{}, ErrNoPosition
+	}
+	if _, err := tx.Exec(`
+		UPDATE option_transactions SET contract_symbol = ?, underlying = ?, right = ?, strike = ?, expiry = ?
+		WHERE contract_symbol = ?`,
+		newSymbol, c.Underlying, string(c.Right), c.Strike, expiry, symbol); err != nil {
+		return OptionPosition{}, err
+	}
+	lastClose, err := lastOptionCloseID(tx, newSymbol)
+	if err != nil {
+		return OptionPosition{}, err
+	}
+	if _, err := tx.Exec(`
+		UPDATE option_transactions SET action = ?
+		WHERE contract_symbol = ? AND id > ? AND action IN (?, ?)`,
+		action, newSymbol, lastClose, OptionActionBuyToOpen, OptionActionSellToOpen); err != nil {
+		return OptionPosition{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return OptionPosition{}, err
+	}
+	return OptionPosition{ContractSymbol: newSymbol, Underlying: c.Underlying, Right: string(c.Right), Strike: c.Strike, Expiry: expiry, Contracts: signed, AvgPremium: premium, Multiplier: defaultOptionMultiplier, Edited: true}, nil
+}
+
+// DeleteOptionPosition removes a position entered by mistake, with the opens
+// behind it. Earlier closes of the same contract stay: they already happened.
+func (d *DB) DeleteOptionPosition(symbol string) error {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	res, err := tx.Exec(`DELETE FROM option_positions WHERE contract_symbol = ?`, symbol)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrNoPosition
+	}
+	lastClose, err := lastOptionCloseID(tx, symbol)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`
+		DELETE FROM option_transactions WHERE contract_symbol = ? AND id > ? AND action IN (?, ?)`,
+		symbol, lastClose, OptionActionBuyToOpen, OptionActionSellToOpen); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// optionClose is the part of a closing row its corrections need.
+type optionClose struct {
+	symbol, underlying, right, expiry, action string
+	strike, contracts, entryPremium           float64
+	multiplier                                int64
+	short                                     bool // the position it closed
+}
+
+// getOptionClose loads closing row id, ErrTransactionNotFound for an id that
+// isn't one. short comes from the action; EXPIRED is the one close that can
+// be either side, so it asks the open before it.
+func getOptionClose(tx *sql.Tx, id int64) (optionClose, error) {
+	var c optionClose
+	err := tx.QueryRow(`
+		SELECT contract_symbol, underlying, right, strike, expiry, multiplier, action, contracts, entry_premium
+		FROM option_transactions WHERE id = ? AND action NOT IN (?, ?)`,
+		id, OptionActionBuyToOpen, OptionActionSellToOpen,
+	).Scan(&c.symbol, &c.underlying, &c.right, &c.strike, &c.expiry, &c.multiplier, &c.action, &c.contracts, &c.entryPremium)
+	if err == sql.ErrNoRows {
+		return c, ErrTransactionNotFound
+	}
+	if err != nil {
+		return c, err
+	}
+	switch c.action {
+	case OptionActionBuyToClose, OptionActionAssigned:
+		c.short = true
+	case OptionActionExpired:
+		var open string
+		err := tx.QueryRow(`
+			SELECT action FROM option_transactions
+			WHERE contract_symbol = ? AND id < ? AND action IN (?, ?) ORDER BY id DESC LIMIT 1`,
+			c.symbol, id, OptionActionBuyToOpen, OptionActionSellToOpen,
+		).Scan(&open)
+		if err != nil && err != sql.ErrNoRows {
+			return c, err
+		}
+		c.short = open == OptionActionSellToOpen
+	}
+	return c, nil
+}
+
+func stockLinkedAction(action string) bool {
+	return action == OptionActionAssigned || action == OptionActionExercised
+}
+
+// EditOptionClosed corrects a closed record. realizedPnL is taken as given,
+// so it can hold what the broker actually booked. action is
+// OptionActionClosed, OptionActionExpired, or the row's own ASSIGNED/EXERCISED
+// (ErrOptionStockLinked for any move into or out of those).
+func (d *DB) EditOptionClosed(id int64, action string, contracts float64, date string, realizedPnL float64) error {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	c, err := getOptionClose(tx, id)
+	if err != nil {
+		return err
+	}
+	if action == OptionActionClosed {
+		action = OptionActionSellToClose
+		if c.short {
+			action = OptionActionBuyToClose
+		}
+	}
+	if action != c.action && (stockLinkedAction(action) || stockLinkedAction(c.action)) {
+		return ErrOptionStockLinked
+	}
+	if _, err := tx.Exec(`
+		UPDATE option_transactions SET action = ?, contracts = ?, date = ?, realized_pnl = ?, edited = 1 WHERE id = ?`,
+		action, contracts, date, realizedPnL, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// DeleteOptionClosed removes a closed record and with it its realized P&L;
+// the position stays closed (UndoOptionClose is the one that reopens it).
+// An ASSIGNED/EXERCISED row's stock trade is left alone.
+func (d *DB) DeleteOptionClosed(id int64) error {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := getOptionClose(tx, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM option_transactions WHERE id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// UndoOptionClose puts a close's contracts back into the open position and
+// removes the record. Weighted against whatever is open now, which for a
+// partial close is the same premium again. A position since reopened on the
+// other side returns ErrCrossesZero, and ASSIGNED/EXERCISED ErrOptionStockLinked.
+// A stop set before a full close is not restored: its row was deleted.
+func (d *DB) UndoOptionClose(id int64) (OptionPosition, error) {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return OptionPosition{}, err
+	}
+	defer tx.Rollback()
+
+	c, err := getOptionClose(tx, id)
+	if err != nil {
+		return OptionPosition{}, err
+	}
+	if stockLinkedAction(c.action) {
+		return OptionPosition{}, ErrOptionStockLinked
+	}
+	signed := c.contracts
+	if c.short {
+		signed = -signed
+	}
+
+	var open, avg float64
+	err = tx.QueryRow(`SELECT contracts, avg_premium FROM option_positions WHERE contract_symbol = ?`, c.symbol).Scan(&open, &avg)
+	if err != nil && err != sql.ErrNoRows {
+		return OptionPosition{}, err
+	}
+	if open != 0 && !sameSign(open, signed) {
+		return OptionPosition{}, ErrCrossesZero
+	}
+	total := open + signed
+	newAvg := (math.Abs(open)*avg + c.contracts*c.entryPremium) / math.Abs(total)
+
+	if _, err := tx.Exec(`
+		INSERT INTO option_positions (contract_symbol, underlying, right, strike, expiry, multiplier, contracts, avg_premium, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(contract_symbol) DO UPDATE SET
+			contracts = excluded.contracts,
+			avg_premium = excluded.avg_premium,
+			updated_at = excluded.updated_at`,
+		c.symbol, c.underlying, c.right, c.strike, c.expiry, c.multiplier, total, newAvg); err != nil {
+		return OptionPosition{}, err
+	}
+	if _, err := tx.Exec(`DELETE FROM option_transactions WHERE id = ?`, id); err != nil {
+		return OptionPosition{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return OptionPosition{}, err
+	}
+	return OptionPosition{ContractSymbol: c.symbol, Underlying: c.underlying, Right: c.right, Strike: c.strike, Expiry: c.expiry, Multiplier: c.multiplier, Contracts: total, AvgPremium: newAvg}, nil
 }
 
 // SaveATMIV records one day's at-the-money implied volatility for
