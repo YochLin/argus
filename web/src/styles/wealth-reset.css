@@ -1,6 +1,6 @@
 /* Settings page danger zone and its reset dialog (WealthResetZone.tsx,
    Phase 28 D — the design's resetModel / rst.*). */
-.settings-rules + .rst-zone,
+.news-block + .rst-zone,
 .rst-zone + .card {
   margin-top: 16px;
 }

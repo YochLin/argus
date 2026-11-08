@@ -356,6 +356,8 @@ export function getMockData(url: string): any {
     return {
       accountValue: market === "tw" ? 3850000 : 125400,
       cash: market === "tw" ? 850000 : 25000,
+      hasCash: true,
+      cashSyncedFromBroker: market === "tw",
       heatPct: market === "tw" ? 8.4 : 6.2,
       heatThresholdPct: 8.0,
       positions:

@@ -2,6 +2,7 @@ package web
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -288,6 +289,14 @@ func (f *fakeDB) BlockNewsSource(source string) error {
 	}
 	f.blockedSources = append(f.blockedSources, db.BlockedNewsSource{Source: source})
 	return nil
+}
+func (f *fakeDB) IsNewsSourceBlocked(source string) (bool, error) {
+	for _, s := range f.blockedSources {
+		if strings.EqualFold(strings.TrimSpace(s.Source), strings.TrimSpace(source)) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 func (f *fakeDB) UnblockNewsSource(source string) error {
 	out := f.blockedSources[:0]

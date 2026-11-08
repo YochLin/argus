@@ -2,10 +2,13 @@ package web
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -13,17 +16,20 @@ import (
 	"argus/internal/logger"
 )
 
-// Phase 17 (docs/phase-17-web-settings.md): the dashboard can edit the
-// connection/credential env vars and restart the process to apply them.
+// Phase 17 (docs/phase-17-web-settings.md): the dashboard can edit a fixed
+// set of env vars and restart the process to apply them.
 //
 // The whitelist below is the only thing this endpoint can read or write, and
-// the rule for what may join it is not "is it a credential" but "if it's
-// filled in wrong, does the process still come up?" — saving here always ends
-// in os.Exit(1) + a supervisor restart, so a value that breaks boot would
-// lock the operator out of the very page that could fix it. That's why the
-// path variables (DB_PATH/LOG_PATH/BACKUP_DIR/PAPER_DB_PATH) are excluded
-// permanently: a bad path fails before web.New and turns into a crash loop.
-// TELEGRAM_* qualify only because Phase 17 PR1 made them non-fatal.
+// the rule for what may join it is "if it's filled in wrong, does the process
+// still come up?" — saving here always ends in os.Exit(1) + a supervisor
+// restart, so a value that breaks boot would lock the operator out of the very
+// page that could fix it. That's why the path variables (DB_PATH/LOG_PATH/
+// BACKUP_DIR/PAPER_DB_PATH) are excluded permanently: a bad path fails before
+// web.New and turns into a crash loop. TELEGRAM_* qualify only because Phase
+// 17 PR1 made them non-fatal; the exit-discipline numbers and model names
+// qualify because Load falls back to a default on a bad one — and
+// validateSetting rejects a bad one before it's written anyway, since that
+// fallback would otherwise be a silent no-op save.
 //
 // Also deliberately absent: WEB_ADDR/WEB_PASSWORD (this page is unreachable
 // without them, so it can't bootstrap itself), JWT_SECRET/API_KEY (Phase 24
@@ -31,49 +37,125 @@ import (
 // credentials rather than a third-party service connection, and rotating
 // either one silently logs out every app and script that already has a
 // token), SJ_PRODUCTION (the paper vs. real-money switch for the Shioaji
-// daemon — worth the friction of an SSH session), and the strategy-tuning
-// numbers, which would pass the boot test but aren't part of "connect a
-// service."
+// daemon — worth the friction of an SSH session), CLAUDE_ACP_COMMAND/
+// ANTIGRAVITY_CLI_COMMAND (a command to execute) and the paper account's
+// settings, which mean nothing until PAPER_DB_PATH (a path) is set by hand.
 type settingKey struct {
 	name string
 	// group is an id, not a display string (see calendar.go's calendarEvent
 	// for the same convention) — the frontend maps it to a section heading
-	// from its own dictionary, so adding a key here is the only edit needed
-	// to make it appear in the UI.
+	// from its own dictionary.
 	group string
-	// secret keys never leave the process: GET reports only whether they're
-	// set. Not a strong boundary (a logged-in operator could read .env over
-	// SSH anyway) — it stops a token from sitting in a browser tab, DOM dump
-	// or screenshot.
-	secret bool
+	kind  settingKind
+	// max bounds a settingNumber, which is never negative: the % fields
+	// can't exceed 100 and an ATR multiple past 20 is a typo.
+	max float64
 }
 
+type settingKind string
+
+const (
+	// settingSecret values never leave the process: GET reports only whether
+	// they're set. Not a strong boundary (a logged-in operator could read
+	// .env over SSH anyway) — it stops a token from sitting in a browser
+	// tab, DOM dump or screenshot.
+	settingSecret settingKind = "secret"
+	settingText   settingKind = "text"
+	settingNumber settingKind = "number"
+	settingInt    settingKind = "int"
+	// settingToggle is "true"/"false"; Load only ever checks == "true".
+	settingToggle settingKind = "toggle"
+	// settingModel is one of claudeModels.
+	settingModel settingKind = "model"
+	// settingDiscount is TW_BROKER_FEE_DISCOUNT: above 0, at most 1.
+	settingDiscount settingKind = "discount"
+)
+
+// claudeModels are the aliases the model fields accept. A full model ID
+// already in .env still loads (Load takes any string); the page just can't
+// write one.
+var claudeModels = []string{"opus", "sonnet", "haiku"}
+
 var settingKeys = []settingKey{
-	{name: "TELEGRAM_BOT_TOKEN", group: "telegram", secret: true},
-	{name: "TELEGRAM_CHAT_ID", group: "telegram"},
-	{name: "FINNHUB_API_KEY", group: "data", secret: true},
-	{name: "FINMIND_TOKEN", group: "data", secret: true},
-	{name: "SEC_USER_AGENT", group: "data"},
-	{name: "SHIOAJI_ADDR", group: "sinopac"},
+	{name: "TELEGRAM_BOT_TOKEN", group: "telegram", kind: settingSecret},
+	{name: "TELEGRAM_CHAT_ID", group: "telegram", kind: settingInt},
+	{name: "FINNHUB_API_KEY", group: "data", kind: settingSecret},
+	{name: "FINMIND_TOKEN", group: "data", kind: settingSecret},
+	{name: "SEC_USER_AGENT", group: "data", kind: settingText},
+	{name: "SHIOAJI_ADDR", group: "sinopac", kind: settingText},
 	// SJ_API_KEY/SJ_SEC_KEY are read by the `shioaji server` daemon, not by
 	// Argus (deploy/shioaji.service points its EnvironmentFile at the same
 	// .env this writes). Saving them therefore restarts Argus but NOT the
 	// daemon — the frontend says so, since there's no way to tell from here.
-	{name: "SJ_API_KEY", group: "sinopac", secret: true},
-	{name: "SJ_SEC_KEY", group: "sinopac", secret: true},
-	{name: "SINOPAC_SKIP_TICKERS", group: "sinopac"},
-	{name: "SINOPAC_SYNC_LIVE", group: "sinopac"},
+	{name: "SJ_API_KEY", group: "sinopac", kind: settingSecret},
+	{name: "SJ_SEC_KEY", group: "sinopac", kind: settingSecret},
+	{name: "SINOPAC_SKIP_TICKERS", group: "sinopac", kind: settingText},
+	{name: "SINOPAC_SYNC_LIVE", group: "sinopac", kind: settingToggle},
+	{name: "STOP_LOSS_PCT", group: "risk", kind: settingNumber, max: 100},
+	{name: "STOP_LOSS_PCT_TW", group: "risk", kind: settingNumber, max: 100},
+	{name: "TRAILING_STOP_PCT", group: "risk", kind: settingNumber, max: 100},
+	{name: "TRAILING_STOP_PCT_TW", group: "risk", kind: settingNumber, max: 100},
+	{name: "TRAILING_STOP_ATR_MULT", group: "risk", kind: settingNumber, max: 20},
+	{name: "RISK_PCT_PER_TRADE", group: "risk", kind: settingNumber, max: 100},
+	{name: "RISK_HEAT_PCT", group: "risk", kind: settingNumber, max: 100},
+	{name: "TW_BROKER_FEE_DISCOUNT", group: "risk", kind: settingDiscount},
+	{name: "CLAUDE_RECOMMEND_MODEL", group: "ai", kind: settingModel},
+	{name: "CLAUDE_CHECK_MODEL", group: "ai", kind: settingModel},
+	{name: "CLAUDE_CHAT_MODEL", group: "ai", kind: settingModel},
+	{name: "ANTIGRAVITY_ENABLED", group: "ai", kind: settingToggle},
+	{name: "ANTIGRAVITY_MODEL", group: "ai", kind: settingText},
+}
+
+// secUserAgent is SEC_USER_AGENT's "name email@host" shape (see
+// internal/data/sec.go: SEC's edge filter blocks a UA without an email).
+var secUserAgent = regexp.MustCompile(`^\S+\s+\S+@\S+\.\S+$`)
+
+// validateSetting checks a non-empty value against its key's kind, so a bad
+// value is refused here instead of being written, restarting the process,
+// and then silently falling back to the default in Load.
+func validateSetting(k settingKey, value string) error {
+	switch k.kind {
+	case settingInt:
+		if _, err := strconv.ParseInt(value, 10, 64); err != nil {
+			return fmt.Errorf("%s must be a whole number", k.name)
+		}
+	case settingNumber:
+		n, err := strconv.ParseFloat(value, 64)
+		if err != nil || n < 0 || n > k.max {
+			return fmt.Errorf("%s must be a number from 0 to %g", k.name, k.max)
+		}
+	case settingDiscount:
+		n, err := strconv.ParseFloat(value, 64)
+		if err != nil || n <= 0 || n > 1 {
+			return fmt.Errorf("%s must be above 0 and at most 1", k.name)
+		}
+	case settingToggle:
+		if value != "true" && value != "false" {
+			return fmt.Errorf("%s must be true or false", k.name)
+		}
+	case settingModel:
+		if !slices.Contains(claudeModels, value) {
+			return fmt.Errorf("%s must be one of %s", k.name, strings.Join(claudeModels, ", "))
+		}
+	}
+	if k.name == "SEC_USER_AGENT" && !secUserAgent.MatchString(value) {
+		return errors.New(`SEC_USER_AGENT must look like "name email@host"`)
+	}
+	return nil
 }
 
 type settingResponse struct {
-	Key    string `json:"key"`
-	Group  string `json:"group"`
-	Secret bool   `json:"secret"`
+	Key   string      `json:"key"`
+	Group string      `json:"group"`
+	Kind  settingKind `json:"kind"`
 	// Value is always "" for a secret key — read IsSet instead. For the rest
 	// it's the value this process actually loaded at boot, which is what the
 	// operator needs to see to know whether an edit took effect.
 	Value string `json:"value"`
 	IsSet bool   `json:"isSet"`
+	// Default is what Load uses while the variable is unset or cleared;
+	// empty when it has none.
+	Default string `json:"default,omitempty"`
 }
 
 type settingsResponse struct {
@@ -97,8 +179,8 @@ func (s *Server) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
 	out := make([]settingResponse, 0, len(settingKeys))
 	for _, k := range settingKeys {
 		v := os.Getenv(k.name)
-		item := settingResponse{Key: k.name, Group: k.group, Secret: k.secret, IsSet: v != ""}
-		if !k.secret {
+		item := settingResponse{Key: k.name, Group: k.group, Kind: k.kind, IsSet: v != "", Default: s.settingDefaults[k.name]}
+		if k.kind != settingSecret {
 			item.Value = v
 		}
 		out = append(out, item)
@@ -107,28 +189,32 @@ func (s *Server) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleSettingsSave is POST /api/settings — a partial {KEY: value} map.
-// An empty value means "leave this one alone" rather than "clear it", so the
-// secret fields can render as blank inputs without a stray submit wiping a
-// working token. The cost is that this endpoint can't clear a value at all;
-// doing that means editing .env by hand, which is rare enough not to deserve
-// its own UI.
+// An empty value means "leave this one alone", so the secret fields can
+// render as blank inputs without a stray submit wiping a working token; null
+// means "clear it", written as KEY= so the next boot falls back to the
+// default (or, for a connection, to that service being off).
 func (s *Server) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
-	var body map[string]string
+	var body map[string]*string
 	if !decodeJSON(w, r, &body) {
 		return
 	}
 
-	allowed := make(map[string]bool, len(settingKeys))
+	allowed := make(map[string]settingKey, len(settingKeys))
 	for _, k := range settingKeys {
-		allowed[k.name] = true
+		allowed[k.name] = k
 	}
 
 	updates := make(map[string]string)
-	for key, value := range body {
-		if !allowed[key] {
+	for key, raw := range body {
+		k, ok := allowed[key]
+		if !ok {
 			continue // silently ignored, same as an unknown JSON field
 		}
-		value = strings.TrimSpace(value)
+		if raw == nil {
+			updates[key] = ""
+			continue
+		}
+		value := strings.TrimSpace(*raw)
 		if value == "" {
 			continue
 		}
@@ -139,14 +225,9 @@ func (s *Server) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, key+" must not contain line breaks")
 			return
 		}
-		// Checked here rather than left for the next boot: an unparseable
-		// chat id would restart the process into exactly the same
-		// Telegram-disabled state, with the reason buried in the log.
-		if key == "TELEGRAM_CHAT_ID" {
-			if _, err := strconv.ParseInt(value, 10, 64); err != nil {
-				writeError(w, http.StatusBadRequest, "TELEGRAM_CHAT_ID must be a number")
-				return
-			}
+		if err := validateSetting(k, value); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
 		}
 		updates[key] = value
 	}
@@ -185,8 +266,9 @@ func sortedKeys(updates map[string]string) []string {
 // Keys not already present are appended at the end.
 //
 // ponytail: values are written unquoted and unescaped. Every whitelisted
-// value is a token, socket path, comma-separated ticker list, "true", or the
-// "name email@host" shape SEC wants — none can contain a `#`, which is the
+// value is a token, socket path, comma-separated ticker list, number,
+// "true"/"false", model name, or the "name email@host" shape SEC wants —
+// none can contain a `#`, which is the
 // only character godotenv would misread (it starts a comment). A value with
 // spaces is fine: godotenv and systemd's EnvironmentFile both read an
 // unquoted value to end-of-line, which settings_test.go pins down. Adding a

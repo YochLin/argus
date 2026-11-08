@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { currencySymbol, fetchRisk, tickerLabel, type Market, type Risk } from "../api";
 import type { Dictionary } from "../i18n";
+import { CashCard } from "./CashCard";
 
 interface Props {
   dict: Dictionary;
   market: Market;
   names?: Record<string, string>;
   onTickerClick?: (ticker: string) => void;
+  writable?: boolean;
+  onUnauthorized?: (retry: () => void) => void;
 }
 
 function fmtMoney(v: number, currency: string): string {
@@ -23,17 +26,23 @@ function fmtPct(v: number): string {
 // than from the daily snapshot replay every other view here reads — this is
 // the one page in the dashboard meant to change behavior (see the design
 // doc's "誠實價值評估"), not just make existing history more visible.
-export function RiskView({ dict, market, names = {}, onTickerClick }: Props) {
+export function RiskView({ dict, market, names = {}, onTickerClick, writable = false, onUnauthorized = () => {} }: Props) {
   const [risk, setRisk] = useState<Risk | null>(null);
   const [error, setError] = useState(false);
+  // Bumped after the cash card saves: account value, heat and weights all
+  // move with the cash balance, so the whole response is re-fetched.
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    setRisk(null);
     setError(false);
     fetchRisk(market)
       .then(setRisk)
       .catch(() => setError(true));
-  }, [market]);
+  }, [market, reload]);
+
+  // A market switch must not show the other market's numbers while the new
+  // ones load; a reload after saving keeps the old ones on screen instead.
+  useEffect(() => setRisk(null), [market]);
 
   if (error) {
     return <div className="error-message">{dict.error}</div>;
@@ -44,7 +53,6 @@ export function RiskView({ dict, market, names = {}, onTickerClick }: Props) {
 
   const currency = currencySymbol(market);
   const heatBreached = risk.heatThresholdPct > 0 && risk.heatPct > risk.heatThresholdPct;
-  const cashLevelPct = risk.accountValue !== 0 ? (risk.cash / risk.accountValue) * 100 : 0;
   // Concentration view per the design doc: no separate pie chart, the
   // weight-sorted table row order already makes the biggest position
   // obvious at a glance.
@@ -56,15 +64,24 @@ export function RiskView({ dict, market, names = {}, onTickerClick }: Props) {
         <div className="card">
           <div className="eyebrow">{dict.portfolioHeat}</div>
           <div className={`kpi-value ${heatBreached ? "loss" : ""}`}>{risk.heatPct.toFixed(1)}%</div>
+          {risk.heatThresholdPct > 0 && (
+            <div className="cash-sub">{dict.heatThresholdLine.replace("%s", String(risk.heatThresholdPct))}</div>
+          )}
+          {!risk.hasCash && <span className="cash-warn-chip">{dict.heatNoCash}</span>}
         </div>
         <div className="card">
           <div className="eyebrow">{dict.accountValue}</div>
           <div className="kpi-value">{fmtMoney(risk.accountValue, currency)}</div>
+          {!risk.hasCash && <div className="cash-sub">{dict.accountValueNoCash}</div>}
         </div>
-        <div className="card">
-          <div className="eyebrow">{dict.cashLevel}</div>
-          <div className="kpi-value">{cashLevelPct.toFixed(1)}%</div>
-        </div>
+        <CashCard
+          dict={dict}
+          market={market}
+          risk={risk}
+          writable={writable}
+          onSaved={() => setReload((n) => n + 1)}
+          onUnauthorized={onUnauthorized}
+        />
       </div>
 
       <div className="card">

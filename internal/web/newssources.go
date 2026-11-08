@@ -13,6 +13,7 @@ import (
 type newsSourceWriter interface {
 	BlockNewsSource(source string) error
 	UnblockNewsSource(source string) error
+	IsNewsSourceBlocked(source string) (bool, error)
 }
 
 type blockedSourceResponse struct {
@@ -53,6 +54,19 @@ func (s *Server) handleNewsSourceBlock(w http.ResponseWriter, r *http.Request) {
 	source := strings.TrimSpace(req.Source)
 	if source == "" {
 		writeError(w, http.StatusBadRequest, "source is required")
+		return
+	}
+	// Same case-insensitive match the news filter uses, so "benzinga" isn't
+	// stored beside "Benzinga" as a second row that changes nothing. The
+	// table's own INSERT OR IGNORE would accept it silently; the settings
+	// page wants to say "already blocked" instead.
+	blocked, err := s.newsSourceDB.IsNewsSourceBlocked(source)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to block news source")
+		return
+	}
+	if blocked {
+		writeError(w, http.StatusConflict, "already blocked")
 		return
 	}
 	if err := s.newsSourceDB.BlockNewsSource(source); err != nil {

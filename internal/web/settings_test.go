@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -265,4 +266,77 @@ func TestPatchEnvFile(t *testing.T) {
 			t.Errorf("directory holds %d files, want just .env", len(entries))
 		}
 	})
+}
+
+func TestSettingsSave_ClearAndValidate(t *testing.T) {
+	t.Run("null clears a key so the next boot uses its default", func(t *testing.T) {
+		envPath := filepath.Join(t.TempDir(), ".env")
+		os.WriteFile(envPath, []byte("STOP_LOSS_PCT=7\nSINOPAC_SKIP_TICKERS=0050\n"), 0o600)
+		s, restarted := newSettingsTestServer(t, envPath)
+		cookie := loginAndGetCookie(t, s, "secret")
+
+		raw := []byte(`{"STOP_LOSS_PCT":null,"SINOPAC_SKIP_TICKERS":"","RISK_HEAT_PCT":"8"}`)
+		req := httptest.NewRequest(http.MethodPost, "/api/settings", bytes.NewReader(raw))
+		req.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+		}
+		waitRestart(t, restarted)
+		got, _ := os.ReadFile(envPath)
+		if want := "STOP_LOSS_PCT=\nSINOPAC_SKIP_TICKERS=0050\nRISK_HEAT_PCT=8\n"; string(got) != want {
+			t.Errorf("env file = %q, want %q", got, want)
+		}
+	})
+
+	for _, bad := range []map[string]string{
+		{"STOP_LOSS_PCT": "abc"},
+		{"STOP_LOSS_PCT": "101"},
+		{"TRAILING_STOP_ATR_MULT": "25"},
+		{"RISK_PCT_PER_TRADE": "-1"},
+		{"TW_BROKER_FEE_DISCOUNT": "0"},
+		{"TW_BROKER_FEE_DISCOUNT": "1.5"},
+		{"CLAUDE_CHAT_MODEL": "gpt-5"},
+		{"ANTIGRAVITY_ENABLED": "yes"},
+		{"SEC_USER_AGENT": "no-email-here"},
+	} {
+		t.Run(fmt.Sprintf("rejects %v", bad), func(t *testing.T) {
+			envPath := filepath.Join(t.TempDir(), ".env")
+			s, restarted := newSettingsTestServer(t, envPath)
+			cookie := loginAndGetCookie(t, s, "secret")
+			if rec := postSettings(t, s, cookie, bad); rec.Code != http.StatusBadRequest {
+				t.Errorf("status = %d, want 400", rec.Code)
+			}
+			refuseRestart(t, restarted)
+			if _, err := os.Stat(envPath); err == nil {
+				t.Error("a rejected save wrote the env file")
+			}
+		})
+	}
+}
+
+func TestSettingsGet_KindAndDefault(t *testing.T) {
+	t.Setenv("STOP_LOSS_PCT_TW", "")
+	s, _ := newSettingsTestServer(t, filepath.Join(t.TempDir(), ".env"))
+	s.settingDefaults = map[string]string{"STOP_LOSS_PCT_TW": "12"}
+	cookie := loginAndGetCookie(t, s, "secret")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, req)
+	var resp settingsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range resp.Settings {
+		if item.Key == "STOP_LOSS_PCT_TW" {
+			if item.Kind != settingNumber || item.Default != "12" || item.IsSet {
+				t.Errorf("STOP_LOSS_PCT_TW = %+v, want kind number, default 12, not set", item)
+			}
+			return
+		}
+	}
+	t.Error("STOP_LOSS_PCT_TW missing from /api/settings")
 }

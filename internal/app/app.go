@@ -398,15 +398,16 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 		// isn't a separate process, and database/sql connections already
 		// support concurrent use from other goroutines.
 		a.Web = web.New(web.Config{
-			DB:           database,
-			Provider:     core.Provider,
-			History:      history,
-			Earnings:     core.Earnings,
-			Lang:         cfg.Lang,
-			CompanyNames: core.CompanyNames,
-			OptionChain:  core.Yahoo,
-			RiskHeatPct:  cfg.RiskHeatPct,
-			Password:     cfg.WebPassword,
+			DB:             database,
+			Provider:       core.Provider,
+			History:        history,
+			Earnings:       core.Earnings,
+			Lang:           cfg.Lang,
+			CompanyNames:   core.CompanyNames,
+			OptionChain:    core.Yahoo,
+			RiskHeatPct:    cfg.RiskHeatPct,
+			BrokerCashSync: cfg.ShioajiAddr != "",
+			Password:       cfg.WebPassword,
 			// Always the bot, headless or not: since Phase 24 tech debt 3
 			// the Execute* methods have no Telegram side effect of their
 			// own (the handlers call Notify explicitly), so a headless one
@@ -421,6 +422,7 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 			// — not configurable, since editing any other file would have no
 			// effect on the next boot.
 			EnvPath:             ".env",
+			SettingDefaults:     SettingDefaults(),
 			PaperDB:             a.PaperDB,
 			PaperInitialCashUSD: cfg.PaperInitialCashUSD,
 			PaperInitialCashTWD: cfg.PaperInitialCashTWD,

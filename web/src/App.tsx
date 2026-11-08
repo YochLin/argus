@@ -445,6 +445,8 @@ export default function App() {
         market={market}
         names={names}
         onTickerClick={(t) => navigate(`/chart?ticker=${encodeURIComponent(t)}`)}
+        writable={status?.writable ?? false}
+        onUnauthorized={(retry) => setAuthRetry(() => retry)}
       />
     );
   } else if (path === "/chart") {

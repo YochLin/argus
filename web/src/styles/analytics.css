@@ -119,6 +119,182 @@
   border-color: var(--loss);
 }
 
+/* The risk page's 現金水位 card (CashCard.tsx), edited in place. Amber
+   (--s1) marks "not set": it's a gap in the numbers, not a loss. */
+.cash-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cash-card-unset {
+  box-shadow: 0 0 0 1px var(--s1), var(--card-shadow);
+}
+
+.cash-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cash-chip {
+  font-size: 11px;
+  color: var(--ink-3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.cash-edit-btn {
+  margin-left: auto;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.cash-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+.cash-card-body .kpi-value {
+  margin-top: 0;
+}
+
+.cash-dash {
+  color: var(--ink-3);
+}
+
+.cash-ratio {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cash-amount {
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+.cash-sub {
+  font-size: 12px;
+  color: var(--ink-3);
+  margin-top: 4px;
+}
+
+.cash-warn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--s1) 45%, transparent);
+  background: color-mix(in srgb, var(--s1) 10%, transparent);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.cash-warn strong {
+  color: var(--s1);
+  font-size: 13.5px;
+}
+
+.cash-warn-chip {
+  align-self: flex-start;
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 999px;
+  color: var(--s1);
+  border: 1px solid color-mix(in srgb, var(--s1) 45%, transparent);
+  background: color-mix(in srgb, var(--s1) 10%, transparent);
+}
+
+.cash-card .cash-actions-start {
+  justify-content: flex-start;
+}
+
+.cash-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.cash-input {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  min-height: 40px;
+}
+
+.cash-input:focus-within {
+  border-color: var(--accent);
+}
+
+.cash-input-error {
+  border-color: var(--loss);
+}
+
+.cash-input span {
+  padding-left: 11px;
+  color: var(--ink-3);
+  font-weight: 600;
+}
+
+.cash-input input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 600;
+  padding: 8px 11px 8px 6px;
+  outline: none;
+}
+
+.cash-error,
+.cash-sino {
+  font-size: 12.5px;
+  padding: 8px 11px;
+  border-radius: 8px;
+}
+
+.cash-error {
+  color: var(--loss);
+  border: 1px solid color-mix(in srgb, var(--loss) 45%, transparent);
+  background: color-mix(in srgb, var(--loss) 10%, transparent);
+}
+
+.cash-sino {
+  color: var(--ink);
+  border: 1px solid var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+}
+
+.cash-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-3);
+}
+
 .stat-note {
   color: var(--ink-2);
   font-size: 12px;
