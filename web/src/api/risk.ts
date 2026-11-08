@@ -1,5 +1,5 @@
 import type { Market } from "./common";
-import { getJSON } from "./http";
+import { getJSON, postJSON } from "./http";
 
 // RiskPosition mirrors internal/web/risk.go's riskPositionResponse
 // (Phase 8 PR1) — a live-priced view of one open position's stop-loss risk.
@@ -25,6 +25,11 @@ export interface RiskPosition {
 export interface Risk {
   accountValue: number;
   cash: number;
+  // hasCash false: no balance was ever declared — cash is 0 and
+  // accountValue is positions only.
+  hasCash: boolean;
+  // TW with Sinopac connected: confirming a synced trade overwrites cash.
+  cashSyncedFromBroker: boolean;
   heatPct: number;
   heatThresholdPct: number;
   positions: RiskPosition[];
@@ -32,4 +37,9 @@ export interface Risk {
 
 export function fetchRisk(market: Market = "us"): Promise<Risk> {
   return getJSON<Risk>(`/api/risk?market=${market}`);
+}
+
+// saveCash is the risk page's cash card: the web form of Telegram's /cash.
+export function saveCash(market: Market, amount: number): Promise<{ message: string }> {
+  return postJSON("/api/cash", { market, amount });
 }

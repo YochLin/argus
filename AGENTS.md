@@ -443,12 +443,18 @@ the Dockerfile and `docker-compose.yml` all build `./cmd/server`.
   nothing else). The route table lives in `apiV1Handlers` as data so `openapi_test.go` can fail when
   **[docs/openapi.yaml](docs/openapi.yaml)** drifts from it — update the spec in the same PR as a route.
   `settings.go`'s `/api/settings` (Phase 17) is the one endpoint that writes outside SQLite: it patches
-  the connection/credential env vars in `.env` line-by-line (never `godotenv.Write`, which would reorder
-  the file and drop every comment) and then `os.Exit(1)`s so the supervisor restarts the process into the
-  new config — there is no hot reload, matching the codebase-wide "wire everything once at boot" rule.
-  Its whitelist admits a variable on "would a wrong value still boot?", not "is it a credential":
-  `DB_PATH` and the other paths are excluded permanently, since a typo there would crash-loop before
-  `web.New` and leave no UI to fix it from.
+  the whitelisted env vars (connections, the exit-discipline numbers, the Claude models) in `.env`
+  line-by-line (never `godotenv.Write`, which would reorder the file and drop every comment) and then
+  `os.Exit(1)`s so the supervisor restarts the process into the new config — there is no hot reload,
+  matching the codebase-wide "wire everything once at boot" rule. Its whitelist admits a variable on
+  "would a wrong value still boot?", not "is it a credential": `DB_PATH` and the other paths are excluded
+  permanently, since a typo there would crash-loop before `web.New` and leave no UI to fix it from. Each
+  key carries a kind that `validateSetting` checks before writing (a bad number would otherwise restart
+  into `Load`'s silent fallback), a `null` value clears a key to `KEY=`, and the defaults the page shows
+  come from `app.SettingDefaults`, the same constants `Load` falls back to. The news-source blocklist on
+  that page is not an env var: `/api/news-sources/*` write SQLite and apply at once, and are registered
+  regardless of `WEB_LLM_AUDIT`. `cash.go`'s `POST /api/cash` is the risk page's cash card — the web
+  form of Telegram's `/cash`, the same `service.CashSettingKey` row.
   `wealth_assistant.go`'s `/api/wealth/assistant` (Phase 28) is the wealth assistant chat: one turn
   at a time (`assistantMu.TryLock`, else 409) on `llm.ChatWealth`, whose session reads the records
   through `argus mcp wealth`. A turn is stored only after the model answers (user + reply in one

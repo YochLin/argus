@@ -189,9 +189,9 @@ func Load() Config {
 		SinopacSkip:     parseSinopacSkip(os.Getenv("SINOPAC_SKIP_TICKERS")),
 		SinopacSyncLive: os.Getenv("SINOPAC_SYNC_LIVE") == "true",
 
-		RecommendModel: EnvOr("CLAUDE_RECOMMEND_MODEL", "opus"),
-		CheckModel:     EnvOr("CLAUDE_CHECK_MODEL", "sonnet"),
-		ChatModel:      EnvOr("CLAUDE_CHAT_MODEL", "sonnet"),
+		RecommendModel: EnvOr("CLAUDE_RECOMMEND_MODEL", defaultRecommendModel),
+		CheckModel:     EnvOr("CLAUDE_CHECK_MODEL", defaultCheckModel),
+		ChatModel:      EnvOr("CLAUDE_CHAT_MODEL", defaultChatModel),
 
 		DBPath:      EnvOr("DB_PATH", "data/argus.db"),
 		PriceDBPath: os.Getenv("PRICE_DB_PATH"),
@@ -211,9 +211,9 @@ func Load() Config {
 		StopLossPctTW:       envOrFloat("STOP_LOSS_PCT_TW", exitsTW.StopLossPct),
 		TrailingStopPctTW:   envOrFloat("TRAILING_STOP_PCT_TW", exitsTW.TrailingPct),
 		TrailingStopATRMult: envOrFloat("TRAILING_STOP_ATR_MULT", exitsUS.TrailingATRMult),
-		RiskPctPerTrade:     envOrFloat("RISK_PCT_PER_TRADE", 0),
-		TWFeeDiscount:       envOrFloat("TW_BROKER_FEE_DISCOUNT", 1.0),
-		RiskHeatPct:         envOrFloat("RISK_HEAT_PCT", 6.0),
+		RiskPctPerTrade:     envOrFloat("RISK_PCT_PER_TRADE", defaultRiskPct),
+		TWFeeDiscount:       envOrFloat("TW_BROKER_FEE_DISCOUNT", defaultTWFeeDiscount),
+		RiskHeatPct:         envOrFloat("RISK_HEAT_PCT", defaultRiskHeatPct),
 
 		PaperDBPath:            os.Getenv("PAPER_DB_PATH"),
 		PaperInitialCashUSD:    envOrFloat("PAPER_INITIAL_CASH_USD", 100000),
@@ -224,6 +224,38 @@ func Load() Config {
 		LogPath:             EnvOr("LOG_PATH", "data/argus.log"),
 		BackupDir:           EnvOr("BACKUP_DIR", "data/backups"),
 		BackupRetentionDays: envOrInt("BACKUP_RETENTION_DAYS", 14),
+	}
+}
+
+// Defaults for the variables the web Settings page can edit and that have
+// one — Load falls back to these, and SettingDefaults hands the same values
+// to the page, so the "default N" it shows can't drift from what Load uses.
+const (
+	defaultRecommendModel = "opus"
+	defaultCheckModel     = "sonnet"
+	defaultChatModel      = "sonnet"
+	defaultRiskPct        = 0.0
+	defaultTWFeeDiscount  = 1.0
+	defaultRiskHeatPct    = 6.0
+)
+
+// SettingDefaults maps each Settings-page variable that has a default to the
+// value Load uses when it's unset, formatted the way the page shows it.
+func SettingDefaults() map[string]string {
+	us, tw := paper.DefaultExits(market.US), paper.DefaultExits(market.TW)
+	f := func(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
+	return map[string]string{
+		"STOP_LOSS_PCT":          f(us.StopLossPct),
+		"STOP_LOSS_PCT_TW":       f(tw.StopLossPct),
+		"TRAILING_STOP_PCT":      f(us.TrailingPct),
+		"TRAILING_STOP_PCT_TW":   f(tw.TrailingPct),
+		"TRAILING_STOP_ATR_MULT": f(us.TrailingATRMult),
+		"RISK_PCT_PER_TRADE":     f(defaultRiskPct),
+		"RISK_HEAT_PCT":          f(defaultRiskHeatPct),
+		"TW_BROKER_FEE_DISCOUNT": f(defaultTWFeeDiscount),
+		"CLAUDE_RECOMMEND_MODEL": defaultRecommendModel,
+		"CLAUDE_CHECK_MODEL":     defaultCheckModel,
+		"CLAUDE_CHAT_MODEL":      defaultChatModel,
 	}
 }
 

@@ -77,6 +77,11 @@ type Config struct {
 	// same convention as internal/bot's STOP_LOSS_PCT. main.go defaults it
 	// to 6.0 when the env var is unset.
 	RiskHeatPct float64
+	// BrokerCashSync is true when SHIOAJI_ADDR is set: confirming a
+	// Sinopac-synced trade then overwrites the TWD cash balance with the
+	// broker's own (bot.syncSinopacCashBalance), so the risk page's cash card
+	// warns that a value typed there won't survive the next confirmation.
+	BrokerCashSync bool
 	// Password (env WEB_PASSWORD, Phase 10) gates the write endpoints —
 	// empty means writes are off entirely (login + all five write routes
 	// simply aren't registered, so they 404), same presence-of-config
@@ -99,6 +104,10 @@ type Config struct {
 	// process doesn't read. It's a field only so settings_test.go can point
 	// at a temp file. Empty defaults to ".env".
 	EnvPath string
+	// SettingDefaults (app.SettingDefaults) is what each Settings-page
+	// variable falls back to when unset; the page shows it as the field's
+	// placeholder and as what a cleared field will become.
+	SettingDefaults map[string]string
 	// PaperDB is Phase 11 PR3's live paper account's own database — nil
 	// (PAPER_DB_PATH unset) disables /api/paper entirely (404), same
 	// presence-of-config convention as Password/Trade above. Physically
@@ -136,8 +145,8 @@ type Config struct {
 	// LLMAudit gates Phase 19's /llm page (env WEB_LLM_AUDIT, §8.4) — unlike
 	// Paper/OptionChain/etc.'s "always register, 404/empty at request time"
 	// convention, this one skips route registration entirely when off, so
-	// /api/llm-runs and /api/news-sources/* fall through to spaHandler's
-	// catch-all like any other unregistered path. Argus is single-user, so
+	// /api/llm-runs falls through to spaHandler's catch-all like any other
+	// unregistered path. Argus is single-user, so
 	// there's no "someone else might see this" reason to gate at request
 	// time instead — a deploy-time env flag matches every other optional
 	// feature's presence-of-config convention (WEB_ADDR, Password, etc.).
@@ -168,6 +177,8 @@ type Server struct {
 	companyNames     data.CompanyNameProvider
 	optionChain      data.OptionChainProvider
 	heatThresholdPct float64
+	brokerCashSync   bool
+	cashDB           settingWriter
 	recPerf          *recPerfStore
 	password         string
 	trade            TradeExecutor
@@ -176,11 +187,13 @@ type Server struct {
 	// handleAPIRecommendationsTrigger's background run.
 	recRunning atomic.Bool
 	envPath    string
-	csvDB      csvWriter
-	thesisDB   thesisWriter
-	notesDB    researchNotesWriter
-	wealthDB   wealthWriter
-	fxDB       fxRateStore
+	// settingDefaults: Config.SettingDefaults.
+	settingDefaults map[string]string
+	csvDB           csvWriter
+	thesisDB        thesisWriter
+	notesDB         researchNotesWriter
+	wealthDB        wealthWriter
+	fxDB            fxRateStore
 	// paperDB stays *db.DB (not dbReader) so nil-checking it in
 	// handlePaper can't fall into the classic "non-nil interface wrapping
 	// a nil pointer" trap — it's passed into buildPaper's dbReader
@@ -232,10 +245,13 @@ func New(cfg Config) *Server {
 		companyNames:        cfg.CompanyNames,
 		optionChain:         cfg.OptionChain,
 		heatThresholdPct:    cfg.RiskHeatPct,
+		brokerCashSync:      cfg.BrokerCashSync,
+		cashDB:              cfg.DB,
 		password:            cfg.Password,
 		trade:               cfg.Trade,
 		recommender:         cfg.Recommend,
 		envPath:             cmp.Or(cfg.EnvPath, ".env"),
+		settingDefaults:     cfg.SettingDefaults,
 		csvDB:               cfg.DB,
 		thesisDB:            cfg.DB,
 		notesDB:             cfg.DB,

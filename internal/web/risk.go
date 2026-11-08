@@ -19,11 +19,18 @@ import (
 // warning line," same convention as internal/bot's STOP_LOSS_PCT) so the
 // frontend doesn't need its own copy of that env var.
 type riskResponse struct {
-	AccountValue     float64                `json:"accountValue"`
-	Cash             float64                `json:"cash"`
-	HeatPct          float64                `json:"heatPct"`
-	HeatThresholdPct float64                `json:"heatThresholdPct"`
-	Positions        []riskPositionResponse `json:"positions"`
+	AccountValue float64 `json:"accountValue"`
+	Cash         float64 `json:"cash"`
+	// HasCash is false when no balance was ever declared for this market —
+	// Cash is then 0 and AccountValue holds positions only, which the page
+	// has to say rather than show a 0% cash level as if it were measured.
+	HasCash bool `json:"hasCash"`
+	// CashSyncedFromBroker (TW only) is Config.BrokerCashSync: a typed value
+	// is overwritten the next time a Sinopac trade is confirmed.
+	CashSyncedFromBroker bool                   `json:"cashSyncedFromBroker"`
+	HeatPct              float64                `json:"heatPct"`
+	HeatThresholdPct     float64                `json:"heatThresholdPct"`
+	Positions            []riskPositionResponse `json:"positions"`
 	// OptionLockedCash/OptionCollateral are Phase 12 PR3's addition —
 	// US-only (options.go's OptionChainProvider is US-only), always zero/nil
 	// for market=tw. See buildOptionCollateral.
@@ -124,6 +131,7 @@ func buildRiskWithPortfolio(database dbReader, portfolio *service.PortfolioServi
 	resp := riskResponse{
 		AccountValue:     accountValue,
 		Cash:             snapshot.Cash,
+		HasCash:          snapshot.HasCash,
 		HeatThresholdPct: heatThresholdPct,
 		Positions:        make([]riskPositionResponse, 0, len(priceds)),
 		OptionLockedCash: optionLockedCash,
@@ -243,11 +251,13 @@ type pricedPosition struct {
 }
 
 func (s *Server) handleRisk(w http.ResponseWriter, r *http.Request) {
-	resp, err := buildRiskWithPortfolio(s.db, s.portfolios(), marketParam(r), s.heatThresholdPct)
+	m := marketParam(r)
+	resp, err := buildRiskWithPortfolio(s.db, s.portfolios(), m, s.heatThresholdPct)
 	if err != nil {
 		logger.Errorf("web: build risk: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to build risk")
 		return
 	}
+	resp.CashSyncedFromBroker = m == market.TW && s.brokerCashSync
 	writeJSON(w, http.StatusOK, resp)
 }

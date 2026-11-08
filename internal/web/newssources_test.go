@@ -68,6 +68,20 @@ func TestHandleNewsSourceBlockUnblock(t *testing.T) {
 		}
 	})
 
+	t.Run("block rejects a source already blocked, ignoring case", func(t *testing.T) {
+		body, _ := json.Marshal(newsSourceRequest{Source: " SPAM.example.com "})
+		req := httptest.NewRequest(http.MethodPost, "/api/news-sources/block", bytes.NewReader(body))
+		req.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusConflict {
+			t.Errorf("status = %d, want 409", rec.Code)
+		}
+		if len(fake.blockedSources) != 1 {
+			t.Errorf("blockedSources = %+v, want still one entry", fake.blockedSources)
+		}
+	})
+
 	t.Run("block rejects empty source", func(t *testing.T) {
 		body, _ := json.Marshal(newsSourceRequest{Source: "  "})
 		req := httptest.NewRequest(http.MethodPost, "/api/news-sources/block", bytes.NewReader(body))

@@ -76,7 +76,7 @@ describe("WealthResetZone", () => {
 describe("SettingsView danger zone", () => {
   it("shows only in the wealth account", async () => {
     const { unmount } = render(<SettingsView dict={dict} onUnauthorized={vi.fn()} />);
-    await screen.findByText(dict.settingsRulesTitle);
+    await screen.findByText(dict.settingsIntro);
     expect(screen.queryByText("危險區域")).toBeNull();
     unmount();
 

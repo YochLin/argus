@@ -51,6 +51,13 @@ func (s *Server) registerStockRoutes() {
 	s.mux.HandleFunc("POST /api/trade/sell", s.requireWritable(s.requireAuth(s.requireTrade(s.handleTradeSell))))
 	s.mux.HandleFunc("POST /api/trade/delete", s.requireWritable(s.requireAuth(s.requireTrade(s.handleDeleteTransaction))))
 	s.mux.HandleFunc("POST /api/stop", s.requireWritable(s.requireAuth(s.requireTrade(s.handleSetStop))))
+	s.mux.HandleFunc("POST /api/cash", s.requireWritable(s.requireAuth(s.handleCashSet)))
+	// The news-source blocklist acts on every news fetch whether or not the
+	// /llm audit page is on, so managing it (the settings page) isn't gated
+	// by WEB_LLM_AUDIT either.
+	s.mux.HandleFunc("GET /api/news-sources/blocked", s.handleBlockedNewsSources)
+	s.mux.HandleFunc("POST /api/news-sources/block", s.requireWritable(s.requireAuth(s.handleNewsSourceBlock)))
+	s.mux.HandleFunc("POST /api/news-sources/unblock", s.requireWritable(s.requireAuth(s.handleNewsSourceUnblock)))
 	s.mux.HandleFunc("POST /api/watchlist/add", s.requireWritable(s.requireAuth(s.handleWatchlistAdd)))
 	s.mux.HandleFunc("POST /api/watchlist/remove", s.requireWritable(s.requireAuth(s.handleWatchlistRemove)))
 	s.mux.HandleFunc("POST /api/buy-alerts/add", s.requireWritable(s.requireAuth(s.requireTrade(s.handleBuyAlertAdd))))
@@ -184,9 +191,6 @@ func (s *Server) registerLLMRoutes() {
 	}
 	s.mux.HandleFunc("GET /api/llm-runs", s.handleLLMRuns)
 	s.mux.HandleFunc("GET /api/llm-runs/{id}", s.handleLLMRunDetail)
-	s.mux.HandleFunc("GET /api/news-sources/blocked", s.handleBlockedNewsSources)
-	s.mux.HandleFunc("POST /api/news-sources/block", s.requireWritable(s.requireAuth(s.handleNewsSourceBlock)))
-	s.mux.HandleFunc("POST /api/news-sources/unblock", s.requireWritable(s.requireAuth(s.handleNewsSourceUnblock)))
 }
 
 // registerSystemRoutes: login and the .env settings editor.
