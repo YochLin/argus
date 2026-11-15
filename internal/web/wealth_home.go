@@ -15,6 +15,7 @@ import (
 type fxRateStore interface {
 	GetFXRate(date, pair string) (float64, bool, error)
 	SaveFXRate(date, pair string, rate float64) error
+	GetFXRateOnOrBefore(date, pair string, maxDays int) (float64, bool, error)
 }
 
 type driftRowResponse struct {

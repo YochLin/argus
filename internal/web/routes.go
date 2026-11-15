@@ -95,6 +95,7 @@ func (s *Server) registerWealthRoutes() {
 	// this auth gate, which every write route carries regardless).
 	s.mux.HandleFunc("GET /api/wealth/assets", s.handleWealthAssetsList)
 	s.mux.HandleFunc("GET /api/wealth/networth", s.handleWealthHome)
+	s.mux.HandleFunc("GET /api/wealth/networth/trend", s.handleWealthTrend)
 	s.mux.HandleFunc("GET /api/wealth/fx", s.handleWealthFX)
 	s.mux.HandleFunc("POST /api/wealth/assets", s.requireWritable(s.requireAuth(s.handleWealthAssetCreate)))
 	s.mux.HandleFunc("POST /api/wealth/assets/snapshot", s.requireWritable(s.requireAuth(s.handleWealthAssetSnapshot)))

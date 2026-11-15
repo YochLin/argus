@@ -1,4 +1,4 @@
-import type { AllocCategory, AllocationModel, AssetGroup, AssetGroupRow, BalanceSheetItem } from "./api";
+import type { AllocCategory, AllocationModel, AssetGroup, AssetGroupRow, BalanceSheet, BalanceSheetItem } from "./api";
 import type { Dictionary } from "./i18n";
 
 export type SheetGroup = "liquid" | "investment" | "hard" | "retirement";
@@ -75,6 +75,56 @@ export const CATEGORY_COLOR: Record<AllocCategory, string> = {
   crypto: "#f472b6",
   pension: "#94a3b8",
 };
+
+// 淨值總覽's donut folds the nine categories into seven: gold, crypto and
+// pension share one "other" slice (the design's 其他（黃金・加密・勞退）). It is a
+// display fold of AllocCategory, not a third taxonomy — /w/alloc keeps the nine.
+export type OverviewCategory = "estate" | "equity" | "cash" | "fund" | "insurance" | "bond" | "other";
+
+export const OVERVIEW_ORDER: OverviewCategory[] = ["estate", "equity", "cash", "fund", "insurance", "bond", "other"];
+
+export const OVERVIEW_COLOR: Record<OverviewCategory, string> = {
+  estate: CATEGORY_COLOR.estate,
+  equity: CATEGORY_COLOR.equity,
+  cash: CATEGORY_COLOR.cash,
+  fund: CATEGORY_COLOR.fund,
+  insurance: CATEGORY_COLOR.insurance,
+  bond: CATEGORY_COLOR.bond,
+  other: "#64748b",
+};
+
+export interface OverviewSlice<K extends string> {
+  key: K;
+  value: number;
+}
+
+// overviewAssetSlices sums the balance sheet's assets by folded category, in
+// OVERVIEW_ORDER, leaving out categories with nothing in them.
+export function overviewAssetSlices(rows: AssetGroupRow[]): OverviewSlice<OverviewCategory>[] {
+  const sum = new Map<OverviewCategory, number>();
+  for (const row of rows) {
+    for (const a of row.assets) {
+      const k: OverviewCategory = (OVERVIEW_ORDER as string[]).includes(a.category) ? (a.category as OverviewCategory) : "other";
+      sum.set(k, (sum.get(k) ?? 0) + a.valueTwd);
+    }
+  }
+  return OVERVIEW_ORDER.filter((k) => (sum.get(k) ?? 0) > 0).map((key) => ({ key, value: sum.get(key)! }));
+}
+
+export type OverviewLiab = "mortgage" | "loan" | "card";
+
+// overviewLiabSlices splits liabilities three ways. The backend has no
+// mortgage type, only the long/short split by remaining term (liabGroups), so
+// a loan is a 房貸 exactly when that split files it as long-term. A long car
+// loan, or a mortgage with no term on file, lands on the wrong side.
+export function overviewLiabSlices(b: BalanceSheet): OverviewSlice<OverviewLiab>[] {
+  const long = new Set(b.liabGroups.find((g) => g.kind === "long")?.liabilities.map((l) => l.assetId));
+  const sum: Record<OverviewLiab, number> = { mortgage: 0, loan: 0, card: 0 };
+  for (const l of b.liabilities) {
+    sum[l.type === "credit_card" ? "card" : long.has(l.assetId) ? "mortgage" : "loan"] += l.valueTwd;
+  }
+  return (["mortgage", "loan", "card"] as OverviewLiab[]).filter((k) => sum[k] > 0).map((key) => ({ key, value: sum[key] }));
+}
 
 export function categoryLabel(dict: Dictionary, c: AllocCategory): string {
   switch (c) {

@@ -22,6 +22,7 @@
 @import "./styles/settings.css";
 @import "./styles/options.css";
 @import "./styles/wealth.css";
+@import "./styles/wealth-overview.css";
 @import "./styles/chart-page.css";
 @import "./styles/fill-snapshot.css";
 @import "./styles/chart-rail.css";
