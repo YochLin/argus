@@ -15,6 +15,7 @@ vi.mock("../api", async (importOriginal) => {
   return {
     ...real,
     fetchWealthHome: vi.fn(),
+    fetchWealthTrend: vi.fn(),
     fetchWealthAlloc: vi.fn(),
     fetchWealthBalance: vi.fn(),
     fetchWealthAssets: vi.fn(),
@@ -33,8 +34,9 @@ const asset = (over: object = {}) => ({ id: 1, side: "asset", name: "活存", va
 // Every endpoint answers "nothing recorded" unless a test says otherwise.
 beforeEach(() => {
   m.fetchWealthHome.mockResolvedValue({ staleCount: 0, allocation: [] } as never);
+  m.fetchWealthTrend.mockResolvedValue({ period: "ytd", points: [] });
   m.fetchWealthAlloc.mockResolvedValue({ totalAssets: null, allocation: [], orders: [] } as never);
-  m.fetchWealthBalance.mockResolvedValue({ assetGroups: [], liabilities: [], quarterlyTrend: [] } as never);
+  m.fetchWealthBalance.mockResolvedValue({ assetGroups: [], liabilities: [], liabGroups: [], quarterlyTrend: [] } as never);
   m.fetchWealthAssets.mockResolvedValue({ assets: [] });
   m.fetchWealthCash.mockResolvedValue({ items: [], events: [], forecast: [] } as never);
   m.fetchWealthRetire.mockResolvedValue({ hasBirthYear: false, isSample: true, retirementAgeOptions: [], monthlySpendOptions: [] } as never);

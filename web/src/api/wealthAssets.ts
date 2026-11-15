@@ -63,6 +63,19 @@ export function fetchWealthHome(model: AllocationModel): Promise<WealthHome> {
   return getJSON(`/api/wealth/networth?model=${model}`);
 }
 
+export type TrendPeriod = "mtd" | "3m" | "ytd" | "1y";
+
+// WealthTrendPoint mirrors wealth_trend.go: netWorth is null on a day with no
+// usable figure (nothing recorded yet, or no FX rate within reach) — never 0.
+export interface WealthTrendPoint {
+  date: string;
+  netWorth: number | null;
+}
+
+export function fetchWealthTrend(period: TrendPeriod): Promise<{ period: TrendPeriod; points: WealthTrendPoint[] }> {
+  return getJSON(`/api/wealth/networth/trend?period=${period}`);
+}
+
 export interface CreateWealthAssetRequest {
   side: AssetSide;
   type: string;

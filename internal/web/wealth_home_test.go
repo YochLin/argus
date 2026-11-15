@@ -31,6 +31,18 @@ func (f *fakeFXDB) SaveFXRate(date, pair string, rate float64) error {
 	return nil
 }
 
+// GetFXRateOnOrBefore mirrors the SQL: newest key on or before date, within
+// maxDays. Dates are ISO strings, so the string compare is a date compare.
+func (f *fakeFXDB) GetFXRateOnOrBefore(date, pair string, maxDays int) (float64, bool, error) {
+	d, _ := time.Parse("2006-01-02", date)
+	for i := 0; i <= maxDays; i++ {
+		if r, ok := f.rates[fxKey(d.AddDate(0, 0, -i).Format("2006-01-02"), pair)]; ok {
+			return r, true, nil
+		}
+	}
+	return 0, false, nil
+}
+
 func floatPtr(v float64) *float64 { return &v }
 
 func newWealthHomeTestServer(fake *fakeDB, quotes *fakeQuotes) *Server {

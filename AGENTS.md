@@ -455,6 +455,16 @@ the Dockerfile and `docker-compose.yml` all build `./cmd/server`.
   that page is not an env var: `/api/news-sources/*` write SQLite and apply at once, and are registered
   regardless of `WEB_LLM_AUDIT`. `cash.go`'s `POST /api/cash` is the risk page's cash card — the web
   form of Telegram's `/cash`, the same `service.CashSettingKey` row.
+  `wealth_trend.go`'s `/api/wealth/networth/trend?period=mtd|3m|ytd|1y` backs the 淨值總覽 page's line chart: one
+  `service.WealthTotals` per sample date (`trendDates`), today's priced live so it equals the page's headline, a day
+  with nothing recorded yet is `null`, never 0. It is the one reader allowed to price a past day with the newest FX
+  rate up to 45 days earlier (`db.GetFXRateOnOrBefore`, via `lookbackFX`): `fx_rates` only gains a row when someone
+  opens a wealth page, so the exact-date rule every other history figure keeps (`GetFXRate`, YTD/MoM/quarterly)
+  would leave most of a month empty. Don't route those through the lookback — a borrowed rate on one headline
+  number is a guess, on a trend point it is a slightly stale price. The page's chart and donut are plain SVG in
+  `WealthOverview.tsx` (no charting library: no axes, index-spaced x, theme via CSS variables); its seven donut
+  slices are a display fold of the nine `AllocCategory`s (`wealthCategory.ts`'s `overviewAssetSlices`), and its
+  房貸／信貸・車貸／信用卡 split is derived from `liabGroups` (no mortgage type exists), not a new taxonomy.
   `wealth_assistant.go`'s `/api/wealth/assistant` (Phase 28) is the wealth assistant chat: one turn
   at a time (`assistantMu.TryLock`, else 409) on `llm.ChatWealth`, whose session reads the records
   through `argus mcp wealth`. A turn is stored only after the model answers (user + reply in one

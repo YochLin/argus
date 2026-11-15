@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
-import { WealthHomeView } from "./WealthHomeView";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { WealthAllocView } from "./WealthAllocView";
 import { wealthReadiness } from "./WealthOnboarding";
 import { FlashProvider } from "../flash";
@@ -124,20 +123,5 @@ describe("/w/alloc with too little data", () => {
     alloc$();
     await screen.findByText("玉山活存");
     expect(screen.queryByText(/暫不產生再平衡指令/)).toBeNull();
-  });
-});
-
-describe("/w with too little data", () => {
-  it("annotates the debt ratio and liquidity months instead of leaving a bare number or dash", async () => {
-    m.fetchWealthAssets.mockResolvedValue(assets(1) as never);
-    render(
-      <FlashProvider>
-        <WealthHomeView dict={dict} writable onUnauthorized={noop} onNavigate={noop} />
-      </FlashProvider>,
-    );
-    await waitFor(() => expect(screen.getByText("資料不足 · 資產僅 1 筆，至少需 3 筆")).toBeTruthy());
-    expect(screen.getByText(`資料不足 · ${dict.wealthNeedSpend}`)).toBeTruthy();
-    // the hero blames the model first
-    expect(screen.getByText(dict.wealthNeedModel)).toBeTruthy();
   });
 });

@@ -1,0 +1,432 @@
+/* 淨值總覽 (/w), the 2026-11 redesign: header + period switch, three headline
+   cards, the trend chart and the asset/liability donut. Colours that differ
+   between the themes are the --ov-* variables below; the rest are base.css
+   tokens. The page wrapper is one block so `.content > .card + .card`
+   spacing (which only sees direct children) is not relied on here. */
+:root {
+  --ov-tray: #172033;
+  --ov-row-on: #273449;
+  --ov-accent-line: rgba(129, 140, 248, 0.45);
+  --ov-accent-bg: rgba(129, 140, 248, 0.16);
+  --ov-area: rgba(129, 140, 248, 0.14);
+  --ov-profit-bg: rgba(16, 185, 129, 0.16);
+  --ov-loss-bg: rgba(239, 68, 68, 0.16);
+  --ov-liab-0: #f87171;
+  --ov-liab-1: #fb923c;
+  --ov-liab-2: #fbbf24;
+}
+
+:root.light {
+  --ov-tray: #f1f5f9;
+  --ov-row-on: #f1f5f9;
+  --ov-accent-line: rgba(79, 70, 229, 0.35);
+  --ov-accent-bg: #eef2ff;
+  --ov-area: rgba(79, 70, 229, 0.1);
+  --ov-profit-bg: #ecfdf5;
+  --ov-loss-bg: #fef2f2;
+  --ov-liab-0: #dc2626;
+  --ov-liab-1: #ea580c;
+  --ov-liab-2: #ca8a04;
+}
+
+.ov {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.ov-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ov-head-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.ov-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+/* Segmented switch: the period tabs and the asset/liability toggle. */
+.ov-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--ov-tray);
+}
+
+.ov-seg--lg {
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.ov-seg button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ov-seg--lg button {
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.ov-seg button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.ov-seg--lg button[aria-pressed="true"] {
+  background: var(--ov-accent-bg);
+  color: var(--accent);
+}
+
+.ov-card {
+  margin: 0;
+  padding: 20px;
+  border-radius: 14px;
+  min-width: 0;
+}
+
+.ov-card--hero {
+  box-shadow: 0 0 0 1px var(--ov-accent-line);
+}
+
+.ov-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 16px;
+}
+
+.ov-cards > .ov-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ov-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.ov-big,
+.ov-mid {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-big {
+  font-size: 34px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.ov-mid {
+  font-size: 26px;
+  line-height: 1.15;
+}
+
+.ov-pill {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--ov-profit-bg);
+  color: var(--profit);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-pill--down {
+  background: var(--ov-loss-bg);
+  color: var(--loss);
+}
+
+.ov-stack {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  margin-top: auto;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ov-sub {
+  margin-top: auto;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.ov-sub b {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ov-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.ov-trend {
+  /* The design's boxes are content-box with a 1px border; this app is
+     border-box, so its 520/340 bases become 562/382 to keep the same widths. */
+  flex: 999 1 562px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ov-alloc {
+  flex: 1 1 382px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ov-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px 12px;
+}
+
+.ov-trend .ov-row {
+  align-items: baseline;
+}
+
+.ov-row h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.ov-readout {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-chart {
+  position: relative;
+  width: 100%;
+  height: 280px;
+}
+
+.ov-chart svg {
+  display: block;
+  width: 100%;
+  height: 280px;
+}
+
+.ov-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.ov-area {
+  fill: var(--ov-area);
+}
+
+.ov-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.ov-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--ink-3);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.ov-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--surface);
+  pointer-events: none;
+}
+
+.ov-ymax,
+.ov-ymin {
+  position: absolute;
+  right: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.ov-ymax {
+  top: 18px;
+}
+
+.ov-ymin {
+  bottom: 18px;
+}
+
+.ov-xlabels {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.ov-chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 280px;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.ov-donut {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  align-self: center;
+}
+
+.ov-donut circle {
+  transition: stroke-width 0.15s, opacity 0.15s;
+}
+
+.ov-track {
+  stroke: var(--ov-tray);
+}
+
+.ov-donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  pointer-events: none;
+  text-align: center;
+}
+
+.ov-donut-label {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.ov-donut-value {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-donut-sub {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.ov-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ov-legend button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ov-legend button.on {
+  background: var(--ov-row-on);
+}
+
+.ov-swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.ov-legend-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.ov-legend-amt,
+.ov-legend-pct {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-legend-amt {
+  color: var(--ink-2);
+}
+
+.ov-legend-pct {
+  width: 52px;
+  text-align: right;
+  font-size: 13.5px;
+  font-weight: 600;
+}
