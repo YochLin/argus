@@ -82,16 +82,13 @@ func staleInfo(source, asOf string, now time.Time) (days int, stale bool) {
 }
 
 // handleWealthHome backs GET /api/wealth/networth?model=conserv|balanced|
-// growth — ungated like every other read route. model defaults to
-// "balanced" and an unrecognized value falls back to it rather than
-// erroring, since switching models is just a display toggle (§8.17.3: all
+// growth — ungated like every other read route. model defaults to the
+// one saved on /w/alloc (balanced when none is), and an unrecognized value
+// falls back the same way rather than erroring, since switching models is just a display toggle (§8.17.3: all
 // three presets are always computable from the same data, the query param
 // only picks which target column to show).
 func (s *Server) handleWealthHome(w http.ResponseWriter, r *http.Request) {
-	model := assets.AllocationModel(r.URL.Query().Get("model"))
-	if _, ok := assets.ModelPresets[model]; !ok {
-		model = assets.ModelBalanced
-	}
+	model, _ := s.allocModel(r)
 
 	now := time.Now()
 	today := now.Format("2006-01-02")

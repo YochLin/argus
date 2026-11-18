@@ -1415,6 +1415,7 @@ export interface Dictionary {
   asstErrBirthYearRange: string;
   asstErrRetireContribNegative: string;
   asstErrDependentsNegative: string;
+  asstErrAllocModelUnknown: string;
   asstErrChildAgeRange: string;
   asstErrRetireAgeRange: string;
   asstErrRetireSpendPositive: string;

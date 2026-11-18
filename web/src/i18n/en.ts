@@ -1372,6 +1372,7 @@ export const en: Dictionary = {
   asstErrBirthYearRange: "Birth year must be between 1900 and %s",
   asstErrRetireContribNegative: "The monthly retirement contribution can't be negative",
   asstErrDependentsNegative: "Dependents can't be negative",
+  asstErrAllocModelUnknown: "The target allocation must be conservative, balanced or growth",
   asstErrChildAgeRange: "The youngest child's age must be 0–30",
   asstErrRetireAgeRange: "Retirement age must be above your current age and at most %s",
   asstErrRetireSpendPositive: "Monthly spending in retirement must be more than 0",

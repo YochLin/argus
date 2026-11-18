@@ -370,6 +370,7 @@ type wealthProfileUpdateRequest struct {
 	Dependents                    *int     `json:"dependents"`
 	YoungestChildAge              *int     `json:"youngestChildAge"`
 	SpouseHasIncome               *bool    `json:"spouseHasIncome"`
+	AllocModel                    *assets.AllocationModel `json:"allocModel"`
 }
 
 func (s *Server) handleWealthProfileUpdate(w http.ResponseWriter, r *http.Request) {
@@ -415,6 +416,9 @@ func saveWealthProfile(w wealthWriter, p assets.Profile) error {
 			v = "1"
 		}
 		sets = append(sets, [2]string{service.SpouseHasIncomeSettingKey, v})
+	}
+	if p.AllocModel != nil {
+		sets = append(sets, [2]string{service.AllocModelSettingKey, string(*p.AllocModel)})
 	}
 	for _, kv := range sets {
 		if err := w.SetSetting(kv[0], kv[1]); err != nil {

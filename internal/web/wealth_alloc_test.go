@@ -10,6 +10,7 @@ import (
 	"argus/internal/data"
 	"argus/internal/db"
 	"argus/internal/market"
+	"argus/internal/service"
 )
 
 func newWealthAllocTestServer(fake *fakeDB, quotes *fakeQuotes) *Server {
@@ -48,6 +49,34 @@ func TestHandleWealthAllocNoDataRendersEmpty(t *testing.T) {
 		if strings.Contains(body, `"`+field+`":null`) {
 			t.Errorf("%s serialized as null, want []: %s", field, body)
 		}
+	}
+}
+
+// TestHandleWealthAllocUsesSavedModel: without ?model= the saved target model
+// is used (the monthly checks read the same setting), and ?model= previews
+// another preset without changing modelPicked.
+func TestHandleWealthAllocUsesSavedModel(t *testing.T) {
+	get := func(s *Server, url string) allocResponse {
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, url, nil))
+		var got allocResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		return got
+	}
+	if got := get(newWealthAllocTestServer(&fakeDB{}, &fakeQuotes{}), "/api/wealth/alloc"); got.Model != "balanced" || got.ModelPicked {
+		t.Errorf("nothing saved: model=%q picked=%v, want balanced/false", got.Model, got.ModelPicked)
+	}
+	s := newWealthAllocTestServer(&fakeDB{settings: map[string]string{service.AllocModelSettingKey: "growth"}}, &fakeQuotes{})
+	if got := get(s, "/api/wealth/alloc"); got.Model != "growth" || !got.ModelPicked {
+		t.Errorf("saved growth: model=%q picked=%v, want growth/true", got.Model, got.ModelPicked)
+	}
+	if got := get(s, "/api/wealth/alloc?model=conserv"); got.Model != "conserv" || !got.ModelPicked {
+		t.Errorf("preview conserv: model=%q picked=%v, want conserv/true", got.Model, got.ModelPicked)
+	}
+	if got := get(s, "/api/wealth/alloc?model=bogus"); got.Model != "growth" {
+		t.Errorf("unknown ?model=: model=%q, want the saved growth", got.Model)
 	}
 }
 

@@ -59,6 +59,8 @@ export interface ConcentrationWarning {
 export interface WealthAlloc {
   asOf: string;
   model: AllocationModel;
+  // Whether a target model has been saved; model is balanced when not.
+  modelPicked: boolean;
   totalAssets: number | null;
   allocation: WealthAllocRow[];
   orders: WealthAllocOrder[];
@@ -71,8 +73,9 @@ export interface WealthAlloc {
   concentration: ConcentrationWarning[];
 }
 
-export function fetchWealthAlloc(model: AllocationModel): Promise<WealthAlloc> {
-  return getJSON(`/api/wealth/alloc?model=${model}`);
+// model previews a preset without saving it; omitted, the saved one is used.
+export function fetchWealthAlloc(model?: AllocationModel): Promise<WealthAlloc> {
+  return getJSON(model ? `/api/wealth/alloc?model=${model}` : "/api/wealth/alloc");
 }
 
 export interface DebtPayoffPlan {

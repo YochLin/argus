@@ -56,6 +56,7 @@ export function getMockData(url: string): any {
     return {
       asOf: "2026-07-15",
       model: "balanced",
+      modelPicked: false,
       totalAssets: null,
       allocation: [],
       orders: [],

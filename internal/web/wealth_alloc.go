@@ -66,6 +66,7 @@ type concentrationWarning struct {
 type allocResponse struct {
 	AsOf             string                 `json:"asOf"`
 	Model            string                 `json:"model"`
+	ModelPicked      bool                   `json:"modelPicked"`
 	TotalAssets      *float64               `json:"totalAssets"`
 	Allocation       []allocRow             `json:"allocation"`
 	Orders           []allocOrder           `json:"orders"`
@@ -95,16 +96,26 @@ func largestAsset(items []balanceSheetItem) (name, venue string) {
 	return best.Name, best.Venue
 }
 
-func (s *Server) handleWealthAlloc(w http.ResponseWriter, r *http.Request) {
-	model := assets.AllocationModel(r.URL.Query().Get("model"))
-	if _, ok := assets.CategoryModelPresets[model]; !ok {
-		model = assets.ModelBalanced
+// allocModel is the target model a wealth read uses: ?model= when it names a
+// preset (a page previewing a choice it can't save, e.g. read-only), else the
+// stored one. picked says whether one has been saved at all.
+func (s *Server) allocModel(r *http.Request) (model assets.AllocationModel, picked bool) {
+	model, picked = service.StoredAllocModel(s.db)
+	if q := assets.AllocationModel(r.URL.Query().Get("model")); q != "" {
+		if _, ok := assets.CategoryModelPresets[q]; ok {
+			model = q
+		}
 	}
+	return model, picked
+}
+
+func (s *Server) handleWealthAlloc(w http.ResponseWriter, r *http.Request) {
+	model, picked := s.allocModel(r)
 
 	now := time.Now()
 	today := now.Format("2006-01-02")
 	resp := allocResponse{
-		AsOf: today, Model: string(model),
+		AsOf: today, Model: string(model), ModelPicked: picked,
 		Allocation: []allocRow{}, Orders: []allocOrder{}, Locked: []allocLockedRow{},
 		CurrencyExposure: []currencyExposureRow{}, Concentration: []concentrationWarning{},
 	}

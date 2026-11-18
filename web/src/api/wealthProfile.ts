@@ -1,5 +1,6 @@
 import type { TradeResponse } from "./common";
 import { getJSON, postJSON } from "./http";
+import type { AllocationModel } from "./wealthAssets";
 
 export interface WealthProfile {
   annualSalary: number | null;
@@ -14,6 +15,8 @@ export interface WealthProfile {
   dependents: number | null;
   youngestChildAge: number | null;
   spouseHasIncome: boolean | null;
+  // null until a target model has been picked on /w/alloc.
+  allocModel: AllocationModel | null;
 }
 
 export function fetchWealthProfile(): Promise<WealthProfile> {
@@ -31,6 +34,7 @@ export function saveWealthProfile(patch: {
   dependents?: number;
   youngestChildAge?: number;
   spouseHasIncome?: boolean;
+  allocModel?: AllocationModel;
 }): Promise<TradeResponse> {
   return postJSON("/api/wealth/profile", patch);
 }

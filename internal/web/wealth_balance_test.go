@@ -276,6 +276,28 @@ func TestHandleWealthProfileGetAndUpdate(t *testing.T) {
 	}
 }
 
+func TestHandleWealthProfileAllocModel(t *testing.T) {
+	wealthDB := &fakeWealthDB{}
+	s := newWealthBalanceTestServer(&fakeDB{}, wealthDB, "secret")
+	cookie := loginAndGetCookie(t, s, "secret")
+	post := func(raw string) int {
+		req := httptest.NewRequest(http.MethodPost, "/api/wealth/profile", strings.NewReader(raw))
+		req.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if code := post(`{"allocModel":"growth"}`); code != http.StatusOK {
+		t.Fatalf("growth: status = %d, want 200", code)
+	}
+	if wealthDB.lastSettingKey != service.AllocModelSettingKey || wealthDB.lastSettingValue != "growth" {
+		t.Errorf("SetSetting() got key=%q value=%q", wealthDB.lastSettingKey, wealthDB.lastSettingValue)
+	}
+	if code := post(`{"allocModel":"yolo"}`); code != http.StatusBadRequest {
+		t.Errorf("unknown model: status = %d, want 400", code)
+	}
+}
+
 func TestHandleWealthProfileUpdateRequiresAuth(t *testing.T) {
 	s := newWealthBalanceTestServer(&fakeDB{}, &fakeWealthDB{}, "secret")
 	body, _ := json.Marshal(wealthProfileUpdateRequest{AnnualSalary: floatPtr(100)})
