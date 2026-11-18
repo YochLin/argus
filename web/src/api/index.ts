@@ -26,6 +26,7 @@ export * from "./wealthAlloc";
 export * from "./wealthAssets";
 export * from "./wealthBalance";
 export * from "./wealthCash";
+export * from "./wealthChecks";
 export * from "./wealthFunds";
 export * from "./wealthGoals";
 export * from "./wealthInsure";
