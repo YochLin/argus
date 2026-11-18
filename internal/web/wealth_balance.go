@@ -364,12 +364,12 @@ func (s *Server) handleWealthProfileGet(w http.ResponseWriter, r *http.Request) 
 // its own field(s) without clobbering the others — every mini setup card
 // listed on service.WealthProfile posts to this same endpoint independently.
 type wealthProfileUpdateRequest struct {
-	AnnualSalary                  *float64 `json:"annualSalary"`
-	BirthYear                     *int     `json:"birthYear"`
-	RetirementMonthlyContribution *float64 `json:"retirementMonthlyContribution"`
-	Dependents                    *int     `json:"dependents"`
-	YoungestChildAge              *int     `json:"youngestChildAge"`
-	SpouseHasIncome               *bool    `json:"spouseHasIncome"`
+	AnnualSalary                  *float64                `json:"annualSalary"`
+	BirthYear                     *int                    `json:"birthYear"`
+	RetirementMonthlyContribution *float64                `json:"retirementMonthlyContribution"`
+	Dependents                    *int                    `json:"dependents"`
+	YoungestChildAge              *int                    `json:"youngestChildAge"`
+	SpouseHasIncome               *bool                   `json:"spouseHasIncome"`
 	AllocModel                    *assets.AllocationModel `json:"allocModel"`
 }
 
