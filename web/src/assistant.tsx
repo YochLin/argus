@@ -29,7 +29,8 @@ export interface Assistant {
   setMode: (m: AssistantMode) => void;
   // open is what an entry point calls: show the panel, and send topic (the
   // page it was opened from) with the next message so the AI starts there.
-  open: (topic?: string) => void;
+  // text, when given, is put in the input box for the user to send or edit.
+  open: (topic?: string, text?: string) => void;
   messages: AssistantMessage[];
   loaded: boolean;
   load: () => void;
@@ -205,8 +206,9 @@ export function AssistantProvider({
   }, [dict, flash, onUnauthorized]);
 
   const open = useCallback(
-    (t?: string) => {
+    (t?: string, text?: string) => {
       topic.current = t;
+      if (text) setInput(text);
       if (mode === "bubble") setMode("panel");
     },
     [mode, setMode],

@@ -23,6 +23,7 @@ vi.mock("../api", async (importOriginal) => {
     fetchWealthRetire: vi.fn(),
     fetchWealthInsure: vi.fn(),
     fetchWealthProfile: vi.fn(),
+    fetchWealthChecks: vi.fn(),
   };
 });
 
@@ -33,7 +34,7 @@ const asset = (over: object = {}) => ({ id: 1, side: "asset", name: "活存", va
 
 // Every endpoint answers "nothing recorded" unless a test says otherwise.
 beforeEach(() => {
-  m.fetchWealthHome.mockResolvedValue({ staleCount: 0, allocation: [] } as never);
+  m.fetchWealthHome.mockResolvedValue({ allocation: [] } as never);
   m.fetchWealthTrend.mockResolvedValue({ period: "ytd", points: [] });
   m.fetchWealthAlloc.mockResolvedValue({ totalAssets: null, allocation: [], orders: [] } as never);
   m.fetchWealthBalance.mockResolvedValue({ assetGroups: [], liabilities: [], liabGroups: [], quarterlyTrend: [] } as never);
@@ -42,6 +43,7 @@ beforeEach(() => {
   m.fetchWealthRetire.mockResolvedValue({ hasBirthYear: false, isSample: true, retirementAgeOptions: [], monthlySpendOptions: [] } as never);
   m.fetchWealthInsure.mockResolvedValue({ hasProfile: false, policies: [], rows: [] } as never);
   m.fetchWealthProfile.mockResolvedValue({ birthYear: null } as never);
+  m.fetchWealthChecks.mockResolvedValue({ asOf: "", new: true, rules: 9, items: [] });
 });
 
 afterEach(() => {
@@ -131,11 +133,13 @@ describe("what counts as empty", () => {
     expect(screen.getByText("0 / 5 完成")).not.toBeNull(); // the first step isn't ticked with nothing recorded
   });
 
-  it("/w keeps the guide up beside a page that has data", async () => {
+  it("/w swaps the guide for the monthly checks once something is recorded", async () => {
     m.fetchWealthAssets.mockResolvedValue({ assets: [asset()] as never });
+    m.fetchWealthChecks.mockResolvedValue({ asOf: "", new: false, rules: 9, items: [{ code: "age", severity: "data", link: "/w/retire" }] });
     await show("home");
-    expect(await screen.findByText(dict.wealthGuideTitle)).not.toBeNull();
-    expect(screen.getByText("1 / 5 完成")).not.toBeNull();
+    expect(await screen.findByText(dict.ckTitle)).not.toBeNull();
+    expect(screen.getByText(dict.ckAgeTitle)).not.toBeNull();
+    expect(screen.queryByText(dict.wealthGuideTitle)).toBeNull();
   });
 
   it("/w/cash still shows the page when every flow is paused", async () => {

@@ -21,6 +21,7 @@ import { migrateLegacyModel } from "../wealthCategory";
 import { useFlash } from "../flash";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { WealthEmptyCard, WealthGuide, useGateAdd } from "./WealthOnboarding";
+import { WealthChecksCard } from "./WealthChecks";
 import { WealthOverview } from "./WealthOverview";
 
 interface Props {
@@ -253,38 +254,18 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
       ) : (
         <WealthOverview dict={dict} home={home} balance={balance} refresh={refreshSignal} money={(v) => fmtMoney(v, currency)} actions={addButton} />
       )}
-      {assets && <WealthGuide dict={dict} hasAssets={!empty} onNavigate={onNavigate} />}
+      {/* An empty account gets the setup guide where the checks would be. */}
+      <WealthChecksCard
+        dict={dict}
+        writable={writable}
+        refresh={refreshSignal}
+        onUnauthorized={onUnauthorized}
+        onNavigate={onNavigate}
+        guide={<WealthGuide dict={dict} hasAssets={!empty} onNavigate={onNavigate} />}
+      />
 
       {!empty && (
         <>
-{home && home.staleCount > 0 && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                flexWrap: "wrap",
-                padding: "11px 14px",
-                borderRadius: 10,
-                background: "rgba(245,158,11,.1)",
-                border: "1px solid rgba(245,158,11,.35)",
-                marginBottom: 16,
-              }}
-            >
-              <span style={{ fontSize: 12.5, color: "#f59e0b" }}>{dict.wealthHomeStaleBanner.replace("%s", String(home.staleCount))}</span>
-              <a
-                href="/w/balance"
-                onClick={(e) => {
-                  e.preventDefault();
-                  onNavigate("/w/balance");
-                }}
-                style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11.5, color: "#f59e0b", textDecoration: "none" }}
-              >
-                {dict.wealthHomeStaleGo}
-              </a>
-            </div>
-          )}
-
           <div className="card">
             <div className="modal-header" style={{ border: "none", padding: 0, marginBottom: 12 }}>
               <div className="eyebrow">{dict.wealthAssetsLabel}</div>
