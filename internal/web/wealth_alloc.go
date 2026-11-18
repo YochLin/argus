@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"sort"
 	"time"
@@ -109,6 +110,38 @@ func (s *Server) allocModel(r *http.Request) (model assets.AllocationModel, pick
 	return model, picked
 }
 
+// allocCategories is every asset in TWD by the nine allocation categories
+// (the stock positions' net worth under equity) — what /w/alloc and the
+// wealth checks measure drift from.
+func (s *Server) allocCategories(today string, now time.Time) (categories map[string]*assetBucket, byCurrency map[string]float64, total float64, fxOK bool, err error) {
+	list, err := s.db.ListAssetsWithValue(false)
+	if err != nil {
+		return nil, nil, 0, false, fmt.Errorf("list assets: %w", err)
+	}
+	usTotal, usOK, err := s.db.GetNetWorthOnOrBefore(today, market.US)
+	if err != nil {
+		return nil, nil, 0, false, fmt.Errorf("US net worth: %w", err)
+	}
+	twTotal, twOK, err := s.db.GetNetWorthOnOrBefore(today, market.TW)
+	if err != nil {
+		return nil, nil, 0, false, fmt.Errorf("TW net worth: %w", err)
+	}
+	categories, byCurrency, total, fxOK = s.bucketAssets(list, today, now, usTotal, usOK, twTotal, twOK,
+		assets.AllocCategories, func(a db.AssetWithValue) string { return assets.CategoryOf(a.Type) }, "equity")
+	return categories, byCurrency, total, fxOK, nil
+}
+
+// categoryDrift is each category against model's target and the orders that
+// would bring the unlocked ones back inside the band.
+func categoryDrift(categories map[string]*assetBucket, total float64, model assets.AllocationModel) ([]assets.DriftRow, []assets.RebalanceOrder) {
+	byCategory := make(map[string]float64, len(assets.AllocCategories))
+	for _, c := range assets.AllocCategories {
+		byCategory[c] = categories[c].MarketValue
+	}
+	rows := assets.ComputeCategoryDrift(byCategory, total, model)
+	return rows, assets.ComputeCategoryRebalanceOrders(rows, total)
+}
+
 func (s *Server) handleWealthAlloc(w http.ResponseWriter, r *http.Request) {
 	model, picked := s.allocModel(r)
 
@@ -120,27 +153,12 @@ func (s *Server) handleWealthAlloc(w http.ResponseWriter, r *http.Request) {
 		CurrencyExposure: []currencyExposureRow{}, Concentration: []concentrationWarning{},
 	}
 
-	list, err := s.db.ListAssetsWithValue(false)
+	categories, byCurrency, totalAssets, fxOK, err := s.allocCategories(today, now)
 	if err != nil {
-		logger.Errorf("web: wealth alloc: list assets: %v", err)
+		logger.Errorf("web: wealth alloc: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to load assets")
 		return
 	}
-	usTotal, usOK, err := s.db.GetNetWorthOnOrBefore(today, market.US)
-	if err != nil {
-		logger.Errorf("web: wealth alloc: US net worth: %v", err)
-		writeError(w, http.StatusInternalServerError, "failed to load net worth")
-		return
-	}
-	twTotal, twOK, err := s.db.GetNetWorthOnOrBefore(today, market.TW)
-	if err != nil {
-		logger.Errorf("web: wealth alloc: TW net worth: %v", err)
-		writeError(w, http.StatusInternalServerError, "failed to load net worth")
-		return
-	}
-
-	categories, byCurrency, totalAssets, fxOK := s.bucketAssets(list, today, now, usTotal, usOK, twTotal, twOK,
-		assets.AllocCategories, func(a db.AssetWithValue) string { return assets.CategoryOf(a.Type) }, "equity")
 	if !fxOK || totalAssets <= 0 {
 		writeJSON(w, http.StatusOK, resp)
 		return
@@ -148,12 +166,7 @@ func (s *Server) handleWealthAlloc(w http.ResponseWriter, r *http.Request) {
 	ta := totalAssets
 	resp.TotalAssets = &ta
 
-	byCategory := make(map[string]float64, len(assets.AllocCategories))
-	for _, c := range assets.AllocCategories {
-		byCategory[c] = categories[c].MarketValue
-	}
-	driftRows := assets.ComputeCategoryDrift(byCategory, totalAssets, model)
-	orders := assets.ComputeCategoryRebalanceOrders(driftRows, totalAssets)
+	driftRows, orders := categoryDrift(categories, totalAssets, model)
 
 	orderByCategory := make(map[string]assets.RebalanceOrder, len(orders))
 	for _, o := range orders {
