@@ -17,7 +17,7 @@ import {
 } from "../api";
 import type { Dictionary } from "../i18n";
 import { convertTWD } from "../currency";
-import { loadModel } from "../wealthCategory";
+import { migrateLegacyModel } from "../wealthCategory";
 import { useFlash } from "../flash";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { WealthEmptyCard, WealthGuide, useGateAdd } from "./WealthOnboarding";
@@ -192,7 +192,8 @@ export function WealthHomeView({ dict, writable, onUnauthorized, onNavigate }: P
 
   useEffect(() => {
     setError(false);
-    fetchWealthHome(loadModel())
+    migrateLegacyModel()
+      .then(fetchWealthHome)
       .then(setHome)
       .catch(() => setError(true));
     fetchWealthBalance()

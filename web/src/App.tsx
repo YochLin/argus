@@ -264,7 +264,7 @@ export default function App() {
     let latest = 0;
     const load = () => {
       const mine = ++latest;
-      fetchWealthHome("balanced")
+      fetchWealthHome()
         .then((h) => mine === latest && setWealthHome(h))
         .catch(() => {});
     };

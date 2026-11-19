@@ -39,6 +39,10 @@ const (
 	DependentsSettingKey       = "profile.dependents"
 	YoungestChildAgeSettingKey = "profile.youngest_child_age"
 	SpouseHasIncomeSettingKey  = "profile.spouse_income"
+	// AllocModelSettingKey is the target model picked on /w/alloc. It lives
+	// here, not in the browser, because the monthly checks and report read it
+	// too; under profile.* so the wealth reset clears it with the rest.
+	AllocModelSettingKey = "profile.alloc_model"
 )
 
 // WealthProfile is the household facts the platform can't derive (§9.3 "個人
@@ -53,6 +57,9 @@ type WealthProfile struct {
 	Dependents                    *int     `json:"dependents"`
 	YoungestChildAge              *int     `json:"youngestChildAge"`
 	SpouseHasIncome               *bool    `json:"spouseHasIncome"`
+	// AllocModel is nil until a model has been picked on /w/alloc; readers
+	// that need a model anyway use StoredAllocModel's balanced default.
+	AllocModel *assets.AllocationModel `json:"allocModel"`
 }
 
 // LoadWealthProfile reads the six settings behind WealthProfile. A store
@@ -80,7 +87,21 @@ func LoadWealthProfile(r SettingReader) WealthProfile {
 		v := raw == "1"
 		p.SpouseHasIncome = &v
 	}
+	if m, ok := StoredAllocModel(r); ok {
+		p.AllocModel = &m
+	}
 	return p
+}
+
+// StoredAllocModel is the saved target model, or balanced with ok=false when
+// none has been picked (or the stored value isn't a known preset).
+func StoredAllocModel(r SettingReader) (assets.AllocationModel, bool) {
+	raw, ok, err := r.GetSetting(AllocModelSettingKey)
+	m := assets.AllocationModel(raw)
+	if _, known := assets.CategoryModelPresets[m]; err != nil || !ok || !known {
+		return assets.ModelBalanced, false
+	}
+	return m, true
 }
 
 func settingInt(r SettingReader, key string) (int, bool) {

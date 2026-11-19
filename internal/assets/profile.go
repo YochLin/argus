@@ -19,6 +19,7 @@ type Profile struct {
 	Dependents                    *int
 	YoungestChildAge              *int
 	SpouseHasIncome               *bool
+	AllocModel                    *AllocationModel
 }
 
 // ValidateProfile returns every problem with the fields p sets.
@@ -38,6 +39,11 @@ func ValidateProfile(p Profile, thisYear int) []Problem {
 	}
 	if p.YoungestChildAge != nil && (*p.YoungestChildAge < 0 || *p.YoungestChildAge > 30) {
 		ps = append(ps, bad("youngest_child_age", "ChildAgeRange", "youngest child's age must be between 0 and 30"))
+	}
+	if p.AllocModel != nil {
+		if _, ok := CategoryModelPresets[*p.AllocModel]; !ok {
+			ps = append(ps, bad("alloc_model", "AllocModelUnknown", "target allocation must be conserv, balanced or growth"))
+		}
 	}
 	return ps
 }

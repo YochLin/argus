@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { fetchWealthAssets, fetchWealthCash, fetchWealthInsure, fetchWealthProfile } from "../api";
 import type { Dictionary } from "../i18n";
 import { useFlash } from "../flash";
-import { hasPickedModel } from "../wealthCategory";
 import { useAssistant } from "../assistant";
 import { AiIcon } from "./AssistantWidget";
 
@@ -63,11 +62,11 @@ export function useNoAssets(refreshSignal: number): boolean {
 // mix; whyDrift adds "no target model picked yet", since drift and rebalance
 // orders are measured against it; whySpend is "no monthly spending", which the
 // liquidity months need. "" means that reason doesn't apply.
-export function wealthReadiness(dict: Dictionary, assetCount: number, spendKnown: boolean) {
+export function wealthReadiness(dict: Dictionary, assetCount: number, spendKnown: boolean, modelPicked: boolean) {
   const whyFewA = assetCount < 3 ? dict.wealthHomeNeedAssets.replace("%s", String(assetCount)) : "";
   return {
     whyFewA,
-    whyDrift: hasPickedModel() ? whyFewA : dict.wealthNeedModel,
+    whyDrift: modelPicked ? whyFewA : dict.wealthNeedModel,
     whySpend: spendKnown ? "" : dict.wealthNeedSpend,
   };
 }
@@ -96,7 +95,7 @@ function loadHidden(): boolean {
 export function WealthGuide({ dict, hasAssets, onNavigate }: { dict: Dictionary; hasAssets: boolean; onNavigate: (path: string) => void }) {
   const [hidden, setHidden] = useState(loadHidden);
   const assistant = useAssistant();
-  const [saved, setSaved] = useState<{ cash: boolean; birth: boolean; policy: boolean } | null>(null);
+  const [saved, setSaved] = useState<{ cash: boolean; birth: boolean; policy: boolean; alloc: boolean } | null>(null);
 
   useEffect(() => {
     Promise.all([fetchWealthCash(), fetchWealthProfile(), fetchWealthInsure()])
@@ -105,6 +104,7 @@ export function WealthGuide({ dict, hasAssets, onNavigate }: { dict: Dictionary;
           cash: c.items.some((f) => f.active && f.direction === "out"),
           birth: p.birthYear != null,
           policy: i.policies.length > 0,
+          alloc: p.allocModel != null,
         }),
       )
       .catch(() => {});
@@ -116,7 +116,7 @@ export function WealthGuide({ dict, hasAssets, onNavigate }: { dict: Dictionary;
     [dict.navWealthBalance, dict.wealthGuideWhyBalance, "/w/balance", hasAssets],
     [dict.navWealthCash, dict.wealthGuideWhyCash, "/w/cash", saved.cash],
     [dict.navWealthRetire, dict.wealthGuideWhyRetire, "/w/retire", saved.birth],
-    [dict.navWealthAlloc, dict.wealthGuideWhyAlloc, "/w/alloc", hasPickedModel()],
+    [dict.navWealthAlloc, dict.wealthGuideWhyAlloc, "/w/alloc", saved.alloc],
     [dict.navWealthInsure, dict.wealthGuideWhyInsure, "/w/insure", saved.policy],
   ];
   const done = steps.filter((s) => s[3]).length;

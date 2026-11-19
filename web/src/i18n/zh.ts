@@ -1357,6 +1357,7 @@ export const zh: Dictionary = {
   asstErrBirthYearRange: "出生年要在 1900～%s 之間",
   asstErrRetireContribNegative: "每月退休提撥不能是負數",
   asstErrDependentsNegative: "扶養人數不能是負數",
+  asstErrAllocModelUnknown: "目標配置只能是保守、平衡或成長",
   asstErrChildAgeRange: "最小孩子的年齡要在 0～30 之間",
   asstErrRetireAgeRange: "退休年齡要大於目前年齡，且不超過 %s 歲",
   asstErrRetireSpendPositive: "退休後每月支出要大於 0",

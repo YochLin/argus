@@ -1,4 +1,5 @@
-import type { AllocCategory, AllocationModel, AssetGroup, AssetGroupRow, BalanceSheet, BalanceSheetItem } from "./api";
+import { fetchWealthProfile, saveWealthProfile } from "./api";
+import type { AllocCategory, AssetGroup, AssetGroupRow, BalanceSheet, BalanceSheetItem } from "./api";
 import type { Dictionary } from "./i18n";
 
 export type SheetGroup = "liquid" | "investment" | "hard" | "retirement";
@@ -149,35 +150,25 @@ export function categoryLabel(dict: Dictionary, c: AllocCategory): string {
   }
 }
 
-// The target model picked on /w/alloc, shared with the home page so both
-// show the same targets (the template keeps one wAllocModel for both).
-const MODEL_KEY = "argus.wealth.allocModel";
+// The target model used to live in this browser's storage. migrateLegacyModel
+// moves a choice made back then to the server (profile.alloc_model) once, and
+// forgets it here only after the save went through; a read-only server just
+// leaves it for a later visit.
+const LEGACY_MODEL_KEY = "argus.wealth.allocModel";
 
-export function loadModel(): AllocationModel {
+export async function migrateLegacyModel(): Promise<void> {
+  let v: string | null = null;
   try {
-    const v = localStorage.getItem(MODEL_KEY);
-    if (v === "conserv" || v === "growth" || v === "balanced") return v;
+    v = localStorage.getItem(LEGACY_MODEL_KEY);
   } catch {
-    // storage blocked: fall through to the default
+    return;
   }
-  return "balanced";
-}
-
-// hasPickedModel tells "chose 平衡" from "never chose": loadModel defaults to
-// balanced either way, and the choice only lives in this browser. The setup
-// guide's allocation step counts as done once a model has been saved here.
-export function hasPickedModel(): boolean {
+  if (v !== "conserv" && v !== "balanced" && v !== "growth") return;
   try {
-    return localStorage.getItem(MODEL_KEY) !== null;
+    const p = await fetchWealthProfile();
+    if (p.allocModel == null) await saveWealthProfile({ allocModel: v });
+    localStorage.removeItem(LEGACY_MODEL_KEY);
   } catch {
-    return false;
-  }
-}
-
-export function saveModel(m: AllocationModel) {
-  try {
-    localStorage.setItem(MODEL_KEY, m);
-  } catch {
-    // per-browser convenience only
+    // try again next visit
   }
 }

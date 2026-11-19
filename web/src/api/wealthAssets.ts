@@ -59,8 +59,9 @@ export interface WealthHome {
   staleCount: number;
 }
 
-export function fetchWealthHome(model: AllocationModel): Promise<WealthHome> {
-  return getJSON(`/api/wealth/networth?model=${model}`);
+// Uses the target model saved on /w/alloc.
+export function fetchWealthHome(): Promise<WealthHome> {
+  return getJSON("/api/wealth/networth");
 }
 
 export type TrendPeriod = "mtd" | "3m" | "ytd" | "1y";

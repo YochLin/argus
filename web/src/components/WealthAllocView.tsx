@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { fetchWealthAlloc, type AllocationModel, type WealthAlloc, type WealthAllocRow } from "../api";
+import { ApiError, fetchWealthAlloc, saveWealthProfile, type AllocationModel, type WealthAlloc, type WealthAllocRow } from "../api";
 import type { Dictionary } from "../i18n";
 import { fmtMoney, DOTTED, MONO_LABEL, WealthEmptyAssets } from "./WealthHomeView";
 import { thinNote, useAssetCount, wealthReadiness } from "./WealthOnboarding";
-import { CATEGORY_COLOR, categoryLabel, loadModel, saveModel } from "../wealthCategory";
+import { CATEGORY_COLOR, categoryLabel, migrateLegacyModel } from "../wealthCategory";
 import { shortTWD } from "../currency";
+import { useFlash } from "../flash";
 
 interface Props {
   dict: Dictionary;
@@ -50,7 +51,9 @@ function donutGradient(rows: WealthAllocRow[]): string {
 }
 
 export function WealthAllocView({ dict, writable, onUnauthorized, onNavigate }: Props) {
-  const [model, setModel] = useState<AllocationModel>(loadModel);
+  // null shows the saved model; a pick on a read-only server is previewed.
+  const [preview, setPreview] = useState<AllocationModel | null>(null);
+  const flash = useFlash();
   const [alloc, setAlloc] = useState<WealthAlloc | null>(null);
   const [error, setError] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
@@ -59,10 +62,11 @@ export function WealthAllocView({ dict, writable, onUnauthorized, onNavigate }: 
 
   useEffect(() => {
     setError(false);
-    fetchWealthAlloc(model)
+    migrateLegacyModel()
+      .then(() => fetchWealthAlloc(preview ?? undefined))
       .then(setAlloc)
       .catch(() => setError(true));
-  }, [model, refreshSignal]);
+  }, [preview, refreshSignal]);
 
   if (error) {
     return <div className="error-message">{dict.error}</div>;
@@ -71,7 +75,18 @@ export function WealthAllocView({ dict, writable, onUnauthorized, onNavigate }: 
   const hasData = alloc != null && alloc.totalAssets != null;
   const rows = hasData ? alloc!.allocation : [];
   // Too little to measure against (the design's wReady): no orders, grey drift, no band.
-  const rd = wealthReadiness(dict, assetCount ?? 3, true);
+  const rd = wealthReadiness(dict, assetCount ?? 3, true, preview != null || (alloc?.modelPicked ?? true));
+  const model = preview ?? alloc?.model;
+
+  async function pickModel(m: AllocationModel) {
+    try {
+      await saveWealthProfile({ allocModel: m });
+      setRefreshSignal((n) => n + 1);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) onUnauthorized(() => pickModel(m));
+      else flash(e instanceof ApiError ? e.message : dict.error, "error");
+    }
+  }
   const thin = !!rd.whyDrift;
   const orders = hasData && !thin ? alloc!.orders : [];
   const drift = (d: number) => (thin ? "var(--ink-3)" : driftColor(d));
@@ -93,13 +108,7 @@ export function WealthAllocView({ dict, writable, onUnauthorized, onNavigate }: 
             <button
               key={m}
               className={`home-variant-btn${model === m ? " active" : ""}`}
-              onClick={() => {
-                setModel(m);
-                saveModel(m);
-                // Picking the model that's already showing changes no state, but it
-                // does clear "no target model picked" (read from storage at render).
-                setRefreshSignal((n) => n + 1);
-              }}
+              onClick={() => (writable ? pickModel(m) : setPreview(m))}
             >
               {modelLabel(dict, m)}
             </button>

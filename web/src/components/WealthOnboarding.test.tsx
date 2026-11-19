@@ -22,9 +22,9 @@ const dict = getDictionary("zh");
 const flow = (direction: "in" | "out", active = true) => ({ id: 1, direction, name: "x", amount: 1, currency: "TWD", active });
 
 // What the guide reads besides the asset list: expense flows, the birth year, policies.
-function saved(over: { flows?: ReturnType<typeof flow>[]; birthYear?: number | null; policies?: number } = {}) {
+function saved(over: { flows?: ReturnType<typeof flow>[]; birthYear?: number | null; policies?: number; allocModel?: string } = {}) {
   m.fetchWealthCash.mockResolvedValue({ items: over.flows ?? [] } as never);
-  m.fetchWealthProfile.mockResolvedValue({ birthYear: over.birthYear ?? null } as never);
+  m.fetchWealthProfile.mockResolvedValue({ birthYear: over.birthYear ?? null, allocModel: over.allocModel ?? null } as never);
   m.fetchWealthInsure.mockResolvedValue({ policies: Array(over.policies ?? 0).fill({}) } as never);
 }
 
@@ -128,8 +128,8 @@ describe("WealthGuide", () => {
     expect(document.querySelectorAll(".wealth-guide-step")[1].querySelector(".done")).toBeNull();
   });
 
-  it("counts the allocation step once a model has been picked in this browser", async () => {
-    localStorage.setItem("argus.wealth.allocModel", "balanced");
+  it("counts the allocation step once a model has been saved", async () => {
+    saved({ allocModel: "balanced" });
     await guide(false);
     expect(document.querySelectorAll(".wealth-guide-step")[3].querySelector(".wealth-guide-mark.done")).not.toBeNull();
     expect(done()).toBe(1);
@@ -142,8 +142,7 @@ describe("WealthGuide", () => {
   });
 
   it("is gone once all five are done", async () => {
-    localStorage.setItem("argus.wealth.allocModel", "growth");
-    saved({ flows: [flow("out")], birthYear: 1990, policies: 2 });
+    saved({ flows: [flow("out")], birthYear: 1990, policies: 2, allocModel: "growth" });
     render(<WealthGuide dict={dict} hasAssets={true} onNavigate={vi.fn()} />);
     await waitFor(() => expect(m.fetchWealthInsure).toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 0));
