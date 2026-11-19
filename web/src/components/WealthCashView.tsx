@@ -18,6 +18,7 @@ import { shortTWD } from "../currency";
 import { useFlash } from "../flash";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { WealthEmptyCard, useGateAdd } from "./WealthOnboarding";
+import { Interp, RULE, TermTip } from "./WealthInterp";
 
 interface Props {
   dict: Dictionary;
@@ -508,8 +509,17 @@ export function WealthCashView({ dict, writable, onUnauthorized }: Props) {
             <div className="card" style={{ flex: "1 1 200px" }}>
               <div className="eyebrow">{dict.wealthCashSaveRateLabel}</div>
               <div className="mono profit" style={{ fontSize: "clamp(17px,2.1vw,28px)", marginTop: 8 }}>
-                {cash?.saveRatePct != null ? `${cash.saveRatePct.toFixed(1)}%` : "—"}
+                <span className="ip-fig">
+                  {cash?.saveRatePct != null ? `${cash.saveRatePct.toFixed(1)}%` : "—"}
+                  <TermTip dict={dict} term={dict.wealthCashSaveRateLabel} def={dict.ipCashDef} />
+                </span>
               </div>
+              {cash?.saveRatePct != null &&
+                (cash.saveRatePct >= RULE.savingsRateMin ? (
+                  <Interp tone="ok" text={dict.ipCashOk.replace("{amt}", fmtMoney(cash.monthlyNet ?? 0, CURRENCY))} />
+                ) : (
+                  <Interp tone="warn" text={dict.ipCashWarn} />
+                ))}
               <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6 }}>
                 {dict.wealthCashDcaShareLabel} {cash?.dcaSharePct != null ? `${cash.dcaSharePct.toFixed(1)}%` : "—"}
               </div>

@@ -22,9 +22,9 @@ const dict = getDictionary("zh");
 const flow = (direction: "in" | "out", active = true) => ({ id: 1, direction, name: "x", amount: 1, currency: "TWD", active });
 
 // What the guide reads besides the asset list: expense flows, the birth year, policies.
-function saved(over: { flows?: ReturnType<typeof flow>[]; birthYear?: number | null; policies?: number; allocModel?: string } = {}) {
+function saved(over: { flows?: ReturnType<typeof flow>[]; birthYear?: number | null; dependents?: number | null; policies?: number; allocModel?: string } = {}) {
   m.fetchWealthCash.mockResolvedValue({ items: over.flows ?? [] } as never);
-  m.fetchWealthProfile.mockResolvedValue({ birthYear: over.birthYear ?? null, allocModel: over.allocModel ?? null } as never);
+  m.fetchWealthProfile.mockResolvedValue({ birthYear: over.birthYear ?? null, dependents: over.dependents ?? null, allocModel: over.allocModel ?? null } as never);
   m.fetchWealthInsure.mockResolvedValue({ policies: Array(over.policies ?? 0).fill({}) } as never);
 }
 
@@ -107,19 +107,27 @@ describe("WealthGuide", () => {
   it("lists the five steps in order, none done on an empty account", async () => {
     await guide(false);
     const labels = [...document.querySelectorAll(".wealth-guide-label")].map((e) => e.textContent);
-    expect(labels).toEqual([dict.navWealthBalance, dict.navWealthCash, dict.navWealthRetire, dict.navWealthAlloc, dict.navWealthInsure]);
+    expect(labels).toEqual([dict.navWealthBalance, dict.navWealthCash, dict.hhTitle, dict.navWealthAlloc, dict.navWealthInsure]);
     expect(done()).toBe(0);
     expect(screen.getByText("0 / 5 完成")).not.toBeNull();
     expect(screen.getByText(dict.wealthGuideWhyInsure)).not.toBeNull();
   });
 
   it("ticks a step once its data exists", async () => {
-    saved({ flows: [flow("out")], birthYear: 1990 });
+    saved({ flows: [flow("out")], birthYear: 1990, dependents: 0 });
     await guide(true);
     const ticked = [...document.querySelectorAll(".wealth-guide-step")].map((s) => s.querySelector(".wealth-guide-mark.done") != null);
-    // 資產負債表, 現金流, 退休 done; 配置 (never picked) and 保單 not.
+    // 資產負債表, 現金流, 家庭狀況 done; 配置 (never picked) and 保單 not.
     expect(ticked).toEqual([true, true, true, false, false]);
     expect(screen.getByText("3 / 5 完成")).not.toBeNull();
+  });
+
+  it("counts the household step only with both age and dependents", async () => {
+    saved({ birthYear: 1990 });
+    const { onNavigate } = await guide(false);
+    expect(document.querySelectorAll(".wealth-guide-step")[2].querySelector(".wealth-guide-mark.done")).toBeNull();
+    fireEvent.click(screen.getByText(dict.hhTitle));
+    expect(onNavigate).toHaveBeenCalledWith("/w/balance");
   });
 
   it("counts the cash step only for an active expense", async () => {
@@ -142,7 +150,7 @@ describe("WealthGuide", () => {
   });
 
   it("is gone once all five are done", async () => {
-    saved({ flows: [flow("out")], birthYear: 1990, policies: 2, allocModel: "growth" });
+    saved({ flows: [flow("out")], birthYear: 1990, dependents: 1, policies: 2, allocModel: "growth" });
     render(<WealthGuide dict={dict} hasAssets={true} onNavigate={vi.fn()} />);
     await waitFor(() => expect(m.fetchWealthInsure).toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 0));

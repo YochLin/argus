@@ -5,6 +5,7 @@ import type { Dictionary } from "../i18n";
 import { shortTWD } from "../currency";
 import { fmtMoney } from "./WealthHomeView";
 import { useGateAdd } from "./WealthOnboarding";
+import { Interp, TermTip } from "./WealthInterp";
 
 interface Props {
   dict: Dictionary;
@@ -395,8 +396,12 @@ export function WealthGoalsView({ dict, writable, onUnauthorized, onNavigate }: 
           <div className="card" style={{ flex: "1 1 200px" }}>
             <div className="eyebrow">{dict.wealthGoalsTotalProgress}</div>
             <div className="mono" style={{ fontSize: "clamp(17px,2.1vw,28px)", marginTop: 8 }}>
-              {totalPct != null ? `${totalPct.toFixed(1)}%` : "—"}
+              <span className="ip-fig">
+                {totalPct != null ? `${totalPct.toFixed(1)}%` : "—"}
+                <TermTip dict={dict} term={dict.wealthGoalsTotalProgress} def={dict.ipGoalsDef} />
+              </span>
             </div>
+            {behindCount > 0 ? <Interp tone="warn" text={dict.ipGoalsWarn.replace("{n}", String(behindCount))} /> : <Interp tone="ok" text={dict.ipGoalsOk} />}
             <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6 }}>
               {fmtMoney(totalSaved, CURRENCY)} / {fmtMoney(totalTarget, CURRENCY)}
             </div>

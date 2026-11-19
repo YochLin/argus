@@ -6,6 +6,7 @@ import { thinNote, useAssetCount, wealthReadiness } from "./WealthOnboarding";
 import { CATEGORY_COLOR, categoryLabel, migrateLegacyModel } from "../wealthCategory";
 import { shortTWD } from "../currency";
 import { useFlash } from "../flash";
+import { Interp, RULE, TermTip } from "./WealthInterp";
 
 interface Props {
   dict: Dictionary;
@@ -306,8 +307,20 @@ export function WealthAllocView({ dict, writable, onUnauthorized, onNavigate }: 
             <div className="card" style={{ flex: "1 1 200px" }}>
               <div style={{ ...MONO_LABEL, marginBottom: 12 }}>{dict.wealthRiskTitle}</div>
               <div className="mono" style={{ fontSize: 32, lineHeight: 1.1 }}>
-                {riskPct != null ? `${riskPct.toFixed(1)}%` : "—"}
+                <span className="ip-fig">
+                  {riskPct != null ? `${riskPct.toFixed(1)}%` : "—"}
+                  <TermTip dict={dict} term={dict.wealthRiskShare} def={dict.wealthTipRisk} />
+                </span>
               </div>
+              {riskPct != null &&
+                !thinA &&
+                (riskPct > RULE.riskHigh ? (
+                  <Interp tone="warn" text={dict.ipAllocHigh} />
+                ) : riskPct < RULE.riskLow ? (
+                  <Interp tone="warn" text={dict.ipAllocLow} />
+                ) : (
+                  <Interp tone="ok" text={dict.ipAllocOk} />
+                ))}
               <div style={{ fontSize: 12, color: "var(--ink-2)", marginTop: 2 }}>
                 <span title={dict.wealthTipRisk} style={DOTTED}>
                   {dict.wealthRiskShare}
