@@ -95,14 +95,14 @@ function loadHidden(): boolean {
 export function WealthGuide({ dict, hasAssets, onNavigate }: { dict: Dictionary; hasAssets: boolean; onNavigate: (path: string) => void }) {
   const [hidden, setHidden] = useState(loadHidden);
   const assistant = useAssistant();
-  const [saved, setSaved] = useState<{ cash: boolean; birth: boolean; policy: boolean; alloc: boolean } | null>(null);
+  const [saved, setSaved] = useState<{ cash: boolean; household: boolean; policy: boolean; alloc: boolean } | null>(null);
 
   useEffect(() => {
     Promise.all([fetchWealthCash(), fetchWealthProfile(), fetchWealthInsure()])
       .then(([c, p, i]) =>
         setSaved({
           cash: c.items.some((f) => f.active && f.direction === "out"),
-          birth: p.birthYear != null,
+          household: p.birthYear != null && p.dependents != null,
           policy: i.policies.length > 0,
           alloc: p.allocModel != null,
         }),
@@ -115,7 +115,7 @@ export function WealthGuide({ dict, hasAssets, onNavigate }: { dict: Dictionary;
   const steps: [string, string, string, boolean][] = [
     [dict.navWealthBalance, dict.wealthGuideWhyBalance, "/w/balance", hasAssets],
     [dict.navWealthCash, dict.wealthGuideWhyCash, "/w/cash", saved.cash],
-    [dict.navWealthRetire, dict.wealthGuideWhyRetire, "/w/retire", saved.birth],
+    [dict.hhTitle, dict.wealthGuideWhyHH, "/w/balance", saved.household],
     [dict.navWealthAlloc, dict.wealthGuideWhyAlloc, "/w/alloc", saved.alloc],
     [dict.navWealthInsure, dict.wealthGuideWhyInsure, "/w/insure", saved.policy],
   ];

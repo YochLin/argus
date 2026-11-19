@@ -134,7 +134,7 @@ func EvaluateWealthChecks(in CheckInputs) []CheckItem {
 		add(CheckItem{Code: "dependents", Severity: SeverityData, Link: "/w/balance"})
 	}
 	if !in.HasAge {
-		add(CheckItem{Code: "age", Severity: SeverityData, Link: "/w/retire"})
+		add(CheckItem{Code: "age", Severity: SeverityData, Link: "/w/balance"})
 	}
 	if !in.HasSalary {
 		add(CheckItem{Code: "salary", Severity: SeverityData, Link: "/w/balance"})

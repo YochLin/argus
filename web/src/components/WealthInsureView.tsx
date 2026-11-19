@@ -16,6 +16,7 @@ import { DOTTED, fmtMoney } from "./WealthHomeView";
 import { srcLabel } from "./WealthBalanceView";
 import { useFlash } from "../flash";
 import { WealthEmptyCard, useGateAdd } from "./WealthOnboarding";
+import { Interp, RULE, TermTip } from "./WealthInterp";
 
 interface Props {
   dict: Dictionary;
@@ -407,8 +408,13 @@ export function WealthInsureView({ dict, writable, onUnauthorized }: Props) {
             <div className="card card--glow" style={{ flex: "1.5 1 250px", padding: 19.2 }}>
               <div className="eyebrow">{dict.wealthInsureBiggestGapLabel}</div>
               <div className="mono loss" style={{ fontSize: 30, lineHeight: 1.15, marginTop: 8, wordBreak: "keep-all" }}>
-                {data && data.worstKind ? fmtCoverage(dict, data.worstGap, worst?.perPeriod) : "—"}
+                <span className="ip-fig">
+                  {data && data.worstKind ? fmtCoverage(dict, data.worstGap, worst?.perPeriod) : "—"}
+                  <TermTip dict={dict} term={dict.wealthInsureBiggestGapLabel} def={dict.ipInsDef} />
+                </span>
               </div>
+              {data?.worstKind &&
+                (data.worstPct >= RULE.coverageMin ? <Interp tone="ok" text={dict.ipInsOk} /> : <Interp tone="bad" text={dict.ipInsBad} />)}
               <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 4 }}>
                 {data?.worstKind ? kindLabel(dict, data.worstKind) : "—"} ·{" "}
                 <span title={dict.wealthInsureTipCoverage} style={DOTTED}>
