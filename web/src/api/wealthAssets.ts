@@ -55,8 +55,6 @@ export interface WealthHome {
   totalLiabilities: number | null;
   model: AllocationModel;
   allocation: WealthAllocationRow[];
-  // staleCount: manual/import records last valued 90+ days ago (the amber banner).
-  staleCount: number;
 }
 
 // Uses the target model saved on /w/alloc.

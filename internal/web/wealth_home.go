@@ -5,8 +5,6 @@ import (
 	"time"
 
 	"argus/internal/assets"
-	"argus/internal/db"
-	"argus/internal/logger"
 	"argus/internal/service"
 )
 
@@ -42,31 +40,13 @@ type wealthHomeResponse struct {
 	TotalLiabilities *float64           `json:"totalLiabilities"`
 	Model            string             `json:"model"`
 	Allocation       []driftRowResponse `json:"allocation"`
-	// StaleCount is how many hand-maintained records (manual/import, assets
-	// and liabilities alike) last got a value more than staleDays ago — the
-	// template's amber "N 筆資料超過 90 天未更新" banner. Synced sources
-	// refresh themselves, so they never count.
-	StaleCount int `json:"staleCount"`
 }
 
 const staleDays = 90
 
-// countStale counts manual/import records whose latest snapshot is older
-// than staleDays as of now. A record with no snapshot yet isn't stale, it's
-// empty — the page already renders that as "—".
-func countStale(list []db.AssetWithValue, now time.Time) int {
-	n := 0
-	for _, a := range list {
-		if _, stale := staleInfo(a.Source, a.AsOf, now); stale {
-			n++
-		}
-	}
-	return n
-}
-
-// staleInfo is countStale's per-record rule, reused by /w/balance to badge
-// an individual asset/liability row (design mock's wSrcTag "N 天未更新")
-// rather than only the home page's aggregate count. Synced sources refresh
+// staleInfo is the 90-day rule for one record: /w/balance badges a row with
+// it (design mock's wSrcTag "N 天未更新") and the wealth checks list the
+// records it flags. Synced sources refresh
 // themselves so they're never stale; an empty asOf is "no snapshot yet", a
 // different (already "—") state, not staleness.
 func staleInfo(source, asOf string, now time.Time) (days int, stale bool) {
@@ -119,12 +99,6 @@ func (s *Server) handleWealthHome(w http.ResponseWriter, r *http.Request) {
 	monthAgo := now.AddDate(0, -1, 0).Format("2006-01-02")
 	if pct, ok := service.PeriodReturnPct(s.db, s.fxDB, s.quotes, monthAgo, todayTotal, todayOK); ok {
 		resp.MoMPct = &pct
-	}
-
-	if list, err := s.db.ListAssetsWithValue(false); err != nil {
-		logger.Errorf("web: wealth home: list assets for stale count: %v", err)
-	} else {
-		resp.StaleCount = countStale(list, now)
 	}
 
 	writeJSON(w, http.StatusOK, resp)

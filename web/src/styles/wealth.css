@@ -942,3 +942,302 @@
   color: var(--ink-3);
   text-wrap: pretty;
 }
+
+/* /w's "本月該做的事" (WealthChecks.tsx). Severity colours differ between the
+   themes, the rest are base tokens. */
+:root {
+  --ck-do: #f87171;
+  --ck-do-bg: rgba(239, 68, 68, 0.14);
+  --ck-do-bd: rgba(248, 113, 113, 0.35);
+  --ck-tip: #fbbf24;
+  --ck-tip-bg: rgba(245, 158, 11, 0.14);
+  --ck-tip-bd: rgba(251, 191, 36, 0.35);
+}
+:root.light {
+  --ck-do: #b91c1c;
+  --ck-do-bg: #fef2f2;
+  --ck-do-bd: #fecaca;
+  --ck-tip: #b45309;
+  --ck-tip-bg: #fffbeb;
+  --ck-tip-bd: #fde68a;
+}
+.ck-card {
+  background: linear-gradient(145deg, var(--surface) 0%, var(--surface-2) 100%);
+  box-shadow: var(--card-shadow);
+  border-radius: 12px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.ck-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px 10px;
+}
+.ck-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.ck-meta {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.ck-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ck-item {
+  border-top: 1px solid var(--border);
+}
+.ck-row {
+  display: flex;
+  align-items: center;
+}
+.ck-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  color: var(--ink);
+}
+.ck-main:hover {
+  background: var(--accent-tint-bg);
+}
+.ck-pill {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 68px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.ck-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: currentColor;
+}
+.ck-do {
+  color: var(--ck-do);
+  background: var(--ck-do-bg);
+  border-color: var(--ck-do-bd);
+}
+.ck-tip {
+  color: var(--ck-tip);
+  background: var(--ck-tip-bg);
+  border-color: var(--ck-tip-bd);
+}
+.ck-data {
+  color: var(--ink-2);
+  background: var(--bg);
+  border-color: var(--border);
+}
+.ck-data .ck-dot {
+  background: transparent;
+  border: 1.5px solid var(--ink-3);
+}
+.ck-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.ck-item-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+.ck-reason {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ck-fix {
+  color: var(--ink-3);
+}
+.ck-gap {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 110px;
+}
+.ck-gap-label {
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+.ck-gap-value {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--ink);
+}
+.ck-gap-value.ck-do-fg {
+  color: var(--ck-do);
+}
+.ck-chev {
+  flex-shrink: 0;
+  color: var(--ink-3);
+}
+/* The AI button shows on hover/focus, as in the design; touch screens have
+   no hover, so it stays visible there. */
+.ck-ai {
+  flex-shrink: 0;
+  margin: 0 16px 0 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  min-height: 32px;
+  padding: 0 11px;
+  border-radius: 8px;
+  border: 1px solid var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .ck-ai {
+    opacity: 0;
+    transition: opacity 0.12s;
+  }
+  .ck-item:hover .ck-ai,
+  .ck-ai:focus-visible {
+    opacity: 1;
+  }
+}
+.ck-deps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 2px 16px 14px 96px;
+}
+.ck-deps-q {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-right: 4px;
+}
+.ck-deps-opt {
+  min-width: 44px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ck-deps-opt:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.ck-deps a {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--accent);
+}
+.ck-more {
+  display: block;
+  width: 100%;
+  padding: 9px;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.ck-more:hover {
+  background: var(--accent-tint-bg);
+}
+.ck-clear {
+  display: flex;
+  align-items: center;
+  gap: 12px 14px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+}
+.ck-clear-mark {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ov-profit-bg);
+  color: var(--profit);
+  font-weight: 700;
+}
+.ck-clear .ck-meta {
+  margin-left: 0;
+}
+.ck-disclaimer {
+  margin: 0 0 16px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+/* Phone: the amount drops under the text, the AI button keeps only its icon. */
+@media (max-width: 640px) {
+  .ck-main {
+    flex-wrap: wrap;
+    row-gap: 4px;
+    padding-right: 4px;
+  }
+  .ck-text {
+    flex: 1 1 calc(100% - 80px);
+  }
+  .ck-gap {
+    min-width: 0;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 6px;
+    margin-left: 80px;
+  }
+  .ck-chev,
+  .ck-ai-label {
+    display: none;
+  }
+  .ck-ai {
+    opacity: 1;
+    margin-right: 8px;
+    padding: 0 9px;
+  }
+  .ck-deps {
+    padding-left: 16px;
+  }
+}

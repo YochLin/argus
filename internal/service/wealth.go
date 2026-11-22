@@ -398,6 +398,7 @@ type HealthMetrics struct {
 	SavingsRatePct  *float64
 	ExpenseRatioPct *float64
 	LiquidityMonths *float64
+	MonthlyExpense  *float64
 }
 
 // ComputeHealthMetrics assembles HealthMetrics as of now, using today's live
@@ -431,6 +432,7 @@ func ComputeHealthMetrics(store WealthStore, fx WealthFXStore, quotes QuoteReade
 		return m
 	}
 	expense := assets.MonthlyExpense(monthlySalary, depositNow, depositPrev)
+	m.MonthlyExpense = &expense
 	if sr, ok := assets.SavingsRate(monthlySalary, expense); ok {
 		m.SavingsRatePct = &sr
 	}

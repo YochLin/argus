@@ -61,7 +61,7 @@ beforeEach(() => {
   vi.stubGlobal("localStorage", memoryStorage());
   m.fetchWealthAlloc.mockResolvedValue(alloc as never);
   m.saveWealthProfile.mockResolvedValue({ message: "saved" } as never);
-  m.fetchWealthHome.mockResolvedValue({ staleCount: 0, allocation: [], ytdPct: null, momPct: null } as never);
+  m.fetchWealthHome.mockResolvedValue({ allocation: [], ytdPct: null, momPct: null } as never);
   m.fetchWealthBalance.mockResolvedValue({ assetGroups: [], liabilities: [], quarterlyTrend: [], debtRatioPct: 600, liquidityMonths: null } as never);
   m.fetchWealthCash.mockResolvedValue({ items: [], events: [], forecast: [] } as never);
   m.fetchWealthProfile.mockResolvedValue({ birthYear: null } as never);

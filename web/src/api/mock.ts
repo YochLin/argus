@@ -25,6 +25,19 @@ export function getMockData(url: string): any {
       allocation: [],
     };
   }
+  if (path === "/api/wealth/checks") {
+    return {
+      asOf: "2026-07-15",
+      new: false,
+      rules: 9,
+      items: [
+        { code: "emergency", severity: "do", link: "/w/balance", value: 2.1, target: 9, gap: 84000 },
+        { code: "card", severity: "do", link: "/w/balance", value: 15, gap: 12000, names: ["玉山卡"] },
+        { code: "retirement", severity: "tip", link: "/w/retire", value: 64, target: 80, gap: 4200000 },
+        { code: "dependents", severity: "data", link: "/w/balance" },
+      ],
+    };
+  }
   if (path === "/api/wealth/balance") {
     return {
       asOf: "2026-07-15",
