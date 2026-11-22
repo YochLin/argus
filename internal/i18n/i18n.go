@@ -975,9 +975,30 @@ const (
 	// "NT$target"), same convention as KeyNetworthSummaryLine.
 	KeyWealthHealthReportTitle    Key = "wealth_health_report_title"
 	KeyWealthHealthRetirementLine Key = "wealth_health_retirement_line"
-	KeyWealthHealthInsightHeader  Key = "wealth_health_insight_header"
+	// The report's rule-based part (service.EvaluateWealthChecks, the home
+	// page's 本月該做的事) and the AI view after it. KeyWealthCheckTitle* is
+	// one per check code (bot.wealthCheckTitle); the web words the same items
+	// itself (WealthChecks.tsx), so keep the two in step.
+	KeyWealthHealthChecksHeader   Key = "wealth_health_checks_header"
+	KeyWealthHealthCheckLine      Key = "wealth_health_check_line"
+	KeyWealthHealthCheckGap       Key = "wealth_health_check_gap"
+	KeyWealthHealthChecksMore     Key = "wealth_health_checks_more"
+	KeyWealthHealthAIViewHeader   Key = "wealth_health_ai_view_header"
+	KeyWealthHealthDisclaimer     Key = "wealth_health_disclaimer"
+	KeyWealthCheckTitleEmergency  Key = "wealth_check_title_emergency"
+	KeyWealthCheckTitleDebtRatio  Key = "wealth_check_title_debt_ratio"
+	KeyWealthCheckTitleCard       Key = "wealth_check_title_card"
+	KeyWealthCheckTitleCoverage   Key = "wealth_check_title_coverage"
+	KeyWealthCheckTitleRetirement Key = "wealth_check_title_retirement"
+	KeyWealthCheckTitleGoals      Key = "wealth_check_title_goals"
+	KeyWealthCheckTitleAlloc      Key = "wealth_check_title_alloc"
+	KeyWealthCheckTitleSavings    Key = "wealth_check_title_savings"
+	KeyWealthCheckTitleDependents Key = "wealth_check_title_dependents"
+	KeyWealthCheckTitleAge        Key = "wealth_check_title_age"
+	KeyWealthCheckTitleSalary     Key = "wealth_check_title_salary"
+	KeyWealthCheckTitleStale      Key = "wealth_check_title_stale"
 
-	// buildWealthHealthReportPrompt (internal/llm) — the LLM-interpretation
+	// buildWealthViewPrompt (internal/llm) — the AI view
 	// half of the same report. Each line is only rendered when its metric
 	// is computable (same optional-section convention as
 	// buildTradeReviewPrompt), so the model never gets asked to explain a
@@ -993,6 +1014,12 @@ const (
 	KeyWealthHealthPromptExpenseRatioLine Key = "wealth_health_prompt_expense_ratio_line"
 	KeyWealthHealthPromptRetirementLine   Key = "wealth_health_prompt_retirement_line"
 	KeyWealthHealthPromptTask             Key = "wealth_health_prompt_task"
+	// KeyWealthViewPromptChecksHeader introduces the rule items the model is
+	// told not to repeat; KeyWealthHealthPromptTask's %s is
+	// llm.WealthViewSummaryMarker. KeySystemPromptWealthView is that one-off
+	// session's system prompt (llm.WealthView).
+	KeyWealthViewPromptChecksHeader Key = "wealth_view_prompt_checks_header"
+	KeySystemPromptWealthView       Key = "system_prompt_wealth_view"
 
 	// KeyNewsClassifyIntro/KeyNewsClassifyTask are the prompt that labels the
 	// headlines stored with a fill (internal/llm.ClassifyNews). The Task's

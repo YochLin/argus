@@ -40,3 +40,15 @@ export interface WealthChecks {
 export function fetchWealthChecks(): Promise<WealthChecks> {
   return getJSON("/api/wealth/checks");
 }
+
+// WealthAIView mirrors service.WealthAIView: the monthly report's own
+// observations, not checked by any rule. null before the first report.
+export interface WealthAIView {
+  generatedAt: string;
+  summary: string;
+  points: string[];
+}
+
+export function fetchWealthAIView(): Promise<WealthAIView | null> {
+  return getJSON("/api/wealth/ai-view");
+}

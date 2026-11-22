@@ -98,6 +98,7 @@ func (s *Server) registerWealthRoutes() {
 	s.mux.HandleFunc("GET /api/wealth/networth/trend", s.handleWealthTrend)
 	// The home page's action list (wealth_checks.go); rules in service.
 	s.mux.HandleFunc("GET /api/wealth/checks", s.handleWealthChecks)
+	s.mux.HandleFunc("GET /api/wealth/ai-view", s.handleWealthAIView)
 	s.mux.HandleFunc("GET /api/wealth/fx", s.handleWealthFX)
 	s.mux.HandleFunc("POST /api/wealth/assets", s.requireWritable(s.requireAuth(s.handleWealthAssetCreate)))
 	s.mux.HandleFunc("POST /api/wealth/assets/snapshot", s.requireWritable(s.requireAuth(s.handleWealthAssetSnapshot)))

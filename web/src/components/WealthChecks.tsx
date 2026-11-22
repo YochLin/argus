@@ -5,6 +5,7 @@ import type { Dictionary } from "../i18n";
 import { fmtMoney } from "./WealthHomeView";
 import { kindLabel } from "./WealthInsureView";
 import { useFlash } from "../flash";
+import { WealthAIViewCard } from "./WealthAIView";
 
 // fill swaps {name} placeholders; the check texts carry several each.
 function fill(s: string, vars: Record<string, string | number | undefined>): string {
@@ -79,6 +80,7 @@ const DEPS = [0, 1, 2, 3];
 
 // WealthChecks is /w's "本月該做的事" card: up to three actions (all on
 // request), a passed state, or — on an empty account — the setup guide.
+// The monthly AI view sits under it, above the disclaimer that covers both.
 // Nothing here is stored: an item goes away when its data changes.
 export function WealthChecksCard({ dict, writable, refresh, onUnauthorized, onNavigate, guide }: Props) {
   const [checks, setChecks] = useState<WealthChecks | null>(null);
@@ -129,6 +131,7 @@ export function WealthChecksCard({ dict, writable, refresh, onUnauthorized, onNa
             <span className="ck-meta">{fill(dict.ckClearSub, { n: checks.rules })}</span>
           </div>
         </section>
+        <WealthAIViewCard dict={dict} refresh={refresh} />
         <p className="ck-disclaimer">{dict.ckDisclaimer}</p>
       </>
     );
@@ -218,6 +221,7 @@ export function WealthChecksCard({ dict, writable, refresh, onUnauthorized, onNa
           </button>
         )}
       </section>
+      <WealthAIViewCard dict={dict} refresh={refresh} />
       <p className="ck-disclaimer">{dict.ckDisclaimer}</p>
     </>
   );

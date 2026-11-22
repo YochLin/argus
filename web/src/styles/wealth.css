@@ -1213,6 +1213,102 @@
   font-size: 11px;
   color: var(--ink-3);
 }
+/* The monthly AI view under the checks (WealthAIView.tsx): dashed and
+   transparent so it never reads as one of the rule-based items. */
+.aiv-card {
+  border: 1px dashed var(--accent-tint-border);
+  border-radius: 12px;
+  padding: 10px 16px;
+  margin-bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.aiv-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.aiv-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+}
+.aiv-title {
+  flex-shrink: 0;
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.aiv-meta {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  color: var(--ink-3);
+}
+.aiv-summary {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aiv-spacer {
+  flex: 1;
+}
+.aiv-toggle,
+.aiv-ask {
+  flex-shrink: 0;
+  min-height: 32px;
+  border-radius: 8px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.aiv-toggle {
+  padding: 0 10px;
+  border: none;
+  background: transparent;
+  color: var(--ink-2);
+  font-weight: 600;
+}
+.aiv-toggle:hover {
+  background: var(--accent-tint-bg);
+  color: var(--ink);
+}
+.aiv-ask {
+  padding: 0 12px;
+  border: 1px solid var(--accent-tint-border);
+  background: var(--accent-tint-bg);
+  color: var(--accent);
+  font-weight: 700;
+}
+.aiv-points {
+  margin: 0;
+  padding: 0 0 4px 52px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.aiv-points li {
+  text-wrap: pretty;
+}
 /* Phone: the amount drops under the text, the AI button keeps only its icon. */
 @media (max-width: 640px) {
   .ck-main {
@@ -1241,6 +1337,16 @@
   }
   .ck-deps {
     padding-left: 16px;
+  }
+  /* No room for the summary beside the buttons; the points say it. */
+  .aiv-head {
+    flex-wrap: wrap;
+  }
+  .aiv-summary {
+    display: none;
+  }
+  .aiv-points {
+    padding-left: 18px;
   }
 }
 

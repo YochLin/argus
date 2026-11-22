@@ -25,6 +25,13 @@ export function getMockData(url: string): any {
       allocation: [],
     };
   }
+  if (path === "/api/wealth/ai-view") {
+    return {
+      generatedAt: "2026-07-01",
+      summary: "保單可能重複保障、不動產過度集中",
+      points: ["你有兩張醫療險都附住院日額，和實支實付那張的保障可能重複。", "不動產占總資產約 44%，需要一大筆現金時會比較難調度。"],
+    };
+  }
   if (path === "/api/wealth/checks") {
     return {
       asOf: "2026-07-15",

@@ -304,8 +304,9 @@ var enMessages = map[Key]string{
 	KeyStrategySqueezeName:                "Squeeze Breakout",
 	KeyStrategyBoxName:                    "Box Bottom Rebound",
 
-	KeySystemPromptAnalyst: "You are a professional US equities analyst whose only job is to give a written analysis based on the market data the user provides. You have no tools available and need none; reply strictly according to the format the user's message requests, with no content unrelated to the analysis.",
-	KeySystemPromptChat:    "You are the user's personal assistant. Talk naturally in English and remember what was said earlier in this conversation. Your only tools are argus's quote/portfolio lookups and WebFetch: use WebFetch only when the user pastes a link without the article text attached. WebFetch returns a summary, not the original text, so say so when you answer; do not present it as verbatim content.",
+	KeySystemPromptAnalyst:    "You are a professional US equities analyst whose only job is to give a written analysis based on the market data the user provides. You have no tools available and need none; reply strictly according to the format the user's message requests, with no content unrelated to the analysis.",
+	KeySystemPromptChat:       "You are the user's personal assistant. Talk naturally in English and remember what was said earlier in this conversation. Your only tools are argus's quote/portfolio lookups and WebFetch: use WebFetch only when the user pastes a link without the article text attached. WebFetch returns a summary, not the original text, so say so when you answer; do not present it as verbatim content.",
+	KeySystemPromptWealthView: "You are Argus's personal finance observer. Once a month you read what the user has recorded in their wealth account (assets, liabilities, monthly cash flows, insurance policies, retirement and savings goals) and point out what the fixed rules can't see but the user should notice. Be plain, specific and brief.",
 	KeySystemPromptWealth: "You are Argus's wealth setup assistant. You help the user record their deposits, loans, credit cards, funds, insurance, regular monthly income and spending, retirement and other goals. Answer in plain, short English and ask about one or two things at a time. The chat shows plain text only: no Markdown (no ** bold, # headings or tables); for a list, just put each item on its own line.\n" +
 		"You can read what is already recorded with the tools list_assets, list_cashflows, list_insurance and get_profile_and_goals, and the unsaved drafts with list_drafts. Check the records and drafts before answering \"what's missing\" or asking a follow-up, and never ask about something already recorded. You may start over mid-conversation and forget earlier turns; if so, check the records and drafts again and carry on.\n" +
 		"Rules:\n" +
@@ -865,21 +866,44 @@ If nothing in the transcript is worth extracting, output nothing.
 
 	KeyWealthHealthReportTitle:    "📋 *Monthly Financial Health Report (%s)*\n",
 	KeyWealthHealthRetirementLine: "Retirement goal \"%s\" progress: %s (saved %s / target %s)\n",
-	KeyWealthHealthInsightHeader:  "\nInterpretation:\n",
+	KeyWealthHealthChecksHeader:   "\n*This month's actions*\n",
+	KeyWealthHealthCheckLine:      "%s %s\n",
+	KeyWealthHealthCheckGap:       "%s (%s)",
+	KeyWealthHealthChecksMore:     "%d more on the wealth home page\n",
+	KeyWealthHealthAIViewHeader:   "\n*AI view* (not rule-checked)\n",
+	KeyWealthHealthDisclaimer:     "\nFor reference only — not investment or insurance advice\n",
+	KeyWealthCheckTitleEmergency:  "Build up the emergency fund",
+	KeyWealthCheckTitleDebtRatio:  "Lower the debt ratio",
+	KeyWealthCheckTitleCard:       "Pay off the credit card balance",
+	KeyWealthCheckTitleCoverage:   "Close the coverage gap",
+	KeyWealthCheckTitleRetirement: "Raise retirement contributions",
+	KeyWealthCheckTitleGoals:      "Goals are behind schedule",
+	KeyWealthCheckTitleAlloc:      "Allocation is off target",
+	KeyWealthCheckTitleSavings:    "Raise the savings rate",
+	KeyWealthCheckTitleDependents: "Fill in dependents",
+	KeyWealthCheckTitleAge:        "Fill in your birth year",
+	KeyWealthCheckTitleSalary:     "Fill in your annual salary",
+	KeyWealthCheckTitleStale:      "Update stale records",
 
-	KeyWealthHealthPromptIntro:            "You are a personal finance advisor. Give a short interpretation of %s's financial health numbers below (don't just repeat the numbers — point out what they mean and what changed).\n\n",
+	KeyWealthHealthPromptIntro:            "Below are this user's financial figures for %s, already computed by the system.\n\n",
+	KeyWealthViewPromptChecksHeader:       "\nThe system's fixed rules already list these actions on the home page; don't repeat them:\n",
 	KeyWealthHealthPromptDebtRatioLine:    "Debt ratio: %.1f%%\n",
 	KeyWealthHealthPromptLiquidityLine:    "Liquidity: %.1f months\n",
 	KeyWealthHealthPromptSavingsRateLine:  "Savings rate: %.1f%%\n",
 	KeyWealthHealthPromptExpenseRatioLine: "Expense ratio: %.1f%%\n",
 	KeyWealthHealthPromptRetirementLine:   "Retirement goal \"%s\" progress: %.1f%% (saved NT$%.0f / target NT$%.0f)\n",
 	KeyWealthHealthPromptTask: `
-Write a 150-250 word interpretation, focusing on:
-1. What these numbers say about overall financial health, and which metric deserves the most attention
-2. Any risk signals worth flagging (e.g. low liquidity, low savings rate, high debt ratio)
-3. If a retirement goal progress figure is given, one sentence on whether it's ahead or behind
-
-Don't repeat the numbers already listed above, and don't recommend specific investments.
+First read the user's records with the tools (list_assets, list_cashflows, list_insurance, get_profile_and_goals), then write 1 to 3 observations the rules above don't cover, such as overlapping insurance cover, assets concentrated in one holding, or problems in how money comes in and goes out.
+Rules:
+1. Only say what the records show. Don't invent numbers or recompute the ones given above. Write fewer points if there is little worth saying.
+2. Don't recommend specific financial or insurance products, and don't tell the user to buy or sell a particular holding.
+3. Don't create drafts: don't call any propose_ tool.
+4. When you mention a page, use only these: Net worth, Balance sheet, Cash flow, Allocation, Goals, Retirement, Insurance. There are no other pages (there is no tax page, for example), so don't mention any.
+5. No Markdown.
+Reply in exactly this format and nothing else:
+%s one sentence summing up the points (under 25 words)
+- first point (under 50 words)
+- second point
 `,
 
 	KeyNewsClassifyIntro: "Below are news headlines from around the time the user traded %s. Judge each item's effect on this stock. Go only by the headline and source; do not assume anything the headline does not say.\n\n",
