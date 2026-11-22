@@ -4,6 +4,7 @@ import {
   fetchWealthAssets,
   fetchWealthBalance,
   fetchWealthDebtPayoff,
+  fetchWealthProfile,
   saveWealthAssetSnapshot,
   saveWealthProfile,
   unarchiveWealthAsset,
@@ -13,6 +14,7 @@ import {
   type DebtPayoffResult,
   type QuarterPoint,
   type WealthAsset,
+  type WealthProfile,
 } from "../api";
 import type { Dictionary } from "../i18n";
 import { AddAssetModal, AssetValue, MONO_LABEL, fmtMoney, liabilityNote } from "./WealthHomeView";
@@ -21,6 +23,8 @@ import { useFlash } from "../flash";
 import { BalanceRow } from "./BalanceRow";
 import { RowEditDrawer } from "./RowEditDrawer";
 import { WealthEmptyCard, useGateAdd } from "./WealthOnboarding";
+import { WealthHousehold } from "./WealthHousehold";
+import { Interp, RULE, TermTip, type Tone } from "./WealthInterp";
 
 interface Props {
   dict: Dictionary;
@@ -60,6 +64,7 @@ function srcTag(dict: Dictionary, source: string, staleDays?: number) {
 export function WealthBalanceView({ dict, writable, onUnauthorized, onNavigate }: Props) {
   const [sheet, setSheet] = useState<BalanceSheet | null>(null);
   const [assets, setAssets] = useState<WealthAsset[] | null>(null);
+  const [profile, setProfile] = useState<WealthProfile | null>(null);
   const [error, setError] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
   const [salaryInput, setSalaryInput] = useState("");
@@ -88,6 +93,14 @@ export function WealthBalanceView({ dict, writable, onUnauthorized, onNavigate }
     fetchWealthAssets(true)
       .then((r) => setAssets(r.assets))
       .catch(() => setError(true));
+  }, [refreshSignal]);
+
+  // The household card and the emergency-fund line (its target is 9 months
+  // with dependents) read the profile. A failed load just leaves both out.
+  useEffect(() => {
+    fetchWealthProfile()
+      .then(setProfile)
+      .catch(() => setProfile(null));
   }, [refreshSignal]);
 
   function refresh() {
@@ -203,6 +216,8 @@ export function WealthBalanceView({ dict, writable, onUnauthorized, onNavigate }
           {dict.wealthAddAsset}
         </button>
       </div>
+
+      {profile && <WealthHousehold key={JSON.stringify(profile)} dict={dict} writable={writable} profile={profile} onSaved={refresh} onUnauthorized={onUnauthorized} />}
 
       {view === "arc" ? (
         <ArchivedCard dict={dict} items={archived} loaded={assets != null} onOpen={setDrawer} onRestore={restore} />
@@ -361,11 +376,19 @@ export function WealthBalanceView({ dict, writable, onUnauthorized, onNavigate }
                   {dict.wealthDebtRatio} / {dict.wealthLiquidityMonths} / {dict.wealthSavingsRate} / {dict.wealthExpenseRatio}
                 </div>
                 <div className="wealth-ratios-grid">
-                  <RatioBlock label={dict.wealthDebtRatio} value={pct(sheet?.debtRatioPct ?? null)} note={dict.wealthDebtRatioNote} />
+                  <RatioBlock
+                    label={dict.wealthDebtRatio}
+                    value={pct(sheet?.debtRatioPct ?? null)}
+                    note={dict.wealthDebtRatioNote}
+                    tip={<TermTip dict={dict} term={dict.wealthDebtRatio} def={dict.ipDebtDef} />}
+                    ip={debtIp(dict, sheet?.debtRatioPct ?? null)}
+                  />
                   <RatioBlock
                     label={dict.wealthLiquidityMonths}
                     value={sheet?.liquidityMonths != null ? sheet.liquidityMonths.toFixed(1) : "—"}
                     note={dict.wealthLiquidityNote}
+                    tip={<TermTip dict={dict} term={dict.wealthLiquidityMonths} def={dict.ipLiqDef} />}
+                    ip={liquidityIp(dict, sheet?.liquidityMonths ?? null, profile?.dependents ?? null)}
                   />
                   <RatioBlock label={dict.wealthSavingsRate} value={pct(sheet?.savingsRatePct ?? null)} note={dict.wealthSavingsRateNote} />
                   <RatioBlock label={dict.wealthExpenseRatio} value={pct(sheet?.expenseRatioPct ?? null)} note={dict.wealthExpenseRatioNote} />
@@ -505,11 +528,35 @@ function ArchivedCard({
   );
 }
 
-function RatioBlock({ label, value, note }: { label: string; value: string; note: string }) {
+type Ip = { tone: Tone; text: string } | null;
+
+// liquidityIp/debtIp word the balance sheet's two ratios against the same
+// thresholds as the home page's emergency-fund and debt-ratio checks.
+export function liquidityIp(dict: Dictionary, months: number | null, dependents: number | null): Ip {
+  if (months == null) return null;
+  const deps = dependents != null && dependents > 0;
+  const need = deps ? RULE.emergencyMonthsDeps : RULE.emergencyMonths;
+  if (months >= need) return { tone: "ok", text: deps ? dict.ipLiqOkDeps : dict.ipLiqOk };
+  if (months >= RULE.emergencyFloor) return { tone: "warn", text: dict.ipLiqWarn.replace("{n}", String(need)) };
+  return { tone: "bad", text: dict.ipLiqBad };
+}
+
+function debtIp(dict: Dictionary, pct: number | null): Ip {
+  if (pct == null) return null;
+  return pct < RULE.debtRatioMax ? { tone: "ok", text: dict.ipDebtOk } : { tone: "bad", text: dict.ipDebtBad };
+}
+
+function RatioBlock({ label, value, note, tip, ip }: { label: string; value: string; note: string; tip?: React.ReactNode; ip?: Ip }) {
   return (
     <div className="wealth-ratio-block">
       <span className="wealth-ratio-block-label">{label}</span>
-      <span className="wealth-ratio-block-value">{value}</span>
+      <span className="wealth-ratio-block-value">
+        <span className="ip-fig">
+          {value}
+          {tip}
+        </span>
+      </span>
+      {ip && <Interp tone={ip.tone} text={ip.text} />}
       <span className="wealth-ratio-block-note">{note}</span>
     </div>
   );

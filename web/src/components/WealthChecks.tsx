@@ -198,10 +198,10 @@ export function WealthChecksCard({ dict, writable, refresh, onUnauthorized, onNa
                       </button>
                     ))}
                     <a
-                      href="/w/insure"
+                      href="/w/balance"
                       onClick={(e) => {
                         e.preventDefault();
-                        onNavigate("/w/insure");
+                        onNavigate("/w/balance");
                       }}
                     >
                       {dict.ckDepsMore} ›

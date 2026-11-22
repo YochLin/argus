@@ -15,6 +15,7 @@ import { useNoAssets } from "./WealthOnboarding";
 import { RetireAssignDrawer } from "./WealthRetireAssign";
 import { shortTWD } from "../currency";
 import { useFlash } from "../flash";
+import { Interp, RULE, TermTip } from "./WealthInterp";
 
 interface Props {
   dict: Dictionary;
@@ -610,8 +611,17 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
             <div className="card card--glow" style={{ flex: "1.5 1 250px", padding: 19.2 }}>
               <div className="eyebrow">{dict.wealthRetireRateLabel}</div>
               <div className="mono" style={{ fontSize: 40, lineHeight: 1.1, marginTop: 8, color: basis ? rateColor(basis.achievementPct, basis.funded) : "var(--ink-3)" }}>
-                {basis ? `${Math.min(basis.achievementPct, 999).toFixed(0)}%` : "—"}
+                <span className="ip-fig">
+                  {basis ? `${Math.min(basis.achievementPct, 999).toFixed(0)}%` : "—"}
+                  <TermTip dict={dict} term={dict.wealthRetireRateLabel} def={dict.ipRetDef} />
+                </span>
               </div>
+              {retire && !retire.hasBirthYear ? (
+                <Interp tone="data" text={dict.ipRetData} />
+              ) : (
+                basis &&
+                (basis.achievementPct >= RULE.retirementMin ? <Interp tone="ok" text={dict.ipRetOk} /> : <Interp tone="warn" text={dict.ipRetWarn} />)
+              )}
               <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 4 }}>
                 {dict.wealthRetireGapLabel}{" "}
                 <span className="mono" style={{ color: basis == null ? "var(--ink-3)" : basis.funded ? "var(--profit)" : "var(--loss)" }}>

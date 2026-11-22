@@ -469,7 +469,9 @@ the Dockerfile and `docker-compose.yml` all build `./cmd/server`.
   `service.EvaluateWealthChecks` (thresholds are constants, not settings), fed only from the functions the
   wealth pages themselves render, so an item never disagrees with the page it links to. An item is a code
   plus figures, worded by the frontend (`WealthChecks.tsx`), and nothing is stored — an item disappears
-  when its data changes. The target allocation model these read is `profile.alloc_model` on the server.
+  when its data changes. The target allocation model these read is `profile.alloc_model` on the server. The
+  interpretation line under each wealth page's headline figure (`WealthInterp.tsx`'s `RULE`) repeats these
+  thresholds on the frontend — change both together.
   `wealth_assistant.go`'s `/api/wealth/assistant` (Phase 28) is the wealth assistant chat: one turn
   at a time (`assistantMu.TryLock`, else 409) on `llm.ChatWealth`, whose session reads the records
   through `argus mcp wealth`. A turn is stored only after the model answers (user + reply in one
