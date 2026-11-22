@@ -1728,6 +1728,12 @@ export interface Dictionary {
   ckClearTitle: string;
   ckClearSub: string;
   ckDisclaimer: string;
+  aivTitle: string;
+  aivMeta: string;
+  aivExpand: string;
+  aivCollapse: string;
+  aivAsk: string;
+  aivAskText: string;
   ckDepsQ: string;
   ckDepsMore: string;
   ckEmergencyTitle: string;

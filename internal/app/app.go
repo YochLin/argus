@@ -435,6 +435,7 @@ func Boot(ctx context.Context, cfg Config) (a *App, err error) {
 			APIKey:              cfg.APIKey,
 			Events:              a.Events,
 		})
+		a.Bot.SetWealthChecks(a.Web.WealthChecks)
 		// Phase 18's sector money-flow scan only has a consumer when the
 		// dashboard is running, so it's registered here rather than
 		// unconditionally alongside the other jobs below.

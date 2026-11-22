@@ -472,6 +472,11 @@ the Dockerfile and `docker-compose.yml` all build `./cmd/server`.
   when its data changes. The target allocation model these read is `profile.alloc_model` on the server. The
   interpretation line under each wealth page's headline figure (`WealthInterp.tsx`'s `RULE`) repeats these
   thresholds on the frontend — change both together.
+  `GET /api/wealth/ai-view` is the card under it, 「AI 觀點」: what `bot.RunWealthHealthReport` (monthly) gets
+  from `llm.WealthView`, a one-off session on the `argus mcp wealth` tools (never the assistant's), told not to
+  repeat the checks, not to propose drafts, and to name only pages that exist. Only the newest is kept
+  (`profile.ai_view`, so the wealth reset clears it); it is labelled not rule-checked and nothing acts on it.
+  The same report sends the top three checks, through `Bot.SetWealthChecks(web.Server.WealthChecks)`.
   `wealth_assistant.go`'s `/api/wealth/assistant` (Phase 28) is the wealth assistant chat: one turn
   at a time (`assistantMu.TryLock`, else 409) on `llm.ChatWealth`, whose session reads the records
   through `argus mcp wealth`. A turn is stored only after the model answers (user + reply in one

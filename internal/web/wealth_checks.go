@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -9,25 +10,39 @@ import (
 )
 
 // handleWealthChecks backs GET /api/wealth/checks, the home page's
-// "本月該做的事". The rules live in service.EvaluateWealthChecks; this only
-// gathers their inputs from the same functions the wealth pages render, so an
-// item and the page it links to never disagree about a number. An input that
-// fails to load drops its rule (logged), it doesn't fail the list.
+// "本月該做的事".
 func (s *Server) handleWealthChecks(w http.ResponseWriter, r *http.Request) {
-	now := time.Now()
+	resp, err := s.WealthChecks(time.Now())
+	if err != nil {
+		logger.Errorf("web: wealth checks: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to load assets")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleWealthAIView backs GET /api/wealth/ai-view: the latest monthly AI
+// view (written by bot.RunWealthHealthReport), or null before the first one.
+func (s *Server) handleWealthAIView(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, service.LoadWealthAIView(s.db))
+}
+
+// WealthChecks evaluates the checks as of now. The rules live in
+// service.EvaluateWealthChecks; this only gathers their inputs from the same
+// functions the wealth pages render, so an item and the page it links to
+// never disagree about a number. An input that fails to load drops its rule
+// (logged), it doesn't fail the list. The monthly report reads it too.
+func (s *Server) WealthChecks(now time.Time) (service.WealthChecks, error) {
 	today := now.Format("2006-01-02")
 	resp := service.WealthChecks{AsOf: today, Rules: service.CheckRuleCount, Items: []service.CheckItem{}}
 
 	list, err := s.db.ListAssetsWithValue(false)
 	if err != nil {
-		logger.Errorf("web: wealth checks: list assets: %v", err)
-		writeError(w, http.StatusInternalServerError, "failed to load assets")
-		return
+		return resp, fmt.Errorf("list assets: %w", err)
 	}
 	if len(list) == 0 {
 		resp.New = true
-		writeJSON(w, http.StatusOK, resp)
-		return
+		return resp, nil
 	}
 
 	var in service.CheckInputs
@@ -106,5 +121,5 @@ func (s *Server) handleWealthChecks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp.Items = service.EvaluateWealthChecks(in)
-	writeJSON(w, http.StatusOK, resp)
+	return resp, nil
 }

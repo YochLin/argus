@@ -57,3 +57,19 @@ func TestHandleWealthChecksCardAndProfile(t *testing.T) {
 		}
 	}
 }
+
+func TestHandleWealthAIView(t *testing.T) {
+	get := func(fake *fakeDB) string {
+		s := &Server{db: fake}
+		rec := httptest.NewRecorder()
+		s.handleWealthAIView(rec, httptest.NewRequest(http.MethodGet, "/api/wealth/ai-view", nil))
+		return rec.Body.String()
+	}
+	if got := get(&fakeDB{}); got != "null\n" {
+		t.Errorf("no view yet = %q, want null", got)
+	}
+	view := `{"generatedAt":"2026-11-01","summary":"s","points":["p"]}`
+	if got := get(&fakeDB{settings: map[string]string{service.AIViewSettingKey: view}}); got != view+"\n" {
+		t.Errorf("stored view = %q", got)
+	}
+}

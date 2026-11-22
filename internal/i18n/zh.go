@@ -307,8 +307,9 @@ var zhMessages = map[Key]string{
 	KeyStrategySqueezeName:                "布林壓縮噴發",
 	KeyStrategyBoxName:                    "箱型地板抄底",
 
-	KeySystemPromptAnalyst: "你是一位專業的美股分析師，只負責針對使用者提供的市場數據給出文字分析。你沒有任何工具可用，也不需要使用工具；請直接依照使用者訊息中的格式要求回覆，不要輸出與分析無關的內容。",
-	KeySystemPromptChat:    "你是使用者的個人助理，請用繁體中文自然對話，記住這段對話中先前提到的內容。你可用的工具只有 argus 的行情／持倉查詢，以及 WebFetch：使用者貼了連結、但訊息中沒附上文章內文時才用 WebFetch。WebFetch 回傳的是摘要而不是原文，回答時要照實說明，不要當成逐字內容。",
+	KeySystemPromptAnalyst:    "你是一位專業的美股分析師，只負責針對使用者提供的市場數據給出文字分析。你沒有任何工具可用，也不需要使用工具；請直接依照使用者訊息中的格式要求回覆，不要輸出與分析無關的內容。",
+	KeySystemPromptChat:       "你是使用者的個人助理，請用繁體中文自然對話，記住這段對話中先前提到的內容。你可用的工具只有 argus 的行情／持倉查詢，以及 WebFetch：使用者貼了連結、但訊息中沒附上文章內文時才用 WebFetch。WebFetch 回傳的是摘要而不是原文，回答時要照實說明，不要當成逐字內容。",
+	KeySystemPromptWealthView: "你是 Argus 的理財觀察員。每個月讀一次使用者在資產帳戶記錄的資產、負債、每月收支、保單、退休與儲蓄目標，指出固定規則看不到、但值得使用者留意的地方。用繁體中文，口語、具體、簡短。",
 	KeySystemPromptWealth: "你是 Argus 的資產建檔助理，幫使用者把存款、貸款、信用卡、基金、保險、每月固定收支、退休與其他目標記錄進資產帳戶。請用繁體中文、口語、簡短地回答，一次只追問一兩件事。畫面只顯示純文字：不要用 Markdown（不要 ** 粗體、# 標題、表格），要條列就直接換行。\n" +
 		"你可以用工具查詢使用者已經記錄的資料：list_assets、list_cashflows、list_insurance、get_profile_and_goals，以及還沒寫入的草稿 list_drafts。回答「還缺什麼」或追問之前，先查一次現有資料和草稿，不要問已經記錄過的東西。對話中途你可能會重新開始、忘記先前聊過的內容，這時一樣先查資料和草稿再接續。\n" +
 		"規則：\n" +
@@ -849,21 +850,44 @@ var zhMessages = map[Key]string{
 
 	KeyWealthHealthReportTitle:    "📋 *月度財務健康報告（%s）*\n",
 	KeyWealthHealthRetirementLine: "退休目標「%s」進度：%s（已存 %s ／ 目標 %s）\n",
-	KeyWealthHealthInsightHeader:  "\n解讀：\n",
+	KeyWealthHealthChecksHeader:   "\n*本月該做的事*\n",
+	KeyWealthHealthCheckLine:      "%s %s\n",
+	KeyWealthHealthCheckGap:       "%s（%s）",
+	KeyWealthHealthChecksMore:     "還有 %d 項，到資產帳戶首頁看全部\n",
+	KeyWealthHealthAIViewHeader:   "\n*AI 觀點*（未經規則驗證）\n",
+	KeyWealthHealthDisclaimer:     "\n僅供參考，非投資或保險建議\n",
+	KeyWealthCheckTitleEmergency:  "補足緊急預備金",
+	KeyWealthCheckTitleDebtRatio:  "降低負債比",
+	KeyWealthCheckTitleCard:       "清償信用卡循環",
+	KeyWealthCheckTitleCoverage:   "補足保障缺口",
+	KeyWealthCheckTitleRetirement: "提高退休提撥",
+	KeyWealthCheckTitleGoals:      "目標進度落後",
+	KeyWealthCheckTitleAlloc:      "配置偏離目標",
+	KeyWealthCheckTitleSavings:    "提高儲蓄率",
+	KeyWealthCheckTitleDependents: "填寫扶養人數",
+	KeyWealthCheckTitleAge:        "填寫出生年",
+	KeyWealthCheckTitleSalary:     "填寫年薪",
+	KeyWealthCheckTitleStale:      "更新過期資料",
 
-	KeyWealthHealthPromptIntro:            "你是一位個人理財顧問，請針對以下 %s 這個月的財務健康數字給出簡短解讀（不是重複數字，是指出數字背後代表的意義與變化）。\n\n",
+	KeyWealthHealthPromptIntro:            "以下是使用者 %s 這個月由系統算好的財務數字。\n\n",
+	KeyWealthViewPromptChecksHeader:       "\n系統已依固定規則列出這些待辦，使用者在首頁看得到，不要重複：\n",
 	KeyWealthHealthPromptDebtRatioLine:    "負債比：%.1f%%\n",
 	KeyWealthHealthPromptLiquidityLine:    "流動性：%.1f 個月\n",
 	KeyWealthHealthPromptSavingsRateLine:  "儲蓄率：%.1f%%\n",
 	KeyWealthHealthPromptExpenseRatioLine: "收支比：%.1f%%\n",
 	KeyWealthHealthPromptRetirementLine:   "退休目標「%s」進度：%.1f%%（已存 NT$%.0f ／ 目標 NT$%.0f）\n",
 	KeyWealthHealthPromptTask: `
-請用繁體中文寫一段 150-250 字的解讀，聚焦：
-1. 這些數字反映的財務體質好壞，哪個指標最值得留意
-2. 有沒有需要留意的風險訊號（例如流動性偏低、儲蓄率偏低、負債比偏高）
-3. 若有退休目標進度，用一句話點出目前是超前還是落後
-
-不要重複列出上面已經給的數字，不要給具體投資標的建議。
+請先用工具（list_assets、list_cashflows、list_insurance、get_profile_and_goals）查使用者的資料，再寫 1 到 3 點上面規則沒涵蓋的觀察，例如保單保障重複、資產集中在單一標的、收支結構的問題。
+規則：
+1. 只講從資料查得到的事，不要編數字，也不要重算上面已經給的數字；沒有值得說的就少寫幾點。
+2. 不推薦具體的金融或保險商品，不叫使用者買賣特定標的。
+3. 不要建立草稿，不要呼叫 propose_ 開頭的工具。
+4. 要提到頁面時只能用這幾個：淨值總覽、資產負債表、現金流、資產配置、目標追蹤、退休規劃、保單健檢。沒有其他頁面（例如沒有稅務頁），不要提。
+5. 不要用 Markdown。
+輸出格式固定如下，不要輸出其他文字：
+%s 一句話總結這幾點（40 字以內）
+- 第一點（80 字以內）
+- 第二點
 `,
 
 	KeyNewsClassifyIntro: "以下是使用者成交 %s 前後的新聞標題。請逐則判讀該則新聞對這檔股票的影響。只依標題與來源判斷，不要臆測標題沒寫的內容。\n\n",

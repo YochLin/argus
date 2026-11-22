@@ -199,7 +199,16 @@ type Bot struct {
 	// sets this to time.Now; nil is only safe in a test that never calls
 	// either of those two.
 	now func() time.Time
+
+	// wealthChecks is the home page's 本月該做的事 (web.Server.WealthChecks),
+	// which the monthly health report lists. Set by SetWealthChecks once the
+	// web server exists; nil leaves the report without that section.
+	wealthChecks func(time.Time) (service.WealthChecks, error)
 }
+
+// SetWealthChecks hands the bot the web server's checks, which gather their
+// inputs from the wealth pages' own functions.
+func (b *Bot) SetWealthChecks(f func(time.Time) (service.WealthChecks, error)) { b.wealthChecks = f }
 
 // Config bundles New's construction inputs. Replaces New's former 12
 // positional parameters (grown by one or two per phase — stopLossPct/
