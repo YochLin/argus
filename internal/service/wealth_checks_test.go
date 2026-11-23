@@ -69,6 +69,9 @@ func TestEvaluateWealthChecksThresholds(t *testing.T) {
 		{"drift is ignored with no model picked", func(in *CheckInputs) { in.ModelPicked, in.OffTarget, in.Rebalance = false, 2, fp(9000) }, []string{}},
 		{"drift is ignored under 3 assets", func(in *CheckInputs) { in.AssetCount, in.OffTarget, in.Rebalance = 2, 2, fp(9000) }, []string{}},
 		{"drift", func(in *CheckInputs) { in.OffTarget, in.Rebalance = 2, fp(9000) }, []string{"alloc"}},
+		{"no month-old deposit balance yet", func(in *CheckInputs) { in.LiquidityMonths, in.MonthlyExpense = nil, nil }, []string{"emergencyData"}},
+		{"without a salary only the salary is asked for", func(in *CheckInputs) { in.LiquidityMonths, in.MonthlyExpense, in.HasSalary = nil, nil, false }, []string{"salary"}},
+		{"spending known but no liquidity is no item", func(in *CheckInputs) { in.LiquidityMonths = nil }, []string{}},
 		{"missing profile facts are asked for", func(in *CheckInputs) { in.Dependents, in.HasAge, in.HasSalary = nil, false, false }, []string{"dependents", "age", "salary"}},
 	}
 	for _, c := range cases {

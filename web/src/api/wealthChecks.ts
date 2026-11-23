@@ -6,6 +6,7 @@ export type CheckSeverity = "do" | "tip" | "data";
 
 export type CheckCode =
   | "emergency"
+  | "emergencyData"
   | "debtRatio"
   | "card"
   | "coverage"

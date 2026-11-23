@@ -41,6 +41,8 @@ export function checkText(dict: Dictionary, it: CheckItem): Text {
     case "emergency":
       // The server raises the target above 6 months when there are dependents.
       return t(dict.ckEmergencyTitle, (it.target ?? 0) > 6 ? dict.ckEmergencyReasonDeps : dict.ckEmergencyReason, dict.ckEmergencyFix, dict.ckEmergencyGap);
+    case "emergencyData":
+      return t(dict.ckEmergencyDataTitle, dict.ckEmergencyDataReason, dict.ckEmergencyDataFix);
     case "debtRatio":
       return t(dict.ckDebtRatioTitle, dict.ckDebtRatioReason, dict.ckDebtRatioFix);
     case "card":

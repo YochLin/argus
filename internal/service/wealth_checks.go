@@ -109,6 +109,12 @@ func EvaluateWealthChecks(in CheckInputs) []CheckItem {
 		}
 		add(it)
 	}
+	// No monthly spending yet with a salary saved means there is no deposit
+	// balance from a month ago to estimate it from: say so rather than skip
+	// the rule. Without a salary the salary ask below covers it.
+	if in.LiquidityMonths == nil && in.MonthlyExpense == nil && in.HasSalary {
+		add(CheckItem{Code: "emergencyData", Severity: SeverityData, Link: "/w/balance"})
+	}
 	if in.DebtRatioPct != nil && *in.DebtRatioPct >= DebtRatioMaxPct {
 		add(CheckItem{Code: "debtRatio", Severity: SeverityDo, Link: "/w/balance", Value: in.DebtRatioPct, Target: f(DebtRatioMaxPct)})
 	}

@@ -108,18 +108,19 @@ func (b *Bot) RunWealthHealthReport(ctx context.Context) {
 var severityMark = map[string]string{"do": "🔴", "tip": "🟡", "data": "⚪"}
 
 var wealthCheckTitles = map[string]i18n.Key{
-	"emergency":  i18n.KeyWealthCheckTitleEmergency,
-	"debtRatio":  i18n.KeyWealthCheckTitleDebtRatio,
-	"card":       i18n.KeyWealthCheckTitleCard,
-	"coverage":   i18n.KeyWealthCheckTitleCoverage,
-	"retirement": i18n.KeyWealthCheckTitleRetirement,
-	"goals":      i18n.KeyWealthCheckTitleGoals,
-	"alloc":      i18n.KeyWealthCheckTitleAlloc,
-	"savings":    i18n.KeyWealthCheckTitleSavings,
-	"dependents": i18n.KeyWealthCheckTitleDependents,
-	"age":        i18n.KeyWealthCheckTitleAge,
-	"salary":     i18n.KeyWealthCheckTitleSalary,
-	"stale":      i18n.KeyWealthCheckTitleStale,
+	"emergency":     i18n.KeyWealthCheckTitleEmergency,
+	"emergencyData": i18n.KeyWealthCheckTitleEmergencyData,
+	"debtRatio":     i18n.KeyWealthCheckTitleDebtRatio,
+	"card":          i18n.KeyWealthCheckTitleCard,
+	"coverage":      i18n.KeyWealthCheckTitleCoverage,
+	"retirement":    i18n.KeyWealthCheckTitleRetirement,
+	"goals":         i18n.KeyWealthCheckTitleGoals,
+	"alloc":         i18n.KeyWealthCheckTitleAlloc,
+	"savings":       i18n.KeyWealthCheckTitleSavings,
+	"dependents":    i18n.KeyWealthCheckTitleDependents,
+	"age":           i18n.KeyWealthCheckTitleAge,
+	"salary":        i18n.KeyWealthCheckTitleSalary,
+	"stale":         i18n.KeyWealthCheckTitleStale,
 }
 
 // wealthCheckLine is one check's title, with its amount when it has one. A
