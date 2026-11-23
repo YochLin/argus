@@ -1741,6 +1741,9 @@ export interface Dictionary {
   ckEmergencyReasonDeps: string;
   ckEmergencyFix: string;
   ckEmergencyGap: string;
+  ckEmergencyDataTitle: string;
+  ckEmergencyDataReason: string;
+  ckEmergencyDataFix: string;
   ckDebtRatioTitle: string;
   ckDebtRatioReason: string;
   ckDebtRatioFix: string;
