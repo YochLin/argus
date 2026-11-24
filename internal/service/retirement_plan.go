@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"argus/internal/db"
@@ -95,10 +96,15 @@ type RetirementPlan struct {
 	// frontend duplicating RetirementHorizonAge/RetirementPreReturnReal/
 	// RetirementPostReturnReal/RetirementWithdrawalRateReal as separate
 	// constants.
-	HorizonAge        int     `json:"horizonAge"`
-	PreReturnPct      float64 `json:"preReturnPct"`
-	PostReturnPct     float64 `json:"postReturnPct"`
-	WithdrawalRatePct float64 `json:"withdrawalRatePct"`
+	HorizonAge   int     `json:"horizonAge"`
+	PreReturnPct float64 `json:"preReturnPct"`
+	// PreReturnSource says where PreReturnPct came from: "mix" (blended
+	// from the pool's categories, PreReturnMix), "default"
+	// (RetirementPreReturnReal, nothing to blend) or "override" (drawer).
+	PreReturnSource   string                `json:"preReturnSource"`
+	PreReturnMix      []RetirementReturnMix `json:"preReturnMix,omitempty"`
+	PostReturnPct     float64               `json:"postReturnPct"`
+	WithdrawalRatePct float64               `json:"withdrawalRatePct"`
 	// RetirementYear is the calendar year the chart's vertical marker sits
 	// at — 0 when it can't be computed (no birth year yet).
 	RetirementYear int                        `json:"retirementYear,omitempty"`
@@ -247,8 +253,16 @@ func ComputeRetirementPlan(store WealthStore, fx WealthFXStore, quotes QuoteRead
 	}
 
 	preReturn := RetirementPreReturnReal
+	resp.PreReturnSource = "default"
+	typeOf := make(map[int64]string, len(assetByID))
+	for id, a := range assetByID {
+		typeOf[id] = a.Type
+	}
+	if r, mix, ok := BlendedPreReturn(assetItems, typeOf); ok {
+		preReturn, resp.PreReturnSource, resp.PreReturnMix = r, "mix", mix
+	}
 	if ov.PreR != nil {
-		preReturn = *ov.PreR / 100
+		preReturn, resp.PreReturnSource = *ov.PreR/100, "override"
 	}
 	postReturn := RetirementPostReturnReal
 	if ov.PostR != nil {
@@ -258,7 +272,7 @@ func ComputeRetirementPlan(store WealthStore, fx WealthFXStore, quotes QuoteRead
 	if ov.SWR != nil {
 		withdrawalRate = *ov.SWR / 100
 	}
-	resp.PreReturnPct, resp.PostReturnPct, resp.WithdrawalRatePct = preReturn*100, postReturn*100, withdrawalRate*100
+	resp.PreReturnPct, resp.PostReturnPct, resp.WithdrawalRatePct = math.Round(preReturn*1000)/10, postReturn*100, withdrawalRate*100
 
 	yearsToRetirement := resp.RetirementAge - currentAge
 	if yearsToRetirement < 0 {

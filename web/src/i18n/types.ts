@@ -1617,6 +1617,12 @@ export interface Dictionary {
   wealthRetireChipSpend: string;
   wealthRetireChipContrib: string;
   wealthRetireChipReturn: string;
+  // The pre-retirement return's source: blended from the pool's categories
+  // (the chip's tooltip lists them) or the flat default.
+  wealthRetirePreRHintMix: string;
+  wealthRetirePreRHintDefault: string;
+  wealthRetireTipReturnMix: string;
+  wealthRetireTipReturnItem: string;
   wealthRetireChipSwr: string;
   wealthRetireChipLifeAge: string;
   // Sample-mode banner ("範例") shown instead of a real projection when no

@@ -1,6 +1,11 @@
 package service
 
-import "testing"
+import (
+	"slices"
+	"testing"
+
+	"argus/internal/assets"
+)
 
 // TestComputeRetirementProjectionFundedVsGap pins the baseline arithmetic
 // against a hand-computed two-year example: pool 1,000,000, no contribution,
@@ -56,6 +61,40 @@ func TestComputeRetirementScenariosCrashHurtsBaseline(t *testing.T) {
 	for name, p := range map[string]RetirementProjection{"baseline": baseline, "crash": crash, "lowReturn": lowReturn} {
 		if p.DepletionYearsAfterRetirement != nil {
 			t.Errorf("%s: expected no depletion with a well-funded pool, got depletion at year %d", name, *p.DepletionYearsAfterRetirement)
+		}
+	}
+}
+
+func TestBlendedPreReturn(t *testing.T) {
+	v := func(f float64) *float64 { return &f }
+	typeOf := map[int64]string{1: "deposit", 2: "fund", 3: "pension", 4: "other"}
+	// 200 deposit (0%) + 600 fund (4%) + 200 pension (2%) = 2.8%; a valueless row is skipped.
+	ret, mix, ok := BlendedPreReturn([]GoalAssetItem{
+		{AssetID: 1, Value: v(200)}, {AssetID: 2, Value: v(600)}, {AssetID: 3, Value: v(200)}, {AssetID: 4},
+	}, typeOf)
+	if !ok || ret != 0.028 {
+		t.Fatalf("ret = %v ok = %v, want 0.028 true", ret, ok)
+	}
+	want := []RetirementReturnMix{{"cash", 20, 0}, {"fund", 60, 4}, {"pension", 20, 2}}
+	if len(mix) != len(want) {
+		t.Fatalf("mix = %+v, want %+v", mix, want)
+	}
+	for i := range want {
+		if mix[i] != want[i] {
+			t.Errorf("mix[%d] = %+v, want %+v", i, mix[i], want[i])
+		}
+	}
+	if _, _, ok := BlendedPreReturn([]GoalAssetItem{{AssetID: 4}}, typeOf); ok {
+		t.Error("ok = true with nothing valued, want the caller's fallback")
+	}
+	for c := range RetirementCategoryReturnReal {
+		if !slices.Contains(assets.AllocCategories, c) {
+			t.Errorf("return table has unknown category %q", c)
+		}
+	}
+	for _, c := range assets.AllocCategories {
+		if _, has := RetirementCategoryReturnReal[c]; !has {
+			t.Errorf("category %q has no assumed return", c)
 		}
 	}
 }
