@@ -16,6 +16,7 @@ import { RetireAssignDrawer } from "./WealthRetireAssign";
 import { shortTWD } from "../currency";
 import { useFlash } from "../flash";
 import { Interp, RULE, TermTip } from "./WealthInterp";
+import { categoryLabel } from "../wealthCategory";
 
 interface Props {
   dict: Dictionary;
@@ -84,6 +85,25 @@ function QuickSwitchGroup<T extends number>({
 // quick-switch buttons (design's wrm.summary) — plain text, or a
 // dotted-underline hover tooltip when `tip` is given (only the 提領率 chip
 // carries one, matching the design's own per-entry tipStyle logic).
+// preRHint says where the drawer's pre-retirement return default comes from,
+// off the saved plan (never the live preview, which is "override" once moved).
+export function preRHint(dict: Dictionary, retire: WealthRetire | null): string | undefined {
+  if (retire?.preReturnSource === "mix") return dict.wealthRetirePreRHintMix.replace("{v}", String(retire.preReturnPct));
+  if (retire?.preReturnSource === "default") return dict.wealthRetirePreRHintDefault.replace("{v}", String(retire.preReturnPct));
+  return undefined;
+}
+
+export function returnMixTip(dict: Dictionary, plan: WealthRetire): string | undefined {
+  if (plan.preReturnSource !== "mix" || !plan.preReturnMix?.length) return undefined;
+  const items = plan.preReturnMix.map((m) =>
+    dict.wealthRetireTipReturnItem
+      .replace("{cat}", categoryLabel(dict, m.category))
+      .replace("{share}", String(m.sharePct))
+      .replace("{ret}", String(m.returnPct)),
+  );
+  return dict.wealthRetireTipReturnMix.replace("{mix}", items.join(dict.ckListSep));
+}
+
 function SummaryChip({ text, tip }: { text: string; tip?: string }) {
   return (
     <span
@@ -284,7 +304,7 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
     spend: { label: dict.wealthRetireSpendLabel, unit: "NT$", kind: "num" },
     otherInc: { label: dict.wealthRetireOtherIncomeLabel, unit: "NT$", hint: dict.wealthRetireOtherIncomeHint, kind: "num" },
     contribMo: { label: dict.wealthRetireCfgContribLabel, unit: "NT$", kind: "num" },
-    preR: { label: dict.wealthRetirePreRLabel, unit: "%", kind: "range", min: 0, max: 8, step: 0.1 },
+    preR: { label: dict.wealthRetirePreRLabel, unit: "%", hint: preRHint(dict, retire), kind: "range", min: 0, max: 8, step: 0.1 },
     postR: { label: dict.wealthRetirePostRLabel, unit: "%", kind: "range", min: 0, max: 6, step: 0.1 },
     swr: { label: dict.wealthRetireSwrLabel, unit: "%", hint: dict.wealthRetireSwrHint, kind: "range", min: 2, max: 8, step: 0.1 },
   };
@@ -412,6 +432,7 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
                 <SummaryChip text={dict.wealthRetireChipContrib.replace("{v}", shortTWD(display.monthlyContribution))} />
                 <SummaryChip
                   text={dict.wealthRetireChipReturn.replace("{pre}", String(display.preReturnPct)).replace("{post}", String(display.postReturnPct))}
+                  tip={returnMixTip(dict, display)}
                 />
                 <SummaryChip text={dict.wealthRetireChipSwr.replace("{v}", String(display.withdrawalRatePct))} tip={dict.wealthRetireTipSwr} />
                 <SummaryChip text={dict.wealthRetireChipLifeAge.replace("{v}", String(display.horizonAge))} />

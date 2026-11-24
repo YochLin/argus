@@ -1,5 +1,6 @@
 import { getJSON, postJSON } from "./http";
 import type { Goal } from "./wealthGoals";
+import type { AllocCategory } from "./wealthAlloc";
 
 // RetirementScenario/WealthRetire mirror wealth_retire.go's response shapes
 // (Phase 9 波次3 PR7, §8.7/§10.2②) — the real-return projection off the
@@ -32,6 +33,10 @@ export interface WealthRetire {
   pool: number | null;
   horizonAge: number;
   preReturnPct: number;
+  // Where preReturnPct came from: blended from the pool's categories
+  // (preReturnMix), the flat default, or the drawer's override.
+  preReturnSource?: "mix" | "default" | "override";
+  preReturnMix?: { category: AllocCategory; sharePct: number; returnPct: number }[];
   postReturnPct: number;
   withdrawalRatePct: number;
   retirementYear?: number;

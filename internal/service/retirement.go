@@ -1,15 +1,20 @@
 package service
 
-import "argus/internal/assets"
+import (
+	"math"
+
+	"argus/internal/assets"
+)
 
 // Retirement projection (Phase 9 波次3 PR7, docs/phase-9-asset-platform.md
 // §8.7/§10.2②) — a pure function, no DB/network, same "health metrics never
 // go through the LLM" rule as the rest of this file's wealth math.
 //
-// The model matches the design template's retireModel() exactly: returns are
-// quoted in real (inflation-adjusted) terms — 3.0% while still contributing,
-// 1.0% after — so spending is expressed in today's dollars and there's no
-// separate inflation parameter to misread as nominal.
+// Returns are quoted in real (inflation-adjusted) terms, so spending is
+// expressed in today's dollars and there's no separate inflation parameter to
+// misread as nominal. The pre-retirement return is blended from the
+// retirement pool's own mix (RetirementCategoryReturnReal); 3.0% is the
+// fallback when there's no mix to blend, 1.0% the return after retiring.
 //
 // These are the plain-constant defaults, not env-tunable, even though
 // §10.2②'s doc text suggests "情境參數走 env 可調": every other wealth
@@ -30,6 +35,65 @@ const (
 	RetirementScenarioCrashLeadYears = 5    // years before retirement the shock lands
 	RetirementScenarioLowReturnDelta = 0.015
 )
+
+// RetirementCategoryReturnReal is the assumed long-run real return per
+// allocation category (assets.CategoryOf), blended by the retirement pool's
+// TWD weights into the pre-retirement return. Deliberately conservative —
+// overstating it understates the gap. Checked 2026-11 against: 1-year TWD
+// deposits ~1.7-1.9% vs 2025 CPI 1.66%; TWD participating-policy declared
+// rates ~2.75-2.9% (declared, not IRR); 勞退新制 5-year average ~4.8%.
+// "fund" is 基金/ETF in the wealth account (equity only ever comes from the
+// trading account, which can't be earmarked), so it sits near equity rather
+// than at a stock/bond midpoint. Illustrative, not advice.
+var RetirementCategoryReturnReal = map[string]float64{
+	"cash":      0,
+	"bond":      0.015,
+	"insurance": 0.005,
+	"equity":    0.05,
+	"fund":      0.04,
+	"pension":   0.02,
+	"gold":      0.01,
+	"estate":    0.015,
+	"crypto":    0,
+}
+
+// RetirementReturnMix is one category's share of the retirement pool and the
+// return assumed for it — what the page shows behind the blended figure.
+type RetirementReturnMix struct {
+	Category  string  `json:"category"`
+	SharePct  float64 `json:"sharePct"`
+	ReturnPct float64 `json:"returnPct"`
+}
+
+// BlendedPreReturn weights RetirementCategoryReturnReal by each earmarked
+// item's TWD value. ok is false when nothing has a positive value to weigh
+// (the caller then falls back to RetirementPreReturnReal). The result is
+// rounded to 0.1pt, the settings slider's step, so the figure shown is the
+// figure projected with.
+func BlendedPreReturn(items []GoalAssetItem, typeOf map[int64]string) (ret float64, mix []RetirementReturnMix, ok bool) {
+	byCat := map[string]float64{}
+	var total float64
+	for _, it := range items {
+		if it.Value == nil || *it.Value <= 0 {
+			continue
+		}
+		byCat[assets.CategoryOf(typeOf[it.AssetID])] += *it.Value
+		total += *it.Value
+	}
+	if total <= 0 {
+		return 0, nil, false
+	}
+	for _, c := range assets.AllocCategories {
+		v, has := byCat[c]
+		if !has {
+			continue
+		}
+		r := RetirementCategoryReturnReal[c]
+		ret += r * v / total
+		mix = append(mix, RetirementReturnMix{Category: c, SharePct: math.Round(v/total*1000) / 10, ReturnPct: math.Round(r * 1000) / 10})
+	}
+	return math.Round(ret*1000) / 1000, mix, true
+}
 
 // RetirementHorizonAge is the default simulate-depletion-out-to age, and so
 // the latest retirement age that can be saved (assets.ValidateRetirement).
