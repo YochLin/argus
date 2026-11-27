@@ -175,7 +175,7 @@ func EarmarkedSavedTWD(earmarks []db.GoalAsset, assetByID map[int64]db.AssetWith
 // ComputeGoals builds /w/goals: every goal with its earmarked assets, saved
 // amount, progress and pace status as of now. A non-nil error means only that
 // a store read failed — an unpriceable currency leaves that goal's Saved nil.
-func ComputeGoals(store WealthStore, fx WealthFXStore, quotes QuoteReader, now time.Time) (GoalList, error) {
+func ComputeGoals(store RetirementStore, fx WealthFXStore, quotes QuoteReader, now time.Time) (GoalList, error) {
 	today := now.Format("2006-01-02")
 	resp := GoalList{AsOf: today, Goals: []GoalItem{}}
 
@@ -241,13 +241,15 @@ func ComputeGoals(store WealthStore, fx WealthFXStore, quotes QuoteReader, now t
 			}
 		}
 		if g.Kind == "retirement" {
-			item.MonthlyContribution = LoadWealthProfile(store).RetirementMonthlyContribution
 			// Same pace numbers /w/retire's own goal card shows, so the two
 			// pages can't disagree; without a birth year the created_at-based
 			// status above stands.
-			if plan, err := ComputeRetirementPlan(store, fx, quotes, now, RetirementOverrides{}); err == nil && plan.Goal != nil && plan.Goal.ProjectedAtRetirement != nil {
-				item.Status, item.MarkPct = plan.Goal.Status, plan.Goal.MarkPct
-				item.ProjectedAtRetirement, item.RetirementAge = plan.Goal.ProjectedAtRetirement, plan.Goal.RetirementAge
+			if plan, err := ComputeRetirementPlan(store, fx, quotes, now, RetirementOverrides{}); err == nil {
+				item.MonthlyContribution = &plan.MonthlyContribution
+				if plan.Goal != nil && plan.Goal.ProjectedAtRetirement != nil {
+					item.Status, item.MarkPct = plan.Goal.Status, plan.Goal.MarkPct
+					item.ProjectedAtRetirement, item.RetirementAge = plan.Goal.ProjectedAtRetirement, plan.Goal.RetirementAge
+				}
 			}
 		}
 		resp.Goals = append(resp.Goals, item)

@@ -37,7 +37,12 @@ export interface WealthRetire {
   retirementAgeOptions: number[];
   monthlySpend: number;
   monthlySpendOptions: number[];
+  // monthlyContribution is the cash flows' 定期定額 into the pool (or the
+  // drawer's what-if); requiredContribution would fund the plan 100%.
   monthlyContribution: number;
+  requiredContribution?: number;
+  // currentMonthlySpend: today's cash-flow outflow, 定期定額 excluded.
+  currentMonthlySpend?: number;
   otherIncome: number;
   pool: number | null;
   horizonAge: number;

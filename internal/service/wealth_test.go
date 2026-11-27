@@ -19,6 +19,11 @@ type fakeWealthStore struct {
 	settings   map[string]string
 	goals      []db.Goal
 	goalAssets []db.GoalAsset
+	cashflows  []db.RecurringCashflow
+}
+
+func (f *fakeWealthStore) ListRecurringCashflows(bool) ([]db.RecurringCashflow, error) {
+	return f.cashflows, nil
 }
 
 func (f *fakeWealthStore) ListAssetsWithValue(includeArchived bool) ([]db.AssetWithValue, error) {

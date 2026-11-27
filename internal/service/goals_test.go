@@ -74,13 +74,14 @@ func TestComputeRetirementPlanReadFailure(t *testing.T) {
 }
 
 // TestComputeGoalsRetirementRowBorrowsPlan pins the two row shapes: the
-// retirement row takes its contribution from the profile setting and its pace
+// retirement row takes its contribution from the cash flows and its pace
 // from the retirement plan (so /w/goals and /w/retire can't disagree), while a
 // general goal's hand-typed 已累積 wins over its earmark sum.
 func TestComputeGoalsRetirementRowBorrowsPlan(t *testing.T) {
 	now := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
 	store := retiree(now)
-	store.settings[RetirementMonthlyContributionSettingKey] = "28000"
+	one := int64(1)
+	store.cashflows = []db.RecurringCashflow{{Direction: "out", Category: "sip", Amount: 28000, Currency: "TWD", AssetID: &one, Active: true}}
 	typed := 123456.0
 	store.goals = append(store.goals, db.Goal{
 		ID: 2, Name: "買房", Kind: "general", Currency: "TWD", TargetAmount: 1000000, SavedAmount: &typed,
