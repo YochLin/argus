@@ -12,9 +12,9 @@ import (
 //
 // Returns are quoted in real (inflation-adjusted) terms, so spending is
 // expressed in today's dollars and there's no separate inflation parameter to
-// misread as nominal. The pre-retirement return is blended from the
-// retirement pool's own mix (RetirementCategoryReturnReal); 3.0% is the
-// fallback when there's no mix to blend, 1.0% the return after retiring.
+// misread as nominal. Both returns are blended from the retirement pool's
+// own mix (RetirementMix); 3.0%/1.0% are the fallbacks when there's nothing
+// to blend.
 //
 // These are the plain-constant defaults, not env-tunable, even though
 // §10.2②'s doc text suggests "情境參數走 env 可調": every other wealth
@@ -36,63 +36,107 @@ const (
 	RetirementScenarioLowReturnDelta = 0.015
 )
 
-// RetirementCategoryReturnReal is the assumed long-run real return per
-// allocation category (assets.CategoryOf), blended by the retirement pool's
-// TWD weights into the pre-retirement return. Deliberately conservative —
-// overstating it understates the gap. Checked 2026-11 against: 1-year TWD
-// deposits ~1.7-1.9% vs 2025 CPI 1.66%; TWD participating-policy declared
-// rates ~2.75-2.9% (declared, not IRR); 勞退新制 5-year average ~4.8%.
-// "fund" is 基金/ETF in the wealth account (equity only ever comes from the
-// trading account, which can't be earmarked), so it sits near equity rather
-// than at a stock/bond midpoint. Illustrative, not advice.
-var RetirementCategoryReturnReal = map[string]float64{
-	"cash":      0,
-	"bond":      0.015,
-	"insurance": 0.005,
-	"equity":    0.05,
-	"fund":      0.04,
-	"pension":   0.02,
-	"gold":      0.01,
-	"estate":    0.015,
-	"crypto":    0,
+// RetirementReturnClass is one asset class of the retirement pool's return
+// table (/w/retire's 報酬率假設). Movable classes can be rebalanced at will
+// and so take part in the post-retirement mix and the page's trial mix;
+// policies, pension, property and crypto stay as they are.
+type RetirementReturnClass struct {
+	Class   string
+	Return  float64 // assumed long-run real return, a fraction
+	Movable bool
 }
 
-// RetirementReturnMix is one category's share of the retirement pool and the
-// return assumed for it — what the page shows behind the blended figure.
+// RetirementReturnClasses is the design's table, in display order. The
+// returns are conservative long-run real assumptions, not forecasts —
+// overstating them understates the gap. Checked 2026-11 against: 1-year TWD
+// deposits ~1.7-1.9% vs CPI 1.66% (2025) to 2.18% (2024); TWD participating
+// policies' declared rates ~2.75-2.9% (declared, not IRR); 勞退新制's 5-year
+// average ~4.8%, a bull-market window.
+var RetirementReturnClasses = []RetirementReturnClass{
+	{"etf", 0.045, true},
+	{"bond", 0.015, true},
+	{"gold", 0.005, true},
+	{"cash", -0.003, true},
+	{"policy", 0.003, false},
+	{"pension", 0.015, false},
+	{"estate", 0.01, false},
+	{"crypto", 0, false},
+}
+
+// RetirementPostMix is the movable classes' shares after retiring ("偏保守",
+// the page's default post-retirement mix). The page's other presets live in
+// the frontend, which sends the resulting return back as an override.
+var RetirementPostMix = map[string]float64{"etf": 0.30, "bond": 0.50, "gold": 0.05, "cash": 0.15}
+
+// RetirementReturnClassOf maps an assets.type onto RetirementReturnClasses.
+// ETFs are recorded as "fund" in the wealth account; "equity" only comes from
+// the trading account, which can't be earmarked, but maps the same way.
+// Anything unrecognised ("other") is treated as cash, the class that assumes
+// the least.
+func RetirementReturnClassOf(assetType string) string {
+	switch assetType {
+	case "fund", "equity":
+		return "etf"
+	case "insurance":
+		return "policy"
+	case "bond", "gold", "pension", "estate", "crypto":
+		return assetType
+	default:
+		return "cash"
+	}
+}
+
+// RetirementReturnMix is one class of the retirement pool: its TWD amount,
+// the return assumed for it, and whether it can be rebalanced.
 type RetirementReturnMix struct {
-	Category  string  `json:"category"`
-	SharePct  float64 `json:"sharePct"`
+	Class     string  `json:"class"`
+	Amount    float64 `json:"amount"`
 	ReturnPct float64 `json:"returnPct"`
+	Movable   bool    `json:"movable"`
 }
 
-// BlendedPreReturn weights RetirementCategoryReturnReal by each earmarked
-// item's TWD value. ok is false when nothing has a positive value to weigh
-// (the caller then falls back to RetirementPreReturnReal). The result is
-// rounded to 0.1pt, the settings slider's step, so the figure shown is the
-// figure projected with.
-func BlendedPreReturn(items []GoalAssetItem, typeOf map[int64]string) (ret float64, mix []RetirementReturnMix, ok bool) {
-	byCat := map[string]float64{}
-	var total float64
+// RetirementMix sums each earmarked item's TWD value into
+// RetirementReturnClasses and derives the two blended returns: pre, the pool
+// as it is today; post, its movable part re-spread over RetirementPostMix
+// (the fixed classes unchanged; with nothing movable, post equals pre). ok
+// is false when nothing has a positive value — the caller then keeps its flat
+// defaults. Every class is listed, amount 0 when absent, so the page can
+// price a trial mix into a class the pool doesn't hold yet. Returns are
+// rounded to 0.1pt, the slider's step, so the figure shown is the one
+// projected with.
+func RetirementMix(items []GoalAssetItem, typeOf map[int64]string) (mix []RetirementReturnMix, pre, post float64, ok bool) {
+	amt := map[string]float64{}
+	var total, movable float64
 	for _, it := range items {
 		if it.Value == nil || *it.Value <= 0 {
 			continue
 		}
-		byCat[assets.CategoryOf(typeOf[it.AssetID])] += *it.Value
+		amt[RetirementReturnClassOf(typeOf[it.AssetID])] += *it.Value
 		total += *it.Value
 	}
 	if total <= 0 {
-		return 0, nil, false
+		return nil, 0, 0, false
 	}
-	for _, c := range assets.AllocCategories {
-		v, has := byCat[c]
-		if !has {
-			continue
+	for _, c := range RetirementReturnClasses {
+		a := amt[c.Class]
+		mix = append(mix, RetirementReturnMix{Class: c.Class, Amount: a, ReturnPct: math.Round(c.Return*1000) / 10, Movable: c.Movable})
+		pre += c.Return * a / total
+		if c.Movable {
+			movable += a
 		}
-		r := RetirementCategoryReturnReal[c]
-		ret += r * v / total
-		mix = append(mix, RetirementReturnMix{Category: c, SharePct: math.Round(v/total*1000) / 10, ReturnPct: math.Round(r * 1000) / 10})
 	}
-	return math.Round(ret*1000) / 1000, mix, true
+	if movable == 0 {
+		post = pre
+	} else {
+		for _, c := range RetirementReturnClasses {
+			a := amt[c.Class]
+			if c.Movable {
+				a = movable * RetirementPostMix[c.Class]
+			}
+			post += c.Return * a / total
+		}
+	}
+	return mix, math.Round(pre*1000) / 1000, math.Round(post*1000) / 1000, true
 }
 
 // RetirementHorizonAge is the default simulate-depletion-out-to age, and so

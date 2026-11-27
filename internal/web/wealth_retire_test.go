@@ -149,9 +149,10 @@ func TestHandleWealthRetireGetComputesProjection(t *testing.T) {
 	if got.Goal == nil || got.Goal.Saved == nil || *got.Goal.Saved != v {
 		t.Errorf("Goal.Saved = %v, want %v", got.Goal, v)
 	}
-	// An all-fund pool projects at the fund category's return, not the flat default.
-	if got.PreReturnSource != "mix" || got.PreReturnPct != service.RetirementCategoryReturnReal["fund"]*100 || len(got.PreReturnMix) != 1 {
-		t.Errorf("pre-return = %v%% from %q, mix %+v; want the fund return from the mix", got.PreReturnPct, got.PreReturnSource, got.PreReturnMix)
+	// An all-fund pool projects at the ETF class's return, and after retiring
+	// at the conservative mix's, not the flat defaults.
+	if got.ReturnSource != "mix" || got.PreReturnPct != 4.5 || got.PostReturnPct != 2.1 {
+		t.Errorf("returns = %v%% / %v%% from %q; want 4.5 / 2.1 from the mix", got.PreReturnPct, got.PostReturnPct, got.ReturnSource)
 	}
 }
 
@@ -193,8 +194,8 @@ func TestHandleWealthRetireGetLiveOverridesDontPersist(t *testing.T) {
 	base := get("")
 	live := get("?preR=8&postR=1&swr=4")
 
-	if live.PreReturnPct != 8 || live.PreReturnSource != "override" {
-		t.Errorf("live PreReturnPct = %v from %q, want 8 from override", live.PreReturnPct, live.PreReturnSource)
+	if live.PreReturnPct != 8 || live.ReturnSource != "override" {
+		t.Errorf("live PreReturnPct = %v from %q, want 8 from override", live.PreReturnPct, live.ReturnSource)
 	}
 	if live.Baseline == nil || base.Baseline == nil || live.Baseline.AchievementPct <= base.Baseline.AchievementPct {
 		t.Errorf("expected a higher achievement rate under the 8%% preR override, live=%+v base=%+v", live.Baseline, base.Baseline)

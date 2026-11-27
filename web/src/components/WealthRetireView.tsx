@@ -16,7 +16,7 @@ import { RetireAssignDrawer } from "./WealthRetireAssign";
 import { shortTWD } from "../currency";
 import { useFlash } from "../flash";
 import { Interp, RULE, TermTip } from "./WealthInterp";
-import { categoryLabel } from "../wealthCategory";
+import { RETURNS_DEFAULT, RetireReturns, returnOverrides, type ReturnsState } from "./WealthRetireReturns";
 
 interface Props {
   dict: Dictionary;
@@ -35,7 +35,7 @@ function rateColor(pct: number, funded: boolean): string {
   return "var(--loss)";
 }
 
-// QuickSwitchGroup mirrors the template's wrm.ageBtns/spendBtns — a row of
+// QuickSwitchGroup mirrors the template's wrm.ageBtns — a row of
 // pill buttons, the active one outlined in accent (Argus Trading WebUI.dc.html
 // lines 4375-4386), each click saving immediately ("就地重算", §8.7).
 function QuickSwitchGroup<T extends number>({
@@ -53,7 +53,7 @@ function QuickSwitchGroup<T extends number>({
 }) {
   return (
     <>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".06em", color: "var(--ink-3)" }}>{label}</span>
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".06em", color: "var(--ink-3)", marginLeft: 6 }}>{label}</span>
       <div style={{ display: "flex", gap: 6 }}>
         {options.map((opt) => {
           const active = opt === value;
@@ -85,25 +85,6 @@ function QuickSwitchGroup<T extends number>({
 // quick-switch buttons (design's wrm.summary) — plain text, or a
 // dotted-underline hover tooltip when `tip` is given (only the 提領率 chip
 // carries one, matching the design's own per-entry tipStyle logic).
-// preRHint says where the drawer's pre-retirement return default comes from,
-// off the saved plan (never the live preview, which is "override" once moved).
-export function preRHint(dict: Dictionary, retire: WealthRetire | null): string | undefined {
-  if (retire?.preReturnSource === "mix") return dict.wealthRetirePreRHintMix.replace("{v}", String(retire.preReturnPct));
-  if (retire?.preReturnSource === "default") return dict.wealthRetirePreRHintDefault.replace("{v}", String(retire.preReturnPct));
-  return undefined;
-}
-
-export function returnMixTip(dict: Dictionary, plan: WealthRetire): string | undefined {
-  if (plan.preReturnSource !== "mix" || !plan.preReturnMix?.length) return undefined;
-  const items = plan.preReturnMix.map((m) =>
-    dict.wealthRetireTipReturnItem
-      .replace("{cat}", categoryLabel(dict, m.category))
-      .replace("{share}", String(m.sharePct))
-      .replace("{ret}", String(m.returnPct)),
-  );
-  return dict.wealthRetireTipReturnMix.replace("{mix}", items.join(dict.ckListSep));
-}
-
 function SummaryChip({ text, tip }: { text: string; tip?: string }) {
   return (
     <span
@@ -249,8 +230,19 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
   const [cfgOpen, setCfgOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [cfg, setCfg] = useState<Record<string, string>>({});
+  const [rx, setRx] = useState<ReturnsState>(RETURNS_DEFAULT);
   const [liveRetire, setLiveRetire] = useState<WealthRetire | null>(null);
-  const isCustom = Object.keys(cfg).length > 0;
+  // liveParams is the what-if the page previews: the drawer's fields, and the
+  // two returns — from the sliders in "自己填數字", else from the return table
+  // (nothing while it's untouched, the server blends those itself).
+  const liveParams: Record<string, string> = { ...cfg };
+  if (rx.mode === "auto") {
+    delete liveParams.preR;
+    delete liveParams.postR;
+    Object.assign(liveParams, returnOverrides(retire?.returnMix, rx));
+  }
+  const liveKey = JSON.stringify(liveParams);
+  const isCustom = Object.keys(cfg).length > 0 || rx !== RETURNS_DEFAULT;
   // display is what every card/chart/scenario-row renders from: the live
   // what-if once the drawer has any edits, otherwise the real response.
   // The goal card and quick-switch buttons deliberately keep reading
@@ -279,11 +271,11 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
   }, [refreshSignal]);
 
   useEffect(() => {
-    if (!isCustom) {
+    if (liveKey === "{}") {
       setLiveRetire(null);
       return;
     }
-    const params = new URLSearchParams(cfg);
+    const params = new URLSearchParams(liveParams);
     let cancelled = false;
     const t = setTimeout(() => {
       fetchWealthRetireLive(params)
@@ -295,30 +287,42 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfg, retire]); // retire: an assignment saved while a what-if is open re-previews
+  }, [liveKey, retire]); // retire: an assignment saved while a what-if is open re-previews
 
   const cfgFieldDefs: Record<string, CfgFieldDef> = {
-    age: { label: dict.wealthRetireCurrentAgeLabel, unit: "歲", kind: "num" },
-    retAge: { label: dict.wealthRetireTargetAgeLabel, unit: "歲", kind: "num" },
-    lifeAge: { label: dict.wealthRetireLifeLabel, unit: "歲", kind: "num" },
-    spend: { label: dict.wealthRetireSpendLabel, unit: "NT$", kind: "num" },
+    retAge: { label: dict.wealthRetireTargetAgeLabel, unit: "歲", hint: dict.wealthRetireRetAgeHint, kind: "num" },
+    lifeAge: { label: dict.wealthRetireLifeLabel, unit: "歲", hint: dict.wealthRetireLifeHint, kind: "num" },
+    spend: { label: dict.wealthRetireSpendLabel, unit: "NT$", hint: dict.wealthRetireSpendHint, kind: "num" },
     otherInc: { label: dict.wealthRetireOtherIncomeLabel, unit: "NT$", hint: dict.wealthRetireOtherIncomeHint, kind: "num" },
-    contribMo: { label: dict.wealthRetireCfgContribLabel, unit: "NT$", kind: "num" },
-    preR: { label: dict.wealthRetirePreRLabel, unit: "%", hint: preRHint(dict, retire), kind: "range", min: 0, max: 8, step: 0.1 },
-    postR: { label: dict.wealthRetirePostRLabel, unit: "%", kind: "range", min: 0, max: 6, step: 0.1 },
+    contribMo: { label: dict.wealthRetireCfgContribLabel, unit: "NT$", hint: dict.wealthRetireContribHint, kind: "num" },
+    preR: { label: dict.wealthRetirePreRLabel, unit: "%", hint: dict.wealthRetirePreRHint, kind: "range", min: 0, max: 8, step: 0.1 },
+    postR: { label: dict.wealthRetirePostRLabel, unit: "%", hint: dict.wealthRetirePostRHint, kind: "range", min: 0, max: 6, step: 0.1 },
     swr: { label: dict.wealthRetireSwrLabel, unit: "%", hint: dict.wealthRetireSwrHint, kind: "range", min: 2, max: 8, step: 0.1 },
   };
+  // The design's order: time and cash flow, the return table, then the
+  // sliders — both returns only in "自己填數字", else just the withdrawal rate.
   const cfgGroups: { title: string; keys: string[] }[] = [
-    { title: dict.wealthRetireCfgSecTime, keys: ["age", "retAge", "lifeAge"] },
+    { title: dict.wealthRetireCfgSecTime, keys: ["retAge", "lifeAge"] },
     { title: dict.wealthRetireCfgSecFlow, keys: ["spend", "otherInc", "contribMo"] },
-    { title: dict.wealthRetireCfgSecAssume, keys: ["preR", "postR", "swr"] },
   ];
+  const cfgGroupsAfter: { title: string; keys: string[] }[] =
+    rx.mode === "manual"
+      ? [{ title: dict.wealthRetireCfgSecAssume, keys: ["preR", "postR", "swr"] }]
+      : [{ title: dict.wealthRetireCfgSecWithdraw, keys: ["swr"] }];
+  const renderGroup = (g: { title: string; keys: string[] }) => (
+    <div key={g.title} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 10, color: "var(--ink-3)" }}>{g.title}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
+        {g.keys.map((key) => (
+          <CfgField key={key} id={`retcfg-${key}`} def={cfgFieldDefs[key]} value={cfgValue(key)} onChange={(v) => setCfgField(key, v)} />
+        ))}
+      </div>
+    </div>
+  );
 
   function cfgDefault(key: string): string {
     if (!retire) return "0";
     switch (key) {
-      case "age":
-        return String(retire.currentAge);
       case "retAge":
         return String(retire.retirementAge);
       case "lifeAge":
@@ -399,41 +403,28 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
   return (
     <>
       {/* Unboxed header + quick-switch buttons, matching the template's
-          isWRetire row exactly (Argus Trading WebUI.dc.html lines 1060-1074)
-          — retirement age and monthly spend each save immediately on click
-          rather than needing a separate "save" step. */}
+          isWRetire row: the retirement age saves immediately on click; the
+          monthly spend is set in the drawer. */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0", flexWrap: "wrap" }}>
         <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: "var(--ink)" }}>
           {dict.navWealthRetire}
         </span>
         {writable && retire && (retire.hasBirthYear || retire.isSample) && (
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <>
             {retire.hasBirthYear && (
-              <>
-                <QuickSwitchGroup
-                  label={dict.wealthRetireTargetAgeLabel}
-                  options={retire.retirementAgeOptions}
-                  value={retire.retirementAge}
-                  format={(v) => `${v} 歲`}
-                  onSelect={(age) => saveQuickSwitch(age, retire.monthlySpend)}
-                />
-                <QuickSwitchGroup
-                  label={dict.wealthRetireSpendLabel}
-                  options={retire.monthlySpendOptions}
-                  value={retire.monthlySpend}
-                  format={(v) => fmtMoney(v, CURRENCY)}
-                  onSelect={(spend) => saveQuickSwitch(retire.retirementAge, spend)}
-                />
-              </>
+              <QuickSwitchGroup
+                label={dict.wealthRetireTargetAgeLabel}
+                options={retire.retirementAgeOptions}
+                value={retire.retirementAge}
+                format={(v) => `${v} 歲`}
+                onSelect={(age) => saveQuickSwitch(age, retire.monthlySpend)}
+              />
             )}
             {display && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginLeft: 6 }}>
                 <SummaryChip text={dict.wealthRetireChipSpend.replace("{v}", shortTWD(display.monthlySpend))} />
                 <SummaryChip text={dict.wealthRetireChipContrib.replace("{v}", shortTWD(display.monthlyContribution))} />
-                <SummaryChip
-                  text={dict.wealthRetireChipReturn.replace("{pre}", String(display.preReturnPct)).replace("{post}", String(display.postReturnPct))}
-                  tip={returnMixTip(dict, display)}
-                />
+                <SummaryChip text={dict.wealthRetireChipReturn.replace("{pre}", String(display.preReturnPct)).replace("{post}", String(display.postReturnPct))} />
                 <SummaryChip text={dict.wealthRetireChipSwr.replace("{v}", String(display.withdrawalRatePct))} tip={dict.wealthRetireTipSwr} />
                 <SummaryChip text={dict.wealthRetireChipLifeAge.replace("{v}", String(display.horizonAge))} />
               </div>
@@ -441,6 +432,7 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
             <button
               onClick={() => setCfgOpen(true)}
               style={{
+                marginLeft: "auto",
                 display: "flex",
                 alignItems: "center",
                 gap: 7,
@@ -461,13 +453,13 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
               </svg>
               {dict.wealthRetireSettingsButton}
             </button>
-          </div>
+          </>
         )}
       </div>
 
       {cfgOpen && retire && (
         <div className="wealth-drawer-overlay" onClick={() => setCfgOpen(false)}>
-          <div className="wealth-drawer-panel" onClick={(e) => e.stopPropagation()}>
+          <div className="wealth-drawer-panel" style={{ width: "min(580px, 100%)" }} onClick={(e) => e.stopPropagation()}>
             <div className="wealth-drawer-header">
               <span style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11 }}>
                 {dict.wealthRetireCfgTitle}
@@ -505,18 +497,17 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
                   {assignLabel} →
                 </button>
               </div>
-              {cfgGroups.map((g) => (
-                <div key={g.title} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <div style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 10, color: "var(--ink-3)" }}>
-                    {g.title}
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
-                    {g.keys.map((key) => (
-                      <CfgField key={key} id={`retcfg-${key}`} def={cfgFieldDefs[key]} value={cfgValue(key)} onChange={(v) => setCfgField(key, v)} />
-                    ))}
-                  </div>
-                </div>
-              ))}
+              {cfgGroups.map(renderGroup)}
+              <RetireReturns
+                dict={dict}
+                plan={retire}
+                current={display ?? retire}
+                params={liveParams}
+                state={rx}
+                onChange={setRx}
+                onAskAI={() => setCfgOpen(false)}
+              />
+              {cfgGroupsAfter.map(renderGroup)}
             </div>
             <div className="wealth-drawer-footer" style={{ flexDirection: "column", gap: 12 }}>
               <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
@@ -540,7 +531,13 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
                 </div>
               </div>
               <div style={{ display: "flex", gap: 10 }}>
-                <button className="wealth-drawer-cancel" onClick={() => setCfg({})}>
+                <button
+                  className="wealth-drawer-cancel"
+                  onClick={() => {
+                    setCfg({});
+                    setRx(RETURNS_DEFAULT);
+                  }}
+                >
                   {dict.wealthRetireCfgReset}
                 </button>
                 <button className="btn-primary" style={{ flex: 1 }} onClick={() => setCfgOpen(false)}>
@@ -556,7 +553,7 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
         <RetireAssignDrawer
           dict={dict}
           retire={retire}
-          cfg={cfg}
+          cfg={liveParams}
           writable={writable}
           onClose={() => setAssignOpen(false)}
           onSaved={setRetire}
@@ -742,7 +739,11 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
                 </div>
               )}
 
-              <div style={{ fontSize: 11, color: "var(--ink-3)", lineHeight: 1.6, marginTop: 14 }}>{dict.wealthRetireAssumption}</div>
+              <div style={{ fontSize: 11, color: "var(--ink-3)", lineHeight: 1.6, marginTop: 14 }}>{dict.wealthRetireAssumption
+                  .replace("{pre}", String(display.preReturnPct))
+                  .replace("{post}", String(display.postReturnPct))
+                  .replace("{swr}", String(display.withdrawalRatePct))}
+              </div>
             </div>
           )}
 

@@ -1,10 +1,8 @@
 package service
 
 import (
-	"slices"
+	"math"
 	"testing"
-
-	"argus/internal/assets"
 )
 
 // TestComputeRetirementProjectionFundedVsGap pins the baseline arithmetic
@@ -65,36 +63,42 @@ func TestComputeRetirementScenariosCrashHurtsBaseline(t *testing.T) {
 	}
 }
 
-func TestBlendedPreReturn(t *testing.T) {
+func TestRetirementMix(t *testing.T) {
 	v := func(f float64) *float64 { return &f }
-	typeOf := map[int64]string{1: "deposit", 2: "fund", 3: "pension", 4: "other"}
-	// 200 deposit (0%) + 600 fund (4%) + 200 pension (2%) = 2.8%; a valueless row is skipped.
-	ret, mix, ok := BlendedPreReturn([]GoalAssetItem{
+	typeOf := map[int64]string{1: "deposit", 2: "fund", 3: "pension", 4: "other", 5: "insurance"}
+	// 200 cash (−0.3%) + 600 etf (4.5%) + 200 pension (1.5%); a valueless row is skipped.
+	mix, pre, post, ok := RetirementMix([]GoalAssetItem{
 		{AssetID: 1, Value: v(200)}, {AssetID: 2, Value: v(600)}, {AssetID: 3, Value: v(200)}, {AssetID: 4},
 	}, typeOf)
-	if !ok || ret != 0.028 {
-		t.Fatalf("ret = %v ok = %v, want 0.028 true", ret, ok)
+	if !ok {
+		t.Fatal("ok = false")
 	}
-	want := []RetirementReturnMix{{"cash", 20, 0}, {"fund", 60, 4}, {"pension", 20, 2}}
-	if len(mix) != len(want) {
-		t.Fatalf("mix = %+v, want %+v", mix, want)
+	// pre = 0.2×−0.3 + 0.6×4.5 + 0.2×1.5 = 2.94% → 2.9%.
+	if pre != 0.029 {
+		t.Errorf("pre = %v, want 0.029", pre)
 	}
-	for i := range want {
-		if mix[i] != want[i] {
-			t.Errorf("mix[%d] = %+v, want %+v", i, mix[i], want[i])
-		}
+	// post: the 800 movable re-spread 30/50/5/15 over etf/bond/gold/cash, pension kept:
+	// (240×4.5 + 400×1.5 + 40×0.5 + 120×−0.3 + 200×1.5) / 1000 = 1.964% → 2.0%.
+	if post != 0.02 {
+		t.Errorf("post = %v, want 0.02", post)
 	}
-	if _, _, ok := BlendedPreReturn([]GoalAssetItem{{AssetID: 4}}, typeOf); ok {
+	if len(mix) != len(RetirementReturnClasses) || mix[0] != (RetirementReturnMix{"etf", 600, 4.5, true}) || mix[5] != (RetirementReturnMix{"pension", 200, 1.5, false}) {
+		t.Errorf("mix = %+v", mix)
+	}
+
+	// Nothing movable: post stays at pre.
+	_, pre, post, _ = RetirementMix([]GoalAssetItem{{AssetID: 5, Value: v(100)}}, typeOf)
+	if pre != 0.003 || post != pre {
+		t.Errorf("policy only: pre = %v post = %v, want 0.003 both", pre, post)
+	}
+	if _, _, _, ok := RetirementMix([]GoalAssetItem{{AssetID: 4}}, typeOf); ok {
 		t.Error("ok = true with nothing valued, want the caller's fallback")
 	}
-	for c := range RetirementCategoryReturnReal {
-		if !slices.Contains(assets.AllocCategories, c) {
-			t.Errorf("return table has unknown category %q", c)
-		}
+	var sum float64
+	for _, w := range RetirementPostMix {
+		sum += w
 	}
-	for _, c := range assets.AllocCategories {
-		if _, has := RetirementCategoryReturnReal[c]; !has {
-			t.Errorf("category %q has no assumed return", c)
-		}
+	if math.Abs(sum-1) > 1e-9 {
+		t.Errorf("RetirementPostMix sums to %v, want 1", sum)
 	}
 }
