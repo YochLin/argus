@@ -1,6 +1,5 @@
 import { getJSON, postJSON } from "./http";
 import type { Goal } from "./wealthGoals";
-import type { AllocCategory } from "./wealthAlloc";
 
 // RetirementScenario/WealthRetire mirror wealth_retire.go's response shapes
 // (Phase 9 波次3 PR7, §8.7/§10.2②) — the real-return projection off the
@@ -19,6 +18,16 @@ export interface RetirementPathPoint {
   balance: number;
 }
 
+// RetireClass/RetireReturnRow mirror service.RetirementReturnClasses: every
+// class of the retirement pool, amount 0 when the pool holds none.
+export type RetireClass = "etf" | "bond" | "gold" | "cash" | "policy" | "pension" | "estate" | "crypto";
+export interface RetireReturnRow {
+  class: RetireClass;
+  amount: number; // TWD
+  returnPct: number;
+  movable: boolean;
+}
+
 export interface WealthRetire {
   asOf: string;
   hasBirthYear: boolean;
@@ -33,10 +42,10 @@ export interface WealthRetire {
   pool: number | null;
   horizonAge: number;
   preReturnPct: number;
-  // Where preReturnPct came from: blended from the pool's categories
-  // (preReturnMix), the flat default, or the drawer's override.
-  preReturnSource?: "mix" | "default" | "override";
-  preReturnMix?: { category: AllocCategory; sharePct: number; returnPct: number }[];
+  // Where pre/postReturnPct came from: blended from the pool's classes
+  // (returnMix), the flat defaults, or the drawer's override.
+  returnSource?: "mix" | "default" | "override";
+  returnMix?: RetireReturnRow[];
   postReturnPct: number;
   withdrawalRatePct: number;
   retirementYear?: number;
