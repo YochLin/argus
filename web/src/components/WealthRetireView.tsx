@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ApiError,
   fetchWealthProfile,
@@ -190,7 +190,7 @@ interface CfgFieldDef {
 // CfgField renders one drawer row — a plain numeric text input or, for the
 // three return/withdrawal assumptions, a percent slider whose unit label
 // shows the live value (mirrors the template's rng() helper).
-function CfgField({ id, def, value, onChange }: { id: string; def: CfgFieldDef; value: string; onChange: (v: string) => void }) {
+function CfgField({ id, def, value, onChange, extra }: { id: string; def: CfgFieldDef; value: string; onChange: (v: string) => void; extra?: ReactNode }) {
   return (
     <div className="wealth-drawer-field" style={def.kind === "range" ? { gridColumn: "1 / -1" } : undefined}>
       <div className="wealth-drawer-field-label">
@@ -213,6 +213,7 @@ function CfgField({ id, def, value, onChange }: { id: string; def: CfgFieldDef; 
         <input id={id} className="mono" inputMode="numeric" autoComplete="off" value={value} onChange={(e) => onChange(e.target.value)} />
       )}
       {def.hint && <div style={{ fontSize: 10.5, color: "var(--ink-3)", lineHeight: 1.5 }}>{def.hint}</div>}
+      {extra}
     </div>
   );
 }
@@ -225,7 +226,6 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
   const flash = useFlash();
   const [birthYearInput, setBirthYearInput] = useState("");
   const birthYearInputRef = useRef<HTMLInputElement>(null);
-  const [contribInput, setContribInput] = useState("");
   const [savingSetup, setSavingSetup] = useState(false);
   const [cfgOpen, setCfgOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
@@ -314,7 +314,7 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
       <div style={{ fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".08em", fontSize: 10, color: "var(--ink-3)" }}>{g.title}</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
         {g.keys.map((key) => (
-          <CfgField key={key} id={`retcfg-${key}`} def={cfgFieldDefs[key]} value={cfgValue(key)} onChange={(v) => setCfgField(key, v)} />
+          <CfgField key={key} id={`retcfg-${key}`} def={cfgFieldDefs[key]} value={cfgValue(key)} onChange={(v) => setCfgField(key, v)} extra={cfgExtra(key)} />
         ))}
       </div>
     </div>
@@ -343,6 +343,36 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
         return "0";
     }
   }
+  // cfgExtra is the line under a field tying it to the records: today's
+  // cash-flow spend and a save for the spend; where the contribution comes from.
+  function cfgExtra(key: string): ReactNode {
+    if (!retire) return null;
+    const small = { fontSize: 10.5, color: "var(--ink-3)", lineHeight: 1.5 } as const;
+    const link = (text: string, onClick: () => void) => (
+      <a href="#" className="accent-link" style={{ fontSize: 10.5 }} onClick={(e) => { e.preventDefault(); onClick(); }}>
+        {text}
+      </a>
+    );
+    if (key === "spend") {
+      const typed = Number(cfg.spend);
+      const savable = writable && retire.hasBirthYear && cfg.spend != null && typed > 0 && typed !== retire.monthlySpend;
+      return (
+        <>
+          {retire.currentMonthlySpend != null && <div style={small}>{dict.wealthRetireSpendNow.replace("{v}", fmtMoney(retire.currentMonthlySpend, CURRENCY))}</div>}
+          {savable && <div>{link(dict.wealthRetireSpendSave, () => saveSpend(typed))}</div>}
+        </>
+      );
+    }
+    if (key === "contribMo" && retire.monthlyContribution === 0) {
+      return <div>{link(dict.wealthRetireContribAdd, () => onNavigate("/w/cash"))}</div>;
+    }
+    return null;
+  }
+  async function saveSpend(spend: number) {
+    if (!retire) return;
+    await saveQuickSwitch(retire.retirementAge, spend);
+    setCfg(({ spend: _, ...rest }) => rest);
+  }
   function cfgValue(key: string): string {
     return cfg[key] ?? cfgDefault(key);
   }
@@ -365,12 +395,11 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
 
   async function saveSetup() {
     const birthYear = Number(birthYearInput);
-    const contribution = contribInput.trim() === "" ? 0 : Number(contribInput);
-    if (!Number.isFinite(birthYear) || birthYear < 1900 || Number.isNaN(contribution) || contribution < 0) return;
+    if (!Number.isFinite(birthYear) || birthYear < 1900) return;
     setSavingSetup(true);
     try {
       await fetchWealthProfile(); // ensure the profile endpoint exists before a partial save (also warms auth state)
-      await saveWealthProfile({ birthYear, retirementMonthlyContribution: contribution });
+      await saveWealthProfile({ birthYear });
       setRefreshSignal((n) => n + 1);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
@@ -576,10 +605,6 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
                   <span>{dict.wealthRetireBirthYearLabel}</span>
                   <input ref={birthYearInputRef} className="mono" type="number" value={birthYearInput} onChange={(e) => setBirthYearInput(e.target.value)} />
                 </label>
-                <label className="form-field" style={{ width: 180 }}>
-                  <span>{dict.wealthRetireContribInputLabel}</span>
-                  <input className="mono" type="number" value={contribInput} onChange={(e) => setContribInput(e.target.value)} />
-                </label>
               </div>
               <div className="modal-actions">
                 <button className="btn-primary" disabled={savingSetup || birthYearInput.trim() === ""} onClick={saveSetup}>
@@ -646,6 +671,13 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
                   {basis == null ? "—" : basis.funded ? dict.wealthRetireFundedLabel : fmtMoney(basis.gapAmount, CURRENCY)}
                 </span>
               </div>
+              {basis && !basis.funded && display?.requiredContribution != null && (
+                <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 4 }}>
+                  {dict.wealthRetireNeedContrib
+                    .replace("{need}", fmtMoney(display.requiredContribution, CURRENCY))
+                    .replace("{now}", fmtMoney(display.monthlyContribution, CURRENCY))}
+                </div>
+              )}
               <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-3)", marginTop: 8 }}>
                 <span>
                   {dict.wealthRetirePoolLabel} {display?.pool != null ? fmtMoney(display.pool, CURRENCY) : "—"} · {dict.wealthRetireContribLabel}{" "}
@@ -764,6 +796,9 @@ export function WealthRetireView({ dict, writable, onUnauthorized, onNavigate }:
                 </span>
                 <span>
                   {dict.wealthGoalsMonthlyLabel} <span style={{ color: "var(--ink)" }}>{fmtMoney(retire.monthlyContribution, CURRENCY)}</span>
+                  {retire.requiredContribution != null && retire.requiredContribution > retire.monthlyContribution && (
+                    <> / {dict.wealthRetireNeedShort.replace("{v}", fmtMoney(retire.requiredContribution, CURRENCY))}</>
+                  )}
                 </span>
                 <span>
                   {dict.wealthGoalsEtaLabel} <span style={{ color: "var(--ink)" }}>{retire.retirementAge} 歲</span>

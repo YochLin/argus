@@ -82,7 +82,16 @@ type RetirementPlan struct {
 	RetirementAgeOptions []int     `json:"retirementAgeOptions"`
 	MonthlySpend         float64   `json:"monthlySpend"`
 	MonthlySpendOptions  []float64 `json:"monthlySpendOptions"`
-	MonthlyContribution  float64   `json:"monthlyContribution"`
+	// MonthlyContribution is what the cash flows put into the pool each
+	// month (RetirementContributionTWD), or the drawer's what-if.
+	MonthlyContribution float64 `json:"monthlyContribution"`
+	// RequiredContribution is the monthly amount that would fund the plan
+	// 100% on the baseline path; nil once retirement age is reached.
+	RequiredContribution *float64 `json:"requiredContribution,omitempty"`
+	// CurrentMonthlySpend is today's monthly outflow from the cash flows,
+	// 定期定額 excluded — a reference beside the retirement spend; nil
+	// when a flow's currency can't be converted.
+	CurrentMonthlySpend *float64 `json:"currentMonthlySpend,omitempty"`
 	// OtherIncome is the settings drawer's "其他月收入" what-if input
 	// (labour pension, rent, ...) — always 0 unless a live override sets
 	// it; there's no persisted source for this figure yet.
@@ -127,11 +136,18 @@ type RetirementOverrides struct {
 	PreR, PostR, SWR                 *float64
 }
 
+// RetirementStore is what ComputeRetirementPlan reads: the wealth records
+// plus the cash flows the monthly contribution comes from.
+type RetirementStore interface {
+	WealthStore
+	ListRecurringCashflows(activeOnly bool) ([]db.RecurringCashflow, error)
+}
+
 // ComputeRetirementPlan builds the retirement page as of now. The GET and
 // POST handlers share it so the two never compute the projection differently;
 // a POST passes no overrides, so it always renders the real, just-persisted
 // state. A non-nil error means only that a store read failed.
-func ComputeRetirementPlan(store WealthStore, fx WealthFXStore, quotes QuoteReader, now time.Time, ov RetirementOverrides) (RetirementPlan, error) {
+func ComputeRetirementPlan(store RetirementStore, fx WealthFXStore, quotes QuoteReader, now time.Time, ov RetirementOverrides) (RetirementPlan, error) {
 	today := now.Format("2006-01-02")
 	resp := RetirementPlan{
 		AsOf: today, RetirementAge: DefaultRetirementAge, MonthlySpend: DefaultRetirementMonthlySpend,
@@ -145,10 +161,6 @@ func ComputeRetirementPlan(store WealthStore, fx WealthFXStore, quotes QuoteRead
 		birthYear = *profile.BirthYear
 		resp.HasBirthYear = true
 	}
-	if profile.RetirementMonthlyContribution != nil {
-		resp.MonthlyContribution = *profile.RetirementMonthlyContribution
-	}
-
 	goals, err := store.ListGoals()
 	if err != nil {
 		return resp, fmt.Errorf("list goals: %w", err)
@@ -185,6 +197,13 @@ func ComputeRetirementPlan(store WealthStore, fx WealthFXStore, quotes QuoteRead
 	}
 	assetItems, pool := EarmarkedSavedTWD(earmarks, assetByID, today, quotes, fx)
 	resp.Pool = pool
+
+	flows, err := store.ListRecurringCashflows(true)
+	if err != nil {
+		return resp, fmt.Errorf("list cashflows: %w", err)
+	}
+	resp.MonthlyContribution = RetirementContributionTWD(flows, earmarks, today, quotes, fx)
+	resp.CurrentMonthlySpend = livingSpendTWD(flows, today, quotes, fx)
 
 	if retGoal != nil {
 		goal := GoalItem{
@@ -292,6 +311,7 @@ func ComputeRetirementPlan(store WealthStore, fx WealthFXStore, quotes QuoteRead
 	bs, cs, ls := toScenarioSummary(baseline, resp.RetirementAge), toScenarioSummary(crash, resp.RetirementAge), toScenarioSummary(lowReturn, resp.RetirementAge)
 	resp.Baseline, resp.Crash, resp.LowReturn = &bs, &cs, &ls
 	resp.Need = &baseline.Need
+	resp.RequiredContribution = RequiredMonthlyContribution(in, baseline.Need)
 	// The goal card stays on the real (non-what-if, non-sample) numbers, so
 	// the template's pace semantics apply only when no drawer override is
 	// in play AND a real birth year is on file — a sample age is exactly as
@@ -304,4 +324,58 @@ func ComputeRetirementPlan(store WealthStore, fx WealthFXStore, quotes QuoteRead
 		resp.Path = append(resp.Path, RetirementPlanPoint{Year: now.Year() + p.YearsFromNow, Balance: p.Balance})
 	}
 	return resp, nil
+}
+
+// RetirementContributionTWD is what the cash flows put into the retirement
+// pool each month: active 定期定額 (category "sip") outflows into an
+// earmarked asset, times that asset's earmark ratio. A flow whose currency
+// can't be converted is left out.
+func RetirementContributionTWD(flows []db.RecurringCashflow, earmarks []db.GoalAsset, date string, quotes QuoteReader, fx WealthFXStore) float64 {
+	ratio := make(map[int64]float64, len(earmarks))
+	for _, ga := range earmarks {
+		ratio[ga.AssetID] = ga.Ratio
+	}
+	var total float64
+	for _, c := range flows {
+		if !c.Active || c.Direction != "out" || c.Category != "sip" || c.AssetID == nil || ratio[*c.AssetID] == 0 {
+			continue
+		}
+		if rate, ok := RateToTWD(c.Currency, date, true, quotes, fx); ok {
+			total += c.Amount * rate * ratio[*c.AssetID]
+		}
+	}
+	return total
+}
+
+// livingSpendTWD is the monthly outflow minus 定期定額, which is saving, not
+// spending; nil when a flow's currency can't be converted.
+func livingSpendTWD(flows []db.RecurringCashflow, date string, quotes QuoteReader, fx WealthFXStore) *float64 {
+	var spend []db.RecurringCashflow
+	for _, c := range flows {
+		if c.Category != "sip" {
+			spend = append(spend, c)
+		}
+	}
+	total, ok := MonthlyOutflowTWD(spend, date, quotes, fx)
+	if !ok {
+		return nil
+	}
+	return &total
+}
+
+// RequiredMonthlyContribution back-solves simulate's pre-retirement loop
+// (bal = bal*g + 12c each year) for the monthly c that reaches need exactly;
+// 0 when the pool already gets there, nil with no years left to save.
+func RequiredMonthlyContribution(in RetirementInputs, need float64) *float64 {
+	n := float64(in.YearsToRetirement)
+	if n <= 0 {
+		return nil
+	}
+	growth := math.Pow(1+in.PreReturn, n)
+	annuity := n
+	if in.PreReturn != 0 {
+		annuity = (growth - 1) / in.PreReturn
+	}
+	c := math.Max((need-in.Pool*growth)/annuity/12, 0)
+	return &c
 }

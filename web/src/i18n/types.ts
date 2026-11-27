@@ -1592,7 +1592,6 @@ export interface Dictionary {
   wealthRetireCfgSecTime: string;
   wealthRetireCfgSecFlow: string;
   wealthRetireCfgSecAssume: string;
-  wealthRetireCurrentAgeLabel: string;
   wealthRetireLifeLabel: string;
   wealthRetireOtherIncomeLabel: string;
   wealthRetireOtherIncomeHint: string;
@@ -1624,6 +1623,11 @@ export interface Dictionary {
   wealthRetireLifeHint: string;
   wealthRetireSpendHint: string;
   wealthRetireContribHint: string;
+  wealthRetireContribAdd: string;
+  wealthRetireSpendNow: string;
+  wealthRetireSpendSave: string;
+  wealthRetireNeedContrib: string;
+  wealthRetireNeedShort: string;
   wealthRetirePreRHint: string;
   wealthRetirePostRHint: string;
   rxTitle: string;

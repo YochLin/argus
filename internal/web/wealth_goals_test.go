@@ -107,18 +107,18 @@ func TestHandleWealthGoalsList(t *testing.T) {
 }
 
 // TestHandleWealthGoalsListRetirementMonthlyContribution pins that the
-// kind="retirement" row's MonthlyContribution comes from the same
-// profile.retirement_monthly_contribution setting /w/retire reads — the
-// design template shows a real "每月投入" figure for the retirement row, and
-// a general goal (no such setting to read) must stay nil rather than reuse
-// it.
+// kind="retirement" row's MonthlyContribution is the same cash-flow figure
+// /w/retire projects with (定期定額 into an earmarked asset), and a general
+// goal must stay nil rather than reuse it.
 func TestHandleWealthGoalsListRetirementMonthlyContribution(t *testing.T) {
+	fund := int64(7)
 	fake := &fakeDB{
 		goals: []db.Goal{
 			{ID: 1, Name: "退休金", Kind: "retirement", TargetAmount: 27000000, Currency: "TWD", CreatedAt: "2026-01-01 00:00:00"},
 			{ID: 2, Name: "緊急預備金", Kind: "general", TargetAmount: 300000, Currency: "TWD", CreatedAt: "2026-01-01 00:00:00"},
 		},
-		settings: map[string]string{service.RetirementMonthlyContributionSettingKey: "28000"},
+		goalAssets:         []db.GoalAsset{{GoalID: 1, AssetID: 7, Ratio: 1}},
+		recurringCashflows: []db.RecurringCashflow{{Direction: "out", Category: "sip", Amount: 28000, Currency: "TWD", AssetID: &fund, Active: true}},
 	}
 	s := newWealthGoalsTestServer("", fake, &fakeWealthDB{})
 

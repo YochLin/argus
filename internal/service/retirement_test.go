@@ -3,6 +3,8 @@ package service
 import (
 	"math"
 	"testing"
+
+	"argus/internal/db"
 )
 
 // TestComputeRetirementProjectionFundedVsGap pins the baseline arithmetic
@@ -100,5 +102,48 @@ func TestRetirementMix(t *testing.T) {
 	}
 	if math.Abs(sum-1) > 1e-9 {
 		t.Errorf("RetirementPostMix sums to %v, want 1", sum)
+	}
+}
+
+func TestRetirementContributionTWD(t *testing.T) {
+	fund, dep, other := int64(1), int64(2), int64(3)
+	flows := []db.RecurringCashflow{
+		{Direction: "out", Category: "sip", Amount: 10000, Currency: "TWD", AssetID: &fund, Active: true},
+		{Direction: "out", Category: "sip", Amount: 4000, Currency: "TWD", AssetID: &dep, Active: true},   // half earmarked
+		{Direction: "out", Category: "sip", Amount: 9000, Currency: "TWD", AssetID: &other, Active: true}, // not earmarked
+		{Direction: "out", Category: "sip", Amount: 9000, Currency: "TWD", AssetID: &fund, Active: false}, // paused
+		{Direction: "out", Category: "rent", Amount: 20000, Currency: "TWD", AssetID: &fund, Active: true},
+		{Direction: "in", Category: "sip", Amount: 9000, Currency: "TWD", AssetID: &fund, Active: true},
+	}
+	earmarks := []db.GoalAsset{{GoalID: 1, AssetID: fund, Ratio: 1}, {GoalID: 1, AssetID: dep, Ratio: 0.5}}
+	if got := RetirementContributionTWD(flows, earmarks, "2026-11-27", &fakeWealthQuotes{}, &fakeWealthFX{}); got != 12000 {
+		t.Errorf("contribution = %v, want 12000", got)
+	}
+	if got := livingSpendTWD(flows, "2026-11-27", &fakeWealthQuotes{}, &fakeWealthFX{}); got == nil || *got != 20000 {
+		t.Errorf("living spend = %v, want 20000 (定期定額 left out)", got)
+	}
+}
+
+// TestRequiredMonthlyContribution feeds the back-solved amount into the
+// projection and expects it to land on 100% funded.
+func TestRequiredMonthlyContribution(t *testing.T) {
+	for _, r := range []float64{0.03, 0} {
+		in := RetirementInputs{YearsToRetirement: 20, YearsPostRetirement: 30, Pool: 1e6, MonthlySpend: 50000, PreReturn: r, PostReturn: 0.01, WithdrawalRate: 0.04}
+		need := ComputeRetirementProjection(in).Need
+		c := RequiredMonthlyContribution(in, need)
+		if c == nil {
+			t.Fatalf("r=%v: nil", r)
+		}
+		in.MonthlyContribution = *c
+		if got := ComputeRetirementProjection(in).AchievementPct; math.Abs(got-100) > 1e-6 {
+			t.Errorf("r=%v: funded %v%% with %v/mo, want 100", r, got, *c)
+		}
+	}
+	rich := RetirementInputs{YearsToRetirement: 5, Pool: 1e9, MonthlySpend: 1000, PreReturn: 0.03, WithdrawalRate: 0.04}
+	if c := RequiredMonthlyContribution(rich, 300000); c == nil || *c != 0 {
+		t.Errorf("already funded = %v, want 0", c)
+	}
+	if c := RequiredMonthlyContribution(RetirementInputs{}, 1); c != nil {
+		t.Errorf("no years left = %v, want nil", *c)
 	}
 }
